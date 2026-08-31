@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:ai": "node tests/run-ai-contract.mjs"
   },
   "dependencies": {
     "framer-motion": "^12.23.12",

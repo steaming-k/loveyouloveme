@@ -3,6 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
+import { AiNarrativeNotice, useNarrativeViewEvent } from '@/components/ai/AiModeNotice';
+import { HistoryAxisNarrative } from '@/components/ai/NarrativeViews';
 import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
@@ -19,8 +21,10 @@ import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { premiumFeatureState } from '@/services/premiumService';
 import { formatEntryDate } from '@/lib/historyFormat';
 import { ROUTES } from '@/lib/routes';
+import { useHistoryNarrative } from '@/hooks/useAiNarrative';
 import { useHistoryReport, useRepeatedSignals } from '@/hooks/useAnalysis';
 import { useHistory } from '@/state/HistoryProvider';
+import type { HistoryAxisChange } from '@/types';
 
 /**
  * F2 변화 리포트 — 실제 데이터 기반 (v1.3에서 정적 mock 제거)
@@ -42,6 +46,31 @@ function HistoryReportView() {
   const report = useHistoryReport();
   const repeated = useRepeatedSignals();
   const [variant] = useState(() => resolvePriceVariant());
+
+  /**
+   * v1.7 §26 — History Narrative는 **lazy**다. 이 화면에 들어올 때 호출한다.
+   * 기록이 1개면 훅 자체가 호출하지 않는다 — 변화 해석을 만들지 않는다(§79 CASE O).
+   *
+   * ⚠️ 과거 Entry를 새 프롬프트로 재생성하지 않는다(§31/§70).
+   * 여기서 만드는 건 '이전 기록 vs 최신 기록'이라는 **현재 비교**에 대한 설명뿐이다.
+   */
+  const narrative = useHistoryNarrative();
+
+  useNarrativeViewEvent({
+    task: 'history-insight',
+    source: 'change_report',
+    status: narrative.status,
+    mode: narrative.mode,
+    itemCount: narrative.data?.narratives.length ?? 0,
+  });
+
+  const narrativeFooter = (axis: HistoryAxisChange['axis']) => (
+    <HistoryAxisNarrative
+      axis={axis}
+      narratives={narrative.data?.narratives}
+      status={narrative.status}
+    />
+  );
 
   useEffect(() => {
     trackEvent('relationship_history_change_report_view', {
@@ -120,7 +149,7 @@ function HistoryReportView() {
           <section className="flex flex-col gap-2.5">
             <SectionLabel>가장 큰 변화</SectionLabel>
             <ul>
-              <HistoryChangeRow change={report.headline} />
+              <HistoryChangeRow change={report.headline} footer={narrativeFooter(report.headline.axis)} />
             </ul>
           </section>
         ) : null}
@@ -133,7 +162,7 @@ function HistoryReportView() {
               {shifted
                 .filter((change) => change.axis !== report.headline?.axis)
                 .map((change) => (
-                  <HistoryChangeRow key={change.axis} change={change} />
+                  <HistoryChangeRow key={change.axis} change={change} footer={narrativeFooter(change.axis)} />
                 ))}
             </ul>
           </section>
@@ -147,7 +176,7 @@ function HistoryReportView() {
               {fresh
                 .filter((change) => change.axis !== report.headline?.axis)
                 .map((change) => (
-                  <HistoryChangeRow key={change.axis} change={change} />
+                  <HistoryChangeRow key={change.axis} change={change} footer={narrativeFooter(change.axis)} />
                 ))}
             </ul>
           </section>
@@ -159,13 +188,17 @@ function HistoryReportView() {
             <SectionLabel>유지된 기준</SectionLabel>
             <ul className="flex flex-col gap-2.5">
               {stable.map((change) => (
-                <HistoryChangeRow key={change.axis} change={change} />
+                <HistoryChangeRow key={change.axis} change={change} footer={narrativeFooter(change.axis)} />
               ))}
             </ul>
           </section>
         ) : null}
 
-        {/* 반복 신호 */}
+        {/*
+          §30 반복 신호 — 횟수는 deterministic count다. AI가 '너의 패턴'이라고 확정하지 않는다.
+          여기에 AI 문장을 덧붙이지 않는 이유: 반복은 이미 사실 진술이고, 해석을 얹으면
+          '반복되는 문제'라는 판정으로 읽히기 쉽다.
+        */}
         {repeated.length > 0 ? <RepeatedSignalNotice signals={repeated} /> : null}
 
         {/* 판정하지 않은 축 — 정보 부족을 숨기지 않는다 */}
@@ -190,6 +223,12 @@ function HistoryReportView() {
           feature={premiumFeatureState('history_detail', resolvePrice(variant), {
             historyComparable: report.comparable,
           })}
+        />
+
+        <AiNarrativeNotice
+          task="history-insight"
+          status={narrative.status}
+          reason={narrative.reason}
         />
 
         <LovyMessage pose="calendar" size={66}>

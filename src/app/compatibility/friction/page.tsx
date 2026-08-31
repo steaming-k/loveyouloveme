@@ -3,6 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
+import { AiNarrativeNotice } from '@/components/ai/AiModeNotice';
+import { CompatibilityAxisNarrative } from '@/components/ai/NarrativeViews';
 import { Button } from '@/components/common/Button';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
@@ -12,6 +14,7 @@ import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { LOVY_LINES } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { ROUTES } from '@/lib/routes';
+import { useCompatibilityNarrative } from '@/hooks/useAiNarrative';
 import { useCompatibility } from '@/hooks/useAnalysis';
 
 /**
@@ -22,6 +25,8 @@ import { useCompatibility } from '@/hooks/useAnalysis';
 export default function FrictionSignalPage() {
   const router = useRouter();
   const result = useCompatibility();
+  // S22에서 이미 호출됐다면 캐시를 읽는다 — 같은 지문이면 재호출하지 않는다(§40)
+  const narrative = useCompatibilityNarrative();
 
   useEffect(() => {
     trackEvent('friction_signal_view', { count: result.frictionSignals.length });
@@ -53,7 +58,18 @@ export default function FrictionSignalPage() {
         {hasFriction ? (
           <ul className="flex flex-col gap-2.5">
             {result.frictionSignals.map((dimension) => (
-              <SignalCard key={dimension.key} dimension={dimension} variant="friction" />
+              <SignalCard
+                key={dimension.key}
+                dimension={dimension}
+                variant="friction"
+                footer={
+                  <CompatibilityAxisNarrative
+                    axis={dimension.key}
+                    narratives={narrative.data?.narratives}
+                    status={narrative.status}
+                  />
+                }
+              />
             ))}
           </ul>
         ) : null}
@@ -63,6 +79,12 @@ export default function FrictionSignalPage() {
             ? LOVY_LINES.friction
             : '차이가 안 보이는 건 정보가 적어서일 수도 있어. 이건 나도 확신이 없어.'}
         </LovyMessage>
+
+        <AiNarrativeNotice
+          task="compatibility-narrative"
+          status={narrative.status}
+          reason={narrative.reason}
+        />
       </div>
     </ScreenLayout>
   );

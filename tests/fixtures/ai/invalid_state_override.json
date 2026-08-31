@@ -1,0 +1,44 @@
+{
+  "name": "invalid_state_override",
+  "description": "AI가 state를 뒤집고 · 판정되지 않은 축을 추가하고 · 근거도 한계도 없는 항목을 보냈다. 모두 막혀야 한다",
+  "task": "relationship-insight",
+  "judgements": [{ "axis": "contact", "state": "GAP" }],
+  "focusAxis": "contact",
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "MATCH",
+        "headline": "사실 잘 맞는 편이야",
+        "explanation": "다시 보니 말한 기준과 실제가 비슷했어.",
+        "evidenceRefs": [{ "source": "declared", "field": "contact" }]
+      },
+      {
+        "axis": "hobby",
+        "state": "CHANGE",
+        "headline": "취미 축도 달라졌어",
+        "explanation": "규칙이 판정하지 않은 축인데 AI가 추가했어.",
+        "evidenceRefs": [{ "source": "declared", "field": "hobby" }]
+      },
+      {
+        "axis": "contact",
+        "state": "GAP",
+        "headline": "근거도 한계도 없는 단정",
+        "explanation": "너는 원래 연락에 예민한 사람이야.",
+        "evidenceRefs": []
+      }
+    ],
+    "core": {
+      "headline": "근거 없는 core",
+      "summary": "근거 참조가 하나도 없어서 버려져야 한다.",
+      "evidenceRefs": [],
+      "limitations": []
+    }
+  },
+  "expect": {
+    "narrativeCount": 1,
+    "states": ["GAP"],
+    "note": "state는 규칙 값 GAP으로 덮어써진다. hobby 축은 폐기. 근거 0 + uncertainty 없음도 폐기",
+    "coreExists": false
+  }
+}

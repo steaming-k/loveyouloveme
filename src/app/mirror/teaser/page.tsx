@@ -13,6 +13,7 @@ import { LOVY_LINES, PRIVACY, STATE_COPY } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { ROUTES } from '@/lib/routes';
 import { TeaserComparison } from '@/components/mirror/TeaserComparison';
+import { useRelationshipNarrative } from '@/hooks/useAiNarrative';
 import { useCompatibility, useMirror } from '@/hooks/useAnalysis';
 
 /**
@@ -36,6 +37,17 @@ function MirrorTeaserView() {
   const router = useRouter();
   const mirror = useMirror();
   const compatibility = useCompatibility();
+
+  /**
+   * v1.7 §61 — Relationship Narrative **Prefetch.**
+   *
+   * 이 화면에 도달한 시점에 focusAxis·Mirror state·evidence가 모두 계산 가능하다.
+   * 사용자가 CTA를 누르기 전에 미리 만들어두면 S27/S28은 캐시를 읽는다.
+   *
+   * ⚠️ 결과를 여기서 **쓰지 않는다.** Aha Moment는 S26의 deterministic 비교 그대로여야 하고
+   * (§88-6), AI 문장이 Teaser에 끼어들면 안 된다. 호출만 하고 화면은 건드리지 않는다.
+   */
+  useRelationshipNarrative();
 
   useEffect(() => {
     if (!mirror.available || !mirror.teaser) return;

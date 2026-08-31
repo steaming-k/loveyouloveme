@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 import { ComparePair } from '@/components/common/primitives';
 import { cn } from '@/lib/cn';
 import type { CompatibilityDimension } from '@/types';
@@ -12,9 +14,16 @@ import type { CompatibilityDimension } from '@/types';
 export function SignalCard({
   dimension,
   variant,
+  footer,
 }: {
   dimension: CompatibilityDimension;
   variant: 'good' | 'friction';
+  /**
+   * v1.7 — AI 설명 블록을 카드 안 마지막에 붙이기 위한 슬롯.
+   * `<li>`를 이 컴포넌트가 만들기 때문에 바깥에서 형제로 끼우면 마크업이 깨진다.
+   * AI 설명은 신호·근거 **뒤**에 오므로 위치도 여기가 맞다(§12).
+   */
+  footer?: ReactNode;
 }) {
   const gap =
     dimension.mineValue !== null && dimension.theirsValue !== null
@@ -68,6 +77,8 @@ export function SignalCard({
           {dimension.evidence}
         </p>
       </details>
+
+      {footer}
     </li>
   );
 }

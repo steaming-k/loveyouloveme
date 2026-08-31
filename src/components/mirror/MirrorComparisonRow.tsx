@@ -1,4 +1,5 @@
 import { Check, ChevronDown, ChevronUp } from 'lucide-react';
+import type { ReactNode } from 'react';
 
 import { cn } from '@/lib/cn';
 import { valueToPercent } from '@/lib/logic/mirror';
@@ -37,9 +38,15 @@ const STATE_TEXT: Record<MirrorState, string> = {
 export function MirrorComparisonRow({
   insight,
   index,
+  footer,
 }: {
   insight: MirrorInsight;
   index: number;
+  /**
+   * v1.7 — AI 설명 1~2줄을 붙이는 슬롯(§21).
+   * 규칙이 만든 `insight.note` **뒤**에 온다. 이 행의 주인공은 대조 자체다.
+   */
+  footer?: ReactNode;
 }) {
   return (
     <li
@@ -94,6 +101,8 @@ export function MirrorComparisonRow({
       </p>
 
       <p className="text-[12.5px] keep-all leading-relaxed text-[#555]">{insight.note}</p>
+
+      {footer}
     </li>
   );
 }

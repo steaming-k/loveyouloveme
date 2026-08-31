@@ -1,0 +1,41 @@
+{
+  "name": "mind_reading",
+  "description": "상대 마음 읽기 · 성공 확률 · 애착유형이 섞인 Compatibility 응답 — 해당 항목은 폐기돼야 한다",
+  "task": "compatibility-narrative",
+  "allowed": [
+    { "key": "contact", "kind": "friction" },
+    { "key": "alone", "kind": "good" },
+    { "key": "conflict", "kind": "friction" }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "dimensionKey": "contact",
+        "kind": "friction",
+        "explanation": "상대는 너를 더 좋아하고 있어서 연락에 더 신경 쓸 거야",
+        "scenario": "상대가 서운해할 수 있어",
+        "evidenceRefs": [{ "source": "declared", "field": "contact" }]
+      },
+      {
+        "dimensionKey": "alone",
+        "kind": "good",
+        "explanation": "상대는 회피형일 가능성이 높아 보여",
+        "scenario": "각자 시간을 보내도 괜찮을 거야",
+        "evidenceRefs": [{ "source": "declared", "field": "alone" }]
+      },
+      {
+        "dimensionKey": "conflict",
+        "kind": "friction",
+        "explanation": "갈등 대응 시점에 대한 기준이 서로 달라 보여",
+        "scenario": "한쪽은 대화를 피한다고 느끼고, 다른 쪽은 생각할 시간을 못 받았다고 느낄 수 있어",
+        "conversationQuestion": "싸웠을 때 어느 정도 시간이 필요해?",
+        "evidenceRefs": [{ "source": "declared", "field": "conflict" }]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 1,
+    "keys": ["conflict"],
+    "violationsInclude": ["mind_reading", "attachment_type"]
+  }
+}

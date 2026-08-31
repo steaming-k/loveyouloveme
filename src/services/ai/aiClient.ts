@@ -107,6 +107,9 @@ export async function callAiTask<T>(
         task,
         duration_ms: durationMs,
         result_items: countItems(data),
+        // §54 — 품질 분석용. prompt_version과 mode는 보내고 **model 이름은 보내지 않는다**
+        // (운영 정보이고, analytics를 최소로 유지한다는 기존 방침을 지킨다).
+        ...readMetaProps(data),
       });
 
       return { ok: true, data, requestId };
@@ -140,6 +143,19 @@ function readRequestId(json: unknown): string | null {
     if (typeof id === 'string') return id;
   }
   return null;
+}
+
+/** 결과 meta에서 분석용 property만 뽑는다. 자유서술·AI 문장은 절대 포함하지 않는다 */
+function readMetaProps(data: unknown): { mode?: string; prompt_version?: string } {
+  if (typeof data !== 'object' || data === null) return {};
+  const meta = (data as { meta?: unknown }).meta;
+  if (typeof meta !== 'object' || meta === null) return {};
+
+  const { mode, promptVersion } = meta as { mode?: unknown; promptVersion?: unknown };
+  return {
+    ...(typeof mode === 'string' ? { mode } : {}),
+    ...(typeof promptVersion === 'string' ? { prompt_version: promptVersion } : {}),
+  };
 }
 
 /** Analytics에는 개수만 — AI 문장·사진 설명을 property로 보내지 않는다(§79) */

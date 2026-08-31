@@ -3,6 +3,8 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
+import { AiNarrativeNotice, useNarrativeViewEvent } from '@/components/ai/AiModeNotice';
+import { MirrorAxisNarrative } from '@/components/ai/NarrativeViews';
 import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
@@ -17,6 +19,7 @@ import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { premiumFeatureState } from '@/services/premiumService';
 import { ROUTES } from '@/lib/routes';
 import { isLowData } from '@/lib/validation';
+import { useRelationshipNarrative } from '@/hooks/useAiNarrative';
 import { useMirror, useRepeatedSignals } from '@/hooks/useAnalysis';
 import { useSession } from '@/state/SessionProvider';
 
@@ -44,6 +47,17 @@ function MirrorView() {
   const mirror = useMirror();
   const repeated = useRepeatedSignals();
   const [variant] = useState(() => resolvePriceVariant());
+
+  // S26에서 prefetch됐으면 캐시를 즉시 읽는다(§61). 실패해도 Mirror Map은 그대로 렌더된다.
+  const narrative = useRelationshipNarrative();
+
+  useNarrativeViewEvent({
+    task: 'relationship-insight',
+    source: 'mirror',
+    status: narrative.status,
+    mode: narrative.mode,
+    itemCount: narrative.data?.narratives.length ?? 0,
+  });
 
   const lowData = isLowData(answers);
 
@@ -134,7 +148,19 @@ function MirrorView() {
           <MirrorLegend />
           <ul className="flex flex-col gap-2.5">
             {mirror.insights.map((insight, index) => (
-              <MirrorComparisonRow key={insight.key} insight={insight} index={index} />
+              <MirrorComparisonRow
+                key={insight.key}
+                insight={insight}
+                index={index}
+                // §21 — 축마다 1~2줄. 전체 축 AI 에세이를 만들지 않는다.
+                footer={
+                  <MirrorAxisNarrative
+                    axis={insight.key}
+                    narratives={narrative.data?.narratives}
+                    status={narrative.status}
+                  />
+                }
+              />
             ))}
           </ul>
         </section>
@@ -151,6 +177,12 @@ function MirrorView() {
           feature={premiumFeatureState('mirror_detail', resolvePrice(variant), {
             mirrorAvailable: mirror.available,
           })}
+        />
+
+        <AiNarrativeNotice
+          task="relationship-insight"
+          status={narrative.status}
+          reason={narrative.reason}
         />
       </div>
     </ScreenLayout>

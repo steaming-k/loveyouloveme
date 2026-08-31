@@ -1,0 +1,39 @@
+{
+  "name": "invalid_evidence",
+  "description": "근거 없는 trait · 존재하지 않는 imageId 참조 · 근거 1개인 high — 각각 폐기/강등돼야 한다",
+  "task": "observed-profile",
+  "allowedImageIds": ["img_1", "img_2"],
+  "raw": {
+    "traits": [
+      {
+        "category": "lifestyle",
+        "label": "근거없음",
+        "observation": "규칙적인 생활을 하는 것 같아",
+        "evidence": [],
+        "confidence": "high"
+      },
+      {
+        "category": "activity",
+        "label": "없는이미지",
+        "observation": "여행을 자주 다니는 것 같아",
+        "evidence": [{ "imageId": "img_999", "description": "만들어낸 이미지 id" }],
+        "confidence": "medium"
+      },
+      {
+        "category": "interest",
+        "label": "근거1개high",
+        "observation": "운동을 좋아하는 것 같아",
+        "evidence": [{ "imageId": "img_1", "description": "운동복 차림" }],
+        "confidence": "high"
+      }
+    ],
+    "usableImageCount": 2,
+    "limitations": []
+  },
+  "expect": {
+    "traitCount": 1,
+    "labels": ["근거1개high"],
+    "confidences": ["medium"],
+    "note": "근거 0개는 폐기 · 없는 imageId 참조로 근거가 비면 폐기 · 근거 1개 high는 medium 강등"
+  }
+}

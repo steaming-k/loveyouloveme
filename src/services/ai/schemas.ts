@@ -1,5 +1,6 @@
 import { AXIS_DEFINITIONS } from '@/data/axes';
 import { MIRROR_AXES } from '@/data/axes';
+import { clampNarrativeText } from './safety';
 import type {
   AiObservedTrait,
   CompatibilityNarrative,
@@ -56,6 +57,27 @@ const TARGET_AXIS_KEYS: readonly TargetAxisKey[] = AXIS_DEFINITIONS.map((axis) =
 
 /** trait 최대 개수 — 개수를 채우려고 약한 관찰을 만들지 못하게 상한만 둔다(§61) */
 export const MAX_OBSERVED_TRAITS = 6;
+
+/**
+ * 화면별 표시 길이 상한 (v1.7 · §37)
+ *
+ * ⚠️ 스키마 파싱 상한(`str()`의 maxLength)과 **다른 목적**이다.
+ * 파싱 상한은 '이건 응답이 아니다' 수준의 거부선이고, 이 값은 '화면에 이 정도만 보여준다'는
+ * 표시 상한이다. 길다는 이유로 근거 있는 설명을 버리지 않고 `clampNarrativeText`로 줄인다.
+ */
+export const NARRATIVE_LIMITS = {
+  compatibilityExplanation: 180,
+  compatibilityScenario: 180,
+  compatibilityQuestion: 120,
+  /** S27은 Mirror Map이 주인공이다 — 축마다 긴 에세이를 붙이지 않는다(§21) */
+  relationshipExplanation: 120,
+  relationshipHeadline: 80,
+  relationshipQuestion: 120,
+  coreHeadline: 60,
+  coreSummary: 240,
+  historySummary: 220,
+  uncertainty: 140,
+} as const;
 
 /* ------------------------------------------------------ EvidenceRef */
 
@@ -197,13 +219,19 @@ export function parseRelationshipResponse(
       // §91 — 강한 결론 + 근거 없음은 버린다. uncertainty를 밝힌 경우만 통과.
       if (evidenceRefs.length === 0 && !uncertainty) continue;
 
+      const question = str(item.question, 200);
+
       narratives.push({
         axis,
-        headline,
-        explanation,
+        headline: clampNarrativeText(headline, NARRATIVE_LIMITS.relationshipHeadline),
+        explanation: clampNarrativeText(explanation, NARRATIVE_LIMITS.relationshipExplanation),
         evidenceRefs,
-        question: str(item.question, 200) ?? undefined,
-        uncertainty,
+        question: question
+          ? clampNarrativeText(question, NARRATIVE_LIMITS.relationshipQuestion)
+          : undefined,
+        uncertainty: uncertainty
+          ? clampNarrativeText(uncertainty, NARRATIVE_LIMITS.uncertainty)
+          : undefined,
       });
     }
   }
@@ -215,8 +243,8 @@ export function parseRelationshipResponse(
     const evidenceRefs = parseEvidenceRefs(raw.core.evidenceRefs);
     if (headline && summary && evidenceRefs.length > 0) {
       core = {
-        headline,
-        summary,
+        headline: clampNarrativeText(headline, NARRATIVE_LIMITS.coreHeadline),
+        summary: clampNarrativeText(summary, NARRATIVE_LIMITS.coreSummary),
         evidenceRefs,
         limitations: Array.isArray(raw.core.limitations)
           ? raw.core.limitations
@@ -252,14 +280,26 @@ export function parseCompatibilityResponse(
     const expectedKind = allowedMap.get(dimensionKey);
     if (!expectedKind) continue;
 
+    const question = str(item.conversationQuestion, 200);
+    const evidenceRefs = parseEvidenceRefs(item.evidenceRefs);
+    const uncertainty = str(item.uncertainty, 300);
+
+    // §13 — AI 문장은 Evidence 또는 uncertainty 중 하나를 반드시 동반한다.
+    if (evidenceRefs.length === 0 && !uncertainty) continue;
+
     result.push({
       dimensionKey,
       // kind도 규칙이 정한 값을 쓴다 — AI가 good/friction을 뒤집지 못한다.
       kind: expectedKind,
-      explanation,
-      scenario,
-      conversationQuestion: str(item.conversationQuestion, 200) ?? undefined,
-      evidenceRefs: parseEvidenceRefs(item.evidenceRefs),
+      explanation: clampNarrativeText(explanation, NARRATIVE_LIMITS.compatibilityExplanation),
+      scenario: clampNarrativeText(scenario, NARRATIVE_LIMITS.compatibilityScenario),
+      conversationQuestion: question
+        ? clampNarrativeText(question, NARRATIVE_LIMITS.compatibilityQuestion)
+        : undefined,
+      evidenceRefs,
+      uncertainty: uncertainty
+        ? clampNarrativeText(uncertainty, NARRATIVE_LIMITS.uncertainty)
+        : undefined,
     });
   }
 
@@ -286,7 +326,21 @@ export function parseHistoryResponse(
     const state = allowedMap.get(axis);
     if (!state) continue;
 
-    result.push({ axis, state, explanation, evidenceRefs: parseEvidenceRefs(item.evidenceRefs) });
+    const evidenceRefs = parseEvidenceRefs(item.evidenceRefs);
+    const uncertainty = str(item.uncertainty, 300);
+
+    // §13 — 근거도 한계도 없는 변화 해석은 버린다. History는 특히 단정하기 쉬운 영역이다.
+    if (evidenceRefs.length === 0 && !uncertainty) continue;
+
+    result.push({
+      axis,
+      state,
+      explanation: clampNarrativeText(explanation, NARRATIVE_LIMITS.historySummary),
+      evidenceRefs,
+      uncertainty: uncertainty
+        ? clampNarrativeText(uncertainty, NARRATIVE_LIMITS.uncertainty)
+        : undefined,
+    });
   }
 
   return result;

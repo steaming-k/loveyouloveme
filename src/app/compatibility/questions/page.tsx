@@ -1,17 +1,20 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 
+import { AiNarrativeNotice, AiSourceLabel } from '@/components/ai/AiModeNotice';
 import { Button } from '@/components/common/Button';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
-import { PageHeading } from '@/components/common/primitives';
+import { PageHeading, SectionLabel } from '@/components/common/primitives';
 import { useToast } from '@/components/common/ToastProvider';
 import { ConversationCard } from '@/components/compatibility/ConversationCard';
 import { BRAND } from '@/data/copy';
+import { narrativeIsShowable } from '@/lib/aiEvidenceResolver';
 import { trackEvent } from '@/lib/analytics';
 import { ROUTES } from '@/lib/routes';
+import { useCompatibilityNarrative, useEvidenceContext } from '@/hooks/useAiNarrative';
 import { useConversationQuestions } from '@/hooks/useAnalysis';
 import { useShare } from '@/hooks/useShare';
 import { useSession } from '@/state/SessionProvider';
@@ -29,6 +32,25 @@ export default function ConversationQuestionsPage() {
 
   const savedCount = answers.savedQuestions.length;
   const mbtiQuestionCount = questions.filter((question) => question.fromMbti).length;
+
+  const narrative = useCompatibilityNarrative();
+  const evidenceContext = useEvidenceContext();
+
+  /**
+   * AI가 만든 질문만 뽑는다. 근거(또는 한계)를 갖춘 Narrative에서 나온 질문만 쓴다 —
+   * 근거 없는 해석에서 파생된 질문도 보여주지 않는다(§13/§35).
+   */
+  const aiQuestions = useMemo(() => {
+    const items = narrative.data?.narratives ?? [];
+    return items
+      .filter(
+        (item) => item.conversationQuestion && narrativeIsShowable(item, evidenceContext),
+      )
+      .map((item) => ({
+        key: item.dimensionKey,
+        text: item.conversationQuestion as string,
+      }));
+  }, [narrative.data, evidenceContext]);
 
   useEffect(() => {
     if (mbtiQuestionCount === 0) return;
@@ -91,6 +113,39 @@ export default function ConversationQuestionsPage() {
             />
           ))}
         </ul>
+
+        {/*
+          v1.7 — AI가 만든 질문은 **기존 질문을 대체하지 않고 뒤에 덧붙는다.**
+          규칙 기반 질문이 사라지면 AI 실패 시 화면이 비어버린다. 위계상으로도
+          축별 deterministic 질문이 먼저다.
+        */}
+        {aiQuestions.length > 0 ? (
+          <section className="flex flex-col gap-2.5">
+            <SectionLabel className="flex items-center gap-1.5">
+              러비가 덧붙인 질문
+              <AiSourceLabel mode={narrative.mode} />
+            </SectionLabel>
+            <ul className="flex flex-col gap-1.5">
+              {aiQuestions.map((item) => (
+                <li
+                  key={item.key}
+                  className="rounded-row border border-line bg-surface px-4 py-3.5 text-caption keep-all leading-relaxed"
+                >
+                  {item.text}
+                </li>
+              ))}
+            </ul>
+            <p className="px-1 text-meta keep-all text-ink-faint">
+              차이가 보이는 항목에서 러비가 만든 질문이야. 확인해보고 싶은 것만 골라서 물어봐도 돼.
+            </p>
+          </section>
+        ) : null}
+
+        <AiNarrativeNotice
+          task="compatibility-narrative"
+          status={narrative.status}
+          reason={narrative.reason}
+        />
       </div>
     </ScreenLayout>
   );

@@ -1,6 +1,6 @@
 import { OBSERVED_TRAITS } from '@/data/observations';
 import { PHOTO_MIN_COUNT } from '@/data/samplePhotos';
-import { ANALYSIS_VERSION, PROMPT_VERSIONS } from './promptTemplates';
+import { ANALYSIS_VERSION, PROMPT_VERSIONS } from './promptVersions';
 import type {
   AiAnalysisMeta,
   AiMode,

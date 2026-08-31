@@ -1,0 +1,48 @@
+{
+  "name": "sensitive_inference",
+  "description": "종교·건강·경제 수준·외모 추론이 섞인 응답 — 해당 trait은 통째로 폐기돼야 한다",
+  "task": "observed-profile",
+  "allowedImageIds": ["img_1", "img_2"],
+  "raw": {
+    "traits": [
+      {
+        "category": "lifestyle",
+        "label": "신앙",
+        "observation": "독실한 종교 생활을 하는 것 같아",
+        "evidence": [{ "imageId": "img_1", "description": "종교 시설 앞" }],
+        "confidence": "medium"
+      },
+      {
+        "category": "lifestyle",
+        "label": "경제력",
+        "observation": "부유한 편으로 보여",
+        "evidence": [{ "imageId": "img_1", "description": "고가 브랜드 가방" }],
+        "confidence": "medium"
+      },
+      {
+        "category": "social",
+        "label": "외모",
+        "observation": "얼굴이 잘생긴 편이고 나이는 20대로 보여",
+        "evidence": [{ "imageId": "img_2", "description": "정면 사진" }],
+        "confidence": "medium"
+      },
+      {
+        "category": "activity",
+        "label": "안전한관찰",
+        "observation": "실내에서 찍은 사진이 여러 장 보여",
+        "evidence": [
+          { "imageId": "img_1", "description": "실내 조명" },
+          { "imageId": "img_2", "description": "실내 배경" }
+        ],
+        "confidence": "high"
+      }
+    ],
+    "usableImageCount": 2,
+    "limitations": []
+  },
+  "expect": {
+    "traitCount": 1,
+    "labels": ["안전한관찰"],
+    "violationsInclude": ["religion", "wealth", "appearance"]
+  }
+}

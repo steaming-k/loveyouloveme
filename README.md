@@ -104,20 +104,24 @@ src/
 │  ├─ mirror/              MirrorRadar, MirrorComparisonRow, TeaserComparison
 │  └─ shell/               AppShell, PrototypePanel, MotionProvider
 ├─ data/                   질문·라벨·카피·러비 에셋·축 정의 (순수 데이터)
-├─ hooks/                  useAnalysis (결과 셀렉터), useShare
+├─ hooks/                  useAnalysis (결과 셀렉터), useAiNarrative (AI 설명), useShare
 ├─ lib/
-│  ├─ logic/               values · compatibility · mirror · profile · observed (순수 함수)
+│  ├─ logic/               values · compatibility · mirror · profile · observed · history (순수 함수)
+│  ├─ aiFingerprint.ts     AI 재호출/무효화 기준 (MBTI·출생정보·Premium 제외)
+│  ├─ aiEvidenceResolver.ts EvidenceRef → 실제 세션 데이터 문장
 │  ├─ analytics.ts         trackEvent + Primary KPI 스냅샷
 │  ├─ validation.ts        입력 검증
 │  ├─ routes.ts            Route 상수 + 화면 보드
 │  └─ shareCard.ts         Canvas 2D 공유 카드 PNG 저장
-├─ services/aiService.ts   Mock AI Layer (교체 지점)
+├─ app/api/ai/**           AI Route Handler (server-only 경계)
+├─ services/ai/            Provider 추상화 · 프롬프트 · 검증 · 안전장치 · 클라이언트
+├─ services/aiService.ts   화면이 쓰는 유일한 분석 파사드
 ├─ state/                  SessionProvider, defaultAnswers
 ├─ styles/globals.css      Design Token (@theme) + reveal/Lovy 애니메이션
 └─ types/                  도메인 타입
 ```
 
-**UI는 mock 데이터를 직접 import하지 않습니다.** 모든 분석 결과는 `services/aiService.ts`를 통해서만 들어오고, 계산식은 `lib/logic/*` 한 곳에만 존재합니다.
+**UI는 분석 데이터를 직접 import하지 않습니다.** 모든 분석 결과는 `services/aiService.ts`(+ `services/ai/aiClient.ts`)를 통해서만 들어오고, 계산식은 `lib/logic/*` 한 곳에만 존재합니다. 화면은 AI Provider를 알지 못합니다.
 
 ---
 
@@ -136,9 +140,22 @@ src/
 
 ---
 
-## ⚠️ Prototype Demo Logic
+## ⚠️ 판정은 규칙이 한다 (AI가 하지 않는다)
 
-**아래 계산은 심리 검사나 과학적 진단 로직이 아닙니다.** 입력값의 공통점·차이를 사용자가 직관적으로 읽을 수 있게 만든 규칙 기반 데모 로직이며, 실제 AI 백엔드가 붙으면 `aiService` 구현만 교체하면 됩니다.
+**아래 계산은 심리 검사나 과학적 진단 로직이 아닙니다.** 입력값의 공통점·차이를 사용자가 직관적으로 읽을 수 있게 만든 규칙 기반 로직입니다.
+
+> **v1.6~v1.7 갱신.** 예전에는 이 문단이 '실제 AI 백엔드가 붙으면 `aiService` 구현만 교체하면 된다'고 적혀 있었습니다. AI는 v1.6에서 실제로 붙었고, v1.7에서 Core Experience 전체에 연결됐습니다. **하지만 아래 계산이 AI로 대체된 것은 아닙니다.**
+>
+> ```
+> Evidence → Deterministic Rule → AI Explanation → User Verification
+> ```
+>
+> AI는 동기화율·Mirror 판정(MATCH/GAP/CHANGE)·History 판정(STABLE/SHIFT/NEW)·MBTI·Sun Sign을 **만들거나 바꾸지 못합니다.** 서버가 AI 응답의 판정 필드를 규칙 값으로 덮어쓰고, 근거 문장도 AI가 아니라 코드가 실제 세션 데이터에서 만듭니다.
+>
+> **AI 모드** — `AI_MODE`(server-only): `demo`(기본·Provider 미호출) / `real`(`AI_API_KEY` 필수) / `mock`(개발 전용). `.env.example` 참고.
+> ⚠️ **실제 Provider end-to-end는 아직 검증되지 않았습니다** (API Key 없음). 자세한 구분은 기능명세서 §8.5.
+>
+> **AI 검증 회귀 테스트**: `npm run dev` 후 `npm run test:ai` (Provider Key 불필요).
 
 ### 동기화율 (`lib/logic/compatibility.ts`)
 

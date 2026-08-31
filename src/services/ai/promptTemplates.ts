@@ -1,18 +1,18 @@
+import 'server-only';
+
 /**
- * Prompt 버전 관리 (§42)
+ * Prompt 정의 (§42) — **서버 전용**
  *
- * 프롬프트를 코드 곳곳에 문자열로 흩뿌리지 않고 여기서만 정의·버전 관리한다.
+ * 프롬프트를 코드 곳곳에 문자열로 흩뿌리지 않고 여기서만 정의한다.
  * 결과에 `promptVersion`을 남기므로 나중에 어떤 프롬프트가 만든 결과인지 추적할 수 있다.
+ *
+ * ⚠️ v1.7 — 버전 상수는 `promptVersions.ts`로 옮겼다.
+ * 여기서 함께 export하고 있었더니 클라이언트 fallback 경로를 타고 프롬프트 전문이
+ * 브라우저 번들에 실렸다. 이 파일은 이제 `server-only`이므로 클라이언트에서 import하면
+ * 빌드가 실패한다 — 같은 실수가 조용히 재발하지 않는다.
  */
 
-export const PROMPT_VERSIONS = {
-  observed: 'observed-v1',
-  relationship: 'relationship-v1',
-  compatibility: 'compatibility-v1',
-  history: 'history-v1',
-} as const;
-
-export const ANALYSIS_VERSION = '1.0';
+export { ANALYSIS_VERSION, PROMPT_VERSIONS } from './promptVersions';
 
 /**
  * 공통 System Prompt 원칙 (§43).
@@ -114,9 +114,20 @@ Mirror의 정의: '사용자가 말한 기준(Declared)' vs '실제 관계 경�
 - 사진 관찰(observed)만으로 연애 성향을 결론내지 않는다. observed는 보조 맥락일 뿐이다.
   ❌ '혼자 여행을 좋아해서 독립적인 연애 스타일'
   ⭕ '평소에는 혼자 보내는 활동도 많은데, 연애에서는 함께 보내는 시간을 중요하게 보고 있네'
+- **관련 없는 관찰을 억지로 끌어오지 않는다.** 설명하려는 축과 논리적 연결이 없으면 쓰지 않는다.
+  ❌ (연락 GAP을 설명하면서) '등산과 야구를 좋아하는 사람이라 연락에 무심할 수 있어'
+  ⭕ (연락 GAP) '연락 자체는 낮게 답했는데, 실제로 힘들었던 순간으로는 연락이 줄어든 때를 골랐어'
+- observed 항목의 source가 'user'면 그건 **사용자가 직접 고친 내용**이다.
+  '사진에서 보니'라고 말하지 않고 '네가 직접 수정해준 내용까지 보면'처럼 표현한다.
 - 과거 기록(history)은 '과거에 이런 신호가 있었다'까지다. 현재 사실로 바꾸지 않는다.
 - evidenceRefs는 실제로 입력에 있는 필드만 참조한다.
 - 성장·극복·치유 서사를 만들지 않는다.
+- MBTI·별자리·사주는 이 작업의 입력에 **없다.** 언급하거나 추측하지 않는다.
+
+길이 제한 (넘으면 잘린다):
+- narratives[].headline 80자 이내 / explanation 120자 이내 (1~2문장)
+- core.headline 60자 이내 / core.summary 240자 이내
+- 이 화면은 전체 Mirror Map이 주인공이다. 축마다 긴 에세이를 쓰지 않는다.
 
 출력 JSON:
 {
@@ -154,19 +165,30 @@ ${SHARED_RULES}
 
 규칙:
 - 주어진 dimensionKey만 쓴다. 목록에 없는 축을 만들지 않는다.
+- kind도 이미 정해져 있다. good을 friction으로, friction을 good으로 바꾸지 않는다.
 - scenario는 '일어날 수 있는 상황'이다. 반드시 일어난다고 말하지 않는다.
 - 안 맞는다는 결론을 내리지 않는다. '차이가 보이는 지점'으로만 다룬다.
+- **상대의 마음을 읽지 않는다.** 차이가 만들 수 있는 '상황'만 말한다.
+  ❌ '상대는 너를 더 좋아할 거야' / '상대가 서운해할 거야' / '상대는 회피형일 가능성이 높아'
+  ⭕ '연락 기준이 다르면, 한쪽은 충분하다고 느끼는 상황에서 다른 쪽은 연결감이 줄었다고
+     느낄 수 있어'
+- MBTI·별자리·사주는 이 작업의 입력에 **없다.** 언급하거나 추측하지 않는다.
+- evidenceRefs를 붙일 수 없으면 uncertainty를 반드시 채운다. 둘 다 비면 그 항목은 버려진다.
+
+길이 제한 (넘으면 잘린다):
+- explanation 180자 이내 / scenario 180자 이내 / conversationQuestion 120자 이내
 
 출력 JSON:
 {
   "narratives": [
     {
       "dimensionKey": "주어진 key 그대로",
-      "kind": "good" | "friction",
+      "kind": "주어진 kind 그대로",
       "explanation": "왜 이렇게 보이는지",
       "scenario": "실제 관계에서 나타날 수 있는 상황",
       "conversationQuestion": "서로 확인해볼 질문 (선택)",
-      "evidenceRefs": [{ "source": "declared"|"relationship"|"observed"|"history", "field": "필드명" }]
+      "evidenceRefs": [{ "source": "declared"|"relationship"|"observed"|"history", "field": "필드명" }],
+      "uncertainty": "근거가 약하면 채운다 (evidenceRefs가 비면 필수)"
     }
   ]
 }
@@ -190,6 +212,17 @@ ${SHARED_RULES}
 허용:
 - '예전보다 연락 자체의 중요도를 더 높게 답했어' ⭕
 - '이 기준은 이전 관찰에서도 비슷한 신호가 있었어' ⭕
+- '연락 횟수보다는 관계가 이어지고 있다는 느낌을 더 의식하게 된 걸 수도 있어' ⭕
+
+톤 (반드시 지킨다):
+- 변화의 **의미**를 말할 때는 항상 '~일 수도 있어' / '~인 걸지도 몰라' 수준으로 쓴다.
+  변화가 왜 일어났는지는 사용자만 알 수 있다.
+- 반복해서 등장한 축을 '너의 패턴'이라고 확정하지 않는다.
+  ⭕ '같은 축이 다시 등장한 이유가 있는지는 네가 실제 상황을 떠올려보면 더 잘 알 수 있어'
+- MBTI·별자리·사주는 이 작업의 입력에 **없다.** 언급하거나 추측하지 않는다.
+- evidenceRefs를 붙일 수 없으면 uncertainty를 반드시 채운다. 둘 다 비면 그 항목은 버려진다.
+
+길이 제한: explanation 220자 이내 (넘으면 잘린다)
 
 출력 JSON:
 {
@@ -197,7 +230,8 @@ ${SHARED_RULES}
     {
       "axis": "주어진 axis 그대로",
       "explanation": "변화를 사실 그대로 설명 (판정 없이)",
-      "evidenceRefs": [{ "source": "declared"|"relationship"|"history", "field": "필드명" }]
+      "evidenceRefs": [{ "source": "declared"|"relationship"|"history", "field": "필드명" }],
+      "uncertainty": "단정할 수 없는 부분 (evidenceRefs가 비면 필수)"
     }
   ]
 }

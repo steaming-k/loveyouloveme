@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 import { HISTORY_COPY, HISTORY_STATE_LABEL } from '@/data/copy';
 import { cn } from '@/lib/cn';
 import { valueToPercent } from '@/lib/logic/mirror';
@@ -39,7 +41,17 @@ function ScaleTrack({ label, value }: { label: string; value: number }) {
   );
 }
 
-export function HistoryChangeRow({ change }: { change: HistoryAxisChange }) {
+export function HistoryChangeRow({
+  change,
+  footer,
+}: {
+  change: HistoryAxisChange;
+  /**
+   * v1.7 — AI 맥락 요약 슬롯(§29).
+   * 규칙이 만든 `change.note` **뒤**에 온다. 변화 판정은 이미 위에서 끝났다.
+   */
+  footer?: ReactNode;
+}) {
   const hasText = Boolean(change.previousText || change.currentText);
 
   return (
@@ -87,6 +99,8 @@ export function HistoryChangeRow({ change }: { change: HistoryAxisChange }) {
       <p className="border-t border-line-soft pt-2.5 text-[12.5px] keep-all leading-relaxed text-[#555]">
         {change.note}
       </p>
+
+      {footer}
     </li>
   );
 }

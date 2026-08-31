@@ -1,0 +1,23 @@
+{
+  "name": "long_text",
+  "description": "표시 상한을 넘는 긴 응답 — 통째로 버리지 않고 문장 경계에서 잘려야 한다 (§37)",
+  "task": "compatibility-narrative",
+  "allowed": [{ "key": "contact", "kind": "friction" }],
+  "raw": {
+    "narratives": [
+      {
+        "dimensionKey": "contact",
+        "kind": "friction",
+        "explanation": "연락 빈도에 대한 기준이 서로 다르게 입력됐어. 한쪽은 하루에 몇 번이든 짧게 주고받는 걸 편하게 느낄 수 있고, 다른 쪽은 하루에 한 번 길게 이야기하는 걸 더 자연스럽게 느낄 수 있어. 이건 애정의 크기 차이가 아니라 리듬의 차이로 볼 수 있어. 그래서 어느 쪽이 맞다고 말하기는 어려워.",
+        "scenario": "연락 빈도가 달라지는 시기에 서로 다른 의미로 읽을 수 있어. 예를 들어 한쪽이 바빠서 답장이 늦어지는 주에, 다른 쪽은 그걸 관심이 줄어든 신호로 읽을 수도 있어. 그런 순간에 서로 어떤 기준으로 연락을 생각하는지 미리 이야기해두면 오해가 줄어들 수 있어. 물론 실제로 어떻게 느낄지는 두 사람만 알 수 있어.",
+        "evidenceRefs": [{ "source": "declared", "field": "contact" }]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 1,
+    "explanationMaxLength": 180,
+    "scenarioMaxLength": 180,
+    "note": "길다는 이유로 항목을 버리지 않는다 — clampNarrativeText로 줄인다"
+  }
+}

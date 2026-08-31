@@ -1,0 +1,41 @@
+{
+  "name": "valid_compatibility",
+  "description": "정상 Compatibility 응답 — kind는 규칙 값으로 강제되고, 목록에 없는 축은 폐기된다",
+  "task": "compatibility-narrative",
+  "allowed": [
+    { "key": "contact", "kind": "friction" },
+    { "key": "alone", "kind": "good" }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "dimensionKey": "contact",
+        "kind": "good",
+        "explanation": "연락 빈도에 대한 기준이 서로 다르게 입력됐어.",
+        "scenario": "한쪽은 충분하다고 느끼는 상황에서 다른 쪽은 연결감이 줄었다고 느낄 수 있어.",
+        "conversationQuestion": "연락이 줄어들면 어떤 의미로 받아들이는 편이야?",
+        "evidenceRefs": [{ "source": "declared", "field": "contact" }]
+      },
+      {
+        "dimensionKey": "alone",
+        "kind": "good",
+        "explanation": "개인 시간에 대한 기준이 비슷한 구간으로 입력됐어.",
+        "scenario": "각자 시간을 보내는 걸 거절로 받아들일 가능성은 낮아 보여.",
+        "evidenceRefs": [{ "source": "declared", "field": "alone" }]
+      },
+      {
+        "dimensionKey": "affection",
+        "kind": "friction",
+        "explanation": "현재 궁합 결과에 없는 축인데 AI가 추가했어.",
+        "scenario": "이 항목은 폐기돼야 한다.",
+        "evidenceRefs": [{ "source": "declared", "field": "affection" }]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 2,
+    "keys": ["contact", "alone"],
+    "kinds": ["friction", "good"],
+    "note": "contact의 kind는 AI가 good으로 보냈어도 규칙 값 friction으로 덮어써진다. affection은 폐기"
+  }
+}

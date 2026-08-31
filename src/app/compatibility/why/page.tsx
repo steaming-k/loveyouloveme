@@ -6,6 +6,12 @@ import { useState } from 'react';
 import { Button } from '@/components/common/Button';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
+import {
+  AiNarrativeNotice,
+  AiSourceLabel,
+  useNarrativeViewEvent,
+} from '@/components/ai/AiModeNotice';
+import { CompatibilityAxisNarrative } from '@/components/ai/NarrativeViews';
 import { NoticeBox, PageHeading, SectionLabel } from '@/components/common/primitives';
 import { MbtiLensPanel } from '@/components/compatibility/MbtiLensPanel';
 import { SignalCard } from '@/components/compatibility/SignalCard';
@@ -16,6 +22,7 @@ import { trackEvent } from '@/lib/analytics';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { premiumFeatureState } from '@/services/premiumService';
 import { ROUTES } from '@/lib/routes';
+import { useCompatibilityNarrative } from '@/hooks/useAiNarrative';
 import { useCompatibility, useMbtiLens, usePastObservation } from '@/hooks/useAnalysis';
 
 /**
@@ -32,6 +39,21 @@ export default function CompatibilityDetailPage() {
   const router = useRouter();
   const result = useCompatibility();
   const mbtiLens = useMbtiLens();
+
+  /**
+   * v1.7 — AI 설명은 **non-blocking**이다(§16).
+   * 점수·Good/Friction 판정은 위 `useCompatibility()`에서 이미 끝났고, 이 호출이 실패하거나
+   * 늦어도 화면은 그대로 렌더된다. S20에서 prefetch됐다면 캐시를 즉시 읽는다(§62).
+   */
+  const narrative = useCompatibilityNarrative();
+
+  useNarrativeViewEvent({
+    task: 'compatibility-narrative',
+    source: 'compatibility_detail',
+    status: narrative.status,
+    mode: narrative.mode,
+    itemCount: narrative.data?.narratives.length ?? 0,
+  });
 
   const topGood = result.goodSignals[0];
   const topFriction = result.frictionSignals[0];
@@ -64,12 +86,25 @@ export default function CompatibilityDetailPage() {
           size="question"
         />
 
+        {/*
+          §12 정보 위계 — AI 설명은 **관계 신호 카드 아래**에 온다.
+          ① 실제 관계 신호(SignalCard: 근거 포함) → ② AI 설명 + 상황 예시
+          AI 문장이 신호보다 위로 올라가면 안 된다.
+        */}
         {topGood ? (
           <section className="flex flex-col gap-2.5">
-            <SectionLabel>가장 잘 맞는 신호</SectionLabel>
+            <SectionLabel className="flex items-center gap-1.5">
+              가장 잘 맞는 신호
+              <AiSourceLabel mode={narrative.mode} />
+            </SectionLabel>
             <ul className="flex flex-col gap-2.5">
               <SignalCard dimension={topGood} variant="good" />
             </ul>
+            <CompatibilityAxisNarrative
+              axis={topGood.key}
+              narratives={narrative.data?.narratives}
+              status={narrative.status}
+            />
           </section>
         ) : null}
 
@@ -79,6 +114,11 @@ export default function CompatibilityDetailPage() {
             <ul className="flex flex-col gap-2.5">
               <SignalCard dimension={topFriction} variant="friction" />
             </ul>
+            <CompatibilityAxisNarrative
+              axis={topFriction.key}
+              narratives={narrative.data?.narratives}
+              status={narrative.status}
+            />
           </section>
         ) : null}
 
@@ -174,6 +214,12 @@ export default function CompatibilityDetailPage() {
         */}
         <PremiumEntryRow feature={premiumFeature} />
 
+        {/* AI 설명이 없는 이유를 숨기지 않는다. demo에서는 아무 말도 하지 않는다(§64) */}
+        <AiNarrativeNotice
+          task="compatibility-narrative"
+          status={narrative.status}
+          reason={narrative.reason}
+        />
         <NoticeBox>{PRIVACY.unknownExcluded}</NoticeBox>
       </div>
     </ScreenLayout>

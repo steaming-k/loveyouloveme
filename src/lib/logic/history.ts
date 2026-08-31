@@ -85,6 +85,16 @@ export function buildHistoryEntry(input: {
   /** 호출 지점에서 주입한다 — 로직 자체는 시간·난수를 알지 않는다 */
   id: string;
   createdAt: string;
+  /**
+   * v1.7 §25 — 화면에 실제로 보인 핵심 문장과 그 출처.
+   *
+   * AI headline이 쓰였으면 그 문장이 '그 당시 original'이다. 나중에 프롬프트가 바뀌어도
+   * 과거 Entry는 그대로 남는다(§31/§70 — 자동 backfill 금지).
+   *
+   * ⚠️ `aiMeta`는 **변화 판정에 절대 쓰지 않는다.** 기록용 metadata다.
+   */
+  coreInsightOriginal?: string;
+  coreInsightAiMeta?: RelationshipHistoryEntry['coreInsight']['aiMeta'];
 }): RelationshipHistoryEntry | null {
   const { answers, mirror, coverage, id, createdAt } = input;
 
@@ -116,9 +126,10 @@ export function buildHistoryEntry(input: {
     },
     mirrorSnapshot: { insights, focusAxis: mirror.teaser?.axisKey ?? null },
     coreInsight: {
-      original: mirror.core?.headline ?? '',
+      original: input.coreInsightOriginal?.trim() || mirror.core?.headline || '',
       userCorrection: answers.coreCorrection.trim() || null,
       verdict: answers.coreVerdict,
+      ...(input.coreInsightAiMeta ? { aiMeta: input.coreInsightAiMeta } : {}),
     },
     evidenceCoverage: coverage,
   };

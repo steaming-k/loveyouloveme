@@ -13,6 +13,7 @@ import { useToast } from '@/components/common/ToastProvider';
 import { Lovy } from '@/components/lovy/Lovy';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { ObservationCard } from '@/components/profile/ObservationCard';
+import { UtRatingCard } from '@/components/ut/UtRatingCard';
 import { LOVY_LINES, PRIVACY } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { observedEvidenceLabel } from '@/lib/logic/observed';
@@ -148,7 +149,7 @@ export default function ObservedResultPage() {
                   근거 배지는 '사진 N장'이 아니라 **실제로 쓰인 근거**를 말한다(§11).
                   사진 8장을 올렸어도 쓸 만한 근거가 2개면 그렇게 표시한다.
                 */}
-                {mode === 'real' && coverage ? (
+                {(mode === 'real' || mode === 'mock') && coverage ? (
                   <Tag tone="mint">
                     근거: 사진 {coverage.usableImageCount}/{coverage.imageCount}장
                   </Tag>
@@ -157,6 +158,8 @@ export default function ObservedResultPage() {
                 )}
                 {/* 실제 분석이면 DEMO 배지를 붙이지 않는다. fallback은 사실대로 알린다(§39) */}
                 {mode === 'real' ? <Tag tone="neutral">AI OBSERVATION</Tag> : null}
+                {/* 개발 전용 mock을 실제 AI로 표시하지 않는다 (v1.7 §5) */}
+                {mode === 'mock' ? <Tag tone="friction">MOCK AI</Tag> : null}
                 {mode === 'demo' || mode === 'legacy-demo' ? (
                   <Tag tone="neutral">DEMO AI</Tag>
                 ) : null}
@@ -208,8 +211,28 @@ export default function ObservedResultPage() {
             </ul>
           ) : null}
 
+          {/* §44 — UT Mode에서만. '나 같다' 유사도는 관찰 결과를 본 직후에 묻는 게 맞다 */}
+          <UtRatingCard
+            question="이 관찰 결과가 평소의 나와 얼마나 비슷해?"
+            event="ut_analysis_similarity_rate"
+            properties={{
+              task: 'observed',
+              mode,
+              trait_count: traits.length,
+              usable_evidence_count: coverage?.usableImageCount ?? 0,
+            }}
+            lowLabel="전혀 다름"
+            highLabel="매우 비슷함"
+          />
+
           <NoticeBox>{PRIVACY.aiResult}</NoticeBox>
           {mode === 'real' ? <NoticeBox>{PRIVACY.photoTransfer}</NoticeBox> : null}
+          {mode === 'mock' ? (
+            <NoticeBox>
+              개발용 MOCK 모드예요. 실제 AI Provider를 호출하지 않았고, 사진 내용을 읽은 결과가
+              아니에요.
+            </NoticeBox>
+          ) : null}
           {mode === 'demo' || mode === 'legacy-demo' ? (
             <NoticeBox>{PRIVACY.demoAi}</NoticeBox>
           ) : null}

@@ -550,9 +550,21 @@ export interface RelationshipHistoryEntry {
   };
 
   coreInsight: {
+    /** 그 당시 화면에 보인 핵심 문장 (AI headline이면 그 문장) */
     original: string;
     userCorrection: string | null;
     verdict: Verdict;
+    /**
+     * v1.7 §25 — 이 문장이 어떤 모드·프롬프트에서 나왔는지.
+     *
+     * ⚠️ **History Change Logic에서 절대 읽지 않는다.** 변화 판정은 Declared·Relationship
+     * Evidence·Mirror state만으로 한다 — AI 모드가 바뀌었다고 '변화'가 생기면 안 된다.
+     */
+    aiMeta?: {
+      mode: AiMode;
+      promptVersion: string;
+      generatedAt: string;
+    };
   };
 
   /** 기존 Confidence와 같은 의미 — 'AI의 확신'이 아니라 '확보된 입력 근거량' */
@@ -619,6 +631,12 @@ export interface HistoryReport {
 export type AiMode =
   /** 실제 Provider 호출 결과 */
   | 'real'
+  /**
+   * 개발 전용 Mock Provider 결과 (v1.7 · §5).
+   * 파이프라인·검증·화면 배선을 실제 코드 경로로 확인하기 위한 것이고,
+   * **실제 Provider 검증이 아니다.** Production에서는 발생하지 않는다.
+   */
+  | 'mock'
   /** 규칙 기반 데모 (Provider 미연결 / 로컬 개발 / 포트폴리오) */
   | 'demo'
   /** real을 시도했지만 실패해서 규칙 결과로 대체 — 사용자에게 표시한다 */
@@ -747,11 +765,14 @@ export interface CoreInsightNarrative {
 
 export interface CompatibilityNarrative {
   dimensionKey: TargetAxisKey;
+  /** 규칙이 정한 판정. AI가 good ↔ friction을 뒤집지 못한다 */
   kind: 'good' | 'friction';
   explanation: string;
   scenario: string;
   conversationQuestion?: string;
   evidenceRefs: EvidenceRef[];
+  /** 근거가 약할 때 반드시 채운다 — evidenceRefs가 비면 이 값이 필수다(§13) */
+  uncertainty?: string;
 }
 
 export interface HistoryNarrative {
@@ -760,13 +781,60 @@ export interface HistoryNarrative {
   state: HistoryChangeState;
   explanation: string;
   evidenceRefs: EvidenceRef[];
+  /** '~일 수도 있어' 수준을 지키기 위한 한계 문장(§29) */
+  uncertainty?: string;
 }
 
-/** 화면이 받는 통합 결과 — 실패해도 mode로 무엇을 보고 있는지 알 수 있다 */
-export interface AiNarrativeBundle {
-  relationship: RelationshipNarrative[];
+/* ================== Narrative 공통 구조 (v1.7 · §6) ================== */
+
+/**
+ * Task마다 서로 다른 임의 형태로 흩어지지 않도록 Narrative 결과의 공통 봉투를 둔다.
+ *
+ * ⚠️ `meta`가 **무엇을 보고 있는지에 대한 진실**이다. 화면은 `meta.mode`로만
+ * 'AI 설명'과 '규칙 기반 대체'를 구분하고, 자기 나름대로 추측하지 않는다.
+ */
+export interface AiNarrativeMeta extends AiAnalysisMeta {
+  /** 서버 requestId — QA·로그 대조용. 사용자에게 보여주지 않는다 */
+  requestId?: string;
+}
+
+/** 모든 Narrative가 공유하는 최소 형태 — 근거 없는 강한 결론을 만들 수 없게 한다 */
+export interface GroundedNarrative {
+  explanation: string;
+  evidenceRefs: EvidenceRef[];
+  uncertainty?: string;
+}
+
+export interface CompatibilityNarrativeBundle {
+  narratives: CompatibilityNarrative[];
+  meta: AiNarrativeMeta;
+}
+
+export interface RelationshipNarrativeBundle {
+  narratives: RelationshipNarrative[];
   core: CoreInsightNarrative | null;
-  meta: AiAnalysisMeta;
+  meta: AiNarrativeMeta;
+}
+
+export interface HistoryNarrativeBundle {
+  narratives: HistoryNarrative[];
+  meta: AiNarrativeMeta;
+}
+
+/**
+ * 화면이 읽는 Narrative 상태.
+ *
+ * `unavailable`은 실패가 아니라 **'AI 설명 없이 규칙 결과만 보여주는 정상 상태'**다.
+ * Core Result는 어느 상태에서도 렌더된다 — AI Narrative는 enhancement다(§15).
+ */
+export type AiNarrativeStatus = 'idle' | 'loading' | 'ready' | 'unavailable';
+
+export interface AiNarrativeState<T> {
+  status: AiNarrativeStatus;
+  data: T | null;
+  /** 'unavailable'일 때만 값이 있다 */
+  reason: AiFailureReason | null;
+  mode: AiMode | null;
 }
 
 /* ------------------------------------------ Premium (v1.5, Fake Door) */

@@ -102,9 +102,18 @@ export const ANALYTICS_EVENTS = [
   'ai_analysis_failure',
   'ai_fallback_used',
   'ai_evidence_correction',
+  // AI Narrative 배선 (v1.7) — task × mode로 나눠 보면 AI 품질을 추적할 수 있다(§87).
+  // task: observed | compatibility | relationship | history
+  // mode: real | demo | fallback
+  'ai_narrative_view',
+  'ai_narrative_fallback_view',
+  'ai_evidence_expand',
   // UT Mode 전용 (NEXT_PUBLIC_UT_MODE=true일 때만 발생)
+  // ⚠️ UT 점수는 분석 로직에 쓰지 않는다. 측정 전용이다(§44).
   'ut_analysis_similarity_rate',
   'ut_evidence_clarity_rate',
+  'ut_self_understanding_helpfulness',
+  'ut_photo_value_rate',
 ] as const;
 
 export type AnalyticsEvent = (typeof ANALYTICS_EVENTS)[number];

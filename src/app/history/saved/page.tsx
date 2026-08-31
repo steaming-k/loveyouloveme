@@ -8,6 +8,7 @@ import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { PageHeading } from '@/components/common/primitives';
 import { HistoryChangeRow } from '@/components/history/HistoryChangeRow';
 import { Lovy } from '@/components/lovy/Lovy';
+import { UtSummaryCard } from '@/components/ut/UtSummaryCard';
 import { HISTORY_COPY } from '@/data/copy';
 import { ROUTES } from '@/lib/routes';
 import { useHistoryReport } from '@/hooks/useAnalysis';
@@ -99,6 +100,13 @@ function HistorySavedView() {
             {report.summary}
           </p>
         ) : null}
+
+        {/*
+          §46/§47/§97 — UT 종료 카드. Core Flow가 끝난 이 지점에서만 묻는다.
+          §48 한 화면 남발 금지: 유사도(S09)·근거 이해도(S28)는 이미 앞에서 물었고
+          여기서는 '자기이해 도움' + (사진을 넣은 사용자에게만) '사진 가치'만 묻는다.
+        */}
+        <UtSummaryCard />
       </div>
     </ScreenLayout>
   );

@@ -4,13 +4,23 @@ import { buildObservedTraits } from '@/lib/logic/observed';
 import { buildMirrorReport } from '@/lib/logic/mirror';
 import { buildHomeHighlights, buildRelationshipProfile } from '@/lib/logic/profile';
 import { callAiTask } from '@/services/ai/aiClient';
+import {
+  buildCompatibilityContext,
+  buildHistoryContext,
+  buildRelationshipContext,
+  compatibilityAllowList,
+} from '@/services/ai/contextBuilders';
 import { buildDemoObservedResult } from '@/services/ai/fallback';
 import { photoFingerprint, prepareImagesForAnalysis } from '@/services/ai/imagePrep';
 import type {
   AiFailureReason,
+  AiTask,
+  CompatibilityNarrativeBundle,
   CompatibilityResult,
   ConversationQuestion,
   DeclaredPreference,
+  HistoryAxisChange,
+  HistoryNarrativeBundle,
   MbtiLensReport,
   MbtiType,
   MirrorReport,
@@ -18,7 +28,9 @@ import type {
   ObservedProfileResult,
   PhotoAsset,
   RelationshipExperience,
+  RelationshipNarrativeBundle,
   RelationshipProfile,
+  SessionAnswers,
   TargetProfile,
   ValidatedObservation,
 } from '@/types';
@@ -133,6 +145,87 @@ export function analysisReadyObservations(
   validated: readonly ValidatedObservation[],
 ): ValidatedObservation[] {
   return validated.filter((item) => item.status !== 'excluded');
+}
+
+/* ==================== AI Narrative (v1.7) ==================== */
+
+/**
+ * Narrative Task 공통 호출부.
+ *
+ * ⚠️ Narrative는 **enhancement다.** 실패하면 `null`을 돌려주고, 화면은 기존 deterministic
+ * 결과를 그대로 렌더한다(§15). Core Result를 막지 않는다.
+ */
+async function requestNarrative<T>(
+  task: AiTask,
+  fingerprint: string,
+  payload: Record<string, unknown>,
+): Promise<{ ok: true; data: T } | { ok: false; reason: AiFailureReason }> {
+  const result = await callAiTask<T>(task, fingerprint, payload);
+  if (result.ok) return { ok: true, data: result.data };
+  return { ok: false, reason: result.reason };
+}
+
+/**
+ * S22/S23/S24/S25 — 이미 계산된 궁합 결과의 축별 차이를 설명한다.
+ * 점수·good/friction 판정은 이 호출 **이전에** 이미 확정돼 있다.
+ */
+export function requestCompatibilityNarrative(
+  result: CompatibilityResult,
+  fingerprint: string,
+): Promise<
+  { ok: true; data: CompatibilityNarrativeBundle } | { ok: false; reason: AiFailureReason }
+> {
+  return requestNarrative<CompatibilityNarrativeBundle>(
+    'compatibility-narrative',
+    fingerprint,
+    {
+      context: buildCompatibilityContext(result),
+      allowed: compatibilityAllowList(result),
+    },
+  );
+}
+
+/**
+ * S27/S28 — 규칙이 판정한 Mirror를 설명한다.
+ * `judgements`/`focusAxis`를 함께 보내고, 서버가 AI 응답의 state를 이 값으로 덮어쓴다.
+ */
+export function requestRelationshipNarrative(input: {
+  answers: SessionAnswers;
+  mirror: MirrorReport;
+  validated: readonly ValidatedObservation[];
+  pastObservations?: readonly { axis: string; entryId: string; note: string }[];
+  fingerprint: string;
+}): Promise<
+  { ok: true; data: RelationshipNarrativeBundle } | { ok: false; reason: AiFailureReason }
+> {
+  const { answers, mirror, validated, pastObservations, fingerprint } = input;
+
+  return requestNarrative<RelationshipNarrativeBundle>('relationship-insight', fingerprint, {
+    context: buildRelationshipContext({
+      answers,
+      mirror,
+      validated: analysisReadyObservations(validated),
+      pastObservations,
+    }),
+    judgements: mirror.insights.map((insight) => ({ axis: insight.key, state: insight.state })),
+    focusAxis: mirror.teaser?.axisKey ?? null,
+  });
+}
+
+/**
+ * F2 — 규칙이 판정한 변화를 설명한다.
+ * INSUFFICIENT 축은 Context Builder가 이미 제외한다 — 판정하지 않은 것을 설명하지 않는다.
+ */
+export function requestHistoryNarrative(
+  changes: readonly HistoryAxisChange[],
+  fingerprint: string,
+): Promise<{ ok: true; data: HistoryNarrativeBundle } | { ok: false; reason: AiFailureReason }> {
+  const judged = changes.filter((change) => change.state !== 'INSUFFICIENT');
+
+  return requestNarrative<HistoryNarrativeBundle>('history-insight', fingerprint, {
+    context: buildHistoryContext(changes),
+    allowed: judged.map((change) => ({ axis: change.axis, state: change.state })),
+  });
 }
 
 export async function generateRelationshipProfile(input: {

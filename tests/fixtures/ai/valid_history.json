@@ -1,0 +1,39 @@
+{
+  "name": "valid_history",
+  "description": "정상 History 응답 — state는 규칙 값이 강제되고, 성장 서사와 근거 없는 단정은 폐기된다",
+  "task": "history-insight",
+  "allowed": [
+    { "axis": "contact", "state": "SHIFT" },
+    { "axis": "alone", "state": "STABLE" },
+    { "axis": "conflict", "state": "NEW" }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "STABLE",
+        "explanation": "지난번보다 연락 중요도를 더 높게 답했어. 연락 횟수보다는 관계가 이어지고 있다는 느낌을 더 의식하게 된 걸 수도 있어.",
+        "evidenceRefs": [{ "source": "declared", "field": "contact" }]
+      },
+      {
+        "axis": "alone",
+        "state": "STABLE",
+        "explanation": "개인 시간에 대한 기준은 이전 기록과 비슷하게 유지됐어.",
+        "evidenceRefs": [],
+        "uncertainty": "왜 유지됐는지는 실제 상황을 떠올려봐야 알 수 있어"
+      },
+      {
+        "axis": "conflict",
+        "state": "NEW",
+        "explanation": "상처를 겪으며 성장해서 이제 안정적인 관계를 할 준비가 됐어.",
+        "evidenceRefs": [{ "source": "relationship", "field": "hardest" }]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 2,
+    "axes": ["contact", "alone"],
+    "states": ["SHIFT", "STABLE"],
+    "note": "contact의 state는 규칙 값 SHIFT로 덮어써진다. alone은 근거 0이지만 uncertainty가 있어 통과. conflict는 성장 서사로 폐기"
+  }
+}

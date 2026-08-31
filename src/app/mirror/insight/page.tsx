@@ -1,8 +1,10 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
+import { AiNarrativeNotice, useNarrativeViewEvent } from '@/components/ai/AiModeNotice';
+import { CoreInsightNarrativeView } from '@/components/ai/NarrativeViews';
 import { BottomSheet } from '@/components/common/BottomSheet';
 import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
@@ -11,12 +13,15 @@ import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { EvidenceList } from '@/components/common/primitives';
 import { useToast } from '@/components/common/ToastProvider';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
+import { UtRatingCard } from '@/components/ut/UtRatingCard';
 import { LOVY_LINES } from '@/data/copy';
+import { resolveEvidenceRefs } from '@/lib/aiEvidenceResolver';
 import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
 import { createEntryId } from '@/lib/historyRepository';
 import { buildHistoryEntry } from '@/lib/logic/history';
 import { ROUTES } from '@/lib/routes';
+import { useEvidenceContext, useRelationshipNarrative } from '@/hooks/useAiNarrative';
 import { useMirror, usePastObservation, useRelationshipProfile } from '@/hooks/useAnalysis';
 import { useHistory } from '@/state/HistoryProvider';
 import { useSession } from '@/state/SessionProvider';
@@ -48,6 +53,29 @@ function CoreInsightView() {
   const [editOpen, setEditOpen] = useState(false);
   const [draft, setDraft] = useState(answers.coreCorrection);
 
+  // S26에서 prefetch됐으면 캐시를 읽는다(§61). 실패하면 아래에서 규칙 템플릿으로 되돌아간다.
+  const narrative = useRelationshipNarrative();
+  const evidenceContext = useEvidenceContext();
+
+  useNarrativeViewEvent({
+    task: 'relationship-insight',
+    source: 'core_insight',
+    status: narrative.status,
+    mode: narrative.mode,
+    itemCount: narrative.data?.core ? 1 : 0,
+  });
+
+  /**
+   * AI headline은 **근거가 실제로 해석되는 경우에만** 쓴다(§35).
+   * 근거를 하나도 못 붙인 해석으로 제품의 종착점 문장을 바꾸지 않는다.
+   */
+  const aiHeadline = useMemo(() => {
+    const core = narrative.data?.core;
+    if (!core) return null;
+    if (resolveEvidenceRefs(core.evidenceRefs, evidenceContext).length === 0) return null;
+    return core.headline;
+  }, [narrative.data, evidenceContext]);
+
   useEffect(() => {
     // 관계 경험이 없거나(스킵) 직접 URL로 들어온 경우 — 볼 게 없으니 홈으로 보낸다.
     if (!mirror.available || !mirror.core) router.replace(ROUTES.home);
@@ -63,7 +91,14 @@ function CoreInsightView() {
 
   if (!mirror.core) return null;
 
-  const headline = answers.coreCorrection.trim() || mirror.core.headline;
+  /**
+   * v1.7 §22 — headline 우선순위:
+   *   ① 사용자 수정  ② AI headline  ③ 규칙 템플릿 headline
+   *
+   * 사용자 수정이 AI를 이긴다(§71/§75). 그리고 AI가 실패하면 ③으로 조용히 되돌아간다 —
+   * 화면이 비지 않는다(§23).
+   */
+  const headline = answers.coreCorrection.trim() || aiHeadline || mirror.core.headline;
   const edited = answers.coreCorrection.trim().length > 0;
 
   /**
@@ -84,12 +119,24 @@ function CoreInsightView() {
   const handleSave = () => {
     markComplete('mirror');
 
+    const aiMeta = narrative.data?.meta;
+
     const entry = buildHistoryEntry({
       answers,
       mirror,
       coverage: profile.confidence,
       id: createEntryId(),
       createdAt: new Date().toISOString(),
+      // §25 — 화면에 실제로 보인 문장을 그 당시 original로 저장한다.
+      coreInsightOriginal: aiHeadline ?? mirror.core?.headline,
+      coreInsightAiMeta:
+        aiHeadline && aiMeta
+          ? {
+              mode: aiMeta.mode,
+              promptVersion: aiMeta.promptVersion,
+              generatedAt: aiMeta.generatedAt,
+            }
+          : undefined,
     });
 
     // Mirror를 만들 수 없으면 History에 쌓지 않는다 (Edge A/B) — 여기 도달하면 보통 통과한다.
@@ -142,6 +189,12 @@ function CoreInsightView() {
             ) : null}
           </section>
 
+          {/*
+            §22 — AI는 이 Evidence를 '읽기 쉬운 문장으로 연결'만 한다.
+            Evidence List 자체는 AI가 만들지 않는다 — 바로 아래 deterministic 목록 그대로다.
+          */}
+          <CoreInsightNarrativeView core={narrative.data?.core} status={narrative.status} />
+
           <EvidenceList items={evidence} label="이렇게 생각한 이유" />
 
           <LovyMessage pose="question" size={46} tone="lead">
@@ -174,6 +227,22 @@ function CoreInsightView() {
           <p className="px-2.5 text-center text-meta leading-relaxed keep-all text-ink-muted">
             {LOVY_LINES.coreInsightFooter}
           </p>
+
+          {/* §23 — AI 설명이 없으면 '확인된 신호만 보여주고 있다'고 알린다 */}
+          <AiNarrativeNotice
+            task="relationship-insight"
+            status={narrative.status}
+            reason={narrative.reason}
+          />
+
+          {/* §45 — UT Mode에서만. 근거 이해도는 이 화면에서 묻는 게 맞다 */}
+          <UtRatingCard
+            question="왜 이런 결과가 나왔는지 근거가 이해됐어?"
+            event="ut_evidence_clarity_rate"
+            properties={{ task: 'relationship', mode: narrative.mode ?? 'none' }}
+            lowLabel="전혀 모르겠어"
+            highLabel="충분히 이해됐어"
+          />
         </div>
       </ScreenLayout>
 

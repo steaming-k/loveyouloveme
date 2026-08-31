@@ -1,0 +1,34 @@
+{
+  "name": "valid_observed",
+  "description": "정상 Observed 응답 — evidence 2개 이상인 trait은 그대로 통과한다",
+  "task": "observed-profile",
+  "allowedImageIds": ["img_1", "img_2", "img_3"],
+  "raw": {
+    "traits": [
+      {
+        "category": "activity",
+        "label": "야외 활동",
+        "observation": "야외에서 찍은 사진이 여러 장 보여",
+        "evidence": [
+          { "imageId": "img_1", "description": "산길에서 찍은 사진" },
+          { "imageId": "img_2", "description": "공원처럼 보이는 장소" }
+        ],
+        "confidence": "high"
+      },
+      {
+        "category": "interest",
+        "label": "카페",
+        "observation": "카페처럼 보이는 실내 사진이 있어",
+        "evidence": [{ "imageId": "img_3", "description": "테이블 위 커피잔" }],
+        "confidence": "medium"
+      }
+    ],
+    "usableImageCount": 3,
+    "limitations": ["사진 수가 적어서 반복 여부는 확신할 수 없어"]
+  },
+  "expect": {
+    "traitCount": 2,
+    "confidences": ["high", "medium"],
+    "usableImageCount": 3
+  }
+}
