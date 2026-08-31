@@ -1,0 +1,358 @@
+@import 'tailwindcss';
+
+/* ==========================================================================
+   럽유럽미 Design Tokens
+   출처: docs/design-guide.md §4 컬러 시스템 / 럽유럽미 와이어프레임 1c Foundations
+   비율 원칙: Neutral 70~75% / Primary Purple 15~20% / Mint 10~15%
+   Purple(분석·Insight)과 Mint(러비·관찰)는 역할을 섞지 않으며 gradient로 쓰지 않는다.
+   ========================================================================== */
+
+@theme {
+  --font-sans:
+    'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, 'Apple SD Gothic Neo',
+    'Malgun Gothic', 'Noto Sans KR', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Brand Primary — CTA / Selected / Compatibility / Relationship Mirror */
+  --color-brand: #8f74f0;
+  --color-brand-pressed: #7a5ee0;
+  --color-brand-soft: #c9baf8;
+  --color-brand-tint: #f1edfe;
+  --color-brand-edge: #e4dbfb;
+  --color-brand-deep: #5b45b0;
+  --color-brand-ink: #2e2350;
+
+  /* Secondary — 러비 / AI Observation / Positive Signal */
+  --color-mint: #a9e3d0;
+  --color-mint-mid: #bfe9db;
+  --color-mint-tint: #d7f4ea;
+  --color-mint-text: #5fae96;
+  --color-mint-deep: #3e8c74;
+  --color-mint-ink: #2f6b58;
+
+  /* Friction — 차이 신호에만 제한 사용 */
+  --color-friction: #e29bc0;
+  --color-friction-tint: #fbeaf3;
+  --color-friction-text: #b85c90;
+
+  /* Neutral */
+  --color-canvas: #fafaf7;
+  --color-canvas-warm: #fcfbf8;
+  --color-surface: #ffffff;
+  --color-sunken: #f6f5f1;
+  --color-ink: #222222;
+  --color-ink-sub: #777777;
+  --color-ink-muted: #9a968e;
+  --color-ink-faint: #b4b0a8;
+  --color-line: #e7e5e2;
+  --color-line-strong: #ddd9d2;
+  --color-line-soft: #efede9;
+  --color-track: #edebe6;
+  --color-rule: #e0dcd5;
+  --color-chip: #efede7;
+  --color-dash: #c7c2b8;
+
+  /* Radius — 8 tag / 12 chip / 14 row / 15 button / 18 card / 20 hero */
+  --radius-tag: 8px;
+  --radius-chip: 12px;
+  --radius-row: 14px;
+  --radius-btn: 15px;
+  --radius-card: 18px;
+  --radius-hero: 20px;
+
+  /* Spacing — 4 base. 20 화면 좌우 여백 / 26 하단 safe area */
+  --spacing-gutter: 20px;
+  --spacing-safe: 26px;
+
+  /* Type scale — 한국어 가독성 우선 */
+  --text-display: 26px;
+  --text-display--line-height: 1.36;
+  --text-display--letter-spacing: -0.8px;
+  --text-display--font-weight: 600;
+
+  --text-hero: 25px;
+  --text-hero--line-height: 1.34;
+  --text-hero--letter-spacing: -0.8px;
+  --text-hero--font-weight: 600;
+
+  --text-question: 24px;
+  --text-question--line-height: 1.36;
+  --text-question--letter-spacing: -0.7px;
+  --text-question--font-weight: 600;
+
+  --text-title: 23px;
+  --text-title--line-height: 1.38;
+  --text-title--letter-spacing: -0.6px;
+  --text-title--font-weight: 600;
+
+  --text-section: 19px;
+  --text-section--line-height: 1.5;
+  --text-section--letter-spacing: -0.4px;
+  --text-section--font-weight: 600;
+
+  --text-insight: 17px;
+  --text-insight--line-height: 1.5;
+  --text-insight--letter-spacing: -0.4px;
+  --text-insight--font-weight: 600;
+
+  --text-lead: 16px;
+  --text-lead--line-height: 1.5;
+  --text-lead--letter-spacing: -0.3px;
+
+  --text-body: 15px;
+  --text-body--line-height: 1.55;
+  --text-body--letter-spacing: -0.2px;
+
+  --text-sub: 14px;
+  --text-sub--line-height: 1.6;
+
+  --text-caption: 13px;
+  --text-caption--line-height: 1.6;
+
+  --text-meta: 12px;
+  --text-meta--line-height: 1.6;
+
+  --text-label: 10px;
+  --text-label--line-height: 1.3;
+  --text-label--letter-spacing: 0.08em;
+  --text-label--font-weight: 600;
+
+  /* Motion — 기본 300~600ms, 과한 연출 금지 */
+  --ease-observe: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* --------------------------------------------------------------------------
+   Pretendard (self-hosted, 4 weights)
+   -------------------------------------------------------------------------- */
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-Regular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-Medium.woff') format('woff');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-SemiBold.woff') format('woff');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/Pretendard-Bold.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* --------------------------------------------------------------------------
+   Base
+   -------------------------------------------------------------------------- */
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior-y: none;
+  }
+
+  /* 색만으로 상태를 구분하지 않도록, 포커스는 항상 형태로 드러낸다. */
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  button,
+  [role='button'] {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  h1,
+  h2,
+  h3,
+  p {
+    margin: 0;
+  }
+
+  /* 한국어 문장이 어색한 위치에서 끊기지 않게 한다. */
+  h1,
+  h2,
+  h3 {
+    text-wrap: pretty;
+    word-break: keep-all;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .keep-all {
+    word-break: keep-all;
+  }
+
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Lovy micro-interactions
+   러비 안테나 float 4.5s · 신호 발견 pulse 1.6s · 분석 진행 bar 1.6s
+   -------------------------------------------------------------------------- */
+@keyframes lovy-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes lovy-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes lovy-bar {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Reveal
+   서버 렌더 결과와 첫 클라이언트 렌더가 반드시 같아야 하므로,
+   첫 화면에 바로 보이는 등장 연출은 JS 대신 CSS 애니메이션으로 처리한다.
+   prefers-reduced-motion 은 아래 media query 한 곳에서 모두 꺼진다.
+   -------------------------------------------------------------------------- */
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes reveal-score {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes reveal-shape {
+  from {
+    opacity: 0;
+    transform: scale(0.88);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes reveal-bar {
+  from {
+    width: 0;
+  }
+  to {
+    width: var(--bar-width, 0%);
+  }
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.reveal-up {
+  animation: reveal-up 400ms var(--ease-observe) both;
+}
+
+.reveal-score {
+  animation: reveal-score 500ms var(--ease-observe) both;
+}
+
+/* SVG 도형은 자체 좌표계 중심을 기준으로 커진다 */
+.reveal-shape {
+  transform-origin: 100px 100px;
+  animation: reveal-shape 550ms var(--ease-observe) both;
+}
+
+.reveal-bar {
+  width: var(--bar-width, 0%);
+  animation: reveal-bar 450ms var(--ease-observe) both;
+}
+
+.slide-in {
+  animation: slide-in 300ms var(--ease-observe) both;
+}
+
+.animate-lovy-float {
+  animation: lovy-float 4.5s ease-in-out infinite;
+}
+.animate-lovy-float-fast {
+  animation: lovy-float 3.2s ease-in-out infinite;
+}
+.animate-lovy-pulse {
+  animation: lovy-pulse 1.6s ease-in-out infinite;
+}
+.animate-lovy-bar {
+  animation: lovy-bar 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
