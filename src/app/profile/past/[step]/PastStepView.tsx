@@ -23,6 +23,7 @@ import {
   type PastStep,
 } from '@/data/pastQuestions';
 import { trackEvent } from '@/lib/analytics';
+import { pickAdaptiveTriggerAxis } from '@/lib/logic/mirror';
 import { ROUTES } from '@/lib/routes';
 import { useSession } from '@/state/SessionProvider';
 
@@ -41,7 +42,13 @@ export function PastStepView({ step }: { step: PastStep }) {
   const [error, setError] = useState<string | null>(null);
 
   const experience = answers.experience;
-  const backHref = step === 1 ? ROUTES.pastIntro : ROUTES.past(step - 1);
+  const adaptiveShown = experience.adaptive !== null;
+  const backHref =
+    step === 1
+      ? ROUTES.pastIntro
+      : step === 3 && adaptiveShown
+        ? ROUTES.pastAdaptive
+        : ROUTES.past(step - 1);
 
   const validate = (): string | null => {
     if (step === 1 && experience.important.length === 0) {
@@ -73,6 +80,16 @@ export function PastStepView({ step }: { step: PastStep }) {
       });
       router.push(ROUTES.profileResult);
       return;
+    }
+
+    // Adaptive Follow-up — 모순 후보(GAP) 축이 방금 감지됐고 아직 안 물어봤으면
+    // 과거 관계 질문 3번째로 바로 넘어가지 않고 추가 질문 1개를 먼저 보여준다.
+    if (step === 2) {
+      const triggerAxis = pickAdaptiveTriggerAxis(answers.declared, experience);
+      if (triggerAxis && !adaptiveShown) {
+        router.push(ROUTES.pastAdaptive);
+        return;
+      }
     }
 
     router.push(ROUTES.past(step + 1));

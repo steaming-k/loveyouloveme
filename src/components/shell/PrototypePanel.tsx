@@ -101,7 +101,7 @@ export function PrototypePanel() {
           highlight
         />
         <p className="text-[11px] leading-relaxed text-ink-muted">
-          relationship_mirror_entry_click / compatibility_complete
+          relationship_mirror_entry_click / compatibility_result_view
         </p>
       </section>
 

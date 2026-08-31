@@ -1,10 +1,13 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 import { BottomNavigation } from '@/components/common/BottomNavigation';
 import { Button } from '@/components/common/Button';
+import { ConfirmModal } from '@/components/common/ConfirmModal';
 import { SectionLabel } from '@/components/common/primitives';
+import { useToast } from '@/components/common/ToastProvider';
 import { Lovy } from '@/components/lovy/Lovy';
 import { BRAND, HOME_COPY } from '@/data/copy';
 import { ROUTES } from '@/lib/routes';
@@ -17,13 +20,15 @@ import { useSession } from '@/state/SessionProvider';
  */
 export default function HomePage() {
   const router = useRouter();
-  const { answers } = useSession();
+  const { answers, deleteAllData } = useSession();
+  const { showToast } = useToast();
   const mirror = useMirror();
   const highlights = useHomeHighlights();
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const summary =
     answers.coreCorrection.trim() ||
-    (answers.completed.profile ? mirror.core.summary : HOME_COPY.fallbackProfile);
+    (answers.completed.profile ? (mirror.core?.summary ?? HOME_COPY.fallbackProfile) : HOME_COPY.fallbackProfile);
 
   const answeredDeclared = Object.values(answers.declared).filter((value) => value !== null).length;
   const experienceCount = answers.experience.skipped
@@ -108,10 +113,32 @@ export default function HomePage() {
               Relationship Mirror 다시 보기
             </Button>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setDeleteOpen(true)}
+            className="flex min-h-11 items-center justify-center text-meta text-ink-faint"
+          >
+            내 관찰 데이터 삭제
+          </button>
         </div>
       </div>
 
       <BottomNavigation />
+
+      <ConfirmModal
+        open={deleteOpen}
+        title="관찰 데이터를 모두 삭제할까?"
+        description="사진 선택 기록, 관계 답변, 상대 정보와 분석 결과를 모두 삭제해요. 되돌릴 수 없어요."
+        confirmLabel="전체 삭제"
+        onCancel={() => setDeleteOpen(false)}
+        onConfirm={() => {
+          deleteAllData();
+          setDeleteOpen(false);
+          showToast('관찰 데이터를 모두 삭제했어요');
+          router.push(ROUTES.splash);
+        }}
+      />
     </div>
   );
 }

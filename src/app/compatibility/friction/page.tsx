@@ -31,7 +31,7 @@ export default function FrictionSignalPage() {
 
   return (
     <ScreenLayout
-      header={<ScreenHeader backHref={ROUTES.goodSignal} title="관찰이 필요한 신호" />}
+      header={<ScreenHeader backHref={ROUTES.compatibilityWhy} title="관찰이 필요한 신호" />}
       footer={<Button onClick={() => router.push(ROUTES.questions)}>이야기해볼 질문 보기</Button>}
       bodyClassName="pt-1.5 pb-4"
     >

@@ -22,5 +22,7 @@ export const DEMO_PHOTO_IDS = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'] as const;
 
 export const PHOTO_MIN_COUNT = 3;
 export const PHOTO_MAX_COUNT = 9;
-export const PHOTO_ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
+// HEIC는 뺐다 — 실제 변환 로직 없이 accept에만 넣어두면 브라우저에 따라 선택은 되는데
+// 미리보기가 깨지는 환경이 있다. "지원한다"고 적어두고 실제로는 깨지는 상태를 만들지 않는다.
+export const PHOTO_ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 export const PHOTO_MAX_BYTES = 10 * 1024 * 1024;

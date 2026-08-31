@@ -10,7 +10,6 @@ import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { EmptyStateView, FillDataRow } from '@/components/common/StateScreens';
 import { PageHeading, Tag } from '@/components/common/primitives';
 import { MirrorComparisonRow, MirrorLegend } from '@/components/mirror/MirrorComparisonRow';
-import { MirrorRadar } from '@/components/mirror/MirrorRadar';
 import { trackEvent } from '@/lib/analytics';
 import { ROUTES } from '@/lib/routes';
 import { isLowData } from '@/lib/validation';
@@ -20,9 +19,12 @@ import { useSession } from '@/state/SessionProvider';
 /**
  * S27 Relationship Mirror — MVP의 가장 중요한 화면
  *
- * Compatibility 화면보다 완성도가 높아야 한다.
- * 레이더로 두 개의 '나'를 겹쳐 보여준 뒤, 항목별 대조로 근거를 읽게 한다.
- * 관측 기록이 얇으면(E1) 결론을 내리지 않는다.
+ * '항목별 대조(Mirror Gap Map)'가 메인 비주얼이다. 5개 축을 같은 방식으로 정량 측정된
+ * 것처럼 보이게 하는 레이더 차트는 쓰지 않는다 — Relationship Me는 1~5 척도로 직접
+ * 수집된 값이 아니므로, 두 숫자를 겹쳐 그리면 실제보다 정밀해 보이는 착시가 생긴다.
+ *
+ * 관계 경험이 없는 사용자(experience.skipped)는 이 화면에 올 이유가 없다 — S26에서 이미
+ * 걸러졌어야 하지만, 직접 URL로 들어온 경우를 방어적으로 처리한다.
  */
 export default function MirrorPage() {
   return (
@@ -40,12 +42,19 @@ function MirrorView() {
   const lowData = isLowData(answers);
 
   useEffect(() => {
-    if (lowData) return;
-    trackEvent('relationship_mirror_complete', {
+    if (!mirror.available) router.replace(ROUTES.home);
+  }, [mirror.available, router]);
+
+  useEffect(() => {
+    if (!mirror.available || lowData) return;
+    // 화면 진입은 아직 완료가 아니다 — 완료는 S28에서 저장을 눌렀을 때다.
+    trackEvent('relationship_mirror_view', {
       gap_count: mirror.gapCount,
-      focus_axis: mirror.teaser.axisKey,
+      compared_axes: mirror.insights.length,
     });
-  }, [lowData, mirror.gapCount, mirror.teaser.axisKey]);
+  }, [mirror.available, lowData, mirror.gapCount, mirror.insights.length]);
+
+  if (!mirror.available) return null;
 
   if (lowData) {
     return (
@@ -100,6 +109,7 @@ function MirrorView() {
         <PageHeading
           lines={['네가 생각한 너', 'vs 관계에서 나타난 너']}
           size="hero"
+          caption={`비교 가능한 ${mirror.insights.length}개 기준에서`}
           eyebrow={
             gapInsights.length > 0 ? (
               <div className="flex flex-wrap items-center gap-1.5">
@@ -109,12 +119,10 @@ function MirrorView() {
                 </Tag>
               </div>
             ) : (
-              <Tag tone="mint">모든 항목이 비슷했어</Tag>
+              <Tag tone="mint">비교한 항목이 모두 비슷했어</Tag>
             )
           }
         />
-
-        <MirrorRadar insights={mirror.insights} />
 
         <section className="flex flex-col gap-2.5">
           <MirrorLegend />

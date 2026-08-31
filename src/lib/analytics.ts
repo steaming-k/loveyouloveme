@@ -5,8 +5,12 @@
  * trackEvent(name, properties) 형태로 통일한다.
  *
  * Primary KPI
- *   relationship_mirror_entry_click / compatibility_complete
- *   = '궁합 때문에 들어왔지만 결국 나에 대한 분석까지 보는가'
+ *   relationship_mirror_entry_click / compatibility_result_view
+ *   = '궁합 결과를 본 사용자 중 Relationship Mirror에 진입한 비율'
+ *
+ * compatibility_result_view는 S21(정상 결과)과 E3(확신 낮음) 둘 다에서 발생한다 —
+ * 확신 낮은 사용자도 궁합 결과 화면을 본 것은 맞으므로 분모에서 빠지면 안 된다.
+ * compatibility_complete는 '정상적으로 계산 가능한 궁합 분석 완료' 운영 지표로 별도 유지한다.
  */
 
 export const ANALYTICS_EVENTS = [
@@ -17,6 +21,7 @@ export const ANALYTICS_EVENTS = [
   'observed_profile_complete',
   'observed_result_edit',
   'declared_me_complete',
+  'relationship_adaptive_answer',
   'relationship_experience_complete',
   'relationship_experience_skip',
   'profile_complete',
@@ -25,6 +30,7 @@ export const ANALYTICS_EVENTS = [
   'target_profile_complete',
   'compatibility_complete',
   'compatibility_low_confidence',
+  'compatibility_result_view',
   'compatibility_reason_view',
   'compatibility_dimension_expand',
   'good_signal_view',
@@ -34,13 +40,17 @@ export const ANALYTICS_EVENTS = [
   'relationship_mirror_teaser_view',
   'relationship_mirror_entry_click',
   'relationship_mirror_postpone',
+  'relationship_mirror_view',
   'relationship_mirror_complete',
   'mirror_feedback_positive',
   'mirror_feedback_edit',
   'share_card_open',
   'share_card_action',
   'observation_excluded',
+  'session_data_deleted',
   'session_reset',
+  'lens_mbti_set',
+  'lens_zodiac_set',
 ] as const;
 
 export type AnalyticsEvent = (typeof ANALYTICS_EVENTS)[number];
@@ -106,28 +116,59 @@ export function getEventLog(): LoggedEvent[] {
   return readStore().log;
 }
 
-/** Primary KPI 스냅샷 — 궁합 결과 → Relationship Mirror 진입률 */
+const SESSION_DEDUP_PREFIX = 'lym.session_fired.';
+
+/**
+ * 세션(브라우저 탭) 안에서 딱 한 번만 발생해야 하는 이벤트용.
+ * 뒤로가기·새로고침으로 같은 결과 화면을 다시 봐도 KPI 분모가 중복 집계되지 않게 한다.
+ * sessionStorage를 쓰므로 탭을 닫으면 dedup 상태도 함께 사라진다 — 그게 맞는 의미다.
+ */
+export function trackOnce(name: AnalyticsEvent, properties: AnalyticsProperties = {}): void {
+  if (typeof window === 'undefined') return;
+  const key = SESSION_DEDUP_PREFIX + name;
+  try {
+    if (window.sessionStorage.getItem(key)) return;
+    window.sessionStorage.setItem(key, '1');
+  } catch {
+    // sessionStorage를 못 쓰면 dedup 없이라도 이벤트는 기록한다.
+  }
+  trackEvent(name, properties);
+}
+
+/** Primary KPI 스냅샷 — 궁합 결과를 본 사용자 중 Relationship Mirror에 진입한 비율 */
 export function getPrimaryKpi(): {
-  compatibilityComplete: number;
+  compatibilityResultView: number;
   mirrorEntryClick: number;
   mirrorComplete: number;
   entryRate: number | null;
 } {
   const counts = readStore().counts;
-  const compatibilityComplete = counts.compatibility_complete ?? 0;
+  const compatibilityResultView = counts.compatibility_result_view ?? 0;
   const mirrorEntryClick = counts.relationship_mirror_entry_click ?? 0;
 
   return {
-    compatibilityComplete,
+    compatibilityResultView,
     mirrorEntryClick,
     mirrorComplete: counts.relationship_mirror_complete ?? 0,
     entryRate:
-      compatibilityComplete === 0
+      compatibilityResultView === 0
         ? null
-        : Math.round((mirrorEntryClick / compatibilityComplete) * 100),
+        : Math.round((mirrorEntryClick / compatibilityResultView) * 100),
   };
 }
 
 export function resetAnalytics(): void {
   writeStore(emptyStore());
+}
+
+/** 세션 dedup 가드를 지운다 — '답변 초기화'로 처음부터 다시 돌 때 KPI 이벤트가 다시 발생하게 한다. */
+export function clearSessionDedup(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    for (const name of ANALYTICS_EVENTS) {
+      window.sessionStorage.removeItem(SESSION_DEDUP_PREFIX + name);
+    }
+  } catch {
+    // 무시 — dedup 가드가 안 지워져도 치명적이지 않다.
+  }
 }

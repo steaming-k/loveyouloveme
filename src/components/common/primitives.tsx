@@ -116,13 +116,18 @@ export function Tag({
   );
 }
 
+/**
+ * 이 값은 'AI가 얼마나 확신하는가'가 아니라 '얼마나 많은 입력 근거가 확보됐는가'를 뜻한다.
+ * 그래서 '확신도'라는 이름 대신 '관측 정보'라는 이름을 쓴다 — 자유서술을 많이 했다고
+ * 분석이 사실일 확률이 높아지는 건 아니기 때문이다.
+ */
 const CONFIDENCE_TONE: Record<Confidence, { tone: TagTone; label: string }> = {
-  high: { tone: 'mint', label: '확신도 높음' },
-  medium: { tone: 'brand', label: '확신도 중간' },
-  low: { tone: 'friction', label: '확신 낮음' },
+  high: { tone: 'mint', label: '관측 정보 충분' },
+  medium: { tone: 'brand', label: '관측 정보 보통' },
+  low: { tone: 'friction', label: '관측 정보 부족' },
 };
 
-/** 확신도는 색만으로 구분하지 않고 항상 텍스트를 함께 보여준다. */
+/** 관측 정보량은 색만으로 구분하지 않고 항상 텍스트를 함께 보여준다. */
 export function ConfidenceLabel({
   confidence,
   className,

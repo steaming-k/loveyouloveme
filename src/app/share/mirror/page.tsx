@@ -30,8 +30,15 @@ export default function ShareMirrorPage() {
     trackEvent('share_card_open', { kind: 'mirror' });
   }, []);
 
+  useEffect(() => {
+    // 볼 게 없으면(관계 경험 없음 등) 조용히 Mirror로 돌려보낸다.
+    if (!mirror.available || mirror.insights.length === 0) router.replace(ROUTES.mirror);
+  }, [mirror.available, mirror.insights.length, router]);
+
   const focus =
-    mirror.insights.find((insight) => insight.key === mirror.teaser.axisKey) ?? mirror.insights[0]!;
+    mirror.insights.find((insight) => insight.key === mirror.teaser?.axisKey) ?? mirror.insights[0];
+
+  if (!focus) return null;
 
   const headlineLines =
     focus.key === 'contact' && focus.state === 'GAP'
@@ -40,8 +47,9 @@ export default function ShareMirrorPage() {
         ? ['나는 관계를 지나며', `${focus.label}의 기준이`, '달라진 사람이었다.']
         : [`나는 ${focus.label}에`, '생각보다 민감한', '사람이었다.'];
 
+  // '말한 나'만 실제 1~5 척도 값이다. '관계 속 나'는 숫자로 수집된 값이 아니므로
+  // 카드에서도 막대 폭으로 흉내내지 않는다 — 근거 문장으로만 보여준다.
   const declaredWidth = `${((focus.declared - 1) / 4) * 90 + 10}%`;
-  const relationshipWidth = `${((focus.relationship - 1) / 4) * 90 + 10}%`;
 
   const shareText = [headlineLines.join(' '), `${BRAND.name} · ${BRAND.tagline}`].join('\n');
 
@@ -111,22 +119,14 @@ export default function ShareMirrorPage() {
             ))}
           </h1>
 
-          <div className="flex items-center gap-3.5">
-            <div className="flex flex-1 flex-col gap-1.5">
-              <p className="text-[10.5px] text-ink-muted">말한 나</p>
-              <div className="h-[5px] rounded-sm bg-track">
-                <div
-                  className="h-[5px] rounded-sm bg-ink-faint"
-                  style={{ width: declaredWidth }}
-                />
-              </div>
+          <div className="flex flex-col gap-2">
+            <p className="text-[10.5px] text-ink-muted">말한 나</p>
+            <div className="h-[5px] rounded-sm bg-track">
+              <div className="h-[5px] rounded-sm bg-ink-faint" style={{ width: declaredWidth }} />
             </div>
-            <div className="flex flex-1 flex-col gap-1.5">
-              <p className="text-[10.5px] text-brand-pressed">관계 속 나</p>
-              <div className="h-[5px] rounded-sm bg-track">
-                <div className="h-[5px] rounded-sm bg-brand" style={{ width: relationshipWidth }} />
-              </div>
-            </div>
+            <p className="text-[12.5px] leading-relaxed keep-all text-brand-pressed">
+              관계 경험에서는 {focus.relationshipSignal.replace(/^이전 관계에서 /, '')}
+            </p>
           </div>
 
           <div className="flex items-center gap-2.5 border-t border-line-soft pt-3.5">

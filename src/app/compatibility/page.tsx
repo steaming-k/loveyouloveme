@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 
 import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
@@ -9,7 +10,7 @@ import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { SyncScore } from '@/components/compatibility/SyncScore';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { COMPATIBILITY_COPY, LOVY_LINES, STATE_COPY } from '@/data/copy';
-import { trackEvent } from '@/lib/analytics';
+import { trackEvent, trackOnce } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
 import { ROUTES } from '@/lib/routes';
 import { useCompatibility } from '@/hooks/useAnalysis';
@@ -32,6 +33,12 @@ export default function CompatibilityPage() {
 function CompatibilityView() {
   const router = useRouter();
   const result = useCompatibility();
+
+  useEffect(() => {
+    if (result.score === null) return;
+    // Primary KPI 분모 — 궁합 결과를 본 사용자 수. 세션당 한 번만 센다.
+    trackOnce('compatibility_result_view', { score: result.score, compared: result.comparedCount });
+  }, [result.score, result.comparedCount]);
 
   if (result.score === null) {
     return <LowConfidenceView />;
@@ -124,10 +131,15 @@ function SummaryCard({
   );
 }
 
-/** E3 상대 정보 부족 · 확신 낮음 */
+/** E3 상대 정보 부족 · 관측 정보 부족 */
 function LowConfidenceView() {
   const router = useRouter();
   const result = useCompatibility();
+
+  useEffect(() => {
+    // 확신 낮은 결과도 '궁합 결과를 본 것'은 맞다 — Primary KPI 분모에서 빠지면 안 된다.
+    trackOnce('compatibility_result_view', { score: 0, compared: result.comparedCount });
+  }, [result.comparedCount]);
 
   return (
     <ScreenLayout
@@ -149,7 +161,7 @@ function LowConfidenceView() {
           </p>
           <p className="text-[74px] font-semibold leading-none tracking-[-3px] text-ink-faint">?</p>
           <p className="mt-1.5 rounded-[7px] bg-friction-tint px-2.5 py-1.5 text-[11px] font-semibold text-friction-text">
-            확신도 낮음 · 입력 {result.comparedCount}/{result.totalCount}
+            관측 정보 부족 · 입력 {result.comparedCount}/{result.totalCount}
           </p>
         </div>
 

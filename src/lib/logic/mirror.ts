@@ -4,71 +4,92 @@ import {
   MIRROR_NOTE,
   RELATIONSHIP_PHRASE,
 } from '@/data/axes';
+import { adaptiveOptionLabel } from '@/data/adaptive';
 import { HARDEST_LABEL, PAST_FACTOR_LABEL } from '@/data/labels';
+import { withObjectParticle } from '@/lib/korean';
 import type {
   CoreInsight,
   DeclaredPreference,
   EvidenceItem,
+  EvidenceStrength,
+  MirrorAxisKey,
   MirrorInsight,
   MirrorReport,
   MirrorState,
   MirrorTeaser,
+  PastFactor,
   RelationshipExperience,
 } from '@/types';
-import { toDeclaredMirrorValues, toRelationshipMirrorValues } from './values';
+import { DECLARED_HAS_NATIVE_SCALE, toDeclaredMirrorValues } from './values';
 
 /**
  * Relationship Mirror — Declared Me vs Relationship Me
  *
  * ⚠️ Prototype Demo Logic
- * MATCH / GAP / CHANGE 는 심리 진단이 아니라 두 답변의 차이를 읽는 규칙이다.
- *   |차이| <= 1            → MATCH   말한 기준과 관계에서의 반응이 비슷
- *   관계 - 말한 값 >= 2     → GAP     중요하지 않다고 했지만 관계에서 더 크게 반응
- *   말한 값 - 관계 >= 2     → CHANGE  중요하다고 했지만 경험 후 우선순위가 내려감
+ * MATCH / GAP / CHANGE는 두 숫자를 빼서 나온 값이 아니다. Relationship Me는
+ * 1~5 척도로 직접 수집된 적이 없으므로(과거 관계 질문은 선택형이다), 여기서 가짜 숫자를
+ * 만들지 않는다. 대신 '이 축에 대한 관계 경험 근거가 있는가'를 기준으로 판정한다.
+ *
+ *   hardest 근거(가장 힘들었던 순간)로 뒷받침 + 말한 기준이 낮음  → GAP
+ *   hardest 근거로 뒷받침 + 말한 기준이 높음                    → MATCH
+ *   important 근거(중요했던 요소로 선택) + 말한 기준이 낮음       → GAP
+ *   important 근거 + 말한 기준이 보통·높음                       → MATCH
+ *   근거 없음 + 말한 기준이 높음                                 → CHANGE (선언은 높지만 근거가 안 보임)
+ *   근거 없음 + 말한 기준이 보통·낮음                            → UNKNOWN (판정하지 않는다)
+ *
+ * UNKNOWN 축은 insights 배열에 아예 넣지 않는다 — 근거가 없는 축을 억지로 MATCH로
+ * 채우지 않기 위해서다 (Missing data ≠ neutral).
  */
 
-export const RADAR_CENTER = 100;
-export const RADAR_RADIUS = 76;
-export const RADAR_VIEWBOX = 200;
-
-function stateOf(diff: number): MirrorState {
-  if (Math.abs(diff) <= 1) return 'MATCH';
-  return diff >= 2 ? 'GAP' : 'CHANGE';
-}
+const HARDEST_TO_AXIS: Partial<Record<string, MirrorAxisKey>> = {
+  contact_drop: 'contact',
+  fight_silence: 'conflict',
+  no_time: 'alone',
+};
 
 /** 1~5 값을 트랙 위 퍼센트 위치로 (양 끝이 잘리지 않도록 4%~96%) */
 export function valueToPercent(value: number): string {
   return `${4 + ((value - 1) / 4) * 92}%`;
 }
 
-export function radarPoints(values: readonly number[]): string {
-  return values
-    .map((value, index) => {
-      const angle = -Math.PI / 2 + (index * 2 * Math.PI) / values.length;
-      const r = (RADAR_RADIUS * value) / 5;
-      const x = RADAR_CENTER + r * Math.cos(angle);
-      const y = RADAR_CENTER + r * Math.sin(angle);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(' ');
+function evidenceStrengthOf(
+  axis: MirrorAxisKey,
+  experience: RelationshipExperience,
+): EvidenceStrength {
+  if (experience.hardest && HARDEST_TO_AXIS[experience.hardest] === axis) return 'hardest';
+  if (experience.important.includes(axis as PastFactor)) return 'important';
+  return 'absent';
 }
 
-/** 레이더 축 라벨 좌표 (viewBox 기준, 라벨은 축보다 살짝 바깥) */
-export function radarLabelPositions(count: number, radius = RADAR_RADIUS + 20) {
-  return Array.from({ length: count }, (_, index) => {
-    const angle = -Math.PI / 2 + (index * 2 * Math.PI) / count;
-    return {
-      x: RADAR_CENTER + radius * Math.cos(angle),
-      y: RADAR_CENTER + radius * Math.sin(angle),
-    };
-  });
+function stateFor(declaredValue: number, strength: EvidenceStrength): MirrorState {
+  const declaredHigh = declaredValue >= 4;
+  const declaredLow = declaredValue <= 2;
+
+  if (strength === 'hardest') {
+    if (declaredHigh) return 'MATCH';
+    return 'GAP';
+  }
+  if (strength === 'important') {
+    if (declaredLow) return 'GAP';
+    return 'MATCH';
+  }
+  // strength === 'absent'
+  return declaredHigh ? 'CHANGE' : 'UNKNOWN';
 }
 
-/** 배경 그리드 폴리곤 (0.33 / 0.66 / 1.0 링) */
-export function radarGrid(count: number): string[] {
-  return [0.33, 0.66, 1].map((ratio) =>
-    radarPoints(Array.from({ length: count }, () => ratio * 5)),
-  );
+function relationshipSignalText(
+  axis: MirrorAxisKey,
+  label: string,
+  strength: EvidenceStrength,
+  experience: RelationshipExperience,
+): string {
+  if (strength === 'hardest' && experience.hardest) {
+    return `이전 관계에서 ${HARDEST_LABEL[experience.hardest]}으로 선택`;
+  }
+  if (strength === 'important') {
+    return `이전 관계에서 ${withObjectParticle(PAST_FACTOR_LABEL[axis as PastFactor])} 중요했던 요소로 선택`;
+  }
+  return `이전 관계에서 ${withObjectParticle(label)} 특별히 중요한 요소로 꼽지는 않았어`;
 }
 
 function buildInsights(
@@ -76,37 +97,42 @@ function buildInsights(
   experience: RelationshipExperience,
 ): MirrorInsight[] {
   const declaredValues = toDeclaredMirrorValues(declared);
-  const relationshipValues = toRelationshipMirrorValues(experience);
+  const insights: MirrorInsight[] = [];
 
-  return MIRROR_AXES.map(({ key, label }) => {
-    // Declared 미응답은 중립값 3으로 두어 Mirror가 비어 보이지 않게 한다.
-    const declaredValue = declaredValues[key] ?? 3;
-    const relationshipValue = relationshipValues[key];
-    const diff = relationshipValue - declaredValue;
-    const state = stateOf(diff);
+  for (const { key, label } of MIRROR_AXES) {
+    const declaredValue = declaredValues[key];
+    // Declared Me는 S13까지 전부 필수라 실제로는 항상 값이 있지만, 방어적으로 없으면 건너뛴다.
+    if (declaredValue === null) continue;
 
-    return {
+    const strength = evidenceStrengthOf(key, experience);
+    const state = stateFor(declaredValue, strength);
+    if (state === 'UNKNOWN') continue;
+
+    insights.push({
       key,
       label,
       declared: declaredValue,
-      relationship: relationshipValue,
+      declaredHasScale: DECLARED_HAS_NATIVE_SCALE[key],
+      declaredPhrase: DECLARED_PHRASE[key],
+      relationshipSignal: relationshipSignalText(key, label, strength, experience),
+      evidenceStrength: strength,
       state,
       note: MIRROR_NOTE[key][state],
-      declaredPhrase: DECLARED_PHRASE[key],
-      relationshipPhrase: RELATIONSHIP_PHRASE[key],
-      diff,
-    };
-  });
+    });
+  }
+
+  return insights;
 }
 
-/** Teaser(S26)에 쓸 축: GAP이 있으면 첫 GAP, 없으면 차이가 가장 큰 축 */
-function pickTeaser(insights: MirrorInsight[]): MirrorInsight {
-  const gap = insights.find((insight) => insight.state === 'GAP');
-  if (gap) return gap;
-
-  const sorted = [...insights].sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
-  // MIRROR_AXES가 비어 있지 않으므로 항상 존재한다.
-  return sorted[0] ?? insights[0]!;
+/** Teaser·Core Insight에 쓸 축: hardest 근거의 GAP 우선 → 그 외 GAP → CHANGE → 첫 번째 */
+function pickFocus(insights: MirrorInsight[]): MirrorInsight | null {
+  if (insights.length === 0) return null;
+  return (
+    insights.find((i) => i.state === 'GAP' && i.evidenceStrength === 'hardest') ??
+    insights.find((i) => i.state === 'GAP') ??
+    insights.find((i) => i.state === 'CHANGE') ??
+    insights[0]!
+  );
 }
 
 function buildHeadline(focus: MirrorInsight): string {
@@ -117,7 +143,7 @@ function buildHeadline(focus: MirrorInsight): string {
     return `너는 ${focus.label}에서 말한 기준보다 실제 관계에서 더 크게 반응하는 사람일지도 몰라.`;
   }
   if (focus.state === 'CHANGE') {
-    return `너는 ${focus.label}을 중요하게 여긴다고 말했지만, 경험 후에는 우선순위가 옮겨간 사람일지도 몰라.`;
+    return `너는 ${withObjectParticle(focus.label)} 중요하게 여긴다고 말했지만, 경험 후에는 우선순위가 옮겨간 사람일지도 몰라.`;
   }
   return `너는 ${focus.label}에 대해 말한 기준과 관계에서의 반응이 꽤 겹치는 사람일지도 몰라.`;
 }
@@ -136,48 +162,80 @@ export function buildCoreEvidence(
   focus: MirrorInsight,
   experience: RelationshipExperience,
 ): EvidenceItem[] {
-  const importantText = experience.important.length
-    ? `중요했던 요소로 ${experience.important.map((f) => PAST_FACTOR_LABEL[f]).join(' · ')} 선택`
-    : '중요했던 요소를 아직 선택하지 않음';
-
-  return [
-    { n: '01', text: `${focus.label} 중요도를 ${focus.declared}/5로 선택` },
+  const items: EvidenceItem[] = [
     {
-      n: '02',
-      text: experience.hardest
-        ? `이전 관계에서 ${HARDEST_LABEL[experience.hardest]}으로 선택`
-        : '이전 관계에서 어려웠던 순간을 아직 선택하지 않음',
+      n: '01',
+      text: focus.declaredHasScale
+        ? `${focus.label} 중요도를 ${focus.declared}/5로 답함`
+        : `${focus.label}에 대해 "${focus.declaredPhrase}"라고 답함`,
     },
-    { n: '03', text: importantText },
+    { n: '02', text: focus.relationshipSignal },
   ];
+
+  // Adaptive Follow-up — 모순 후보 축에 대해서만 물어본 추가 질문. 답했을 때만 근거로 쓴다.
+  if (experience.adaptive && experience.adaptive.axis === focus.key) {
+    items.push({
+      n: '03',
+      text: `추가로 "${adaptiveOptionLabel(focus.key, experience.adaptive.optionId)}"를 이유로 선택`,
+    });
+  }
+
+  return items;
 }
 
 export function buildMirrorReport(
   declared: DeclaredPreference,
   experience: RelationshipExperience,
 ): MirrorReport {
+  // 관계 경험이 없는 사용자에게 가짜 Relationship Me를 만들지 않는다.
+  if (experience.skipped) {
+    return {
+      available: false,
+      insights: [],
+      totalAxisCount: MIRROR_AXES.length,
+      teaser: null,
+      core: null,
+      gapCount: 0,
+    };
+  }
+
   const insights = buildInsights(declared, experience);
-  const focus = pickTeaser(insights);
+  const focus = pickFocus(insights);
 
-  const teaser: MirrorTeaser = {
-    axisKey: focus.key,
-    axisLabel: focus.label,
-    declaredPhrase: focus.declaredPhrase,
-    relationshipPhrase: focus.relationshipPhrase,
-  };
+  const teaser: MirrorTeaser | null = focus
+    ? {
+        axisKey: focus.key,
+        axisLabel: focus.label,
+        declaredPhrase: DECLARED_PHRASE[focus.key],
+        relationshipPhrase: RELATIONSHIP_PHRASE[focus.key],
+      }
+    : null;
 
-  const core: CoreInsight = {
-    headline: buildHeadline(focus),
-    evidence: buildCoreEvidence(focus, experience),
-    summary: buildSummary(focus),
-  };
+  const core: CoreInsight | null = focus
+    ? {
+        headline: buildHeadline(focus),
+        evidence: buildCoreEvidence(focus, experience),
+        summary: buildSummary(focus),
+      }
+    : null;
 
   return {
+    available: true,
     insights,
+    totalAxisCount: MIRROR_AXES.length,
     teaser,
     core,
     gapCount: insights.filter((insight) => insight.state === 'GAP').length,
-    declaredPoints: radarPoints(insights.map((insight) => insight.declared)),
-    relationshipPoints: radarPoints(insights.map((insight) => insight.relationship)),
   };
+}
+
+/** 이 축이 GAP이면 Adaptive Follow-up을 물어볼 대상이 된다 (S16→S17 사이) */
+export function pickAdaptiveTriggerAxis(
+  declared: DeclaredPreference,
+  experience: RelationshipExperience,
+): MirrorAxisKey | null {
+  if (experience.skipped) return null;
+  const insights = buildInsights(declared, experience);
+  const focus = pickFocus(insights);
+  return focus && focus.state === 'GAP' ? focus.key : null;
 }

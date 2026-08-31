@@ -82,6 +82,7 @@ export const PRIVACY = {
   unknownExcluded: "'모름'으로 남긴 항목은 점수에 반영하지 않았어요.",
   share: '개인정보는 카드에 포함되지 않아요.',
   shareMirror: '상대 정보와 개인 답변은 카드에 포함되지 않아요.',
+  demoAi: 'AI 분석은 데모용 규칙 기반 응답이에요. 실제 사진 내용을 분석하지 않아요.',
 } as const;
 
 /** Loading / Empty / Error / Low confidence — 모두 러비 화법으로 */
@@ -107,6 +108,15 @@ export const STATE_COPY = {
     title: ['아직 관계 기록은 없네.', '지금의 너부터 관찰해둘게.'],
     body: '과거 관계 질문은 건너뛸게. 대신 지금 생각하는 기준을 기록해두고, 나중에 실제 경험과 비교해보자.',
   },
+  /** S26 Mirror Teaser에서 experience.skipped인 사용자에게 보여주는 문구. Mirror CTA를 억지로 주지 않는다. */
+  mirrorUnavailable: {
+    pose: 'mug' as LovyPose,
+    body: [
+      '아직 관계 경험 데이터는 없어서',
+      '생각한 나와 실제 관계 속 나를 비교하긴 어려워.',
+    ],
+    footer: '지금의 기준은 기록해둘게. 나중에 관계 경험이 생기면 다시 비교할 수 있어.',
+  },
 } as const;
 
 /** 화면별 러비 한 줄 */
@@ -118,7 +128,9 @@ export const LOVY_LINES = {
   compatibilityHero: '숫자는 그냥 요약이야. 중요한 건 왜 이렇게 나왔는지야.',
   friction: '이게 안 맞는다는 뜻은 아니야. 미리 알고 있으면 이야기하기 쉬울 수 있어.',
   teaserOne: '근데 잠깐.',
-  teaserTwo: ['상대보다 네 쪽에서', '조금 이상한 신호 하나를 발견했어.'],
+  teaserTwo: ['지금까지는 너와 그 사람을 비교했잖아.', '이번엔 너 안에서 조금 다른 신호가 보여.'],
+  teaserThree: '이 둘이 왜 다른지 조금 더 볼까?',
+  adaptiveIntro: '여기서 하나만 더 물어볼게.',
   coreInsightAsk: '내 관찰이 맞아?',
   coreInsightFooter: '네 확인이 다음 관찰의 기준이 돼. 러비는 계속 배우는 중이야.',
   lens: '이 렌즈들은 내 관찰 기록을 대신하지 않아. 그냥 다른 각도로 보는 거야.',
@@ -167,14 +179,35 @@ export const HISTORY_COPY = {
   ],
 } as const;
 
-/** Add-on — 다른 관측 렌즈 (X1). MBTI·사주·점성술은 메인 기능으로 올리지 않는다. */
+/**
+ * Add-on — 다른 관측 렌즈 (X1). MBTI·사주·점성술은 메인 기능(궁합·Mirror 계산)에 올리지 않는다.
+ * MBTI·Astrology Lens는 v1.1에서 실제로 구현했다 — 자기탐색·대화 소재용이며 관계 성공 예측이 아니다.
+ * 사주 Lens는 정확한 변환에 음력 환산이 필요해 아직 '준비 중'으로 남긴다.
+ */
 export const LENS_COPY = {
-  badge: 'ADD-ON CONCEPT',
+  badge: 'ADD-ON',
   title: '러비의 다른 관측 렌즈',
   caption: '재미로 보는 보조 렌즈예요. 관계 성공 예측이 아니에요.',
   items: [
-    { title: 'MBTI Lens', caption: '대화 소재용 성향 비교' },
-    { title: '사주 Lens', caption: '전통 해석으로 보는 관점' },
-    { title: 'Astrology Lens', caption: '별자리 기반 해석' },
+    { title: 'MBTI Lens', caption: '대화 소재용 성향 비교', ready: true, href: '/lens/mbti' },
+    { title: '사주 Lens', caption: '전통 해석으로 보는 관점', ready: false, href: null },
+    { title: 'Astrology Lens', caption: '별자리 기반 해석', ready: true, href: '/lens/zodiac' },
   ],
+} as const;
+
+/** X1-a MBTI Lens 화면 */
+export const MBTI_LENS_COPY = {
+  title: ['너의 MBTI, 뭐야?'],
+  caption: '대화 소재로 보는 참고용 렌즈야. 궁합 점수에는 반영하지 않아.',
+  pickLabel: '유형 선택',
+  changeLabel: '다시 고르기',
+  emptyNotice: '아직 고르지 않았어. 위에서 하나 골라줘.',
+} as const;
+
+/** X1-b Astrology Lens 화면 */
+export const ZODIAC_LENS_COPY = {
+  title: ['너의 별자리, 뭐야?'],
+  caption: '대화 소재로 보는 참고용 렌즈야. 궁합 점수에는 반영하지 않아.',
+  pickLabel: '별자리 선택',
+  emptyNotice: '아직 고르지 않았어. 위에서 하나 골라줘.',
 } as const;

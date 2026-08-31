@@ -45,24 +45,6 @@ export const TARGET_FIELDS: readonly TargetField[] = [
       { value: 'h', label: '표현 많음' },
     ],
   },
-  {
-    key: 'talk',
-    label: '대화 방식',
-    options: [
-      { value: 'l', label: '말수 적음' },
-      { value: 'm', label: '보통' },
-      { value: 'h', label: '이야기 많음' },
-    ],
-  },
-  {
-    key: 'rhythm',
-    label: '생활 리듬',
-    options: [
-      { value: 'l', label: '집에 있는 편' },
-      { value: 'm', label: '반반' },
-      { value: 'h', label: '밖에 많음' },
-    ],
-  },
 ];
 
 export const TARGET_RELATION_OPTIONS: readonly { value: TargetRelation; label: string }[] = [

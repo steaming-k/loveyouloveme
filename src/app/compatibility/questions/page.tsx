@@ -27,7 +27,7 @@ export default function ConversationQuestionsPage() {
 
   return (
     <ScreenLayout
-      header={<ScreenHeader backHref={ROUTES.frictionSignal} title="대화 질문" />}
+      header={<ScreenHeader backHref={ROUTES.compatibilityWhy} title="대화 질문" />}
       footer={
         <div className="flex flex-col gap-2">
           {savedCount > 0 ? (

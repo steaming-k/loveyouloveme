@@ -9,13 +9,7 @@ import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { EmptyStateView, FillDataRow } from '@/components/common/StateScreens';
-import {
-  ConfidenceLabel,
-  EvidenceList,
-  NoticeBox,
-  PageHeading,
-  Tag,
-} from '@/components/common/primitives';
+import { ConfidenceLabel, NoticeBox, PageHeading, Tag } from '@/components/common/primitives';
 import { useToast } from '@/components/common/ToastProvider';
 import { ProfileLayerStack } from '@/components/profile/ProfileLayerStack';
 import { PRIVACY } from '@/data/copy';
@@ -132,8 +126,6 @@ function ProfileResultView() {
           />
 
           <ProfileLayerStack layers={profile.layers} coreInsight={profile.coreInsight} />
-
-          <EvidenceList items={profile.evidence} />
 
           <div className="flex flex-col gap-2.5 rounded-card border border-line bg-surface p-4">
             <p className="text-caption keep-all text-ink-sub">

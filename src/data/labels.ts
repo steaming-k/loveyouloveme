@@ -83,6 +83,20 @@ export const STATUS_LABEL: Record<RelationshipStatus, string> = {
   ended: '최근 관계가 끝남',
 };
 
+/**
+ * v1은 '솔로 · 연애 경험 있음'과 '관심 가는 사람이 있음' 두 상태에 맞춰져 있다.
+ * 나머지 상태를 선택해도 같은 흐름으로 안내하지만, '상태에 따라 질문이 달라진다'고
+ * 말해놓고 실제로는 그대로인 거짓 약속을 하지 않기 위해 이렇게 명시한다.
+ */
+export const STATUS_SUPPORTED: Record<RelationshipStatus, boolean> = {
+  solo_none: false,
+  solo_exp: true,
+  crush: true,
+  dating: false,
+  married: false,
+  ended: false,
+};
+
 export const TARGET_RELATION_LABEL: Record<TargetRelation, string> = {
   crush: '알아가는 중',
   friend: '친구',

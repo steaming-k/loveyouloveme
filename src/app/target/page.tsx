@@ -104,10 +104,12 @@ export default function TargetPage() {
         <button
           type="button"
           onClick={() => router.push(ROUTES.lens)}
-          className="flex min-h-11 items-center justify-between px-1 text-[12.5px] text-ink-muted"
+          className="flex min-h-11 items-center justify-between px-1 text-[12.5px] text-ink-faint"
         >
-          <span>MBTI · 생년월일</span>
-          <span className="text-ink-faint">추후 렌즈로 제공 →</span>
+          <span>MBTI · 사주 · 별자리 렌즈</span>
+          <span className="text-ink-muted" aria-hidden>
+            →
+          </span>
         </button>
       </div>
     </ScreenLayout>

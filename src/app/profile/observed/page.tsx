@@ -15,6 +15,7 @@ import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { ObservationCard } from '@/components/profile/ObservationCard';
 import { LOVY_LINES, PRIVACY } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
+import { IS_DEMO_AI } from '@/lib/env';
 import { observedEvidenceLabel } from '@/lib/logic/observed';
 import { ROUTES } from '@/lib/routes';
 import { isObservedReviewComplete } from '@/lib/validation';
@@ -112,6 +113,7 @@ export default function ObservedResultPage() {
               <div className="flex flex-wrap items-center gap-1.5">
                 <Tag tone="brand">OBSERVED ME</Tag>
                 <Tag tone="mint">{observedEvidenceLabel(answers.photos)}</Tag>
+                {IS_DEMO_AI ? <Tag tone="neutral">DEMO AI</Tag> : null}
               </div>
             }
           />
@@ -143,6 +145,7 @@ export default function ObservedResultPage() {
           </LovyMessage>
 
           <NoticeBox>{PRIVACY.aiResult}</NoticeBox>
+          {IS_DEMO_AI ? <NoticeBox>{PRIVACY.demoAi}</NoticeBox> : null}
         </div>
       </ScreenLayout>
 

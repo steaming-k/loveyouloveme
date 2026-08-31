@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { Button } from '@/components/common/Button';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
-import { InlineError, NoticeBox, PageHeading } from '@/components/common/primitives';
+import { InlineError, NoticeBox, PageHeading, Tag } from '@/components/common/primitives';
 import { PhotoGrid } from '@/components/profile/PhotoGrid';
 import { PRIVACY } from '@/data/copy';
 import { PHOTO_MAX_COUNT, PHOTO_MIN_COUNT } from '@/data/samplePhotos';
@@ -52,6 +52,13 @@ export default function PhotoInputPage() {
         <PageHeading
           lines={['평소의 네가 잘 보이는 사진을 골라줘.']}
           caption="취미, 관심사, 평소 시간을 보내는 방식을 관찰할게."
+          eyebrow={
+            answers.photos.some((photo) => photo.source === 'sample') ? (
+              <Tag tone="neutral" className="self-start">
+                샘플 데이터로 체험 중
+              </Tag>
+            ) : undefined
+          }
         />
 
         <div className="flex items-center justify-between px-1">

@@ -11,34 +11,28 @@ import type {
   TargetAxisKey,
   TargetProfile,
 } from '@/types';
-import { alignmentOf, toMineValues, toTargetValues } from './values';
+import { similarityOf, toMineValues, toTargetValues } from './values';
 
 /**
  * 동기화율 계산 — Rule Based Demo Logic
  *
  * ⚠️ 이 값은 '연애 성공 확률'이 아니다.
- * 현재 입력된 두 사람의 정보를 기준으로 6개 축의 공통점·차이를 직관화한 지표다.
- * 코드에서도 success / prediction 같은 표현을 쓰지 않는다.
+ * 현재 입력된 두 사람의 정보를 기준으로 4개 축(연락/갈등/개인 시간/애정 표현)의
+ * 공통점·차이를 직관화한 지표다. 코드에서도 success / prediction 같은 표현을 쓰지 않는다.
  *
- * 계산:
- *   축별 alignment = max(0, 5 - |나 - 상대|)
- *   비교 가능한 축의 alignment 평균을 0~1로 정규화한 뒤 40~92 구간에 매핑
- *   → score = 40 + floor(평균비율 × 52)
+ * 계산 (인위적인 하한선을 두지 않는다 — 낮으면 낮게 보인다):
+ *   축별 similarity = max(0, 1 - |나 - 상대| / 4)     // 완전 동일=1, 완전 반대=0
+ *   score = round(mean(비교 가능한 축의 similarity) × 100)
  *
- * 하한을 40으로 둔 이유: 6개 축 중 일부만 다르다고 해서 '0점'처럼 읽히면
- * 사용자가 관계를 단정적으로 해석하게 되기 때문이다.
+ * 예: 완전히 동일 → 100 · 1단계 차이 → 75 · 2단계 차이 → 50 · 3단계 차이 → 25 · 완전 반대 → 0
  */
-export const SCORE_FLOOR = 40;
-export const SCORE_RANGE = 52;
+export function scoreFrom(similarities: readonly number[]): number {
+  const mean = similarities.reduce((sum, value) => sum + value, 0) / similarities.length;
+  return Math.round(mean * 100);
+}
 
 /** 나의 값을 사람이 읽는 문장으로 */
-function minePhraseOf(
-  key: TargetAxisKey,
-  declared: DeclaredPreference,
-  fixedPhrase: string | null,
-): string {
-  if (fixedPhrase) return fixedPhrase;
-
+function minePhraseOf(key: TargetAxisKey, declared: DeclaredPreference): string {
   switch (key) {
     case 'alone':
       return declared.alone === null ? '아직 답하지 않음' : `혼자 있는 시간 ${declared.alone}/5`;
@@ -53,10 +47,10 @@ function minePhraseOf(
   }
 }
 
-function toneOf(alignment: number | null): SignalTone {
-  if (alignment === null) return 'unknown';
-  if (alignment >= 4) return 'good';
-  if (alignment <= 2) return 'watch';
+function toneOf(similarity: number | null): SignalTone {
+  if (similarity === null) return 'unknown';
+  if (similarity >= 0.75) return 'good';
+  if (similarity <= 0.25) return 'watch';
   return 'neutral';
 }
 
@@ -74,32 +68,32 @@ export function buildCompatibility(
   const targetValues = toTargetValues(target);
 
   const dimensions: CompatibilityDimension[] = AXIS_DEFINITIONS.map((def) => {
-    const mineValue = def.mineFixed ?? mineValues[def.key];
+    const mineValue = mineValues[def.key];
     const theirsValue = targetValues[def.key];
-    const alignment = alignmentOf(mineValue, theirsValue);
+    const similarity = similarityOf(mineValue, theirsValue);
     const level = target[def.key];
 
     return {
       key: def.key,
       label: def.label,
       mineValue,
-      minePhrase: minePhraseOf(def.key, declared, def.mineFixedPhrase),
+      minePhrase: minePhraseOf(def.key, declared),
       theirsValue,
       theirsPhrase: level === 'x' ? '모름' : def.theirsPhrase[level],
-      alignment,
-      tone: toneOf(alignment),
+      // UI 게이지(5칸)용으로만 0~5에 매핑한다. 반올림 특성상 완전 반대(similarity=0)만 0칸이 된다.
+      alignment: similarity === null ? null : Math.round(similarity * 5),
+      tone: toneOf(similarity),
       evidence: def.evidence,
       scene: def.scene,
     };
   });
 
   const compared = dimensions.filter((d) => d.alignment !== null);
-  const sum = compared.reduce((acc, d) => acc + (d.alignment ?? 0), 0);
+  const similarities = compared
+    .map((d) => (d.alignment === null ? null : d.alignment / 5))
+    .filter((value): value is number => value !== null);
 
-  const score =
-    compared.length < TARGET_MIN_KNOWN
-      ? null
-      : SCORE_FLOOR + Math.floor((sum / (compared.length * 5)) * SCORE_RANGE);
+  const score = compared.length < TARGET_MIN_KNOWN ? null : scoreFrom(similarities);
 
   return {
     score,
@@ -120,9 +114,7 @@ export function buildCompatibility(
 const QUESTION_FALLBACK_ORDER: TargetAxisKey[] = ['contact', 'conflict', 'alone'];
 export const CONVERSATION_QUESTION_COUNT = 3;
 
-export function buildConversationQuestions(
-  result: CompatibilityResult,
-): ConversationQuestion[] {
+export function buildConversationQuestions(result: CompatibilityResult): ConversationQuestion[] {
   const frictionKeys = result.frictionSignals.map((f) => f.key);
   const keys: TargetAxisKey[] = [...frictionKeys];
 
@@ -146,5 +138,5 @@ export function buildConversationQuestions(
 
 /** 게이지 세그먼트 색 — 색만으로 구분하지 않도록 UI에서 라벨을 함께 노출한다 */
 export function segmentTone(alignment: number | null): SignalTone {
-  return toneOf(alignment);
+  return toneOf(alignment === null ? null : alignment / 5);
 }

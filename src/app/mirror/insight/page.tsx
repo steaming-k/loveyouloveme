@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { BottomSheet } from '@/components/common/BottomSheet';
 import { Button } from '@/components/common/Button';
@@ -31,6 +31,13 @@ export default function CoreInsightPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [draft, setDraft] = useState(answers.coreCorrection);
 
+  useEffect(() => {
+    // 관계 경험이 없거나(스킵) 직접 URL로 들어온 경우 — 볼 게 없으니 홈으로 보낸다.
+    if (!mirror.available || !mirror.core) router.replace(ROUTES.home);
+  }, [mirror.available, mirror.core, router]);
+
+  if (!mirror.core) return null;
+
   const headline = answers.coreCorrection.trim() || mirror.core.headline;
   const edited = answers.coreCorrection.trim().length > 0;
 
@@ -42,6 +49,8 @@ export default function CoreInsightPage() {
           <Button
             onClick={() => {
               markComplete('mirror');
+              // Mirror는 '진입(view)'과 '완료(complete)'를 구분한다 — 완료는 여기, 저장을 눌렀을 때다.
+              trackEvent('relationship_mirror_complete', { axis: mirror.teaser?.axisKey ?? '' });
               showToast('관찰 기록에 저장했어요');
               router.push(ROUTES.home);
             }}
@@ -66,7 +75,7 @@ export default function CoreInsightPage() {
             ) : null}
           </section>
 
-          <EvidenceList items={mirror.core.evidence} label="근거" />
+          <EvidenceList items={mirror.core.evidence} label="이렇게 생각한 이유" />
 
           <LovyMessage pose="question" size={46} tone="lead">
             {LOVY_LINES.coreInsightAsk}
@@ -78,7 +87,7 @@ export default function CoreInsightPage() {
               selected={answers.coreVerdict === 'ok'}
               onClick={() => {
                 setCoreVerdict('ok');
-                trackEvent('mirror_feedback_positive', { axis: mirror.teaser.axisKey });
+                trackEvent('mirror_feedback_positive', { axis: mirror.teaser?.axisKey ?? '' });
                 showToast('다음 관찰의 기준으로 삼을게요');
               }}
             />
@@ -88,7 +97,7 @@ export default function CoreInsightPage() {
               selected={answers.coreVerdict === 'no'}
               onClick={() => {
                 setCoreVerdict('no');
-                trackEvent('mirror_feedback_edit', { axis: mirror.teaser.axisKey });
+                trackEvent('mirror_feedback_edit', { axis: mirror.teaser?.axisKey ?? '' });
                 setDraft(answers.coreCorrection);
                 setEditOpen(true);
               }}

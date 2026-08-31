@@ -161,6 +161,18 @@
     -webkit-text-size-adjust: 100%;
   }
 
+  /* 스크롤은 그대로 동작하되 스크롤바만 안 보이게 한다 — 화면마다 개별 처리하지 않고
+     전역으로 적용해 새 화면을 추가해도 빠지는 곳이 없게 한다. */
+  * {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  *::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
   body {
     background-color: var(--color-canvas);
     color: var(--color-ink);
