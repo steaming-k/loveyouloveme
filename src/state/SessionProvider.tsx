@@ -14,7 +14,9 @@ import {
 import { MAX_PAST_FACTORS } from '@/data/labels';
 import { PHOTO_MAX_COUNT, SAMPLE_PHOTOS, DEMO_PHOTO_IDS } from '@/data/samplePhotos';
 import { clearSessionDedup, trackEvent } from '@/lib/analytics';
+import { createEmptyBirthProfile } from '@/lib/logic/birth';
 import type {
+  BirthProfile,
   ConversationQuestionId,
   DeclaredPreference,
   HardestMoment,
@@ -36,6 +38,9 @@ import { createEmptyAnswers, createSampleAnswers } from './defaultAnswers';
 const STORAGE_KEY = 'lym.session.v1';
 
 type CompletionKey = keyof SessionAnswers['completed'];
+
+/** Birth Profile의 주체 — 나 / 내가 알고 있는 상대 */
+export type BirthSubject = 'self' | 'target';
 
 interface SessionContextValue {
   answers: SessionAnswers;
@@ -77,7 +82,11 @@ interface SessionContextValue {
   setCoreCorrection: (text: string) => void;
 
   setMbti: (value: MbtiType | null) => void;
-  setZodiac: (value: ZodiacSign | null) => void;
+
+  /** Entertainment Lens 공용 출생정보. subject로 나/상대를 구분한다 */
+  setBirthProfile: (subject: BirthSubject, patch: Partial<BirthProfile>) => void;
+  /** 개별 Lens 정보 초기화 (§33) */
+  clearBirthProfile: (subject: BirthSubject) => void;
 
   setShareOption: (key: keyof SessionAnswers['share'], value: boolean) => void;
 
@@ -113,12 +122,24 @@ function deserialize(raw: string): SessionAnswers | null {
     const restoredPhotos = Array.isArray(parsed.photos) ? parsed.photos : [];
     const photos = restoredPhotos.filter((photo) => photo.source !== 'upload');
 
+    // v1.3 이전 세션에는 `zodiac`(직접 고른 별자리)만 있고 birthProfile이 없다.
+    // 그 값으로 생년월일을 임의로 만들어내지 않는다 — legacyZodiac으로 옮겨 표시만 하고,
+    // 새 Birth Profile은 비어 있는 상태로 두어 사용자가 직접 입력하게 안내한다(§42).
+    const legacy = parsed as Partial<SessionAnswers> & { zodiac?: ZodiacSign | null };
+    const legacyZodiac = parsed.legacyZodiac ?? legacy.zodiac ?? null;
+
     return {
       ...base,
       ...parsed,
       declared: { ...base.declared, ...parsed.declared },
       experience: { ...base.experience, ...parsed.experience },
-      target: { ...base.target, ...parsed.target },
+      target: {
+        ...base.target,
+        ...parsed.target,
+        birthProfile: { ...base.target.birthProfile, ...parsed.target?.birthProfile },
+      },
+      birthProfile: { ...base.birthProfile, ...parsed.birthProfile },
+      legacyZodiac,
       share: { ...base.share, ...parsed.share },
       completed: { ...base.completed, ...parsed.completed },
       photos,
@@ -358,9 +379,32 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     trackEvent('self_mbti_select', { mbti: value ?? '' });
   }, []);
 
-  const setZodiac = useCallback((value: ZodiacSign | null) => {
-    setAnswers((prev) => ({ ...prev, zodiac: value }));
-    trackEvent('lens_zodiac_set', { zodiac: value ?? '' });
+  const setBirthProfile = useCallback((subject: BirthSubject, patch: Partial<BirthProfile>) => {
+    setAnswers((prev) => {
+      const current = subject === 'self' ? prev.birthProfile : prev.target.birthProfile;
+      const next = { ...current, ...patch };
+
+      trackEvent('birth_profile_edit', {
+        subject,
+        has_date: Boolean(next.date),
+        has_time: Boolean(next.time),
+        time_unknown: next.timeUnknown,
+        calendar_type: next.calendarType,
+        has_location: Boolean(next.location?.city),
+      });
+
+      return subject === 'self'
+        ? { ...prev, birthProfile: next }
+        : { ...prev, target: { ...prev.target, birthProfile: next } };
+    });
+  }, []);
+
+  const clearBirthProfile = useCallback((subject: BirthSubject) => {
+    setAnswers((prev) =>
+      subject === 'self'
+        ? { ...prev, birthProfile: createEmptyBirthProfile() }
+        : { ...prev, target: { ...prev.target, birthProfile: createEmptyBirthProfile() } },
+    );
   }, []);
 
   const setShareOption = useCallback((key: keyof SessionAnswers['share'], value: boolean) => {
@@ -428,7 +472,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setCoreVerdict,
       setCoreCorrection,
       setMbti,
-      setZodiac,
+      setBirthProfile,
+      clearBirthProfile,
       setShareOption,
       markComplete,
       loadSampleSession,
@@ -462,7 +507,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setCoreVerdict,
       setCoreCorrection,
       setMbti,
-      setZodiac,
+      setBirthProfile,
+      clearBirthProfile,
       setShareOption,
       markComplete,
       loadSampleSession,

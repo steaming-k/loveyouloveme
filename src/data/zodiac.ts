@@ -1,9 +1,11 @@
 /**
- * X1-b Astrology Lens — Add-on / Entertainment
+ * Astrology Lens — Entertainment
  *
- * MBTI Lens(src/data/mbti.ts)와 같은 원칙: 궁합 점수·Relationship Mirror 계산에는
- * 관여하지 않는다. 생년월일 입력 → 별자리 변환 로직을 새로 만들지 않고, MBTI와 동일하게
- * 사용자가 자기 별자리를 직접 고르게 한다(대부분 이미 알고 있는 정보이기 때문).
+ * 궁합 점수·Relationship Mirror·History 계산에는 어디에도 관여하지 않는다.
+ *
+ * v1.4에서 '사용자가 12개 중 직접 고르기' → **생년월일 기반 Simple Sun Sign 계산**으로 바꿨다.
+ * Simple Sun Sign은 Month/Day 경계 규칙만 쓴다 — 출생시각·지역·연도에 따른 태양 위치 계산은
+ * 하지 않으므로 경계일(cusp)에는 실제와 다를 수 있고, 그 사실을 화면에 명시한다.
  */
 
 import type { ZodiacSign } from '@/types';
@@ -22,6 +24,68 @@ export const ZODIAC_SIGNS: readonly ZodiacSign[] = [
   'aquarius',
   'pisces',
 ];
+
+/**
+ * Simple Sun Sign 경계 — `[시작월, 시작일]` 기준으로 그 별자리가 시작된다.
+ * 일반적으로 통용되는 Tropical 날짜 범위이며, 연도별 태양 진입 시각(±1일)은 반영하지 않는다.
+ */
+export const SUN_SIGN_RANGES: readonly { sign: ZodiacSign; from: [number, number] }[] = [
+  { sign: 'capricorn', from: [12, 22] },
+  { sign: 'sagittarius', from: [11, 22] },
+  { sign: 'scorpio', from: [10, 23] },
+  { sign: 'libra', from: [9, 23] },
+  { sign: 'virgo', from: [8, 23] },
+  { sign: 'leo', from: [7, 23] },
+  { sign: 'cancer', from: [6, 21] },
+  { sign: 'gemini', from: [5, 21] },
+  { sign: 'taurus', from: [4, 20] },
+  { sign: 'aries', from: [3, 21] },
+  { sign: 'pisces', from: [2, 19] },
+  { sign: 'aquarius', from: [1, 20] },
+];
+
+/** 4원소 — '비슷하게/다르게 읽힐 수 있는 부분'을 만드는 근거. 우열이 아니다. */
+export type ZodiacElement = 'fire' | 'earth' | 'air' | 'water';
+
+export const ZODIAC_ELEMENT: Record<ZodiacSign, ZodiacElement> = {
+  aries: 'fire',
+  leo: 'fire',
+  sagittarius: 'fire',
+  taurus: 'earth',
+  virgo: 'earth',
+  capricorn: 'earth',
+  gemini: 'air',
+  libra: 'air',
+  aquarius: 'air',
+  cancer: 'water',
+  scorpio: 'water',
+  pisces: 'water',
+};
+
+export const ELEMENT_LABEL: Record<ZodiacElement, string> = {
+  fire: '불',
+  earth: '흙',
+  air: '공기',
+  water: '물',
+};
+
+/** 원소별로 '점성술에서 이야기되는' 관계 태도. 단정하지 않는 톤을 유지한다. */
+export const ELEMENT_NOTE: Record<ZodiacElement, string> = {
+  fire: '마음이 생기면 빠르게 움직이고 표현하는 쪽으로 이야기되기도 해.',
+  earth: '안정과 꾸준함을 먼저 챙기는 쪽으로 이야기되기도 해.',
+  air: '대화와 거리 조절을 중요하게 보는 쪽으로 이야기되기도 해.',
+  water: '감정의 흐름과 정서적 유대를 먼저 보는 쪽으로 이야기되기도 해.',
+};
+
+/** 두 원소가 다를 때 이야기해볼 주제 (양방향 동일하게 쓴다) */
+export const ELEMENT_PAIR_TOPIC: Record<string, string> = {
+  'fire|earth': '속도가 다르게 느껴질 수 있어. 결정을 언제 내리고 싶은지 이야기해봐.',
+  'fire|air': '둘 다 움직임을 좋아하는 쪽으로 이야기되지만, 무엇에 열이 붙는지는 다를 수 있어.',
+  'fire|water': '표현의 온도가 다르게 느껴질 수 있어. 서운함을 어떻게 알리는지 이야기해봐.',
+  'earth|air': '계획과 즉흥성 사이에서 편한 지점이 다를 수 있어.',
+  'earth|water': '둘 다 안정을 중요하게 보는 쪽으로 이야기되지만, 안정의 기준이 다를 수 있어.',
+  'air|water': '거리감과 밀착 사이에서 편한 지점이 다를 수 있어.',
+};
 
 interface ZodiacNote {
   label: string;

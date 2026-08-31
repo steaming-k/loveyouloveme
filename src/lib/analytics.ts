@@ -57,6 +57,17 @@ export const ANALYTICS_EVENTS = [
   'both_mbti_available',
   'mbti_lens_view',
   'mbti_conversation_question_view',
+  // Entertainment Lens (사주 · Astrology) — Primary KPI에는 넣지 않는다(§38).
+  // Supporting: Birth Info Completion Rate · Entertainment Lens View Rate ·
+  //             Lens → Conversation Question Save Rate
+  'birth_profile_edit',
+  'birth_profile_complete',
+  'saju_lens_view',
+  'astrology_lens_view',
+  'entertainment_lens_entry_click',
+  'entertainment_lens_birth_missing',
+  'lens_conversation_question_save',
+  /** @deprecated v1.4 — 별자리 직접 선택이 생년월일 기반 계산으로 대체됐다 */
   'lens_zodiac_set',
   // Relationship History (Retention) — Primary KPI에는 넣지 않는다(§33).
   // Retention 지표: History Save Rate  = relationship_history_entry_created

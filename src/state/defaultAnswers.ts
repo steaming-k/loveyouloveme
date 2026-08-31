@@ -1,4 +1,5 @@
 import { SAMPLE_PHOTOS } from '@/data/samplePhotos';
+import { createEmptyBirthProfile } from '@/lib/logic/birth';
 import type { SessionAnswers } from '@/types';
 
 /** 빈 세션 — 모든 질문은 미응답으로 시작한다. Validation이 실제로 동작해야 하기 때문이다. */
@@ -23,12 +24,14 @@ export function createEmptyAnswers(): SessionAnswers {
       alone: 'x',
       affection: 'x',
       mbti: null,
+      birthProfile: createEmptyBirthProfile(),
     },
     savedQuestions: [],
     coreVerdict: null,
     coreCorrection: '',
     mbti: null,
-    zodiac: null,
+    birthProfile: createEmptyBirthProfile(),
+    legacyZodiac: null,
     share: { includeTargetInfo: false, includeDimensionScores: true },
     completed: {
       onboarding: false,
@@ -77,8 +80,10 @@ export function createSampleAnswers(): SessionAnswers {
       conflict: 'l',
       alone: 'h',
       affection: 'm',
-      // MBTI는 비워둔다 — 동기화율 78 데모 시나리오 숫자를 그대로 유지하기 위해서다.
+      // MBTI·출생정보는 비워둔다 — 동기화율 데모 시나리오 숫자를 그대로 유지하고,
+      // Entertainment Lens는 사용자가 직접 입력했을 때만 켜지는 걸 보여주기 위해서다.
       mbti: null,
+      birthProfile: createEmptyBirthProfile(),
     },
     completed: {
       onboarding: true,

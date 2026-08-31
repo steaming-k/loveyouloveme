@@ -222,7 +222,7 @@ export const HISTORY_STATE_LABEL = {
  */
 export const LENS_COPY = {
   badge: 'LENS',
-  title: '러비의 다른 관측 렌즈',
+  title: '러비의 관측 렌즈',
   caption: '전부 참고용이에요. 궁합 점수는 실제 관계 신호로만 계산해요.',
   items: [
     {
@@ -236,17 +236,94 @@ export const LENS_COPY = {
       title: '사주 Lens',
       caption: '전통 해석으로 보는 관점 · 재미로만 봐요',
       group: 'ENTERTAINMENT' as const,
-      ready: false,
-      href: null,
+      ready: true,
+      href: '/lens/saju',
     },
     {
       title: 'Astrology Lens',
-      caption: '별자리 기반 해석 · 재미로만 봐요',
+      caption: '별자리 관점으로 보는 해석 · 재미로만 봐요',
       group: 'ENTERTAINMENT' as const,
       ready: true,
-      href: '/lens/zodiac',
+      href: '/lens/astrology',
     },
   ],
+} as const;
+
+/**
+ * X2 Birth Profile 입력 — 사주·Astrology **공용**.
+ * 같은 정보를 렌즈마다 다시 묻지 않기 위해 한 곳에서만 받는다.
+ */
+export const BIRTH_COPY = {
+  badge: 'ENTERTAINMENT',
+  title: ['태어난 순간의 정보'],
+  caption: '이 렌즈들은 태어난 순간의 정보를 사용해. 사주와 별자리가 같이 써.',
+  lovyIntro: '지구인들은 태어난 순간으로도 관계를 해석하더라. 재밌네, 이 렌즈로도 한번 볼까?',
+  selfLabel: '나',
+  targetLabel: '상대',
+  targetHint: '네가 알고 있는 상대 정보를 입력해줘. 모르면 비워둬도 돼.',
+  dateLabel: '생년월일',
+  timeLabel: '출생 시간',
+  timeUnknownLabel: '태어난 시간을 몰라',
+  calendarLabel: '달력',
+  locationLabel: '출생 지역 (선택)',
+  locationHint: '별자리 상세 계산이나 사주 지역 보정에 쓰여요. 없어도 기본 결과는 볼 수 있어요.',
+  privacy:
+    '출생정보는 이 렌즈 분석에만 사용해요. 현재 이 기기에만 저장되고, 언제든 삭제할 수 있어요.',
+  clearSelf: '내 출생정보 삭제',
+  clearTarget: '상대 출생정보 삭제',
+  errors: {
+    format: '`YYYY.MM.DD` 형식으로 알려줘.',
+    invalid: '없는 날짜인 것 같아. 다시 확인해줄래?',
+    future: '아직 오지 않은 날짜야.',
+    tooOld: '1900년 이후로 알려줘.',
+    timeFormat: '시간은 `HH:MM` 형식으로 알려줘.',
+    timeInvalid: '없는 시간인 것 같아.',
+  },
+} as const;
+
+/** X1-c 사주 Lens */
+export const SAJU_COPY = {
+  badge: 'ENTERTAINMENT',
+  title: ['사주 렌즈'],
+  caption: '전통 해석 체계로 우리 둘을 한번 겹쳐보는 참고 렌즈야.',
+  notPrediction:
+    '사주는 전통적인 해석 체계야. 실제 관계가 잘될 확률을 예측하는 결과로는 사용하지 않을게.',
+  selfCta: '내 사주 보기',
+  coupleCta: '우리 사주 궁합 보기',
+  engineOffTitle: '아직 계산 엔진이 연결되지 않았어',
+  engineOffBody:
+    '정확한 사주 명식 계산에는 절입 시각·진태양시·지역 보정이 필요해. 없는 결과를 내가 채워 넣진 않을게.',
+} as const;
+
+/** X1-b Astrology Lens */
+export const ASTROLOGY_COPY = {
+  badge: 'ENTERTAINMENT',
+  title: ['별자리 렌즈'],
+  caption: '생년월일로 태양궁을 보고, 관계에서 이야기해볼 주제를 찾아볼게.',
+  selfLabel: '나의 태양궁',
+  coupleCta: '우리 별자리 함께 보기',
+  similarLabel: '비슷하게 읽힐 수 있는 부분',
+  differentLabel: '다르게 나타날 수 있는 부분',
+  promptLabel: '이야기해볼 주제',
+  disclaimer: '점성술에서는 이렇게 이야기되기도 해. 실제 너희가 그런지는 둘이 이야기해봐.',
+} as const;
+
+/** 두 Entertainment Lens 공통 — 출생정보가 부족할 때 (§26) */
+export const LENS_MISSING_COPY = {
+  self: '이번엔 네 정보가 필요해.',
+  target: '상대 출생정보가 조금 더 필요해.',
+  both: '두 지구인의 출생정보부터 알려줘.',
+  cta: '출생정보 입력하기',
+} as const;
+
+/** S22a 다른 렌즈 허브 */
+export const LENS_HUB_COPY = {
+  title: ['우리 둘을 보는', '다른 렌즈'],
+  caption: '동기화율은 실제 관계 신호로만 계산해. 아래 렌즈들은 참고로 겹쳐보는 관점이야.',
+  coreLabel: 'CORE · 실제 관계 신호',
+  coreCaption: '연락 · 갈등 해결 · 개인 시간 · 애정 표현',
+  supportingLabel: 'SUPPORTING',
+  entertainmentLabel: 'ENTERTAINMENT · 재미로 보기',
 } as const;
 
 /** X1-a MBTI Lens — Compatibility Lens Detail 화면 */

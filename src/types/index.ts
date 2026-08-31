@@ -69,6 +69,124 @@ export interface MbtiLensReport {
   differentCount: number;
 }
 
+/* ------------------------------------------- Birth Profile (v1.4, 공용) */
+
+/**
+ * 사주·Astrology **두 Entertainment Lens가 공용으로 쓰는** 출생정보.
+ *
+ * ⚠️ CORE 분석(동기화율·Mirror·History)에는 어디에도 쓰이지 않는다. Main Funnel의 필수 질문도
+ * 아니다 — Entertainment 기능 때문에 전체 입력 부담을 늘리지 않기 위해 Lens Context에서만 받는다.
+ *
+ * 같은 정보를 사주에서 또, Astrology에서 또 묻지 않는다.
+ */
+export type CalendarType = 'solar' | 'lunar';
+
+export interface BirthLocation {
+  country?: string;
+  city?: string;
+  timezone?: string;
+}
+
+export interface BirthProfile {
+  /** `YYYY-MM-DD`. 없으면 어떤 Lens도 계산하지 않는다 */
+  date: string | null;
+  /** `HH:MM`. 없어도 Sun Sign은 가능하고, Natal/시주는 불가능하다 */
+  time: string | null;
+  /** 사용자가 '태어난 시간을 몰라'를 명시적으로 선택했는지 (미입력과 구분) */
+  timeUnknown: boolean;
+  calendarType: CalendarType;
+  location: BirthLocation | null;
+}
+
+/** Lens가 지금 어디까지 계산할 수 있는지 */
+export interface LensAvailability {
+  /** 나 혼자 보는 Lens가 가능한지 */
+  self: boolean;
+  /** 두 사람 Lens가 가능한지 */
+  couple: boolean;
+  /** 무엇이 없어서 막혔는지 — 화면 안내 분기에 쓴다 */
+  missing: 'none' | 'self' | 'target' | 'both';
+}
+
+export type EntertainmentLensType = 'saju' | 'astrology';
+
+/** Lens가 만들어내는 '이야기해볼 주제'. 점수가 아니라 대화 소재다 */
+export interface ConversationPrompt {
+  id: string;
+  text: string;
+}
+
+/* --------------------------------------------------- 사주 Lens (v1.4) */
+
+/**
+ * ⚠️ 사주 명식 계산은 날짜 변환만으로 끝나는 문제가 아니다. 검증된 계산 엔진이 없는 동안에는
+ * `available: false`로 두고 **실제 명식을 계산한 것처럼 보여주지 않는다**(§8~§10).
+ * 숫자 더하기·띠·랜덤 테이블로 명식을 만들어내지 않는다.
+ */
+export interface SajuInterpretation {
+  /** 전통 해석에서 보는 주요 성향 */
+  traits: string[];
+  /** 관계에서 참고해볼 주제 */
+  relationshipTopics: string[];
+  /** 주의해서 볼 해석 */
+  cautions: string[];
+}
+
+export interface SajuObservation {
+  /** '비슷하게 읽히는 부분' / '다르게 읽힐 수 있는 부분' */
+  kind: 'similar' | 'different';
+  label: string;
+  text: string;
+}
+
+export interface SajuProfileResult {
+  available: boolean;
+  pillars?: {
+    year: string;
+    month: string;
+    day: string;
+    /** 출생시간이 없으면 시주를 만들지 않는다 */
+    hour?: string;
+  };
+  interpretation?: SajuInterpretation;
+  /** 지금 이 결과가 못 하는 것 — 항상 사용자에게 보여준다 */
+  limitations: string[];
+}
+
+export interface SajuCompatibilityResult {
+  available: boolean;
+  observations: SajuObservation[];
+  prompts: ConversationPrompt[];
+  limitations: string[];
+}
+
+/* ----------------------------------------------- Astrology Lens (v1.4) */
+
+/**
+ * v1.4 범위는 **Simple Sun Sign**이다(생년월일 → 태양궁, Month/Day 경계 규칙).
+ * Full Natal Chart(Moon/Rising/Aspect/House/Synastry)는 출생시각·지역·연도에 따른 태양·행성
+ * 위치 계산이 필요하므로 이번 버전에서 만들지 않는다 — 가짜로 구현하지 않는다(§17/§18).
+ */
+export interface AstrologyProfileResult {
+  available: boolean;
+  sunSign: ZodiacSign | null;
+  sunSignLabel: string | null;
+  trait: string | null;
+  prompts: ConversationPrompt[];
+  /** Moon/Rising 등은 v1.4에서 계산하지 않는다는 사실을 담는다 */
+  limitations: string[];
+}
+
+export interface AstrologyCompatibilityResult {
+  available: boolean;
+  mine: { sign: ZodiacSign; label: string } | null;
+  theirs: { sign: ZodiacSign; label: string } | null;
+  similar: string[];
+  different: string[];
+  prompts: ConversationPrompt[];
+  limitations: string[];
+}
+
 /* --------------------------------------------------------- Astrology Lens */
 
 export type ZodiacSign =
@@ -216,6 +334,11 @@ export interface TargetProfile {
    * 나(answers.mbti)와 둘 다 있을 때만 참고용 MbtiLensReport를 만든다.
    */
   mbti: MbtiType | null;
+  /**
+   * 상대의 출생정보 — **사용자가 알고 있는 만큼만** 입력한 값이다(§34).
+   * 상대가 직접 입력한 것처럼 표현하지 않고, 결과에도 '네가 입력한 정보 기준'을 고지한다.
+   */
+  birthProfile: BirthProfile;
 }
 
 export type TargetAxisKey = 'contact' | 'conflict' | 'alone' | 'affection';
@@ -503,8 +626,17 @@ export interface SessionAnswers {
    * 동기화율·Relationship Mirror 계산에는 관여하지 않는다.
    */
   mbti: MbtiType | null;
-  /** X1-b Astrology Lens — 순수 엔터테인먼트. 궁합·Mirror 계산에 쓰지 않는다 */
-  zodiac: ZodiacSign | null;
+  /**
+   * Entertainment Lens(사주·Astrology) 공용 출생정보. Optional이며 Main Funnel을 막지 않는다.
+   * 동기화율·Mirror·History 계산에 어디에도 쓰이지 않는다.
+   */
+  birthProfile: BirthProfile;
+  /**
+   * v1.3 이전에 사용자가 직접 고른 별자리. v1.4에서 생년월일 기반 계산으로 바뀌었으므로
+   * 새로 쓰지는 않지만, 기존 세션이 깨지지 않게 읽기 전용으로 남겨둔다 —
+   * 이 값으로 생년월일을 **임의로 만들어내지 않는다**(§42 Migration).
+   */
+  legacyZodiac: ZodiacSign | null;
   share: {
     includeTargetInfo: boolean;
     includeDimensionScores: boolean;

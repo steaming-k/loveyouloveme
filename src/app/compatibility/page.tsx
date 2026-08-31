@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
@@ -12,8 +12,10 @@ import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { COMPATIBILITY_COPY, LOVY_LINES, STATE_COPY } from '@/data/copy';
 import { trackEvent, trackOnce } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
+import { lensAvailability } from '@/lib/logic/birth';
 import { ROUTES } from '@/lib/routes';
 import { useCompatibility, useMbtiLens } from '@/hooks/useAnalysis';
+import { useSession } from '@/state/SessionProvider';
 
 /**
  * S21 Compatibility Hero
@@ -34,6 +36,14 @@ function CompatibilityView() {
   const router = useRouter();
   const result = useCompatibility();
   const mbtiLens = useMbtiLens();
+  const { answers } = useSession();
+  const [today] = useState(() => new Date());
+  // 두 사람 출생정보가 모두 있을 때만 '다른 렌즈' 진입점을 보여준다.
+  const entertainmentReady = lensAvailability(
+    answers.birthProfile,
+    answers.target.birthProfile,
+    today,
+  ).couple;
 
   useEffect(() => {
     if (result.score === null) return;
@@ -92,7 +102,9 @@ function CompatibilityView() {
         </p>
 
         {/* MBTI는 점수에 들어가지 않는다. '렌즈가 있다'는 사실만 작게 알리고 상세로 넘긴다.
-            한쪽이라도 MBTI가 없으면 이 Tag 자체를 숨긴다. */}
+            한쪽이라도 MBTI가 없으면 이 Tag 자체를 숨긴다.
+            사주·Astrology는 여기서 각각 뱃지를 달지 않는다 — 점수 주변을 뱃지 천지로 만들지
+            않기 위해, 준비된 게 있으면 '다른 렌즈 N개' 한 줄로만 묶어 허브로 보낸다. */}
         {mbtiLens ? (
           <button
             type="button"
@@ -104,6 +116,19 @@ function CompatibilityView() {
             </span>
             <span className="text-ink-faint">·</span>
             <span>MBTI 렌즈 있음</span>
+            <span className="text-ink-faint" aria-hidden>
+              →
+            </span>
+          </button>
+        ) : null}
+
+        {entertainmentReady ? (
+          <button
+            type="button"
+            onClick={() => router.push(ROUTES.compatibilityLenses)}
+            className="mx-auto flex min-h-11 items-center gap-1.5 text-[12px] text-ink-muted"
+          >
+            다른 궁합 렌즈 2개 보기
             <span className="text-ink-faint" aria-hidden>
               →
             </span>

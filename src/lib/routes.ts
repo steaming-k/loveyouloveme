@@ -34,7 +34,14 @@ export const ROUTES = {
   historyEntry: (id: string) => `/history/${id}`,
   lens: '/lens',
   lensMbti: '/lens/mbti',
+  /** Entertainment Lens 공용 출생정보 입력 (v1.4) */
+  lensBirth: '/lens/birth',
+  lensSaju: '/lens/saju',
+  lensAstrology: '/lens/astrology',
+  /** v1.3 Route. 기존 링크가 깨지지 않도록 유지하고 /lens/astrology로 보낸다 */
   lensZodiac: '/lens/zodiac',
+  /** 궁합 결과에서 '우리 둘을 보는 다른 렌즈'를 한 곳에 모은 허브 (v1.4) */
+  compatibilityLenses: '/compatibility/lenses',
 } as const;
 
 /** 데스크톱 프로토타입 패널의 화면 점프 목록 (와이어프레임 1b 보드와 동일 순서) */
@@ -100,5 +107,14 @@ export const SCREEN_BOARD: readonly ScreenBoardEntry[] = [
   { id: 'sh2', short: 'SH2', name: 'Mirror 공유 카드', group: 'Share', href: ROUTES.shareMirror },
   { id: 'x1', short: 'X1', name: '러비의 다른 렌즈', group: 'Add-on', href: ROUTES.lens },
   { id: 'x1a', short: 'X1a', name: 'MBTI 렌즈', group: 'Add-on', href: ROUTES.lensMbti },
-  { id: 'x1b', short: 'X1b', name: 'Astrology 렌즈', group: 'Add-on', href: ROUTES.lensZodiac },
+  { id: 'x1b', short: 'X1b', name: 'Astrology 렌즈', group: 'Add-on', href: ROUTES.lensAstrology },
+  { id: 'x1c', short: 'X1c', name: '사주 렌즈', group: 'Add-on', href: ROUTES.lensSaju },
+  { id: 'x2', short: 'X2', name: '출생정보 입력', group: 'Add-on', href: ROUTES.lensBirth },
+  {
+    id: 's22a',
+    short: 'S22a',
+    name: '다른 렌즈 허브',
+    group: 'Add-on',
+    href: ROUTES.compatibilityLenses,
+  },
 ];

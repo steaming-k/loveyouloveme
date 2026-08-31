@@ -103,6 +103,29 @@ export default function CompatibilityDetailPage() {
           </section>
         ) : null}
 
+        {/*
+          ⑤ ENTERTAINMENT LENSES — 위계상 가장 마지막. 카드가 아니라 한 줄 진입점으로만 두어
+          실제 관계 신호 카드보다 시각적으로 약하게 유지한다.
+        */}
+        <section className="flex flex-col gap-2">
+          <SectionLabel>OTHER LENSES · 재미로 보기</SectionLabel>
+          <button
+            type="button"
+            onClick={() => router.push(ROUTES.compatibilityLenses)}
+            className="flex min-h-11 items-center justify-between gap-3 rounded-row border border-dashed border-line-strong bg-canvas-warm px-4 py-3.5 text-left"
+          >
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-[12.5px] font-medium">사주 · 별자리 관점으로 우리 둘 보기</span>
+              <span className="text-[11px] keep-all text-ink-faint">
+                동기화율에는 반영하지 않는 참고 렌즈예요
+              </span>
+            </span>
+            <span className="flex-none text-ink-muted" aria-hidden>
+              →
+            </span>
+          </button>
+        </section>
+
         <div className="flex flex-col gap-2">
           <button
             type="button"
