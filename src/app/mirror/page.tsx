@@ -9,11 +9,12 @@ import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { EmptyStateView, FillDataRow } from '@/components/common/StateScreens';
 import { PageHeading, Tag } from '@/components/common/primitives';
+import { RepeatedSignalNotice } from '@/components/history/PastObservationNote';
 import { MirrorComparisonRow, MirrorLegend } from '@/components/mirror/MirrorComparisonRow';
 import { trackEvent } from '@/lib/analytics';
 import { ROUTES } from '@/lib/routes';
 import { isLowData } from '@/lib/validation';
-import { useMirror } from '@/hooks/useAnalysis';
+import { useMirror, useRepeatedSignals } from '@/hooks/useAnalysis';
 import { useSession } from '@/state/SessionProvider';
 
 /**
@@ -38,6 +39,7 @@ function MirrorView() {
   const router = useRouter();
   const { answers } = useSession();
   const mirror = useMirror();
+  const repeated = useRepeatedSignals();
 
   const lowData = isLowData(answers);
 
@@ -132,6 +134,13 @@ function MirrorView() {
             ))}
           </ul>
         </section>
+
+        {/*
+          §22 Past Observation — 현재 Mirror 판정 **아래**에 온다.
+          현재 판정은 위에서 현재 데이터만으로 이미 끝났고, 이건 Supporting Evidence다.
+          과거 기록만으로 없는 Gap을 만들지 않는다.
+        */}
+        {repeated.length > 0 ? <RepeatedSignalNotice signals={repeated} /> : null}
       </div>
     </ScreenLayout>
   );

@@ -58,6 +58,17 @@ export const ANALYTICS_EVENTS = [
   'mbti_lens_view',
   'mbti_conversation_question_view',
   'lens_zodiac_set',
+  // Relationship History (Retention) — Primary KPI에는 넣지 않는다(§33).
+  // Retention 지표: History Save Rate  = relationship_history_entry_created
+  //                                     / relationship_mirror_complete
+  //                 Repeat Analysis Rate = 두 번째 Mirror 생성 / 첫 Mirror 완료
+  'relationship_history_entry_created',
+  'relationship_history_view',
+  'relationship_history_entry_view',
+  'relationship_history_change_report_view',
+  'relationship_history_repeated_signal_view',
+  'relationship_history_entry_delete',
+  'history_based_insight_view',
 ] as const;
 
 export type AnalyticsEvent = (typeof ANALYTICS_EVENTS)[number];

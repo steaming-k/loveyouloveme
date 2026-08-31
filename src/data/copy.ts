@@ -162,21 +162,53 @@ export const HOME_COPY = {
 } as const;
 
 /** Future — Relationship History (F1/F2). 연애 일기처럼 만들지 않는다. */
+/**
+ * F1/F2 Relationship History — v1.3에서 정적 mock을 제거하고 실제 저장 데이터로 바꿨다.
+ * 연애 일기가 아니라 '내 기준이 어떻게 움직였는지'의 기록이다.
+ */
 export const HISTORY_COPY = {
-  badge: 'FUTURE CONCEPT',
-  title: ['관계를 거치며', '네 기준은 이렇게 움직였어.'],
-  caption: '누구와 몇 번 만났는지는 기록하지 않아요.',
-  timeline: [
-    { date: '2026.03', text: '"연락은 별로 중요하지 않아."', kind: 'declared' as const },
-    { date: '2026.06', text: '관계 경험 · 갈등 후 연결이 끊기는 상황', kind: 'experience' as const },
-    { date: '2026.09 · 기준 변화', text: '"연락보다 안정적인 연결감이 중요함"', kind: 'shift' as const },
-    { date: '2027.02', text: '새로운 관계 · 과거의 너까지 반영한 분석', kind: 'future' as const },
-  ],
-  changes: [
-    { label: '연결감', tag: '상승', tone: 'up' as const, body: '세 관계 모두에서 연결이 끊기는 순간을 어려움으로 선택했어.' },
-    { label: '취미 공유', tag: '하락', tone: 'down' as const, body: '첫 관계에서는 중요했지만 이후에는 기준에서 빠졌어.' },
-    { label: '개인 시간', tag: '유지', tone: 'keep' as const, body: '모든 관계에서 꾸준히 중요하게 유지됐어.' },
-  ],
+  badge: 'RELATIONSHIP HISTORY',
+  title: ['러비가', '기억하고 있는 나'],
+  caption: '누구와 몇 번 만났는지는 기록하지 않아요. 네 기준이 어떻게 움직였는지만 남겨요.',
+
+  empty: {
+    title: ['아직 너를', '오래 관찰하진 못했어.'],
+    body: '첫 Relationship Mirror를 저장하면 여기에 변화가 쌓이기 시작해.',
+    cta: '나 관찰 시작하기',
+  },
+
+  /** 저장 직후 Change Moment (§8/§9) */
+  saved: {
+    firstTitle: ['첫 관찰 기록을', '저장했어.'],
+    firstBody: '아직 비교할 과거의 너는 없네. 다음에 다시 관찰하면 그때 달라진 것도 알려줄게.',
+    firstCta: '내 기록 보기',
+    againTitle: ['지난 관찰과', '비교할 수 있게 됐어.'],
+    againBody: '어느 쪽이 맞다고 판정하진 않을게. 달라진 지점만 보여줄게.',
+    againCta: '뭐가 달라졌는지 보기',
+    duplicateTitle: ['이미 저장된', '관찰이야.'],
+    duplicateBody: '같은 분석은 기록에 한 번만 남겨. 새 관찰을 쌓으려면 답변을 바꿔서 다시 관측해봐.',
+  },
+
+  reportTitle: ['예전의 너와', '지금의 너'],
+  reportSingle: '아직 비교할 과거 기록이 하나뿐이야. 다음 관찰이 쌓이면 변화를 알려줄게.',
+
+  /** §21 반복 신호 — '너는 항상 이래' 같은 표현은 쓰지 않는다 */
+  repeatedTitle: '이 신호… 처음 보는 게 아닌데.',
+  repeatedCaption: '이 기준은 이전 관찰에서도 비슷한 신호가 있었어.',
+
+  pastLabel: 'PAST',
+  nowLabel: 'NOW',
+
+  deleteEntryTitle: '이 관찰 기록을 삭제할까?',
+  deleteEntryBody: '삭제하면 이전 변화 비교에서도 빠져. 되돌릴 수 없어요.',
+} as const;
+
+/** History Change State 화면 라벨. 좋음·나쁨이 아니라 변화의 종류만 말한다. */
+export const HISTORY_STATE_LABEL = {
+  STABLE: '유지',
+  SHIFT: '변화',
+  NEW: '처음',
+  INSUFFICIENT: '정보 부족',
 } as const;
 
 /**

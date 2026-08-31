@@ -8,10 +8,11 @@ import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { NoticeBox, PageHeading, SectionLabel } from '@/components/common/primitives';
 import { MbtiLensPanel } from '@/components/compatibility/MbtiLensPanel';
 import { SignalCard } from '@/components/compatibility/SignalCard';
+import { PastObservationNote } from '@/components/history/PastObservationNote';
 import { PRIVACY } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { ROUTES } from '@/lib/routes';
-import { useCompatibility, useMbtiLens } from '@/hooks/useAnalysis';
+import { useCompatibility, useMbtiLens, usePastObservation } from '@/hooks/useAnalysis';
 
 /**
  * S22 Compatibility Detail (구 Why 전체 아코디언 화면을 대체)
@@ -30,6 +31,8 @@ export default function CompatibilityDetailPage() {
 
   const topGood = result.goodSignals[0];
   const topFriction = result.frictionSignals[0];
+  // 가장 관찰이 필요한 축에 대해서만 과거 기록을 참고로 붙인다 (§24)
+  const pastObservation = usePastObservation(topFriction?.key ?? null);
 
   return (
     <ScreenLayout
@@ -71,7 +74,18 @@ export default function CompatibilityDetailPage() {
           </section>
         ) : null}
 
-        {/* Supporting Lens — 반드시 실제 관계 신호 뒤에 온다(정보 위계 §14). */}
+        {/*
+          정보 위계(§25): ① 실제 관계 신호 → ② 근거/상황 → ③ Past Observation → ④ MBTI Lens.
+          History도 MBTI도 실제 관계 신호보다 위에 오지 않는다. 궁합 점수에는 둘 다 미반영이다.
+        */}
+        {pastObservation ? (
+          <section className="flex flex-col gap-2.5">
+            <SectionLabel>과거 관찰 · 참고</SectionLabel>
+            <PastObservationNote text={pastObservation.text} />
+          </section>
+        ) : null}
+
+        {/* Supporting Lens — 반드시 실제 관계 신호·과거 관찰 뒤에 온다. */}
         {mbtiLens ? (
           <section className="flex flex-col gap-2.5">
             <SectionLabel>MBTI 렌즈 · 참고</SectionLabel>

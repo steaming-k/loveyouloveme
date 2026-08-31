@@ -358,6 +358,129 @@ export interface RelationshipProfile {
   confidence: Confidence;
 }
 
+/* ------------------------------------- Relationship History (F1/F2, Retention) */
+
+/**
+ * Relationship History는 '누구와 언제 만났는지'를 기록하지 않는다.
+ * 관계를 거치며 **내 기준·반응·Gap·Core Insight가 어떻게 변해왔는지**만 축적한다.
+ * (Relationship Diary ❌ / Personal Relationship Memory ⭕)
+ *
+ * SessionAnswers(현재 진행 중인 분석)와 완전히 분리된 영구 데이터다 —
+ * 저장소도 `lym.history.v1`로 따로 쓴다.
+ */
+
+/** 축별 변화 판정. '성장'이나 '좋아짐'을 판정하지 않는다 — 변화의 유무와 방향만 말한다. */
+export type HistoryChangeState =
+  /** 과거에도 같은 상태로 나타났다 */
+  | 'STABLE'
+  /** 과거와 다른 상태로 나타났다 */
+  | 'SHIFT'
+  /** 이번에 처음 나타난 축이다 */
+  | 'NEW'
+  /** 비교할 기록이 부족하다 (판정하지 않는다) */
+  | 'INSUFFICIENT';
+
+export interface HistoryMirrorInsightSnapshot {
+  axis: MirrorAxisKey;
+  /** UNKNOWN은 애초에 MirrorReport.insights에 없으므로 저장 대상도 아니다 */
+  state: Exclude<MirrorState, 'UNKNOWN'>;
+  declaredText: string;
+  relationshipSignal: string;
+}
+
+export interface RelationshipHistoryEntry {
+  id: string;
+  /**
+   * 분석 입력(status + declared + experience)에서 파생한 지문.
+   * 같은 분석을 두 번 저장하면 새 항목이 쌓이지 않고 갱신된다 — 저장 반복이
+   * '관계 횟수'처럼 부풀려지는 것을 막기 위해서다.
+   */
+  analysisId: string;
+  createdAt: string;
+
+  context: {
+    relationshipStatus: RelationshipStatus | null;
+    targetRelation: TargetRelation | null;
+  };
+
+  /**
+   * ⚠️ MBTI는 저장하지만 **변화를 해석하지 않는다.**
+   * INFP → ENFP가 되어도 '관계를 통해 외향적으로 변했다' 같은 Insight를 만들지 않는다.
+   * 순수 Profile Snapshot metadata다.
+   */
+  profileSnapshot: {
+    mbti: MbtiType | null;
+  };
+
+  declaredSnapshot: DeclaredPreference;
+
+  relationshipEvidence: {
+    important: PastFactor[];
+    hardest: HardestMoment | null;
+    selfGap: SelfGapAnswer | null;
+    adaptive: AdaptiveAnswer | null;
+  };
+
+  mirrorSnapshot: {
+    insights: HistoryMirrorInsightSnapshot[];
+    focusAxis: MirrorAxisKey | null;
+  };
+
+  coreInsight: {
+    original: string;
+    userCorrection: string | null;
+    verdict: Verdict;
+  };
+
+  /** 기존 Confidence와 같은 의미 — 'AI의 확신'이 아니라 '확보된 입력 근거량' */
+  evidenceCoverage: Confidence;
+}
+
+/* ---------------------------------- History 비교 결과 (F2 변화 리포트 / S27 반복 신호) */
+
+export interface HistoryAxisChange {
+  axis: MirrorAxisKey;
+  label: string;
+  state: HistoryChangeState;
+  /** PAST — 이전 기록에서의 Mirror 상태 */
+  previousState: Exclude<MirrorState, 'UNKNOWN'> | null;
+  /** NOW — 현재(또는 최신) 기록에서의 Mirror 상태 */
+  currentState: Exclude<MirrorState, 'UNKNOWN'> | null;
+  /** PAST 쪽 표현. Relationship Evidence는 숫자로 만들지 않는다 — 문장으로만 */
+  previousText: string | null;
+  currentText: string | null;
+  /**
+   * 직접 1~5로 수집한 축(contact/alone)만 값 비교가 가능하다.
+   * 나머지 축은 null — 선택형 답변을 증감으로 말하지 않기 위해서다.
+   */
+  declaredDelta: { past: number; now: number } | null;
+  /** 러비의 관찰 한 줄. '성장했다'류 판정을 만들지 않는다 */
+  note: string;
+}
+
+/** §21 — 같은 축에서 GAP/CHANGE 신호가 되풀이된 기록. MATCH는 반복 신호로 보지 않는다. */
+export interface RepeatedRelationshipSignal {
+  axis: MirrorAxisKey;
+  label: string;
+  occurrences: number;
+  entryIds: string[];
+  states: Array<'GAP' | 'CHANGE'>;
+}
+
+export interface HistoryReport {
+  entryCount: number;
+  /** 변화 비교가 가능한지 — 기록 2개 이상이어야 한다 (1개로 가짜 변화를 만들지 않는다) */
+  comparable: boolean;
+  changes: HistoryAxisChange[];
+  /** 가장 의미 있는 변화 1개 (SHIFT 우선 → NEW) */
+  headline: HistoryAxisChange | null;
+  shiftCount: number;
+  stableCount: number;
+  newCount: number;
+  /** 러비 한 줄 요약 */
+  summary: string;
+}
+
 /* ------------------------------------------------------------------ 세션 */
 
 export interface SessionAnswers {

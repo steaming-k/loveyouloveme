@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next';
 import { ToastProvider } from '@/components/common/ToastProvider';
 import { AppShell } from '@/components/shell/AppShell';
 import { MotionProvider } from '@/components/shell/MotionProvider';
+import { HistoryProvider } from '@/state/HistoryProvider';
 import { SessionProvider } from '@/state/SessionProvider';
 import '@/styles/globals.css';
 
@@ -27,9 +28,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <MotionProvider>
           <SessionProvider>
-            <ToastProvider>
-              <AppShell>{children}</AppShell>
-            </ToastProvider>
+            <HistoryProvider>
+              <ToastProvider>
+                <AppShell>{children}</AppShell>
+              </ToastProvider>
+            </HistoryProvider>
           </SessionProvider>
         </MotionProvider>
       </body>

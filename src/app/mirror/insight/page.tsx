@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 
 import { BottomSheet } from '@/components/common/BottomSheet';
 import { Button } from '@/components/common/Button';
+import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { EvidenceList } from '@/components/common/primitives';
@@ -13,8 +14,11 @@ import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { LOVY_LINES } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
+import { createEntryId } from '@/lib/historyRepository';
+import { buildHistoryEntry } from '@/lib/logic/history';
 import { ROUTES } from '@/lib/routes';
-import { useMirror } from '@/hooks/useAnalysis';
+import { useMirror, usePastObservation, useRelationshipProfile } from '@/hooks/useAnalysis';
+import { useHistory } from '@/state/HistoryProvider';
 import { useSession } from '@/state/SessionProvider';
 
 /**
@@ -23,10 +27,23 @@ import { useSession } from '@/state/SessionProvider';
  * 사용자가 고치면 관찰 기록(세션 state)에 반영된다.
  */
 export default function CoreInsightPage() {
+  // localStorage 복원 전에는 Mirror가 '입력 없음'으로 계산돼 홈으로 잘못 리다이렉트된다.
+  return (
+    <HydrationGate>
+      <CoreInsightView />
+    </HydrationGate>
+  );
+}
+
+function CoreInsightView() {
   const router = useRouter();
   const { showToast } = useToast();
   const { answers, setCoreVerdict, setCoreCorrection, markComplete } = useSession();
   const mirror = useMirror();
+  const profile = useRelationshipProfile();
+  const { saveEntry, entries } = useHistory();
+  const focusAxis = mirror.teaser?.axisKey ?? null;
+  const pastObservation = usePastObservation(focusAxis);
 
   const [editOpen, setEditOpen] = useState(false);
   const [draft, setDraft] = useState(answers.coreCorrection);
@@ -36,27 +53,77 @@ export default function CoreInsightPage() {
     if (!mirror.available || !mirror.core) router.replace(ROUTES.home);
   }, [mirror.available, mirror.core, router]);
 
+  useEffect(() => {
+    if (!pastObservation || !focusAxis) return;
+    trackEvent('history_based_insight_view', {
+      axis: focusAxis,
+      previous_occurrences: pastObservation.occurrences,
+    });
+  }, [pastObservation, focusAxis]);
+
   if (!mirror.core) return null;
 
   const headline = answers.coreCorrection.trim() || mirror.core.headline;
   const edited = answers.coreCorrection.trim().length > 0;
+
+  /**
+   * §23 — 과거 관찰을 근거 목록에 04번으로 덧붙인다.
+   * Past Observation 때문에 현재 Core Insight를 바꾸지는 않는다. 현재 Evidence가 우선이다.
+   */
+  const evidence = pastObservation
+    ? [
+        ...mirror.core.evidence,
+        {
+          n: String(mirror.core.evidence.length + 1).padStart(2, '0'),
+          text: pastObservation.text,
+        },
+      ]
+    : mirror.core.evidence;
+
+  /** §6 저장 순서: 세션 읽기 → Snapshot 생성 → Entry 생성 → 저장 → 이벤트 → 이동 */
+  const handleSave = () => {
+    markComplete('mirror');
+
+    const entry = buildHistoryEntry({
+      answers,
+      mirror,
+      coverage: profile.confidence,
+      id: createEntryId(),
+      createdAt: new Date().toISOString(),
+    });
+
+    // Mirror를 만들 수 없으면 History에 쌓지 않는다 (Edge A/B) — 여기 도달하면 보통 통과한다.
+    if (!entry) {
+      trackEvent('relationship_mirror_complete', { axis: focusAxis ?? '' });
+      showToast('관찰 기록에 저장했어요');
+      router.push(ROUTES.home);
+      return;
+    }
+
+    const { entry: saved, created } = saveEntry(entry);
+
+    if (created) {
+      trackEvent('relationship_history_entry_created', {
+        entry_id: saved.id,
+        focus_axis: saved.mirrorSnapshot.focusAxis ?? '',
+        gap_count: mirror.gapCount,
+        history_count: entries.length + 1,
+      });
+    }
+    trackEvent('relationship_mirror_complete', { axis: focusAxis ?? '' });
+
+    showToast(created ? '관찰 기록에 저장했어요' : '이미 저장된 관찰이에요');
+    // 저장 직후 Change Moment로 보낸다 (§8 첫 기록 / §9 두 번째부터)
+    router.push(ROUTES.historySaved);
+  };
 
   return (
     <>
       <ScreenLayout
         header={<ScreenHeader backHref={ROUTES.mirror} title="핵심 관찰" />}
         footer={
-          <Button
-            onClick={() => {
-              markComplete('mirror');
-              // Mirror는 '진입(view)'과 '완료(complete)'를 구분한다 — 완료는 여기, 저장을 눌렀을 때다.
-              trackEvent('relationship_mirror_complete', { axis: mirror.teaser?.axisKey ?? '' });
-              showToast('관찰 기록에 저장했어요');
-              router.push(ROUTES.home);
-            }}
-          >
-            내 관찰 기록에 저장
-          </Button>
+          // Mirror는 '진입(view)'과 '완료(complete)'를 구분한다 — 완료는 여기, 저장을 눌렀을 때다.
+          <Button onClick={handleSave}>내 관찰 기록에 저장</Button>
         }
         bodyClassName="pt-1.5 pb-4"
       >
@@ -75,7 +142,7 @@ export default function CoreInsightPage() {
             ) : null}
           </section>
 
-          <EvidenceList items={mirror.core.evidence} label="이렇게 생각한 이유" />
+          <EvidenceList items={evidence} label="이렇게 생각한 이유" />
 
           <LovyMessage pose="question" size={46} tone="lead">
             {LOVY_LINES.coreInsightAsk}

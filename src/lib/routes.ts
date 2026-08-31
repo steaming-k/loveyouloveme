@@ -29,6 +29,9 @@ export const ROUTES = {
   shareMirror: '/share/mirror',
   history: '/history',
   historyReport: '/history/report',
+  /** Core Insight 저장 직후 Change Moment (§8/§9) */
+  historySaved: '/history/saved',
+  historyEntry: (id: string) => `/history/${id}`,
   lens: '/lens',
   lensMbti: '/lens/mbti',
   lensZodiac: '/lens/zodiac',
@@ -89,8 +92,10 @@ export const SCREEN_BOARD: readonly ScreenBoardEntry[] = [
   },
   { id: 'e3', short: 'E3', name: '확신 낮음 (궁합)', group: 'Edge', href: ROUTES.compatibility },
   { id: 'e4', short: 'E4', name: '연애 경험 없음', group: 'Edge', href: ROUTES.pastNone },
-  { id: 'f1', short: 'F1', name: 'Relationship History', group: 'Future', href: ROUTES.history },
-  { id: 'f2', short: 'F2', name: '변화 리포트', group: 'Future', href: ROUTES.historyReport },
+  // F1/F2는 v1.3에서 실제 기능이 됐다 — 정적 mock이 아니라 저장된 History를 읽는다.
+  { id: 'f1', short: 'F1', name: 'Relationship History', group: 'Key', href: ROUTES.history },
+  { id: 'f2', short: 'F2', name: '변화 리포트', group: 'Key', href: ROUTES.historyReport },
+  { id: 'f3', short: 'F3', name: '저장 직후 Change Moment', group: 'Key', href: ROUTES.historySaved },
   { id: 'sh1', short: 'SH1', name: '궁합 공유 카드', group: 'Share', href: ROUTES.shareCompatibility },
   { id: 'sh2', short: 'SH2', name: 'Mirror 공유 카드', group: 'Share', href: ROUTES.shareMirror },
   { id: 'x1', short: 'X1', name: '러비의 다른 렌즈', group: 'Add-on', href: ROUTES.lens },

@@ -2,14 +2,24 @@
 
 import { useMemo } from 'react';
 
+import {
+  analysisFingerprint,
+  buildHistoryReport,
+  findRepeatedRelationshipSignals,
+  pastObservationFor,
+} from '@/lib/logic/history';
 import { aiSelectors } from '@/services/aiService';
+import { useHistory } from '@/state/HistoryProvider';
 import { useSession } from '@/state/SessionProvider';
 import type {
   CompatibilityResult,
   ConversationQuestion,
+  HistoryReport,
   MbtiLensReport,
+  MirrorAxisKey,
   MirrorReport,
   RelationshipProfile,
+  RepeatedRelationshipSignal,
 } from '@/types';
 
 /**
@@ -60,6 +70,44 @@ export function useMirror(): MirrorReport {
     () => aiSelectors.mirror(answers.declared, answers.experience),
     [answers.declared, answers.experience],
   );
+}
+
+/**
+ * 현재 분석에 재사용할 Past Observation (§22/§23/§24).
+ *
+ * ⚠️ 이 값은 현재 Mirror/Compatibility **판정을 바꾸지 않는다.** Supporting Evidence로만 쓴다.
+ * 현재 분석이 이미 History에 저장돼 있으면 그 항목은 과거에서 제외한다 — 자기 자신을
+ * '과거의 반복'으로 세지 않기 위해서다.
+ */
+export function usePastObservation(axis: MirrorAxisKey | null | undefined): {
+  occurrences: number;
+  text: string;
+} | null {
+  const { answers } = useSession();
+  const { entries } = useHistory();
+
+  return useMemo(() => {
+    if (!axis) return null;
+    const currentAnalysisId = analysisFingerprint(
+      answers.status,
+      answers.declared,
+      answers.experience,
+    );
+    const self = entries.find((entry) => entry.analysisId === currentAnalysisId);
+    return pastObservationFor(entries, axis, self?.id);
+  }, [axis, entries, answers.status, answers.declared, answers.experience]);
+}
+
+/** 저장된 기록에서 되풀이된 GAP/CHANGE 신호 (§21) */
+export function useRepeatedSignals(): RepeatedRelationshipSignal[] {
+  const { entries } = useHistory();
+  return useMemo(() => findRepeatedRelationshipSignals(entries), [entries]);
+}
+
+/** 이전 기록 vs 최신 기록 변화 리포트 (F2) */
+export function useHistoryReport(): HistoryReport {
+  const { entries } = useHistory();
+  return useMemo(() => buildHistoryReport(entries), [entries]);
 }
 
 export function useRelationshipProfile(): RelationshipProfile {

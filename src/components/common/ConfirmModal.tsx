@@ -1,7 +1,7 @@
 'use client';
 
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 
 import { Button } from './Button';
 
@@ -13,6 +13,8 @@ interface ConfirmModalProps {
   cancelLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
+  /** 확인 전에 함께 정할 옵션(예: 관찰 기록도 삭제할지) */
+  children?: ReactNode;
 }
 
 /** 되돌리기 어려운 동작(분석 제외·삭제) 확인 모달 */
@@ -24,6 +26,7 @@ export function ConfirmModal({
   cancelLabel = '취소',
   onConfirm,
   onCancel,
+  children,
 }: ConfirmModalProps) {
   const reduceMotion = useReducedMotion();
 
@@ -67,6 +70,7 @@ export function ConfirmModal({
             {description ? (
               <p className="text-caption keep-all text-ink-sub">{description}</p>
             ) : null}
+            {children}
             <div className="flex gap-2">
               <Button variant="secondary" className="h-[46px] flex-1" onClick={onCancel}>
                 {cancelLabel}

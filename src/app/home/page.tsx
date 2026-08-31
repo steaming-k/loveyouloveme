@@ -11,7 +11,8 @@ import { useToast } from '@/components/common/ToastProvider';
 import { Lovy } from '@/components/lovy/Lovy';
 import { BRAND, HOME_COPY } from '@/data/copy';
 import { ROUTES } from '@/lib/routes';
-import { useHomeHighlights, useMirror } from '@/hooks/useAnalysis';
+import { useHistoryReport, useHomeHighlights, useMirror } from '@/hooks/useAnalysis';
+import { useHistory } from '@/state/HistoryProvider';
 import { useSession } from '@/state/SessionProvider';
 
 /**
@@ -24,7 +25,42 @@ export default function HomePage() {
   const { showToast } = useToast();
   const mirror = useMirror();
   const highlights = useHomeHighlights();
+  const { entries, latest, clearAll: clearHistory } = useHistory();
+  const report = useHistoryReport();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  /**
+   * §30은 '전체 데이터 삭제 = Session + History'를 요구한다. 다만 축적된 관찰 기록을
+   * 되돌릴 수 없게 지우는 건 무게가 다르므로, 기본값을 켠 상태로 두고 선택만 남겨뒀다.
+   */
+  const [alsoDeleteHistory, setAlsoDeleteHistory] = useState(true);
+
+  /** §27 — History 0개 / 1개 / 2개 이상 */
+  const historyCta = (() => {
+    if (entries.length === 0) {
+      return {
+        title: '아직 저장된 관찰이 없어.',
+        preview: 'Relationship Mirror를 저장하면 여기에 쌓여.',
+        action: '시작',
+        href: ROUTES.mirror,
+      };
+    }
+    if (entries.length === 1) {
+      return {
+        title: '러비가 기억하고 있는 관찰 1개',
+        preview: latest?.coreInsight.userCorrection?.trim() || latest?.coreInsight.original || '',
+        action: '보기',
+        href: ROUTES.history,
+      };
+    }
+    return {
+      title: report.headline
+        ? '지난 관찰과 달라진 신호가 있어.'
+        : `러비가 기억하고 있는 관찰 ${entries.length}개`,
+      preview: report.headline?.note ?? report.summary,
+      action: '보기',
+      href: report.headline ? ROUTES.historyReport : ROUTES.history,
+    };
+  })();
 
   const summary =
     answers.coreCorrection.trim() ||
@@ -90,20 +126,25 @@ export default function HomePage() {
             </ul>
           </section>
 
+          {/* §27 — History 상태를 실제로 보여준다. COMING SOON은 제거됐다. */}
           <button
             type="button"
-            onClick={() => router.push(ROUTES.history)}
-            className="flex items-center justify-between gap-3 rounded-row border border-dashed border-line-strong bg-canvas-warm p-[15px] text-left"
+            onClick={() => router.push(historyCta.href)}
+            className="flex items-center justify-between gap-3 rounded-row border border-line bg-surface p-[15px] text-left active:bg-sunken"
           >
-            <span className="text-[13.5px] leading-relaxed keep-all text-[#555]">
-              {HOME_COPY.futureTeaser.map((line) => (
-                <span key={line} className="block">
-                  {line}
+            <span className="flex min-w-0 flex-col gap-1">
+              <span className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
+                RELATIONSHIP HISTORY
+              </span>
+              <span className="text-[13.5px] font-medium keep-all">{historyCta.title}</span>
+              {historyCta.preview ? (
+                <span className="text-[12px] keep-all leading-relaxed text-ink-sub">
+                  {historyCta.preview}
                 </span>
-              ))}
+              ) : null}
             </span>
-            <span className="flex-none rounded-[6px] bg-chip px-2 py-1.5 text-label text-ink-muted">
-              COMING SOON
+            <span className="flex-none rounded-[6px] bg-brand-tint px-2 py-1.5 text-label font-semibold text-brand-pressed">
+              {historyCta.action}
             </span>
           </button>
 
@@ -134,11 +175,33 @@ export default function HomePage() {
         onCancel={() => setDeleteOpen(false)}
         onConfirm={() => {
           deleteAllData();
+          if (alsoDeleteHistory) clearHistory();
           setDeleteOpen(false);
-          showToast('관찰 데이터를 모두 삭제했어요');
+          showToast(
+            alsoDeleteHistory
+              ? '관찰 데이터와 기록을 모두 삭제했어요'
+              : '현재 관찰 데이터를 삭제했어요',
+          );
           router.push(ROUTES.splash);
         }}
-      />
+      >
+        {entries.length > 0 ? (
+          <label className="mt-1 flex items-start gap-2.5 rounded-chip bg-sunken px-3.5 py-3 text-left">
+            <input
+              type="checkbox"
+              checked={alsoDeleteHistory}
+              onChange={(event) => setAlsoDeleteHistory(event.target.checked)}
+              className="mt-0.5 h-4 w-4 flex-none accent-[#8F74F0]"
+            />
+            <span className="text-meta keep-all leading-relaxed text-ink-sub">
+              저장된 관찰 기록 {entries.length}개도 함께 삭제
+              <span className="block text-ink-faint">
+                끄면 지금 진행 중인 답변만 지우고, 쌓인 기록은 남겨둬요.
+              </span>
+            </span>
+          </label>
+        ) : null}
+      </ConfirmModal>
     </div>
   );
 }
