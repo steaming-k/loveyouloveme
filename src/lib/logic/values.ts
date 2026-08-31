@@ -1,5 +1,11 @@
 import { AFFECTION_VALUE, CONFLICT_VALUE, HOBBY_VALUE, TARGET_LEVEL_VALUE } from '@/data/labels';
-import type { DeclaredPreference, MirrorAxisKey, TargetAxisKey, TargetProfile } from '@/types';
+import type {
+  DeclaredPreference,
+  MbtiType,
+  MirrorAxisKey,
+  TargetAxisKey,
+  TargetProfile,
+} from '@/types';
 
 /**
  * 답변 → 1~5 스케일 변환
@@ -60,4 +66,17 @@ export const DECLARED_HAS_NATIVE_SCALE: Record<MirrorAxisKey, boolean> = {
 export function similarityOf(mine: number | null, theirs: number | null): number | null {
   if (mine === null || theirs === null) return null;
   return Math.max(0, 1 - Math.abs(mine - theirs) / 4);
+}
+
+/**
+ * MBTI 4글자(E/I·S/N·T/F·J/P) 중 같은 자리가 몇 개인지 비율로 본다.
+ * ⚠️ 이건 성향 상성 이론이나 심리 검사가 아니다 — 입력한 4글자가 얼마나 겹치는지만 보는
+ * 단순 규칙이다. 궁합 점수와 같은 원칙(수집한 값만, 인위적 하한선 없이)을 따른다.
+ */
+export function mbtiMatchCount(mine: MbtiType, theirs: MbtiType): number {
+  return [0, 1, 2, 3].filter((i) => mine[i] === theirs[i]).length;
+}
+
+export function mbtiSimilarity(mine: MbtiType, theirs: MbtiType): number {
+  return mbtiMatchCount(mine, theirs) / 4;
 }

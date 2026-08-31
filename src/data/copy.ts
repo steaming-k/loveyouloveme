@@ -180,25 +180,31 @@ export const HISTORY_COPY = {
 } as const;
 
 /**
- * Add-on — 다른 관측 렌즈 (X1). MBTI·사주·점성술은 메인 기능(궁합·Mirror 계산)에 올리지 않는다.
- * MBTI·Astrology Lens는 v1.1에서 실제로 구현했다 — 자기탐색·대화 소재용이며 관계 성공 예측이 아니다.
- * 사주 Lens는 정확한 변환에 음력 환산이 필요해 아직 '준비 중'으로 남긴다.
+ * Add-on — 다른 관측 렌즈 (X1). 사주·점성술은 메인 기능(궁합 계산)에 올리지 않는다 — 재미로만 본다.
+ * MBTI Lens는 예외다: 나(mbti)와 상대(target.mbti)를 둘 다 입력하면 동기화율에 추가 축으로
+ * 반영된다 (lib/logic/compatibility.ts의 buildMbtiDimension). 사주 Lens는 정확한 변환에
+ * 음력 환산이 필요해 아직 '준비 중'으로 남긴다.
  */
 export const LENS_COPY = {
   badge: 'ADD-ON',
   title: '러비의 다른 관측 렌즈',
-  caption: '재미로 보는 보조 렌즈예요. 관계 성공 예측이 아니에요.',
+  caption: '다른 각도에서 보는 참고용 렌즈예요.',
   items: [
-    { title: 'MBTI Lens', caption: '대화 소재용 성향 비교', ready: true, href: '/lens/mbti' },
-    { title: '사주 Lens', caption: '전통 해석으로 보는 관점', ready: false, href: null },
-    { title: 'Astrology Lens', caption: '별자리 기반 해석', ready: true, href: '/lens/zodiac' },
+    {
+      title: 'MBTI Lens',
+      caption: '너와 상대 MBTI를 둘 다 넣으면 동기화율에도 반영돼요',
+      ready: true,
+      href: '/lens/mbti',
+    },
+    { title: '사주 Lens', caption: '전통 해석으로 보는 관점 · 재미로만 봐요', ready: false, href: null },
+    { title: 'Astrology Lens', caption: '별자리 기반 해석 · 재미로만 봐요', ready: true, href: '/lens/zodiac' },
   ],
 } as const;
 
 /** X1-a MBTI Lens 화면 */
 export const MBTI_LENS_COPY = {
   title: ['너의 MBTI, 뭐야?'],
-  caption: '대화 소재로 보는 참고용 렌즈야. 궁합 점수에는 반영하지 않아.',
+  caption: '이건 네 MBTI야. 상대 MBTI는 상대 정보 입력 화면에서 따로 넣을 수 있어.',
   pickLabel: '유형 선택',
   changeLabel: '다시 고르기',
   emptyNotice: '아직 고르지 않았어. 위에서 하나 골라줘.',

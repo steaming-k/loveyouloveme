@@ -8,8 +8,9 @@ import { ChoiceChip } from '@/components/common/ChoiceChip';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { SegmentedField } from '@/components/common/SegmentedField';
-import { InlineError, NoticeBox, PageHeading } from '@/components/common/primitives';
+import { InlineError, NoticeBox, PageHeading, Tag } from '@/components/common/primitives';
 import { PRIVACY } from '@/data/copy';
+import { MBTI_TYPES } from '@/data/mbti';
 import { TARGET_FIELDS, TARGET_MIN_KNOWN, TARGET_RELATION_OPTIONS } from '@/data/targetFields';
 import { trackEvent } from '@/lib/analytics';
 import { ROUTES } from '@/lib/routes';
@@ -20,11 +21,15 @@ import { useSession } from '@/state/SessionProvider';
  * S19 상대 정보 입력
  * 모르는 항목은 '모름'으로 남길 수 있고, 그 항목은 동기화율에 반영하지 않는다.
  * 상대의 실제 마음이나 성격을 판정하지 않는다는 안내를 입력 지점에 둔다.
+ *
+ * 상대 MBTI는 이 4개 항목과 별개의 선택 입력이다 — 아는 항목 카운트(known/4)에는 넣지 않는다.
+ * 내 MBTI(/lens/mbti)와 상대 MBTI를 둘 다 입력했을 때만 동기화율에 추가 축으로 반영된다.
  */
 export default function TargetPage() {
   const router = useRouter();
-  const { answers, setTargetRelation, setTargetLevel } = useSession();
+  const { answers, setTargetRelation, setTargetLevel, setTargetMbti } = useSession();
   const [error, setError] = useState<string | null>(null);
+  const [mbtiOpen, setMbtiOpen] = useState(false);
 
   const known = targetKnownCount(answers.target);
 
@@ -99,6 +104,37 @@ export default function TargetPage() {
           <span className="text-ink-faint">모름은 점수에서 제외돼요</span>
         </div>
 
+        <div className="flex flex-col gap-2.5 rounded-[16px] border border-line bg-surface p-4">
+          <button
+            type="button"
+            onClick={() => setMbtiOpen((prev) => !prev)}
+            className="flex min-h-11 items-center justify-between text-left"
+          >
+            <span className="flex flex-col gap-0.5">
+              <span className="text-caption font-semibold text-[#555]">상대 MBTI (선택)</span>
+              <span className="text-[11.5px] text-ink-faint">
+                {answers.mbti ? '네 MBTI와 함께 동기화율에 소폭 반영돼요' : '내 MBTI도 넣어야 반영돼요 · 렌즈에서 입력'}
+              </span>
+            </span>
+            <Tag tone={answers.target.mbti ? 'brand' : 'neutral'}>
+              {answers.target.mbti ?? (mbtiOpen ? '접기' : '펼치기')}
+            </Tag>
+          </button>
+
+          {mbtiOpen ? (
+            <div className="flex flex-wrap gap-2 pt-1" role="radiogroup" aria-label="상대 MBTI">
+              {MBTI_TYPES.map((type) => (
+                <ChoiceChip
+                  key={type}
+                  label={type}
+                  selected={answers.target.mbti === type}
+                  onToggle={() => setTargetMbti(answers.target.mbti === type ? null : type)}
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
+
         <NoticeBox>{PRIVACY.target}</NoticeBox>
 
         <button
@@ -106,7 +142,7 @@ export default function TargetPage() {
           onClick={() => router.push(ROUTES.lens)}
           className="flex min-h-11 items-center justify-between px-1 text-[12.5px] text-ink-faint"
         >
-          <span>MBTI · 사주 · 별자리 렌즈</span>
+          <span>내 MBTI · 사주 · 별자리 렌즈</span>
           <span className="text-ink-muted" aria-hidden>
             →
           </span>

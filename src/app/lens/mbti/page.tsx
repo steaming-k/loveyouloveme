@@ -14,15 +14,18 @@ import { ROUTES } from '@/lib/routes';
 import { useSession } from '@/state/SessionProvider';
 
 /**
- * X1-a MBTI Lens — Add-on / Entertainment
- * 궁합 점수·Relationship Mirror 계산에는 관여하지 않는다. 유형을 고르면 대화 소재용
- * 한 줄 관찰과 질문 하나만 보여준다.
+ * X1-a MBTI Lens — Add-on
+ * 다른 Add-on 렌즈와 달리 궁합 점수 계산에 실제로 관여한다: 이 화면에서 고른 내 MBTI와
+ * /target(S19)에서 넣는 상대 MBTI를 둘 다 입력하면 동기화율에 추가 축으로 반영된다
+ * (lib/logic/compatibility.ts buildMbtiDimension). 유형을 고르면 그 외에 대화 소재용
+ * 한 줄 관찰과 질문 하나도 보여준다.
  */
 export default function MbtiLensPage() {
   const router = useRouter();
   const { answers, setMbti } = useSession();
 
   const note = answers.mbti ? MBTI_NOTES[answers.mbti] : null;
+  const bothSet = Boolean(answers.mbti && answers.target.mbti);
 
   return (
     <ScreenLayout
@@ -56,7 +59,11 @@ export default function MbtiLensPage() {
           <NoticeBox>{MBTI_LENS_COPY.emptyNotice}</NoticeBox>
         )}
 
-        <NoticeBox>재미로 보는 참고용 렌즈예요. 궁합 점수·Relationship Mirror에는 반영하지 않아요.</NoticeBox>
+        <NoticeBox>
+          {bothSet
+            ? `상대 MBTI(${answers.target.mbti})도 입력돼 있어서 동기화율에 소폭 반영됐어요. 성향 궁합 이론이 아니라 겹치는 글자 수만 보는 참고용 지표예요.`
+            : '상대 MBTI까지 입력하면 동기화율에 소폭 반영돼요. 그전까진 이 화면만으로는 점수에 영향이 없어요.'}
+        </NoticeBox>
       </div>
     </ScreenLayout>
   );

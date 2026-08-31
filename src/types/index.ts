@@ -176,6 +176,8 @@ export interface TargetProfile {
   conflict: TargetLevel;
   alone: TargetLevel;
   affection: TargetLevel;
+  /** 선택 입력. 나(mbti)와 상대(target.mbti)가 둘 다 있을 때만 동기화율에 별도 축으로 반영한다. */
+  mbti: MbtiType | null;
 }
 
 export type TargetAxisKey = 'contact' | 'conflict' | 'alone' | 'affection';
@@ -185,9 +187,10 @@ export type TargetAxisKey = 'contact' | 'conflict' | 'alone' | 'affection';
 export type SignalTone = 'good' | 'neutral' | 'watch' | 'unknown';
 
 export interface CompatibilityDimension {
-  key: TargetAxisKey;
+  /** 'mbti'는 4축 시스템(TargetAxisKey) 밖의 선택적 추가 신호 — 둘 다 입력했을 때만 나타난다 */
+  key: TargetAxisKey | 'mbti';
   label: string;
-  /** 나의 값 1~5. 미응답이면 null */
+  /** 나의 값 1~5. 미응답이면 null. MBTI처럼 척도가 아닌 값은 항상 null이고 minePhrase만 쓴다 */
   mineValue: number | null;
   minePhrase: string;
   /** 상대의 값 1~5. '모름'이면 null */

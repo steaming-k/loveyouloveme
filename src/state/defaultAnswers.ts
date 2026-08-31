@@ -22,6 +22,7 @@ export function createEmptyAnswers(): SessionAnswers {
       conflict: 'x',
       alone: 'x',
       affection: 'x',
+      mbti: null,
     },
     savedQuestions: [],
     coreVerdict: null,
@@ -76,6 +77,8 @@ export function createSampleAnswers(): SessionAnswers {
       conflict: 'l',
       alone: 'h',
       affection: 'm',
+      // MBTI는 비워둔다 — 동기화율 78 데모 시나리오 숫자를 그대로 유지하기 위해서다.
+      mbti: null,
     },
     completed: {
       onboarding: true,

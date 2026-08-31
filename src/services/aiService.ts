@@ -6,6 +6,7 @@ import type {
   CompatibilityResult,
   ConversationQuestion,
   DeclaredPreference,
+  MbtiType,
   MirrorReport,
   ObservationFeedback,
   ObservedTrait,
@@ -58,8 +59,9 @@ export async function generateRelationshipProfile(input: {
 export async function calculateCompatibility(input: {
   declared: DeclaredPreference;
   target: TargetProfile;
+  mbti?: MbtiType | null;
 }): Promise<CompatibilityResult> {
-  return withLatency(buildCompatibility(input.declared, input.target));
+  return withLatency(buildCompatibility(input.declared, input.target, input.mbti ?? null));
 }
 
 export async function generateConversationQuestions(

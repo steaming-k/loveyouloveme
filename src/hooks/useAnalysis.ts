@@ -22,8 +22,8 @@ import type {
 export function useCompatibility(): CompatibilityResult {
   const { answers } = useSession();
   return useMemo(
-    () => aiSelectors.compatibility(answers.declared, answers.target),
-    [answers.declared, answers.target],
+    () => aiSelectors.compatibility(answers.declared, answers.target, answers.mbti),
+    [answers.declared, answers.target, answers.mbti],
   );
 }
 

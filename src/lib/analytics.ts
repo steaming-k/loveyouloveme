@@ -51,6 +51,7 @@ export const ANALYTICS_EVENTS = [
   'session_reset',
   'lens_mbti_set',
   'lens_zodiac_set',
+  'target_mbti_set',
 ] as const;
 
 export type AnalyticsEvent = (typeof ANALYTICS_EVENTS)[number];

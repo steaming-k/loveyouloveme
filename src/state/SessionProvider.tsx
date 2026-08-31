@@ -68,6 +68,7 @@ interface SessionContextValue {
 
   setTargetRelation: (value: TargetRelation) => void;
   setTargetLevel: (key: TargetAxisKey, value: TargetLevel) => void;
+  setTargetMbti: (value: MbtiType | null) => void;
 
   toggleSavedQuestion: (id: TargetAxisKey) => boolean;
 
@@ -325,6 +326,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setAnswers((prev) => ({ ...prev, target: { ...prev.target, [key]: value } }));
   }, []);
 
+  const setTargetMbti = useCallback((value: MbtiType | null) => {
+    setAnswers((prev) => ({ ...prev, target: { ...prev.target, mbti: value } }));
+    trackEvent('target_mbti_set', { mbti: value ?? '' });
+  }, []);
+
   /** @returns 저장된 상태인지 (true = 방금 저장, false = 저장 해제) */
   const toggleSavedQuestion = useCallback((id: TargetAxisKey) => {
     let saved = true;
@@ -416,6 +422,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       resumeExperience,
       setTargetRelation,
       setTargetLevel,
+      setTargetMbti,
       toggleSavedQuestion,
       setCoreVerdict,
       setCoreCorrection,
@@ -449,6 +456,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       resumeExperience,
       setTargetRelation,
       setTargetLevel,
+      setTargetMbti,
       toggleSavedQuestion,
       setCoreVerdict,
       setCoreCorrection,
