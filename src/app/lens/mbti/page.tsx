@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
@@ -10,10 +10,13 @@ import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { FillDataRow } from '@/components/common/StateScreens';
 import { NoticeBox, PageHeading, SectionLabel, Tag } from '@/components/common/primitives';
 import { MbtiLensPanel } from '@/components/compatibility/MbtiLensPanel';
+import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { MBTI_LENS_COPY } from '@/data/copy';
 import { MBTI_SELF_NOTE } from '@/data/mbti';
 import { trackEvent } from '@/lib/analytics';
+import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
+import { premiumFeatureState } from '@/services/premiumService';
 import { ROUTES } from '@/lib/routes';
 import { useMbtiLens } from '@/hooks/useAnalysis';
 import { useSession } from '@/state/SessionProvider';
@@ -39,6 +42,7 @@ function MbtiLensView() {
   const router = useRouter();
   const { answers } = useSession();
   const report = useMbtiLens();
+  const [variant] = useState(() => resolvePriceVariant());
 
   useEffect(() => {
     if (!report) return;
@@ -108,6 +112,13 @@ function MbtiLensView() {
             onClick={() => router.push(ROUTES.target)}
           />
         </section>
+
+        {/* MBTI를 강한 유료 Feature로 전면에 두지 않는다 — 상세 안의 한 항목일 뿐(§19) */}
+        <PremiumEntryRow
+          feature={premiumFeatureState('mbti_detail', resolvePrice(variant), {
+            mbtiAvailable: Boolean(report),
+          })}
+        />
 
         <NoticeBox>{MBTI_LENS_COPY.scoreNotice}</NoticeBox>
       </div>

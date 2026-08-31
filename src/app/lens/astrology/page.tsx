@@ -16,9 +16,12 @@ import {
   LimitationList,
 } from '@/components/lens/LensStateBlocks';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
+import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
 import { ASTROLOGY_COPY } from '@/data/copy';
 import { ZODIAC_NOTES } from '@/data/zodiac';
 import { trackEvent } from '@/lib/analytics';
+import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
+import { premiumFeatureState } from '@/services/premiumService';
 import { lensAvailability } from '@/lib/logic/birth';
 import { ROUTES } from '@/lib/routes';
 import {
@@ -46,6 +49,7 @@ function AstrologyLensView() {
   const router = useRouter();
   const { answers } = useSession();
   const [today] = useState(() => new Date());
+  const [variant] = useState(() => resolvePriceVariant());
 
   const mine = answers.birthProfile;
   const theirs = answers.target.birthProfile;
@@ -177,6 +181,13 @@ function AstrologyLensView() {
             생년월일로 계산하니까, 위에 생년월일을 넣어주면 다시 볼 수 있어.
           </EntertainmentNotice>
         ) : null}
+
+        {/* Natal Chart를 가짜로 만들지 않으므로, 상세도 현재 구현 가능한 범위만 제안한다(§20) */}
+        <PremiumEntryRow
+          feature={premiumFeatureState('astrology_detail', resolvePrice(variant), {
+            astrologyAvailable: availability.couple,
+          })}
+        />
 
         <LovyMessage pose="crystal" size={52}>
           {ASTROLOGY_COPY.disclaimer}

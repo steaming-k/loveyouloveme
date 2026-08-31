@@ -80,6 +80,20 @@ export const ANALYTICS_EVENTS = [
   'relationship_history_repeated_signal_view',
   'relationship_history_entry_delete',
   'history_based_insight_view',
+  // Premium Fake Door (BM 검증) — Primary KPI에는 넣지 않는다(§29).
+  // BM Funnel: entry_view → entry_click → paywall_view → purchase_intent
+  //            → fake_door_reveal → notify_intent
+  // 지표: Premium CTR = entry_click / entry_view
+  //       Paywall Intent Rate = purchase_intent / paywall_view
+  //       Notify Intent Rate = notify_intent / fake_door_reveal
+  'premium_entry_view',
+  'premium_entry_click',
+  'premium_paywall_view',
+  'premium_purchase_intent',
+  'premium_fake_door_reveal',
+  'premium_notify_intent',
+  'premium_dismiss',
+  'premium_preview_view',
 ] as const;
 
 export type AnalyticsEvent = (typeof ANALYTICS_EVENTS)[number];

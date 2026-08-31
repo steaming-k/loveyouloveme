@@ -10,6 +10,7 @@ import { SectionLabel } from '@/components/common/primitives';
 import { useToast } from '@/components/common/ToastProvider';
 import { Lovy } from '@/components/lovy/Lovy';
 import { BRAND, HOME_COPY } from '@/data/copy';
+import { clearPremiumIntents } from '@/lib/premiumIntentStore';
 import { ROUTES } from '@/lib/routes';
 import { useHistoryReport, useHomeHighlights, useMirror } from '@/hooks/useAnalysis';
 import { useHistory } from '@/state/HistoryProvider';
@@ -175,6 +176,8 @@ export default function HomePage() {
         onCancel={() => setDeleteOpen(false)}
         onConfirm={() => {
           deleteAllData();
+          // 결제 의향 기록도 함께 지운다 — 사용자 데이터를 남겨둘 이유가 없다
+          clearPremiumIntents();
           if (alsoDeleteHistory) clearHistory();
           setDeleteOpen(false);
           showToast(

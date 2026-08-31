@@ -42,6 +42,15 @@ export const ROUTES = {
   lensZodiac: '/lens/zodiac',
   /** 궁합 결과에서 '우리 둘을 보는 다른 렌즈'를 한 곳에 모은 허브 (v1.4) */
   compatibilityLenses: '/compatibility/lenses',
+  /**
+   * Premium Paywall (v1.5 Fake Door).
+   * Route를 기능별로 늘리지 않고 `?source=`로 진입 지점을 구분한다 —
+   * 어디서 들어왔는지가 '무엇에 돈을 내고 싶어하는지'를 판단하는 핵심 데이터다.
+   */
+  premium: (source: string) => `/premium?source=${source}`,
+  premiumBase: '/premium',
+  /** 개발·UT용 상세 미리보기. NEXT_PUBLIC_PREMIUM_PREVIEW=true일 때만 열린다 */
+  premiumPreview: (feature: string) => `/premium-preview/${feature}`,
 } as const;
 
 /** 데스크톱 프로토타입 패널의 화면 점프 목록 (와이어프레임 1b 보드와 동일 순서) */
@@ -116,5 +125,12 @@ export const SCREEN_BOARD: readonly ScreenBoardEntry[] = [
     name: '다른 렌즈 허브',
     group: 'Add-on',
     href: ROUTES.compatibilityLenses,
+  },
+  {
+    id: 'p1',
+    short: 'P1',
+    name: 'Premium Paywall',
+    group: 'Add-on',
+    href: ROUTES.premium('compatibility'),
   },
 ];

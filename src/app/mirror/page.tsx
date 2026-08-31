@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
@@ -11,7 +11,10 @@ import { EmptyStateView, FillDataRow } from '@/components/common/StateScreens';
 import { PageHeading, Tag } from '@/components/common/primitives';
 import { RepeatedSignalNotice } from '@/components/history/PastObservationNote';
 import { MirrorComparisonRow, MirrorLegend } from '@/components/mirror/MirrorComparisonRow';
+import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
 import { trackEvent } from '@/lib/analytics';
+import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
+import { premiumFeatureState } from '@/services/premiumService';
 import { ROUTES } from '@/lib/routes';
 import { isLowData } from '@/lib/validation';
 import { useMirror, useRepeatedSignals } from '@/hooks/useAnalysis';
@@ -40,6 +43,7 @@ function MirrorView() {
   const { answers } = useSession();
   const mirror = useMirror();
   const repeated = useRepeatedSignals();
+  const [variant] = useState(() => resolvePriceVariant());
 
   const lowData = isLowData(answers);
 
@@ -141,6 +145,13 @@ function MirrorView() {
           과거 기록만으로 없는 Gap을 만들지 않는다.
         */}
         {repeated.length > 0 ? <RepeatedSignalNotice signals={repeated} /> : null}
+
+        {/* Premium은 Secondary. Primary CTA('가장 중요한 관찰 보기' → S28)를 가리지 않는다 */}
+        <PremiumEntryRow
+          feature={premiumFeatureState('mirror_detail', resolvePrice(variant), {
+            mirrorAvailable: mirror.available,
+          })}
+        />
       </div>
     </ScreenLayout>
   );

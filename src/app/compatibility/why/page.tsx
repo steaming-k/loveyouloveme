@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 import { Button } from '@/components/common/Button';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
@@ -9,8 +10,11 @@ import { NoticeBox, PageHeading, SectionLabel } from '@/components/common/primit
 import { MbtiLensPanel } from '@/components/compatibility/MbtiLensPanel';
 import { SignalCard } from '@/components/compatibility/SignalCard';
 import { PastObservationNote } from '@/components/history/PastObservationNote';
+import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
 import { PRIVACY } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
+import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
+import { premiumFeatureState } from '@/services/premiumService';
 import { ROUTES } from '@/lib/routes';
 import { useCompatibility, useMbtiLens, usePastObservation } from '@/hooks/useAnalysis';
 
@@ -33,6 +37,10 @@ export default function CompatibilityDetailPage() {
   const topFriction = result.frictionSignals[0];
   // 가장 관찰이 필요한 축에 대해서만 과거 기록을 참고로 붙인다 (§24)
   const pastObservation = usePastObservation(topFriction?.key ?? null);
+
+  // Premium 진입 상태. 가격은 세션에 고정된 variant를 따른다.
+  const [variant] = useState(() => resolvePriceVariant());
+  const premiumFeature = premiumFeatureState('compatibility_detail', resolvePrice(variant));
 
   return (
     <ScreenLayout
@@ -158,6 +166,13 @@ export default function CompatibilityDetailPage() {
             </span>
           </button>
         </div>
+
+        {/*
+          ⑥ PREMIUM DETAIL — 위계상 가장 마지막, Secondary.
+          Sticky Primary CTA는 여전히 '다음 관찰 보기'(→ Mirror)다. Premium이 Mirror Funnel보다
+          강해지면 안 된다(§33 Guardrail).
+        */}
+        <PremiumEntryRow feature={premiumFeature} />
 
         <NoticeBox>{PRIVACY.unknownExcluded}</NoticeBox>
       </div>

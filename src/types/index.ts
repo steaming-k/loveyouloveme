@@ -604,6 +604,112 @@ export interface HistoryReport {
   summary: string;
 }
 
+/* ------------------------------------------ Premium (v1.5, Fake Door) */
+
+/**
+ * Premium은 무료 결과를 잘라내는 기능이 **아니다.**
+ * 무료에서도 동기화율 · 대표 Good/Friction Signal · Relationship Mirror · Core Insight까지
+ * 핵심 가치가 완성돼야 하고, Premium은 '더 깊게 보고 싶은 사용자'에게 추가 해상도를 준다.
+ *
+ * ⚠️ v1.5는 실제 결제를 붙이지 않는다(Fake Door). 구매 시도 직후 '준비 중'을 명확히 알린다.
+ * ⚠️ Premium에서도 **수집하지 않은 데이터를 새로 추론하지 않는다.** 새 점수를 만들지 않는다.
+ */
+export type ResultLevel = 'summary' | 'detail';
+
+export type PremiumFeatureId =
+  | 'compatibility_detail'
+  | 'mirror_detail'
+  | 'history_detail'
+  | 'mbti_detail'
+  | 'astrology_detail'
+  | 'saju_detail';
+
+/** Premium 진입 지점 — 무엇에 돈을 내고 싶어하는지 판단하는 핵심 데이터(§31) */
+export type PremiumSource =
+  | 'compatibility'
+  | 'mirror'
+  | 'history'
+  | 'mbti'
+  | 'astrology'
+  | 'saju'
+  | 'preview';
+
+export type PremiumFeatureStatus =
+  /** 실제 결제·제공이 가능한 상태 (v1.5에는 없음) */
+  | 'available'
+  /** 가치 안내 → 구매 시도 → '준비 중' 안내까지만 (v1.5 기본) */
+  | 'fake-door'
+  /** 상세 결과를 만들 근거가 없어 Paywall 자체를 띄우지 않는다 (예: 사주 엔진 미연결) */
+  | 'unavailable';
+
+export interface PremiumFeature {
+  id: PremiumFeatureId;
+  source: PremiumSource;
+  title: string;
+  description: string;
+  /** 상세에서 추가로 보게 되는 것 — 사용자가 무엇을 사는지 모르면 CTA 클릭도 의미가 없다 */
+  additions: readonly string[];
+  price: number | null;
+  status: PremiumFeatureStatus;
+  /** unavailable일 때 이유를 사용자에게 그대로 보여준다 */
+  unavailableReason?: string;
+}
+
+export interface PremiumAvailability {
+  available: boolean;
+  reason?: string;
+}
+
+/**
+ * 결제 의향 기록. SessionAnswers(분석 입력)와 섞지 않고 별도 저장소를 쓴다 —
+ * 결제 상태가 분석 결과에 영향을 줄 수 없게 구조적으로 분리한다.
+ *
+ * ⚠️ 이메일·전화번호·카드번호를 수집하지 않는다. 관심 표시만 남긴다.
+ */
+export interface PremiumIntent {
+  feature: PremiumFeatureId;
+  source: PremiumSource;
+  price: number;
+  variant: PremiumPriceVariant;
+  clickedAt: string;
+  notifyIntent: boolean;
+}
+
+export type PremiumPriceVariant = 'A' | 'B';
+
+/* -------------------------------------------- Premium Detail 결과 계약 */
+
+/**
+ * 상세 결과는 **이미 계산된 값**을 더 풍부하게 보여주는 것이다.
+ * 새 점수·새 추론을 만들지 않으므로, 여기에는 기존 결과에서 파생한 표현만 담는다.
+ */
+export interface PremiumDetailSection {
+  /** 축 라벨 등 소제목 */
+  label: string;
+  /** 나 / 상대 대조 (있을 때만) */
+  mine?: string;
+  theirs?: string;
+  /** 이 판정을 본 근거 */
+  evidence?: string;
+  /** 실제 관계에서 나타날 수 있는 상황 */
+  scene?: string;
+  /** 상태 뱃지 (MATCH/GAP 등) */
+  badge?: string;
+}
+
+export interface PremiumDetailReport {
+  feature: PremiumFeatureId;
+  available: boolean;
+  /** 무료에서 이미 본 것 — Paywall에서 '무료로 본 내용'으로 되짚어준다 */
+  freeRecap: readonly string[];
+  sections: PremiumDetailSection[];
+  prompts: readonly string[];
+  /** 러비의 한 줄 정리 */
+  closing: string | null;
+  /** 이 상세가 못 하는 것 */
+  limitations: readonly string[];
+}
+
 /* ------------------------------------------------------------------ 세션 */
 
 export interface SessionAnswers {

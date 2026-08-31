@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
@@ -10,10 +10,13 @@ import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { PageHeading, SectionLabel, Tag } from '@/components/common/primitives';
 import { HistoryChangeRow } from '@/components/history/HistoryChangeRow';
 import { RepeatedSignalNotice } from '@/components/history/PastObservationNote';
+import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
 import { Lovy } from '@/components/lovy/Lovy';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { HISTORY_COPY, LOVY_LINES } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
+import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
+import { premiumFeatureState } from '@/services/premiumService';
 import { formatEntryDate } from '@/lib/historyFormat';
 import { ROUTES } from '@/lib/routes';
 import { useHistoryReport, useRepeatedSignals } from '@/hooks/useAnalysis';
@@ -38,6 +41,7 @@ function HistoryReportView() {
   const { entries, previous, latest } = useHistory();
   const report = useHistoryReport();
   const repeated = useRepeatedSignals();
+  const [variant] = useState(() => resolvePriceVariant());
 
   useEffect(() => {
     trackEvent('relationship_history_change_report_view', {
@@ -180,6 +184,13 @@ function HistoryReportView() {
             </ul>
           </section>
         ) : null}
+
+        {/* 사용자 본인의 기록·타임라인·기본 비교는 전부 무료다. Premium은 해석의 깊이만(§34) */}
+        <PremiumEntryRow
+          feature={premiumFeatureState('history_detail', resolvePrice(variant), {
+            historyComparable: report.comparable,
+          })}
+        />
 
         <LovyMessage pose="calendar" size={66}>
           {LOVY_LINES.historyReport}
