@@ -121,6 +121,8 @@ src/
 └─ types/                  도메인 타입
 ```
 
+> **문서 버전 관리.** 현재 문서는 [`docs/기능명세서.md`](docs/기능명세서.md)·[`docs/럽유럽미_기획서_v1.md`](docs/럽유럽미_기획서_v1.md)(둘 다 v1.7)이고, 과거 버전 전문은 [`docs/versions/`](docs/versions/README.md)에 동결 보관돼 있습니다.
+
 **UI는 분석 데이터를 직접 import하지 않습니다.** 모든 분석 결과는 `services/aiService.ts`(+ `services/ai/aiClient.ts`)를 통해서만 들어오고, 계산식은 `lib/logic/*` 한 곳에만 존재합니다. 화면은 AI Provider를 알지 못합니다.
 
 ---
