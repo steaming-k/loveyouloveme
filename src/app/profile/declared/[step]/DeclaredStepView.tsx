@@ -16,6 +16,7 @@ import {
   DECLARED_TOTAL,
   type DeclaredStep,
 } from '@/data/declaredQuestions';
+import { MBTI_TYPES } from '@/data/mbti';
 import { trackEvent } from '@/lib/analytics';
 import { ROUTES } from '@/lib/routes';
 import { isDeclaredStepComplete } from '@/lib/validation';
@@ -25,10 +26,13 @@ import type { AffectionStyle, ConflictStyle, HobbyStyle, ScaleValue } from '@/ty
 /**
  * S10~S13 Declared Me — Progressive Question Flow
  * 한 화면에 질문 하나(마지막만 둘). Back으로 돌아와도 값이 유지된다.
+ *
+ * S13에는 내 MBTI Optional Section(Personality Lens)이 함께 있다. MBTI는 Declared 답변이
+ * 아니라 별도 데이터(answers.mbti)이며, 미선택이어도 진행을 막지 않는다.
  */
 export function DeclaredStepView({ step }: { step: DeclaredStep }) {
   const router = useRouter();
-  const { answers, setDeclared, markComplete } = useSession();
+  const { answers, setDeclared, setMbti, markComplete } = useSession();
   const [error, setError] = useState<string | null>(null);
 
   const config = DECLARED_QUESTIONS[step];
@@ -54,6 +58,8 @@ export function DeclaredStepView({ step }: { step: DeclaredStep }) {
         conflict: declared.conflict ?? '',
         affection: declared.affection ?? '',
         hobby: declared.hobby ?? '',
+        // MBTI는 Optional이므로 완료 조건이 아니다. 입력률만 함께 관찰한다.
+        mbti: answers.mbti ?? '',
       });
       router.push(ROUTES.pastIntro);
       return;
@@ -150,6 +156,38 @@ export function DeclaredStepView({ step }: { step: DeclaredStep }) {
             ) : null}
           </div>
         ))}
+
+        {config.personalityLens ? (
+          <div className="flex flex-col gap-3.5">
+            <Divider className="-mt-1" />
+
+            <div className="flex flex-col gap-2 px-1">
+              <Tag tone="neutral" className="self-start">
+                {config.personalityLens.eyebrow}
+              </Tag>
+              <h2 className="text-title keep-all">{config.personalityLens.title}</h2>
+              <p className="text-caption keep-all text-ink-sub">
+                {config.personalityLens.caption}
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-[7px]" role="radiogroup" aria-label="내 MBTI (선택)">
+              {MBTI_TYPES.map((type) => (
+                <ChoiceChip
+                  key={type}
+                  label={type}
+                  selected={answers.mbti === type}
+                  onToggle={() => setMbti(answers.mbti === type ? null : type)}
+                />
+              ))}
+              <ChoiceChip
+                label={config.personalityLens.skipLabel}
+                selected={answers.mbti === null}
+                onToggle={() => setMbti(null)}
+              />
+            </div>
+          </div>
+        ) : null}
 
         {config.observedCompare ? (
           <div className="flex flex-col gap-1.5 rounded-row border border-line bg-surface px-[15px] py-3.5">

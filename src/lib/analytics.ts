@@ -49,9 +49,15 @@ export const ANALYTICS_EVENTS = [
   'observation_excluded',
   'session_data_deleted',
   'session_reset',
-  'lens_mbti_set',
+  // MBTI (Supporting Lens) — Optional이므로 Primary Funnel KPI에는 넣지 않는다.
+  // Supporting: MBTI 입력률 = both_mbti_available / compatibility_result_view
+  //             Lens 조회율 = mbti_lens_view / both_mbti_available
+  'self_mbti_select',
+  'target_mbti_select',
+  'both_mbti_available',
+  'mbti_lens_view',
+  'mbti_conversation_question_view',
   'lens_zodiac_set',
-  'target_mbti_set',
 ] as const;
 
 export type AnalyticsEvent = (typeof ANALYTICS_EVENTS)[number];

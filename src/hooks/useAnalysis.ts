@@ -7,6 +7,7 @@ import { useSession } from '@/state/SessionProvider';
 import type {
   CompatibilityResult,
   ConversationQuestion,
+  MbtiLensReport,
   MirrorReport,
   RelationshipProfile,
 } from '@/types';
@@ -19,17 +20,38 @@ import type {
  * 같은 로직을 동기적으로 재사용해 로딩을 다시 보여주지 않는다.
  */
 
+/** ⚠️ MBTI를 넘기지 않는다 — 동기화율은 관계 행동 신호(4축)만으로 계산한다. */
 export function useCompatibility(): CompatibilityResult {
   const { answers } = useSession();
   return useMemo(
-    () => aiSelectors.compatibility(answers.declared, answers.target, answers.mbti),
-    [answers.declared, answers.target, answers.mbti],
+    () => aiSelectors.compatibility(answers.declared, answers.target),
+    [answers.declared, answers.target],
   );
 }
 
+/** Supporting Lens — 두 MBTI가 모두 있을 때만 값이 있다. 없으면 화면에서 숨긴다. */
+export function useMbtiLens(): MbtiLensReport | null {
+  const { answers } = useSession();
+  return useMemo(
+    () => aiSelectors.mbtiLens(answers.mbti, answers.target.mbti),
+    [answers.mbti, answers.target.mbti],
+  );
+}
+
+/**
+ * 관계 신호 질문 + (MBTI가 둘 다 있으면) 선호가 다른 축의 보조 질문.
+ * MBTI 질문은 항상 관계 신호 질문 **뒤에** 붙고, 기존 질문을 대체하지 않는다.
+ */
 export function useConversationQuestions(): ConversationQuestion[] {
   const result = useCompatibility();
-  return useMemo(() => aiSelectors.conversationQuestions(result), [result]);
+  const mbtiLens = useMbtiLens();
+  return useMemo(
+    () => [
+      ...aiSelectors.conversationQuestions(result),
+      ...aiSelectors.mbtiQuestions(mbtiLens),
+    ],
+    [result, mbtiLens],
+  );
 }
 
 export function useMirror(): MirrorReport {

@@ -125,7 +125,11 @@ function ProfileResultView() {
             }
           />
 
-          <ProfileLayerStack layers={profile.layers} coreInsight={profile.coreInsight} />
+          <ProfileLayerStack
+            layers={profile.layers}
+            coreInsight={profile.coreInsight}
+            mbti={answers.mbti}
+          />
 
           <div className="flex flex-col gap-2.5 rounded-card border border-line bg-surface p-4">
             <p className="text-caption keep-all text-ink-sub">

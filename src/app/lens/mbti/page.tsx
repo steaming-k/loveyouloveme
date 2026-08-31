@@ -1,69 +1,115 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 
 import { Button } from '@/components/common/Button';
-import { ChoiceChip } from '@/components/common/ChoiceChip';
+import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
+import { FillDataRow } from '@/components/common/StateScreens';
 import { NoticeBox, PageHeading, SectionLabel, Tag } from '@/components/common/primitives';
+import { MbtiLensPanel } from '@/components/compatibility/MbtiLensPanel';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { MBTI_LENS_COPY } from '@/data/copy';
-import { MBTI_NOTES, MBTI_TYPES } from '@/data/mbti';
+import { MBTI_SELF_NOTE } from '@/data/mbti';
+import { trackEvent } from '@/lib/analytics';
 import { ROUTES } from '@/lib/routes';
+import { useMbtiLens } from '@/hooks/useAnalysis';
 import { useSession } from '@/state/SessionProvider';
 
 /**
- * X1-a MBTI Lens — Add-on
- * 다른 Add-on 렌즈와 달리 궁합 점수 계산에 실제로 관여한다: 이 화면에서 고른 내 MBTI와
- * /target(S19)에서 넣는 상대 MBTI를 둘 다 입력하면 동기화율에 추가 축으로 반영된다
- * (lib/logic/compatibility.ts buildMbtiDimension). 유형을 고르면 그 외에 대화 소재용
- * 한 줄 관찰과 질문 하나도 보여준다.
+ * X1-a MBTI Lens — Compatibility Lens **Detail** Screen
+ *
+ * 이 화면은 더 이상 내 MBTI를 처음 입력하는 곳이 아니다(그건 S13 Declared Me 마지막으로 이동).
+ * 여기서는 이미 입력된 두 유형을 4개 선호 축으로 비교해서 '이야기해볼 차이'만 보여주고,
+ * 수정이 필요하면 원래 입력 화면(S13 / S19)으로 되돌려보낸다.
+ *
+ * ⚠️ 이 화면의 어떤 값도 동기화율에 영향을 주지 않는다.
  */
 export default function MbtiLensPage() {
-  const router = useRouter();
-  const { answers, setMbti } = useSession();
+  return (
+    <HydrationGate>
+      <MbtiLensView />
+    </HydrationGate>
+  );
+}
 
-  const note = answers.mbti ? MBTI_NOTES[answers.mbti] : null;
-  const bothSet = Boolean(answers.mbti && answers.target.mbti);
+function MbtiLensView() {
+  const router = useRouter();
+  const { answers } = useSession();
+  const report = useMbtiLens();
+
+  useEffect(() => {
+    if (!report) return;
+    trackEvent('mbti_lens_view', {
+      self_mbti: report.mine,
+      target_mbti: report.theirs,
+      same_axes: report.sameCount,
+      different_axes: report.differentCount,
+    });
+  }, [report]);
+
+  const selfNote = answers.mbti ? MBTI_SELF_NOTE[answers.mbti] : null;
 
   return (
     <ScreenLayout
-      header={<ScreenHeader backHref={ROUTES.lens} action={<Tag tone="neutral">ADD-ON</Tag>} />}
-      footer={<Button variant="secondary" onClick={() => router.push(ROUTES.lens)}>렌즈 목록으로</Button>}
+      header={<ScreenHeader action={<Tag tone="neutral">{MBTI_LENS_COPY.badge}</Tag>} />}
+      footer={
+        <Button variant="secondary" onClick={() => router.push(ROUTES.lens)}>
+          렌즈 목록으로
+        </Button>
+      }
       bodyClassName="pt-1.5 pb-4"
     >
       <div className="flex flex-col gap-5">
         <PageHeading lines={MBTI_LENS_COPY.title} caption={MBTI_LENS_COPY.caption} />
 
-        <div className="flex flex-col gap-2.5">
-          <SectionLabel>{MBTI_LENS_COPY.pickLabel}</SectionLabel>
-          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="MBTI 유형">
-            {MBTI_TYPES.map((type) => (
-              <ChoiceChip
-                key={type}
-                label={type}
-                selected={answers.mbti === type}
-                onToggle={() => setMbti(answers.mbti === type ? null : type)}
-              />
-            ))}
-          </div>
-        </div>
+        {report ? (
+          <>
+            <section className="flex flex-col gap-2.5">
+              <SectionLabel>4가지 성향 비교</SectionLabel>
+              <MbtiLensPanel report={report} variant="full" />
+            </section>
 
-        {note ? (
-          <LovyMessage pose="book" size={56}>
-            <p className="mb-2 font-medium">{note.trait}</p>
-            <p className="text-ink-sub">{note.question}</p>
-          </LovyMessage>
+            <LovyMessage pose="book" size={56}>
+              {MBTI_LENS_COPY.lovyNote}
+            </LovyMessage>
+          </>
         ) : (
-          <NoticeBox>{MBTI_LENS_COPY.emptyNotice}</NoticeBox>
+          <section className="flex flex-col gap-3">
+            <NoticeBox>
+              {answers.mbti
+                ? '상대 MBTI가 아직 없어. 두 유형이 모두 있어야 비교 렌즈를 만들 수 있어.'
+                : answers.target.mbti
+                  ? '네 MBTI가 아직 없어. 두 유형이 모두 있어야 비교 렌즈를 만들 수 있어.'
+                  : '아직 두 유형 모두 없어. 비교는 둘 다 입력했을 때만 할 수 있어.'}
+            </NoticeBox>
+
+            {selfNote ? (
+              <LovyMessage pose="book" size={52}>
+                <p className="mb-1.5 font-medium">{answers.mbti} · 이런 이야기가 있어</p>
+                <p className="text-ink-sub">{selfNote}</p>
+              </LovyMessage>
+            ) : null}
+          </section>
         )}
 
-        <NoticeBox>
-          {bothSet
-            ? `상대 MBTI(${answers.target.mbti})도 입력돼 있어서 동기화율에 소폭 반영됐어요. 성향 궁합 이론이 아니라 겹치는 글자 수만 보는 참고용 지표예요.`
-            : '상대 MBTI까지 입력하면 동기화율에 소폭 반영돼요. 그전까진 이 화면만으로는 점수에 영향이 없어요.'}
-        </NoticeBox>
+        <section className="flex flex-col gap-2">
+          <SectionLabel>입력 수정</SectionLabel>
+          <FillDataRow
+            label={`내 MBTI${answers.mbti ? ` · ${answers.mbti}` : ' · 없음'}`}
+            actionLabel="수정"
+            onClick={() => router.push(ROUTES.declared(4))}
+          />
+          <FillDataRow
+            label={`상대 MBTI${answers.target.mbti ? ` · ${answers.target.mbti}` : ' · 없음'}`}
+            actionLabel="수정"
+            onClick={() => router.push(ROUTES.target)}
+          />
+        </section>
+
+        <NoticeBox>{MBTI_LENS_COPY.scoreNotice}</NoticeBox>
       </div>
     </ScreenLayout>
   );

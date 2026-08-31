@@ -34,7 +34,6 @@ export default function CompatibilityLoadingPage() {
         const result = await calculateCompatibility({
           declared: answers.declared,
           target: answers.target,
-          mbti: answers.mbti,
         });
         if (!cancelled) {
           resultRef.current = { score: result.score, compared: result.comparedCount };
@@ -48,7 +47,7 @@ export default function CompatibilityLoadingPage() {
     return () => {
       cancelled = true;
     };
-  }, [answers.declared, answers.target, answers.mbti]);
+  }, [answers.declared, answers.target]);
 
   const handleComplete = useCallback(() => {
     const result = resultRef.current;

@@ -1,3 +1,4 @@
+import { Info } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { cn } from '@/lib/cn';
@@ -177,14 +178,16 @@ export function EvidenceList({
 
 /* ----------------------------------------------------------- 프라이버시 안내 */
 
-/** 민감정보를 입력하는 순간에만 필요한 만큼 보여주는 안내 박스 */
+/**
+ * 민감정보를 입력하는 순간에만 필요한 만큼 보여주는 안내 박스.
+ *
+ * 마커는 정보 아이콘을 쓴다 — 예전에는 테두리만 있는 사각형이었는데, 체크박스처럼 보여서
+ * 사용자가 눌러야 하는 입력 요소로 오해할 수 있었다(실제로는 읽기 전용 안내다).
+ */
 export function NoticeBox({ children }: { children: ReactNode }) {
   return (
     <div className="flex items-start gap-2 rounded-chip bg-sunken px-3.5 py-3">
-      <span
-        className="mt-0.5 h-3.5 w-3.5 flex-none rounded-[3px] border-[1.5px] border-ink-muted"
-        aria-hidden
-      />
+      <Info size={14} className="mt-px flex-none text-ink-muted" aria-hidden />
       <p className="text-meta keep-all text-ink-sub">{children}</p>
     </div>
   );

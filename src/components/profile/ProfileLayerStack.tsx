@@ -1,5 +1,5 @@
 import { cn } from '@/lib/cn';
-import type { ProfileLayer } from '@/types';
+import type { MbtiType, ProfileLayer } from '@/types';
 
 const MARKER_CLASS: Record<ProfileLayer['id'], string> = {
   observed: 'bg-mint-tint border border-mint',
@@ -23,13 +23,18 @@ const CHIP_CLASS: Record<ProfileLayer['id'], string> = {
  * Relationship Profile (S18)
  * 세 데이터를 별개 카드 3개로 나열하지 않고, 하나의 흐름으로 연결한 뒤
  * 마지막에 '세 관찰을 합친 결과' 한 줄로 묶는다.
+ *
+ * mbti는 Supporting Information으로만 붙는다 — 3-Layer 타임라인 안에 넣지 않고,
+ * 요약 문장의 근거로도 쓰지 않는다('INFP라서 ~하다' 같은 단정 금지).
  */
 export function ProfileLayerStack({
   layers,
   coreInsight,
+  mbti,
 }: {
   layers: ProfileLayer[];
   coreInsight: string;
+  mbti?: MbtiType | null;
 }) {
   return (
     <div className="rounded-card border border-line bg-surface px-4 pt-[18px] pb-4">
@@ -86,6 +91,17 @@ export function ProfileLayerStack({
         </p>
         <p className="text-insight keep-all">{coreInsight}</p>
       </div>
+
+      {mbti ? (
+        <div className="mt-3.5 flex items-center justify-between gap-3 border-t border-line-soft pt-3.5">
+          <p className="text-[11px] font-semibold tracking-[0.05em] text-ink-muted">
+            PERSONALITY LENS · 참고
+          </p>
+          <span className="rounded-tag bg-sunken px-2.5 py-1 text-[12.5px] font-medium text-[#555]">
+            {mbti}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }

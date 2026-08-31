@@ -16,6 +16,11 @@ export type ScaleValue = 1 | 2 | 3 | 4 | 5;
 
 /* -------------------------------------------------------------- MBTI Lens */
 
+/**
+ * MBTI는 Supporting Compatibility Lens다 — 관계 행동 신호(contact/conflict/alone/affection)와
+ * 다른 종류의 데이터이므로, 동기화율 계산에는 절대 들어가지 않는다(§6.1.1).
+ * 사용자가 스스로 알고 있는 Personality Preference를 '대화 출발점'으로만 쓴다.
+ */
 export type MbtiType =
   | 'INTJ'
   | 'INTP'
@@ -33,6 +38,36 @@ export type MbtiType =
   | 'ISFP'
   | 'ESTP'
   | 'ESFP';
+
+/** MBTI 4개 선호 지표. 각 축을 독립적으로 비교한다 — 합산해서 점수로 만들지 않는다. */
+export type MbtiAxisKey = 'energy' | 'information' | 'decision' | 'lifestyle';
+
+export interface MbtiAxisComparison {
+  key: MbtiAxisKey;
+  /** ENERGY · INFORMATION · DECISION · LIFESTYLE */
+  eyebrow: string;
+  label: string;
+  mineLetter: string;
+  theirsLetter: string;
+  /** 같은 선호인지. '같음=좋음'이 아니라 '비슷한 성향/다르게 나타날 수 있는 성향'으로만 표현한다 */
+  same: boolean;
+  /** '~할 수 있어' 톤의 관찰 문장. MBTI 이론상의 단정이 아니다 */
+  note: string;
+}
+
+/**
+ * 두 사람의 MBTI가 모두 있을 때만 만들어지는 참고용 렌즈.
+ * 점수(similarity)를 만들지 않는다 — 축별 '대화 포인트'만 제공한다.
+ */
+export interface MbtiLensReport {
+  mine: MbtiType;
+  theirs: MbtiType;
+  axes: MbtiAxisComparison[];
+  /** 비슷한 성향 축 수 */
+  sameCount: number;
+  /** 다르게 나타날 수 있는 성향 축 수 */
+  differentCount: number;
+}
 
 /* --------------------------------------------------------- Astrology Lens */
 
@@ -176,7 +211,10 @@ export interface TargetProfile {
   conflict: TargetLevel;
   alone: TargetLevel;
   affection: TargetLevel;
-  /** 선택 입력. 나(mbti)와 상대(target.mbti)가 둘 다 있을 때만 동기화율에 별도 축으로 반영한다. */
+  /**
+   * 선택 입력. 동기화율·comparedCount·TARGET_MIN_KNOWN 판단에 절대 포함하지 않는다.
+   * 나(answers.mbti)와 둘 다 있을 때만 참고용 MbtiLensReport를 만든다.
+   */
   mbti: MbtiType | null;
 }
 
@@ -186,11 +224,14 @@ export type TargetAxisKey = 'contact' | 'conflict' | 'alone' | 'affection';
 
 export type SignalTone = 'good' | 'neutral' | 'watch' | 'unknown';
 
+/**
+ * ⚠️ 실제 관계 행동 신호(contact/conflict/alone/affection)만 여기 들어온다.
+ * MBTI는 이 타입에 들어오지 않는다 — 동기화율 계산과 완전히 분리된 MbtiLensReport로 다룬다.
+ */
 export interface CompatibilityDimension {
-  /** 'mbti'는 4축 시스템(TargetAxisKey) 밖의 선택적 추가 신호 — 둘 다 입력했을 때만 나타난다 */
-  key: TargetAxisKey | 'mbti';
+  key: TargetAxisKey;
   label: string;
-  /** 나의 값 1~5. 미응답이면 null. MBTI처럼 척도가 아닌 값은 항상 null이고 minePhrase만 쓴다 */
+  /** 나의 값 1~5. 미응답이면 null */
   mineValue: number | null;
   minePhrase: string;
   /** 상대의 값 1~5. '모름'이면 null */
@@ -217,12 +258,20 @@ export interface CompatibilityResult {
   confidence: Confidence;
 }
 
+/** 관계 신호 기반 질문은 축 key를, MBTI 기반 보조 질문은 `mbti_` 접두사를 쓴다 */
+export type ConversationQuestionId = TargetAxisKey | `mbti_${MbtiAxisKey}`;
+
 export interface ConversationQuestion {
-  id: TargetAxisKey;
+  id: ConversationQuestionId;
   /** 어떤 항목에서 나온 질문인지 */
   tag: string;
   text: string;
   fromFriction: boolean;
+  /**
+   * MBTI 선호 차이에서 만든 보조 질문인지. 관계 신호 질문을 대체하지 않고 뒤에 덧붙기만 한다 —
+   * 'MBTI 궁합이 안 맞으니 확인'이 아니라 '서로 실제 선호를 확인하는 대화'다.
+   */
+  fromMbti?: boolean;
 }
 
 /* --------------------------------------------- Relationship Mirror (S26~S28) */
@@ -320,13 +369,18 @@ export interface SessionAnswers {
   experience: RelationshipExperience;
   target: TargetProfile;
   /** 저장한 대화 질문 id */
-  savedQuestions: TargetAxisKey[];
+  savedQuestions: ConversationQuestionId[];
   /** Core Insight 확인 응답 */
   coreVerdict: Verdict;
   coreCorrection: string;
-  /** X1-a MBTI Lens — 궁합·Mirror 계산에는 쓰지 않는 참고용 값 */
+  /**
+   * 내 MBTI — S13(Declared Me 마지막)에서 선택 입력한다.
+   * DeclaredPreference 안에 넣지 않는다: Declared Me는 사용자가 직접 표현한 '관계 기준'이고,
+   * MBTI는 별도의 Self-described Personality Lens이기 때문이다.
+   * 동기화율·Relationship Mirror 계산에는 관여하지 않는다.
+   */
   mbti: MbtiType | null;
-  /** X1-b Astrology Lens — 궁합·Mirror 계산에는 쓰지 않는 참고용 값 */
+  /** X1-b Astrology Lens — 순수 엔터테인먼트. 궁합·Mirror 계산에 쓰지 않는다 */
   zodiac: ZodiacSign | null;
   share: {
     includeTargetInfo: boolean;

@@ -1,54 +1,122 @@
 /**
- * X1-a MBTI Lens — Add-on / Entertainment
+ * MBTI — Supporting Compatibility Lens
  *
- * 기획서 §5.7 Phase 3 후보: "자기탐색·대화용 Lens로 활용하되 객관적 관계 성공 예측으로
- * 사용하지 않음". 그래서 이 데이터는 궁합 점수·Compatibility 계산에 관여하지 않고,
- * /lens/mbti 화면에서만 참고용 한 줄 관찰로 보여준다.
+ * 역할: 사용자와 상대가 직접 입력한 MBTI를 관계 행동 데이터와 **별도의** Personality Lens로
+ * 비교해, 궁합 결과를 해석할 때 참고할 수 있는 보조 정보.
+ *
+ * ⚠️ 이 데이터는 동기화율(Main Sync Score) 계산에 들어가지 않는다.
+ * 같은 글자가 많을수록 좋은 관계라는 의미가 아니므로, '점수'를 만들지 않고 축별 '대화 포인트'만
+ * 만든다. 문장 톤도 반드시 '~할 수 있어 / ~로 이야기되기도 해 / 실제로 그런지는 확인해봐'다.
  */
 
-import type { MbtiType } from '@/types';
+import type { MbtiAxisKey, MbtiType } from '@/types';
 
 export const MBTI_TYPES: readonly MbtiType[] = [
-  'INTJ',
-  'INTP',
   'ENTJ',
   'ENTP',
-  'INFJ',
-  'INFP',
   'ENFJ',
   'ENFP',
-  'ISTJ',
-  'ISFJ',
   'ESTJ',
-  'ESFJ',
-  'ISTP',
-  'ISFP',
   'ESTP',
+  'ESFJ',
   'ESFP',
+  'INTJ',
+  'INTP',
+  'INFJ',
+  'INFP',
+  'ISTJ',
+  'ISTP',
+  'ISFJ',
+  'ISFP',
 ];
 
-interface MbtiNote {
-  /** 연애 맥락에서 흔히 이야기되는 성향 한 줄. 단정이 아니라 '대화 소재'로 제공한다. */
-  trait: string;
-  /** 상대와 나눠볼 만한 질문 */
+interface MbtiAxisDefinition {
+  key: MbtiAxisKey;
+  /** MBTI 4글자 중 몇 번째 자리인지 */
+  index: 0 | 1 | 2 | 3;
+  eyebrow: string;
+  label: string;
+  /** 두 사람의 글자가 같을 때 — 글자별 문장 */
+  same: Record<string, string>;
+  /** 두 사람의 글자가 다를 때 */
+  different: string;
+  /** 글자가 다른 축에 대해 S25에 덧붙일 수 있는 대화 질문 */
   question: string;
 }
 
-export const MBTI_NOTES: Record<MbtiType, MbtiNote> = {
-  INTJ: { trait: '관계에서도 방향과 목적을 먼저 그려보는 편이라고 이야기돼.', question: '연애에서 그리는 장기적인 그림이 있어?' },
-  INTP: { trait: '관계를 분석하다가도 정작 감정 표현은 아낀다는 이야기가 많아.', question: '마음을 표현하는 나만의 방식이 있어?' },
-  ENTJ: { trait: '관계를 이끌어가는 걸 편하게 느낀다는 이야기가 흔해.', question: '누가 먼저 다가가는 쪽이야?' },
-  ENTP: { trait: '새로운 대화·논쟁을 관계의 활력으로 느낀다는 이야기가 많아.', question: '갈등이 생겼을 때 토론하듯 풀고 싶어, 아니면 멈추고 싶어?' },
-  INFJ: { trait: '겉으로 드러내는 것보다 속으로 훨씬 깊게 생각한다는 이야기가 많아.', question: '말하지 않고 넘어간 서운함, 있어?' },
-  INFP: { trait: '관계의 의미와 진정성을 특히 중요하게 본다는 이야기가 흔해.', question: '이 관계에서 가장 중요한 가치가 뭐야?' },
-  ENFJ: { trait: '상대를 챙기는 데 에너지를 많이 쓴다는 이야기가 많아.', question: '너를 챙기는 것도 상대에게 기대해?' },
-  ENFP: { trait: '관계의 설렘과 즉흥성을 좋아한다는 이야기가 흔해.', question: '루틴이 반복되는 관계, 편해 아니면 지루해?' },
-  ISTJ: { trait: '말보다 꾸준한 행동으로 애정을 보여준다는 이야기가 많아.', question: '너의 애정은 어떤 행동에서 가장 잘 드러나?' },
-  ISFJ: { trait: '상대의 필요를 먼저 알아채고 챙긴다는 이야기가 흔해.', question: '네가 챙김을 받고 싶을 땐 어떻게 표현해?' },
-  ESTJ: { trait: '관계에서도 정리된 계획과 역할 분담을 편하게 느낀다는 이야기가 많아.', question: '갈등이 생기면 바로 논의하고 싶은 편이야?' },
-  ESFJ: { trait: '관계의 분위기와 조화를 세심하게 신경 쓴다는 이야기가 흔해.', question: '둘 사이 어색한 기류, 얼마나 빨리 못 견뎌?' },
-  ISTP: { trait: '문제가 생기면 말보다 행동으로 해결하려 한다는 이야기가 많아.', question: '혼자 정리할 시간이 필요할 때, 어떻게 알려주고 싶어?' },
-  ISFP: { trait: '조용히 자기 방식으로 애정을 표현한다는 이야기가 흔해.', question: '너의 애정 표현, 상대가 알아차리기 쉬운 편이야?' },
-  ESTP: { trait: '관계에서도 즉각적이고 현실적인 반응을 선호한다는 이야기가 많아.', question: '갈등이 길게 이어지는 거, 얼마나 힘들어?' },
-  ESFP: { trait: '함께하는 순간의 즐거움을 관계의 중심에 둔다는 이야기가 흔해.', question: '관계에서 재미가 사라지면 어떤 기분이 들어?' },
+export const MBTI_AXES: readonly MbtiAxisDefinition[] = [
+  {
+    key: 'energy',
+    index: 0,
+    eyebrow: 'ENERGY',
+    label: '에너지를 회복하는 방식',
+    same: {
+      I: '둘 다 혼자 있는 시간으로 에너지를 회복하는 쪽으로 이야기되기도 해.',
+      E: '둘 다 함께 활동하면서 에너지를 얻는 쪽으로 이야기되기도 해.',
+    },
+    different:
+      '혼자 회복하는 시간과 함께 활동하면서 에너지를 얻는 방식이 다를 수 있어.',
+    question: '각자 혼자 보내는 시간과 함께 보내는 시간은 어느 정도가 편해?',
+  },
+  {
+    key: 'information',
+    index: 1,
+    eyebrow: 'INFORMATION',
+    label: '정보를 받아들이는 방식',
+    same: {
+      S: '둘 다 지금 눈에 보이는 구체적인 정보를 먼저 보는 쪽으로 이야기되기도 해.',
+      N: '큰 그림과 가능성을 보는 방식은 비슷하게 느껴질 수 있어.',
+    },
+    different:
+      '한쪽은 구체적인 현실을, 다른 쪽은 큰 그림과 가능성을 먼저 볼 수 있어.',
+    question: '앞일을 이야기할 때 구체적인 계획부터 잡는 게 편해, 가능성부터 넓게 그리는 게 편해?',
+  },
+  {
+    key: 'decision',
+    index: 2,
+    eyebrow: 'DECISION',
+    label: '결정할 때 먼저 보는 기준',
+    same: {
+      T: '둘 다 결정할 때 해결 논리를 먼저 보는 쪽으로 이야기되기도 해.',
+      F: '둘 다 결정할 때 감정적 맥락을 먼저 보는 쪽으로 이야기되기도 해.',
+    },
+    different:
+      '갈등 상황에서 한쪽은 감정적 맥락을, 다른 쪽은 해결 논리를 먼저 볼 수 있어.',
+    question: '서운한 일이 있을 때 공감부터 받는 것과 해결 방법을 찾는 것 중 뭐가 더 필요한 편이야?',
+  },
+  {
+    key: 'lifestyle',
+    index: 3,
+    eyebrow: 'LIFESTYLE',
+    label: '계획과 유연함 사이',
+    same: {
+      J: '둘 다 미리 정해진 계획에서 편안함을 느끼는 쪽으로 이야기되기도 해.',
+      P: '둘 다 상황에 맞춰 유연하게 움직이는 쪽으로 이야기되기도 해.',
+    },
+    different: '계획이나 일정에 대해 편안하게 느끼는 정도가 다를 수 있어.',
+    question: '데이트 계획은 미리 정하는 게 좋아, 그날 정하는 게 더 편해?',
+  },
+];
+
+/**
+ * 내 MBTI만 있을 때 보여주는 한 줄. 상대 없이도 '자기탐색' 용도로는 쓸 수 있다.
+ * 단정하지 않고 '이야기돼 / 이야기가 많아' 톤을 유지한다.
+ */
+export const MBTI_SELF_NOTE: Record<MbtiType, string> = {
+  ENTJ: '관계를 이끌어가는 걸 편하게 느낀다는 이야기가 흔해.',
+  ENTP: '새로운 대화를 관계의 활력으로 느낀다는 이야기가 많아.',
+  ENFJ: '상대를 챙기는 데 에너지를 많이 쓴다는 이야기가 많아.',
+  ENFP: '관계의 설렘과 즉흥성을 좋아한다는 이야기가 흔해.',
+  ESTJ: '관계에서도 정리된 계획을 편하게 느낀다는 이야기가 많아.',
+  ESTP: '즉각적이고 현실적인 반응을 선호한다는 이야기가 많아.',
+  ESFJ: '관계의 분위기와 조화를 세심하게 신경 쓴다는 이야기가 흔해.',
+  ESFP: '함께하는 순간의 즐거움을 중심에 둔다는 이야기가 흔해.',
+  INTJ: '관계에서도 방향을 먼저 그려본다는 이야기가 많아.',
+  INTP: '관계를 분석하다가도 감정 표현은 아낀다는 이야기가 많아.',
+  INFJ: '겉으로 드러내는 것보다 속으로 깊게 생각한다는 이야기가 많아.',
+  INFP: '관계의 의미와 진정성을 중요하게 본다는 이야기가 흔해.',
+  ISTJ: '말보다 꾸준한 행동으로 애정을 보여준다는 이야기가 많아.',
+  ISTP: '문제가 생기면 말보다 행동으로 해결한다는 이야기가 많아.',
+  ISFJ: '상대의 필요를 먼저 알아채고 챙긴다는 이야기가 흔해.',
+  ISFP: '조용히 자기 방식으로 애정을 표현한다는 이야기가 흔해.',
 };

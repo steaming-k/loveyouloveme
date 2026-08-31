@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 
 import { Button } from '@/components/common/Button';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
@@ -15,7 +16,10 @@ import { useConversationQuestions } from '@/hooks/useAnalysis';
 import { useShare } from '@/hooks/useShare';
 import { useSession } from '@/state/SessionProvider';
 
-/** S25 대화 질문 — 저장 상태가 실제로 세션에 남는다 */
+/**
+ * S25 대화 질문 — 저장 상태가 실제로 세션에 남는다.
+ * MBTI가 둘 다 입력돼 있으면 선호가 다른 축의 보조 질문이 관계 신호 질문 **뒤에** 덧붙는다.
+ */
 export default function ConversationQuestionsPage() {
   const router = useRouter();
   const questions = useConversationQuestions();
@@ -24,6 +28,12 @@ export default function ConversationQuestionsPage() {
   const { share } = useShare('compatibility');
 
   const savedCount = answers.savedQuestions.length;
+  const mbtiQuestionCount = questions.filter((question) => question.fromMbti).length;
+
+  useEffect(() => {
+    if (mbtiQuestionCount === 0) return;
+    trackEvent('mbti_conversation_question_view', { count: mbtiQuestionCount });
+  }, [mbtiQuestionCount]);
 
   return (
     <ScreenLayout
@@ -41,7 +51,11 @@ export default function ConversationQuestionsPage() {
       <div className="flex flex-col gap-4">
         <PageHeading
           lines={['이건 서로 물어봐도 좋겠는데?']}
-          caption="차이가 보이는 항목에서 만든 질문이야."
+          caption={
+            mbtiQuestionCount > 0
+              ? '차이가 보이는 항목에서 만든 질문이야. 뒤쪽은 MBTI 렌즈에서 나온 참고 질문이야.'
+              : '차이가 보이는 항목에서 만든 질문이야.'
+          }
           size="question"
         />
 

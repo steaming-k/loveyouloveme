@@ -49,6 +49,12 @@ export interface DeclaredStepConfig {
   lovyNote?: LovyNote;
   /** 사진 관찰 기록과 비교해서 보여주는 보조 카드 */
   observedCompare?: { title: string; body: readonly string[] };
+  /**
+   * 내 MBTI 선택 섹션(Optional)을 이 화면에 붙일지.
+   * Declared 질문과 같은 화면에 두지만 **필수 응답이 아니다** — 미선택이어도 '다음'을 막지 않는다.
+   * 화면을 새로 늘리지 않기 위해 S13 안쪽 Optional Section으로 넣었다.
+   */
+  personalityLens?: { eyebrow: string; title: string; caption: string; skipLabel: string };
 }
 
 export const AFFECTION_OPTIONS: readonly { value: AffectionStyle; label: string }[] = [
@@ -137,5 +143,12 @@ export const DECLARED_QUESTIONS: Record<DeclaredStep, DeclaredStepConfig> = {
         options: HOBBY_OPTIONS,
       },
     ],
+    personalityLens: {
+      eyebrow: 'PERSONALITY LENS · 선택',
+      title: '평소 알고 있는 MBTI가 있어?',
+      caption:
+        'MBTI는 관계를 판단하는 기준은 아니지만, 서로 다른 성향을 이야기해보는 참고 정보로 사용할게.',
+      skipLabel: '잘 모르겠어',
+    },
   },
 };

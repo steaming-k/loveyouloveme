@@ -22,8 +22,9 @@ import { useSession } from '@/state/SessionProvider';
  * 모르는 항목은 '모름'으로 남길 수 있고, 그 항목은 동기화율에 반영하지 않는다.
  * 상대의 실제 마음이나 성격을 판정하지 않는다는 안내를 입력 지점에 둔다.
  *
- * 상대 MBTI는 이 4개 항목과 별개의 선택 입력이다 — 아는 항목 카운트(known/4)에는 넣지 않는다.
- * 내 MBTI(/lens/mbti)와 상대 MBTI를 둘 다 입력했을 때만 동기화율에 추가 축으로 반영된다.
+ * 상대 MBTI는 이 4개 항목과 별개의 선택 입력이다 — 아는 항목 카운트(known/4)에도, 동기화율
+ * 계산에도 들어가지 않는다. 내 MBTI(S13에서 입력)와 둘 다 있을 때만 참고용 MBTI Lens를 만든다.
+ * '궁합 점수를 더 정확하게 만들기 위해 입력해달라'는 식의 문구는 쓰지 않는다.
  */
 export default function TargetPage() {
   const router = useRouter();
@@ -108,12 +109,16 @@ export default function TargetPage() {
           <button
             type="button"
             onClick={() => setMbtiOpen((prev) => !prev)}
-            className="flex min-h-11 items-center justify-between text-left"
+            aria-expanded={mbtiOpen}
+            className="flex min-h-11 items-center justify-between gap-3 text-left"
           >
-            <span className="flex flex-col gap-0.5">
-              <span className="text-caption font-semibold text-[#555]">상대 MBTI (선택)</span>
-              <span className="text-[11.5px] text-ink-faint">
-                {answers.mbti ? '네 MBTI와 함께 동기화율에 소폭 반영돼요' : '내 MBTI도 넣어야 반영돼요 · 렌즈에서 입력'}
+            <span className="flex min-w-0 flex-col gap-1">
+              <span className="text-[10.5px] font-semibold tracking-[0.05em] text-ink-muted">
+                PERSONALITY LENS · 선택
+              </span>
+              <span className="text-caption font-medium">상대 MBTI를 알고 있어?</span>
+              <span className="text-[11.5px] keep-all text-ink-faint">
+                점수에는 넣지 않지만, 둘 사이의 성향 차이를 보는 참고 렌즈로 사용할게.
               </span>
             </span>
             <Tag tone={answers.target.mbti ? 'brand' : 'neutral'}>
@@ -122,7 +127,7 @@ export default function TargetPage() {
           </button>
 
           {mbtiOpen ? (
-            <div className="flex flex-wrap gap-2 pt-1" role="radiogroup" aria-label="상대 MBTI">
+            <div className="flex flex-wrap gap-2 pt-1" role="radiogroup" aria-label="상대 MBTI (선택)">
               {MBTI_TYPES.map((type) => (
                 <ChoiceChip
                   key={type}
@@ -131,6 +136,11 @@ export default function TargetPage() {
                   onToggle={() => setTargetMbti(answers.target.mbti === type ? null : type)}
                 />
               ))}
+              <ChoiceChip
+                label="모름"
+                selected={answers.target.mbti === null}
+                onToggle={() => setTargetMbti(null)}
+              />
             </div>
           ) : null}
         </div>
@@ -142,7 +152,7 @@ export default function TargetPage() {
           onClick={() => router.push(ROUTES.lens)}
           className="flex min-h-11 items-center justify-between px-1 text-[12.5px] text-ink-faint"
         >
-          <span>내 MBTI · 사주 · 별자리 렌즈</span>
+          <span>러비의 다른 관측 렌즈</span>
           <span className="text-ink-muted" aria-hidden>
             →
           </span>

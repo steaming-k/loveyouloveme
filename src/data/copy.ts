@@ -180,34 +180,51 @@ export const HISTORY_COPY = {
 } as const;
 
 /**
- * Add-on — 다른 관측 렌즈 (X1). 사주·점성술은 메인 기능(궁합 계산)에 올리지 않는다 — 재미로만 본다.
- * MBTI Lens는 예외다: 나(mbti)와 상대(target.mbti)를 둘 다 입력하면 동기화율에 추가 축으로
- * 반영된다 (lib/logic/compatibility.ts의 buildMbtiDimension). 사주 Lens는 정확한 변환에
- * 음력 환산이 필요해 아직 '준비 중'으로 남긴다.
+ * 렌즈 위계 (X1)
+ *   CORE              실제 관계 신호 (동기화율)
+ *   SUPPORTING LENS   MBTI — 사용자가 스스로 아는 Personality Preference를 대화 출발점으로 쓴다
+ *   ENTERTAINMENT     사주 · Astrology
+ *
+ * MBTI도 과학적인 궁합 예측이 아니므로 동기화율 계산에는 들어가지 않는다. 다만 관계 분석에
+ * 가까운 Supporting Lens라서 사주·점성술과는 위계를 구분해 둔다.
  */
 export const LENS_COPY = {
-  badge: 'ADD-ON',
+  badge: 'LENS',
   title: '러비의 다른 관측 렌즈',
-  caption: '다른 각도에서 보는 참고용 렌즈예요.',
+  caption: '전부 참고용이에요. 궁합 점수는 실제 관계 신호로만 계산해요.',
   items: [
     {
       title: 'MBTI Lens',
-      caption: '너와 상대 MBTI를 둘 다 넣으면 동기화율에도 반영돼요',
+      caption: '두 유형을 성향 차이로 비교하는 참고 렌즈',
+      group: 'SUPPORTING' as const,
       ready: true,
       href: '/lens/mbti',
     },
-    { title: '사주 Lens', caption: '전통 해석으로 보는 관점 · 재미로만 봐요', ready: false, href: null },
-    { title: 'Astrology Lens', caption: '별자리 기반 해석 · 재미로만 봐요', ready: true, href: '/lens/zodiac' },
+    {
+      title: '사주 Lens',
+      caption: '전통 해석으로 보는 관점 · 재미로만 봐요',
+      group: 'ENTERTAINMENT' as const,
+      ready: false,
+      href: null,
+    },
+    {
+      title: 'Astrology Lens',
+      caption: '별자리 기반 해석 · 재미로만 봐요',
+      group: 'ENTERTAINMENT' as const,
+      ready: true,
+      href: '/lens/zodiac',
+    },
   ],
 } as const;
 
-/** X1-a MBTI Lens 화면 */
+/** X1-a MBTI Lens — Compatibility Lens Detail 화면 */
 export const MBTI_LENS_COPY = {
-  title: ['너의 MBTI, 뭐야?'],
-  caption: '이건 네 MBTI야. 상대 MBTI는 상대 정보 입력 화면에서 따로 넣을 수 있어.',
-  pickLabel: '유형 선택',
-  changeLabel: '다시 고르기',
-  emptyNotice: '아직 고르지 않았어. 위에서 하나 골라줘.',
+  badge: 'SUPPORTING LENS',
+  title: ['MBTI 렌즈'],
+  caption: '두 유형을 관계를 바라보는 하나의 참고 렌즈로 비교해볼게.',
+  lovyNote: '이건 MBTI로 너희 관계를 판정한 건 아니야. 서로 이야기해볼 만한 차이를 하나 더 본 거야.',
+  scoreNotice:
+    '동기화율에는 MBTI를 넣지 않아요. 점수는 연락·갈등·개인 시간·애정 표현 같은 실제 관계 신호로만 계산해요.',
 } as const;
 
 /** X1-b Astrology Lens 화면 */

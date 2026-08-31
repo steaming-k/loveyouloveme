@@ -6,11 +6,12 @@ import { Button } from '@/components/common/Button';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { NoticeBox, PageHeading, SectionLabel } from '@/components/common/primitives';
+import { MbtiLensPanel } from '@/components/compatibility/MbtiLensPanel';
 import { SignalCard } from '@/components/compatibility/SignalCard';
 import { PRIVACY } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { ROUTES } from '@/lib/routes';
-import { useCompatibility } from '@/hooks/useAnalysis';
+import { useCompatibility, useMbtiLens } from '@/hooks/useAnalysis';
 
 /**
  * S22 Compatibility Detail (구 Why 전체 아코디언 화면을 대체)
@@ -25,6 +26,7 @@ import { useCompatibility } from '@/hooks/useAnalysis';
 export default function CompatibilityDetailPage() {
   const router = useRouter();
   const result = useCompatibility();
+  const mbtiLens = useMbtiLens();
 
   const topGood = result.goodSignals[0];
   const topFriction = result.frictionSignals[0];
@@ -66,6 +68,24 @@ export default function CompatibilityDetailPage() {
             <ul className="flex flex-col gap-2.5">
               <SignalCard dimension={topFriction} variant="friction" />
             </ul>
+          </section>
+        ) : null}
+
+        {/* Supporting Lens — 반드시 실제 관계 신호 뒤에 온다(정보 위계 §14). */}
+        {mbtiLens ? (
+          <section className="flex flex-col gap-2.5">
+            <SectionLabel>MBTI 렌즈 · 참고</SectionLabel>
+            <MbtiLensPanel report={mbtiLens} variant="summary" />
+            <button
+              type="button"
+              onClick={() => router.push(ROUTES.lensMbti)}
+              className="flex min-h-11 items-center justify-between rounded-row border border-line bg-surface px-4 text-sub"
+            >
+              MBTI 관점으로 더 보기
+              <span className="text-ink-faint" aria-hidden>
+                →
+              </span>
+            </button>
           </section>
         ) : null}
 

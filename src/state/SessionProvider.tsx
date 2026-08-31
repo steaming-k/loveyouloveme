@@ -15,6 +15,7 @@ import { MAX_PAST_FACTORS } from '@/data/labels';
 import { PHOTO_MAX_COUNT, SAMPLE_PHOTOS, DEMO_PHOTO_IDS } from '@/data/samplePhotos';
 import { clearSessionDedup, trackEvent } from '@/lib/analytics';
 import type {
+  ConversationQuestionId,
   DeclaredPreference,
   HardestMoment,
   MbtiType,
@@ -70,7 +71,7 @@ interface SessionContextValue {
   setTargetLevel: (key: TargetAxisKey, value: TargetLevel) => void;
   setTargetMbti: (value: MbtiType | null) => void;
 
-  toggleSavedQuestion: (id: TargetAxisKey) => boolean;
+  toggleSavedQuestion: (id: ConversationQuestionId) => boolean;
 
   setCoreVerdict: (verdict: Verdict) => void;
   setCoreCorrection: (text: string) => void;
@@ -328,11 +329,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const setTargetMbti = useCallback((value: MbtiType | null) => {
     setAnswers((prev) => ({ ...prev, target: { ...prev.target, mbti: value } }));
-    trackEvent('target_mbti_set', { mbti: value ?? '' });
+    trackEvent('target_mbti_select', { mbti: value ?? '' });
   }, []);
 
   /** @returns 저장된 상태인지 (true = 방금 저장, false = 저장 해제) */
-  const toggleSavedQuestion = useCallback((id: TargetAxisKey) => {
+  const toggleSavedQuestion = useCallback((id: ConversationQuestionId) => {
     let saved = true;
     setAnswers((prev) => {
       if (prev.savedQuestions.includes(id)) {
@@ -354,7 +355,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const setMbti = useCallback((value: MbtiType | null) => {
     setAnswers((prev) => ({ ...prev, mbti: value }));
-    trackEvent('lens_mbti_set', { mbti: value ?? '' });
+    trackEvent('self_mbti_select', { mbti: value ?? '' });
   }, []);
 
   const setZodiac = useCallback((value: ZodiacSign | null) => {

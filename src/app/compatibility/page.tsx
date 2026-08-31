@@ -13,7 +13,7 @@ import { COMPATIBILITY_COPY, LOVY_LINES, STATE_COPY } from '@/data/copy';
 import { trackEvent, trackOnce } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
 import { ROUTES } from '@/lib/routes';
-import { useCompatibility } from '@/hooks/useAnalysis';
+import { useCompatibility, useMbtiLens } from '@/hooks/useAnalysis';
 
 /**
  * S21 Compatibility Hero
@@ -33,12 +33,19 @@ export default function CompatibilityPage() {
 function CompatibilityView() {
   const router = useRouter();
   const result = useCompatibility();
+  const mbtiLens = useMbtiLens();
 
   useEffect(() => {
     if (result.score === null) return;
     // Primary KPI 분모 — 궁합 결과를 본 사용자 수. 세션당 한 번만 센다.
     trackOnce('compatibility_result_view', { score: result.score, compared: result.comparedCount });
   }, [result.score, result.comparedCount]);
+
+  useEffect(() => {
+    if (!mbtiLens) return;
+    // Supporting 지표 분모 — MBTI 입력률(both_mbti_available / compatibility_result_view)
+    trackOnce('both_mbti_available', { self: mbtiLens.mine, target: mbtiLens.theirs });
+  }, [mbtiLens]);
 
   if (result.score === null) {
     return <LowConfidenceView />;
@@ -79,6 +86,29 @@ function CompatibilityView() {
     >
       <div className="flex flex-col gap-[18px]">
         <SyncScore score={result.score} />
+
+        <p className="px-1 text-center text-meta text-ink-muted">
+          비교 가능한 {result.comparedCount}개 관계 신호 기준
+        </p>
+
+        {/* MBTI는 점수에 들어가지 않는다. '렌즈가 있다'는 사실만 작게 알리고 상세로 넘긴다.
+            한쪽이라도 MBTI가 없으면 이 Tag 자체를 숨긴다. */}
+        {mbtiLens ? (
+          <button
+            type="button"
+            onClick={() => router.push(ROUTES.lensMbti)}
+            className="mx-auto flex min-h-11 items-center gap-1.5 rounded-tag border border-line bg-surface px-3 py-2 text-[12px] text-ink-sub active:bg-sunken"
+          >
+            <span className="font-medium text-ink">
+              {mbtiLens.mine} × {mbtiLens.theirs}
+            </span>
+            <span className="text-ink-faint">·</span>
+            <span>MBTI 렌즈 있음</span>
+            <span className="text-ink-faint" aria-hidden>
+              →
+            </span>
+          </button>
+        ) : null}
 
         <div className="flex gap-2">
           <SummaryCard

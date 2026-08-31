@@ -1,4 +1,5 @@
 import { buildCompatibility, buildConversationQuestions } from '@/lib/logic/compatibility';
+import { buildMbtiLens, buildMbtiQuestions } from '@/lib/logic/mbtiLens';
 import { buildObservedTraits } from '@/lib/logic/observed';
 import { buildMirrorReport } from '@/lib/logic/mirror';
 import { buildHomeHighlights, buildRelationshipProfile } from '@/lib/logic/profile';
@@ -6,6 +7,7 @@ import type {
   CompatibilityResult,
   ConversationQuestion,
   DeclaredPreference,
+  MbtiLensReport,
   MbtiType,
   MirrorReport,
   ObservationFeedback,
@@ -56,18 +58,26 @@ export async function generateRelationshipProfile(input: {
   );
 }
 
+/** ⚠️ MBTI를 인자로 받지 않는다 — 동기화율은 관계 행동 신호만으로 계산한다. */
 export async function calculateCompatibility(input: {
   declared: DeclaredPreference;
   target: TargetProfile;
-  mbti?: MbtiType | null;
 }): Promise<CompatibilityResult> {
-  return withLatency(buildCompatibility(input.declared, input.target, input.mbti ?? null));
+  return withLatency(buildCompatibility(input.declared, input.target));
 }
 
 export async function generateConversationQuestions(
   result: CompatibilityResult,
 ): Promise<ConversationQuestion[]> {
   return withLatency(buildConversationQuestions(result));
+}
+
+/** Supporting Lens — 두 MBTI가 모두 있을 때만 결과가 있다(없으면 null). */
+export async function generateMbtiLens(input: {
+  mbti: MbtiType | null;
+  targetMbti: MbtiType | null;
+}): Promise<MbtiLensReport | null> {
+  return withLatency(buildMbtiLens(input.mbti, input.targetMbti));
 }
 
 export async function generateMirrorInsights(input: {
@@ -94,6 +104,8 @@ export const aiSelectors = {
   observedTraits: buildObservedTraits,
   compatibility: buildCompatibility,
   conversationQuestions: buildConversationQuestions,
+  mbtiLens: buildMbtiLens,
+  mbtiQuestions: buildMbtiQuestions,
   mirror: buildMirrorReport,
   profile: buildRelationshipProfile,
   homeHighlights: buildHomeHighlights,

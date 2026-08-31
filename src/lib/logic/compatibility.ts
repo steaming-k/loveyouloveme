@@ -7,12 +7,11 @@ import type {
   Confidence,
   ConversationQuestion,
   DeclaredPreference,
-  MbtiType,
   SignalTone,
   TargetAxisKey,
   TargetProfile,
 } from '@/types';
-import { mbtiMatchCount, mbtiSimilarity, similarityOf, toMineValues, toTargetValues } from './values';
+import { similarityOf, toMineValues, toTargetValues } from './values';
 
 /**
  * 동기화율 계산 — Rule Based Demo Logic
@@ -27,9 +26,9 @@ import { mbtiMatchCount, mbtiSimilarity, similarityOf, toMineValues, toTargetVal
  *
  * 예: 완전히 동일 → 100 · 1단계 차이 → 75 · 2단계 차이 → 50 · 3단계 차이 → 25 · 완전 반대 → 0
  *
- * MBTI는 5번째 축이 아니라 선택적 추가 축이다. 나(mbti)와 상대(target.mbti)를 둘 다
- * 입력했을 때만 dimensions에 추가되고 score 평균에 들어간다 — 둘 중 하나라도 없으면
- * 이 축 자체가 없는 것처럼 계산한다(다른 축의 '모름'과 같은 원칙).
+ * ⚠️ MBTI는 이 계산에 들어오지 않는다. score의 분모(comparedCount)와 TARGET_MIN_KNOWN
+ * 판단에도 포함하지 않는다 — '동기화율 78'은 오직 관계 행동 신호 기반 결과다.
+ * MBTI 비교는 lib/logic/mbtiLens.ts의 별도 Supporting Lens로만 다룬다.
  */
 export function scoreFrom(similarities: readonly number[]): number {
   const mean = similarities.reduce((sum, value) => sum + value, 0) / similarities.length;
@@ -65,39 +64,14 @@ function confidenceOf(comparedCount: number, totalCount: number): Confidence {
   return 'low';
 }
 
-/**
- * MBTI 축은 척도(1~5) 비교가 아니라 4글자 일치 개수 기반이라 AXIS_DEFINITIONS 파이프라인에
- * 억지로 끼워 넣지 않는다. 둘 다 입력했을 때만 만들어지는 독립적인 dimension이다.
- */
-function buildMbtiDimension(mine: MbtiType | null, theirs: MbtiType | null): CompatibilityDimension | null {
-  if (!mine || !theirs) return null;
-
-  const similarity = mbtiSimilarity(mine, theirs);
-  const matches = mbtiMatchCount(mine, theirs);
-
-  return {
-    key: 'mbti',
-    label: 'MBTI',
-    mineValue: null,
-    minePhrase: mine,
-    theirsValue: null,
-    theirsPhrase: theirs,
-    alignment: Math.round(similarity * 5),
-    tone: toneOf(similarity),
-    evidence: `MBTI 4개 지표 중 ${matches}개가 같아요. 성향 궁합 이론이 아니라 겹치는 글자 수만 참고하는 값이에요.`,
-    scene: '성향이 다른 지표에서는 서로 다른 방식으로 반응할 수 있어요.',
-  };
-}
-
 export function buildCompatibility(
   declared: DeclaredPreference,
   target: TargetProfile,
-  mineMbti: MbtiType | null = null,
 ): CompatibilityResult {
   const mineValues = toMineValues(declared);
   const targetValues = toTargetValues(target);
 
-  const baseDimensions: CompatibilityDimension[] = AXIS_DEFINITIONS.map((def) => {
+  const dimensions: CompatibilityDimension[] = AXIS_DEFINITIONS.map((def) => {
     const mineValue = mineValues[def.key];
     const theirsValue = targetValues[def.key];
     const similarity = similarityOf(mineValue, theirsValue);
@@ -117,11 +91,6 @@ export function buildCompatibility(
       scene: def.scene,
     };
   });
-
-  const mbtiDimension = buildMbtiDimension(mineMbti, target.mbti);
-  const dimensions: CompatibilityDimension[] = mbtiDimension
-    ? [...baseDimensions, mbtiDimension]
-    : baseDimensions;
 
   const compared = dimensions.filter((d) => d.alignment !== null);
   const similarities = compared
@@ -149,13 +118,8 @@ export function buildCompatibility(
 const QUESTION_FALLBACK_ORDER: TargetAxisKey[] = ['contact', 'conflict', 'alone'];
 export const CONVERSATION_QUESTION_COUNT = 3;
 
-/** MBTI는 QUESTION_BY_AXIS에 없는 축이라 대화 질문 후보에서는 제외한다. */
-function isTargetAxisKey(key: TargetAxisKey | 'mbti'): key is TargetAxisKey {
-  return key !== 'mbti';
-}
-
 export function buildConversationQuestions(result: CompatibilityResult): ConversationQuestion[] {
-  const frictionKeys = result.frictionSignals.map((f) => f.key).filter(isTargetAxisKey);
+  const frictionKeys = result.frictionSignals.map((f) => f.key);
   const keys: TargetAxisKey[] = [...frictionKeys];
 
   for (const key of QUESTION_FALLBACK_ORDER) {
