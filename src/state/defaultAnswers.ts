@@ -8,6 +8,7 @@ export function createEmptyAnswers(): SessionAnswers {
     status: null,
     photos: [],
     observations: {},
+    observedAnalysis: null,
     declared: { contact: null, conflict: null, alone: null, affection: null, hobby: null },
     experience: {
       important: [],

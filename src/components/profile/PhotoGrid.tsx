@@ -17,7 +17,11 @@ import type { PhotoAsset } from '@/types';
 /**
  * 사진 입력 (S07)
  * 실제 브라우저 file input으로 업로드하고, 업로드 없이도 흐름을 진행할 수 있게
- * 샘플 타일을 함께 제공한다. 사진은 서버로 보내지 않는다.
+ * 샘플 타일을 함께 제공한다.
+ *
+ * ⚠️ v1.6부터 실제 AI Vision이 붙었다 — 업로드한 사진은 **분석을 위해 전송된다.**
+ * 다만 분석 후 앱에는 관찰 결과와 근거만 남고 사진 원본은 저장하지 않는다(§31).
+ * 샘플 타일은 실제 이미지 파일이 아니라 색 타일이므로 전송 대상이 아니다.
  */
 export function PhotoGrid() {
   const { answers, toggleSamplePhoto, addUploadedPhotos, removePhoto } = useSession();

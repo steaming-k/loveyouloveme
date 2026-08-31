@@ -94,6 +94,17 @@ export const ANALYTICS_EVENTS = [
   'premium_notify_intent',
   'premium_dismiss',
   'premium_preview_view',
+  // AI Analysis Pipeline (v1.6) — Primary KPI에는 넣지 않는다.
+  // ⚠️ property에 자유서술·AI 문장·사진 description을 넣지 않는다(§79). 개수·분류·소요시간만.
+  // 품질 지표: Observed Confirmation/Correction/Exclusion Rate · AI Failure Rate · Fallback Rate
+  'ai_analysis_request',
+  'ai_analysis_success',
+  'ai_analysis_failure',
+  'ai_fallback_used',
+  'ai_evidence_correction',
+  // UT Mode 전용 (NEXT_PUBLIC_UT_MODE=true일 때만 발생)
+  'ut_analysis_similarity_rate',
+  'ut_evidence_clarity_rate',
 ] as const;
 
 export type AnalyticsEvent = (typeof ANALYTICS_EVENTS)[number];

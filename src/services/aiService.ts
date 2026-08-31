@@ -3,7 +3,11 @@ import { buildMbtiLens, buildMbtiQuestions } from '@/lib/logic/mbtiLens';
 import { buildObservedTraits } from '@/lib/logic/observed';
 import { buildMirrorReport } from '@/lib/logic/mirror';
 import { buildHomeHighlights, buildRelationshipProfile } from '@/lib/logic/profile';
+import { callAiTask } from '@/services/ai/aiClient';
+import { buildDemoObservedResult } from '@/services/ai/fallback';
+import { photoFingerprint, prepareImagesForAnalysis } from '@/services/ai/imagePrep';
 import type {
+  AiFailureReason,
   CompatibilityResult,
   ConversationQuestion,
   DeclaredPreference,
@@ -11,11 +15,12 @@ import type {
   MbtiType,
   MirrorReport,
   ObservationFeedback,
-  ObservedTrait,
+  ObservedProfileResult,
   PhotoAsset,
   RelationshipExperience,
   RelationshipProfile,
   TargetProfile,
+  ValidatedObservation,
 } from '@/types';
 
 /**
@@ -39,13 +44,95 @@ function withLatency<T>(value: T, ms = LATENCY_MS): Promise<T> {
 }
 
 /**
- * 사진 기반 관찰 초안.
+ * 사진 기반 관찰 (v1.6 — 실제 AI Vision)
  *
- * Demo Mode에서는 이미지 픽셀을 분석하지 않는다. 선택한 장수에 따라
- * 관찰 개수와 확신도만 달라지는 고정 mock observation을 돌려준다.
+ * 흐름: 사진 축소 → 내부 API → Provider → 검증 → 결과
+ *
+ * ⚠️ 실패했을 때 규칙 결과를 **실제 AI인 척** 돌려주지 않는다.
+ * 사용자가 계속 진행할 수 있도록 fallback을 제공하되, `meta.mode = 'fallback'`을 남겨
+ * 화면이 그 사실을 표시하게 한다(§39).
+ *
+ * Demo Mode(서버 `AI_MODE`가 real이 아님)에서는 Provider를 부르지 않고
+ * `meta.mode = 'demo'` 결과가 내려온다.
  */
-export async function analyzeObservedProfile(photos: PhotoAsset[]): Promise<ObservedTrait[]> {
-  return withLatency(buildObservedTraits(photos));
+export async function analyzeObservedProfile(photos: PhotoAsset[]): Promise<
+  | { ok: true; data: ObservedProfileResult; fallbackReason?: AiFailureReason }
+  | { ok: false; reason: AiFailureReason }
+> {
+  const fingerprint = photoFingerprint(photos);
+  const { images, skipped } = await prepareImagesForAnalysis(photos);
+
+  const result = await callAiTask<ObservedProfileResult>('observed-profile', fingerprint, {
+    images,
+  });
+
+  if (result.ok) {
+    // 전송하지 못한 사진이 있으면 한계로 덧붙인다 — '사진 N장 = 근거 N개'가 아니다.
+    if (skipped > 0 && result.data.traits.length > 0) {
+      return {
+        ok: true,
+        data: {
+          ...result.data,
+          limitations: [
+            ...result.data.limitations,
+            `${skipped}장은 분석에 쓰지 못했어(샘플 타일이거나 읽을 수 없는 파일).`,
+          ],
+        },
+      };
+    }
+    return { ok: true, data: result.data };
+  }
+
+  // 설정 문제는 사용자가 해결할 수 없다 — 규칙 결과로 계속 진행하게 해준다.
+  if (result.reason === 'CONFIG_ERROR' || result.reason === 'SERVER_ERROR') {
+    return {
+      ok: true,
+      fallbackReason: result.reason,
+      data: buildDemoObservedResult({
+        photoCount: photos.length,
+        inputFingerprint: fingerprint,
+        mode: 'fallback',
+      }),
+    };
+  }
+
+  // 그 외(네트워크·타임아웃·정책·레이트리밋)는 사용자가 재시도할 수 있으므로 실패로 알린다.
+  return { ok: false, reason: result.reason };
+}
+
+/**
+ * 저장된 분석 결과에서 화면용 관찰 목록을 만든다.
+ *
+ * 사용자 검증 우선순위(§14): USER CORRECTION > CONFIRMED > UNVERIFIED, excluded는 제외.
+ * **AI Original을 덮어쓰지 않는다** — 원본은 `original`에 그대로 남는다(§13).
+ */
+export function toValidatedObservations(
+  analysis: ObservedProfileResult | null,
+  feedback: Record<string, ObservationFeedback>,
+): ValidatedObservation[] {
+  if (!analysis) return [];
+
+  return analysis.traits.map((trait) => {
+    const entry = feedback[trait.id];
+    const correction = entry?.correctedText?.trim();
+
+    const status: ValidatedObservation['status'] = entry?.excluded
+      ? 'excluded'
+      : correction
+        ? 'corrected'
+        : entry?.verdict === 'ok'
+          ? 'confirmed'
+          : 'unverified';
+
+    return { original: trait, status, userCorrection: correction || undefined };
+  });
+}
+
+/** 후속 분석(S18·Mirror)에 넘길 관찰만 — excluded 제거 */
+export function analysisReadyObservations(
+  validated: readonly ValidatedObservation[],
+): ValidatedObservation[] {
+  return validated.filter((item) => item.status !== 'excluded');
 }
 
 export async function generateRelationshipProfile(input: {

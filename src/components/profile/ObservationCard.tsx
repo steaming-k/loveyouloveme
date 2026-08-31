@@ -5,10 +5,10 @@ import { useState } from 'react';
 
 import { ConfidenceLabel } from '@/components/common/primitives';
 import { cn } from '@/lib/cn';
-import type { ObservationFeedback, ObservedTrait } from '@/types';
+import type { AiObservedTrait, ObservationFeedback } from '@/types';
 
 interface ObservationCardProps {
-  trait: ObservedTrait;
+  trait: AiObservedTrait;
   feedback: ObservationFeedback | undefined;
   onVerdict: (verdict: 'ok' | 'no') => void;
   /** '조금 달라요'를 눌렀을 때 수정 시트를 연다 */
@@ -43,11 +43,12 @@ export function ObservationCard({
       <div className="flex items-start justify-between gap-2.5">
         <div className="min-w-0">
           <p className={cn('text-body keep-all', corrected && 'text-ink')}>
-            {corrected || trait.text}
+            {corrected || trait.observation}
           </p>
+          {/* AI Original을 덮어쓰지 않는다 — 사용자가 고쳐도 원본을 함께 남긴다(§13) */}
           {corrected ? (
             <p className="mt-1.5 text-[11.5px] text-ink-muted">
-              러비의 원래 관찰: {trait.text}
+              러비의 원래 관찰: {trait.observation}
             </p>
           ) : null}
         </div>
@@ -113,9 +114,28 @@ export function ObservationCard({
           </div>
 
           {evidenceOpen ? (
-            <p className="rounded-[10px] bg-sunken px-3 py-2.5 text-[12.5px] keep-all leading-relaxed text-[#555]">
-              {trait.evidence}
-            </p>
+            <div className="rounded-[10px] bg-sunken px-3 py-2.5">
+              {trait.evidence.length > 0 ? (
+                // 실제 분석: 어느 사진에서 무엇을 봤는지 이미지 단위로 보여준다(§10)
+                <ul className="flex flex-col gap-2">
+                  {trait.evidence.map((item, index) => (
+                    <li key={`${item.imageId}-${index}`} className="flex gap-2.5">
+                      <span className="flex-none text-[10px] font-semibold tracking-[0.05em] text-brand-pressed tnum">
+                        사진 {index + 1}
+                      </span>
+                      <span className="min-w-0 text-[12.5px] keep-all leading-relaxed text-[#555]">
+                        {item.description}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                // 데모·이전 버전 결과: 이미지 단위 근거가 애초에 없다
+                <p className="text-[12.5px] keep-all leading-relaxed text-[#555]">
+                  {trait.evidenceText ?? '이 관찰의 근거를 표시할 수 없어.'}
+                </p>
+              )}
+            </div>
           ) : null}
         </>
       )}

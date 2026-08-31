@@ -604,6 +604,171 @@ export interface HistoryReport {
   summary: string;
 }
 
+/* ============================ AI Analysis Pipeline (v1.6) ============================ */
+
+/**
+ * ⚠️ **역할 분리가 이 파이프라인의 핵심이다.**
+ *
+ *   Rule Logic (deterministic) = 점수 · 상태 판정 · 데이터 비교
+ *   AI                          = 관찰 · 정리 · 설명 · 개인화 문장 · 질문 생성
+ *
+ * AI는 동기화율·Mirror State·History State를 만들거나 바꾸지 못한다.
+ * 순서: Evidence → Rule → AI Explanation → User Verification
+ */
+
+export type AiMode =
+  /** 실제 Provider 호출 결과 */
+  | 'real'
+  /** 규칙 기반 데모 (Provider 미연결 / 로컬 개발 / 포트폴리오) */
+  | 'demo'
+  /** real을 시도했지만 실패해서 규칙 결과로 대체 — 사용자에게 표시한다 */
+  | 'fallback'
+  /** v1.5 이전 세션에서 복원된 결과 (당시 데모) */
+  | 'legacy-demo';
+
+export type AiTask =
+  | 'observed-profile'
+  | 'relationship-insight'
+  | 'compatibility-narrative'
+  | 'history-insight';
+
+/** 결과 재현·QA를 위한 내부 metadata. 사용자에게 그대로 노출하지 않는다 */
+export interface AiAnalysisMeta {
+  mode: AiMode;
+  analysisVersion: string;
+  promptVersion: string;
+  model?: string;
+  generatedAt: string;
+  /** 입력 지문 — 입력이 바뀌면 stale 응답을 버리는 기준(§55) */
+  inputFingerprint: string;
+}
+
+export type AiFailureReason =
+  | 'NETWORK_ERROR'
+  | 'TIMEOUT'
+  | 'INVALID_OUTPUT'
+  | 'POLICY_BLOCK'
+  | 'NO_USABLE_IMAGE'
+  | 'RATE_LIMIT'
+  | 'SERVER_ERROR'
+  | 'CONFIG_ERROR';
+
+/* ------------------------------------------------- Evidence Grounding */
+
+/**
+ * AI 설명이 어떤 데이터에서 나왔는지 추적하는 참조(§17).
+ * EvidenceRef가 없는 **강한 해석은 버린다** — uncertainty를 명시한 경우만 예외다.
+ */
+export type EvidenceRef =
+  | { source: 'declared'; field: string }
+  | { source: 'relationship'; field: string }
+  | { source: 'adaptive'; field: string }
+  | { source: 'observed'; traitId: string }
+  | { source: 'history'; entryId: string; axis: string };
+
+/* --------------------------------------------- Observed Me (사진 분석) */
+
+export type ObservedCategory = 'interest' | 'activity' | 'social' | 'lifestyle';
+
+export interface ImageEvidence {
+  /** 세션 내부 임의 id. 사용자 원본 파일명을 AI에 보내지 않는다(§29) */
+  imageId: string;
+  description: string;
+}
+
+/**
+ * 사진에서 관찰된 생활 신호.
+ *
+ * ⚠️ `confidence`는 '이 사람이 진짜 이런 사람일 확률'이 아니라
+ * **'이미지에서 이 관찰을 뒷받침하는 신호가 얼마나 명확한가'**다(§6).
+ */
+export interface AiObservedTrait {
+  id: string;
+  category: ObservedCategory;
+  label: string;
+  observation: string;
+  /** real mode에서는 최소 1개가 필수다. 비면 UI에 노출하지 않는다(§10) */
+  evidence: ImageEvidence[];
+  /** demo·legacy 결과의 문장형 근거 (이미지 단위 evidence가 없던 시절) */
+  evidenceText?: string;
+  confidence: Confidence;
+}
+
+/** 사진 수가 아니라 **쓸 만한 근거의 양**으로 판정한다. AI가 스스로 판정하지 않는다(§11) */
+export type EvidenceCoverageLevel = 'low' | 'medium' | 'high';
+
+export interface ObservedProfileResult {
+  version: string;
+  traits: AiObservedTrait[];
+  limitations: string[];
+  evidenceCoverage: {
+    imageCount: number;
+    usableImageCount: number;
+    level: EvidenceCoverageLevel;
+  };
+  meta: AiAnalysisMeta;
+}
+
+/**
+ * 사용자 검증 결과(§13).
+ * **AI Original을 덮어쓰지 않는다** — 원본과 사용자 수정을 분리 보관한다.
+ */
+export interface ValidatedObservation {
+  original: AiObservedTrait;
+  status: 'unverified' | 'confirmed' | 'corrected' | 'excluded';
+  userCorrection?: string;
+}
+
+/* --------------------------------------- Narrative (설명 생성 결과물) */
+
+/**
+ * Mirror 판정은 **규칙이 정한다.** AI는 그 판정을 근거와 함께 설명만 한다(§18).
+ * AI가 `state`를 바꿔 보내면 검증 단계에서 버린다.
+ */
+export interface RelationshipNarrative {
+  axis: MirrorAxisKey;
+  state: MirrorState;
+  headline: string;
+  explanation: string;
+  evidenceRefs: EvidenceRef[];
+  question?: string;
+  /** 근거가 약할 때 반드시 채운다 */
+  uncertainty?: string;
+}
+
+export interface CoreInsightNarrative {
+  /** 규칙이 고른 focus 축. AI가 선택하지 않는다(§19) */
+  axis: MirrorAxisKey;
+  headline: string;
+  summary: string;
+  evidenceRefs: EvidenceRef[];
+  limitations: string[];
+}
+
+export interface CompatibilityNarrative {
+  dimensionKey: TargetAxisKey;
+  kind: 'good' | 'friction';
+  explanation: string;
+  scenario: string;
+  conversationQuestion?: string;
+  evidenceRefs: EvidenceRef[];
+}
+
+export interface HistoryNarrative {
+  axis: MirrorAxisKey;
+  /** 규칙이 판정한 변화 상태 */
+  state: HistoryChangeState;
+  explanation: string;
+  evidenceRefs: EvidenceRef[];
+}
+
+/** 화면이 받는 통합 결과 — 실패해도 mode로 무엇을 보고 있는지 알 수 있다 */
+export interface AiNarrativeBundle {
+  relationship: RelationshipNarrative[];
+  core: CoreInsightNarrative | null;
+  meta: AiAnalysisMeta;
+}
+
 /* ------------------------------------------ Premium (v1.5, Fake Door) */
 
 /**
@@ -717,6 +882,14 @@ export interface SessionAnswers {
   photos: PhotoAsset[];
   /** ObservedTrait.id → 사용자 피드백 */
   observations: Record<string, ObservationFeedback>;
+  /**
+   * 사진 AI 분석 결과 (v1.6).
+   *
+   * Demo 시절에는 사진 개수만 보고 매 렌더마다 다시 계산했지만, 실제 AI 결과는 재계산할 수
+   * 없으므로 **세션에 저장한다.** null이면 아직 분석하지 않은 상태다.
+   * `meta.mode`로 real / demo / fallback / legacy-demo를 구분한다.
+   */
+  observedAnalysis: ObservedProfileResult | null;
   declared: DeclaredPreference;
   experience: RelationshipExperience;
   target: TargetProfile;

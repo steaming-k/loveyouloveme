@@ -15,7 +15,9 @@ import { MAX_PAST_FACTORS } from '@/data/labels';
 import { PHOTO_MAX_COUNT, SAMPLE_PHOTOS, DEMO_PHOTO_IDS } from '@/data/samplePhotos';
 import { clearSessionDedup, trackEvent } from '@/lib/analytics';
 import { createEmptyBirthProfile } from '@/lib/logic/birth';
+import { buildDemoObservedResult } from '@/services/ai/fallback';
 import type {
+  ObservedProfileResult,
   BirthProfile,
   ConversationQuestionId,
   DeclaredPreference,
@@ -54,6 +56,12 @@ interface SessionContextValue {
   removePhoto: (id: string) => void;
   applyDemoPhotos: () => void;
   clearPhotos: () => void;
+
+  /**
+   * 사진 AI 분석 결과 저장 (v1.6).
+   * 실제 AI 결과는 재계산할 수 없으므로 세션에 보관한다.
+   */
+  setObservedAnalysis: (result: ObservedProfileResult | null) => void;
 
   setObservationVerdict: (id: string, verdict: Verdict) => void;
   correctObservation: (id: string, text: string) => void;
@@ -128,9 +136,27 @@ function deserialize(raw: string): SessionAnswers | null {
     const legacy = parsed as Partial<SessionAnswers> & { zodiac?: ZodiacSign | null };
     const legacyZodiac = parsed.legacyZodiac ?? legacy.zodiac ?? null;
 
+    /**
+     * v1.6 Migration (§84) — v1.5 이전 세션에는 `observedAnalysis`가 없다.
+     *
+     * 그 시절 관찰은 사진 개수만 보고 매 렌더 재계산하던 데모 결과였고, 이미지 단위 evidence가
+     * 애초에 존재하지 않았다. **없던 evidence를 만들어내지 않는다** — 사용자가 이미 확인·수정한
+     * 피드백(observations)은 그대로 살리되, 분석 결과는 `legacy-demo`로 재구성한다.
+     */
+    const observedAnalysis =
+      parsed.observedAnalysis ??
+      (photos.length > 0
+        ? buildDemoObservedResult({
+            photoCount: photos.length,
+            inputFingerprint: 'legacy',
+            mode: 'legacy-demo',
+          })
+        : null);
+
     return {
       ...base,
       ...parsed,
+      observedAnalysis,
       declared: { ...base.declared, ...parsed.declared },
       experience: { ...base.experience, ...parsed.experience },
       target: {
@@ -237,6 +263,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       });
       objectUrls.current = [];
       return { ...prev, photos: [] };
+    });
+  }, []);
+
+  const setObservedAnalysis = useCallback((result: ObservedProfileResult | null) => {
+    setAnswers((prev) => {
+      // 분석이 바뀌면 이전 관찰에 대한 피드백은 의미가 없다 — trait id가 달라지기 때문이다.
+      const sameFingerprint =
+        prev.observedAnalysis?.meta.inputFingerprint === result?.meta.inputFingerprint;
+      return {
+        ...prev,
+        observedAnalysis: result,
+        observations: sameFingerprint ? prev.observations : {},
+      };
     });
   }, []);
 
@@ -454,6 +493,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       removePhoto,
       applyDemoPhotos,
       clearPhotos,
+      setObservedAnalysis,
       setObservationVerdict,
       correctObservation,
       toggleObservationExcluded,
@@ -489,6 +529,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       removePhoto,
       applyDemoPhotos,
       clearPhotos,
+      setObservedAnalysis,
       setObservationVerdict,
       correctObservation,
       toggleObservationExcluded,

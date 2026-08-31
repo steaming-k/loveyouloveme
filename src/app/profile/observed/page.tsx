@@ -8,18 +8,16 @@ import { Button } from '@/components/common/Button';
 import { ConfirmModal } from '@/components/common/ConfirmModal';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
-import { EmptyStateView, FillDataRow } from '@/components/common/StateScreens';
 import { InlineError, NoticeBox, PageHeading, Tag } from '@/components/common/primitives';
 import { useToast } from '@/components/common/ToastProvider';
+import { Lovy } from '@/components/lovy/Lovy';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { ObservationCard } from '@/components/profile/ObservationCard';
 import { LOVY_LINES, PRIVACY } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
-import { IS_DEMO_AI } from '@/lib/env';
 import { observedEvidenceLabel } from '@/lib/logic/observed';
 import { ROUTES } from '@/lib/routes';
 import { isObservedReviewComplete } from '@/lib/validation';
-import { aiSelectors } from '@/services/aiService';
 import { useSession } from '@/state/SessionProvider';
 
 /** S09 Observed Me 결과 — 러비의 관찰은 초안이고, 사용자가 고칠 수 있다. */
@@ -34,7 +32,14 @@ export default function ObservedResultPage() {
     markComplete,
   } = useSession();
 
-  const traits = useMemo(() => aiSelectors.observedTraits(answers.photos), [answers.photos]);
+  /**
+   * v1.6 — 저장된 분석 결과를 읽는다.
+   * 예전에는 사진 개수로 매 렌더 재계산했지만, 실제 AI 결과는 재계산할 수 없다.
+   */
+  const analysis = answers.observedAnalysis;
+  const traits = useMemo(() => analysis?.traits ?? [], [analysis]);
+  const mode = analysis?.meta.mode ?? 'demo';
+  const coverage = analysis?.evidenceCoverage;
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -76,20 +81,47 @@ export default function ObservedResultPage() {
     router.push(ROUTES.declared(1));
   };
 
+  /**
+   * §62 — Trait 0개는 **실패가 아니다.** '근거를 못 찾았다'는 정상 상태이고,
+   * 사진 분석이 약하다고 Core Funnel을 막지 않는다(§63) — 질문으로 계속할 길을 함께 준다.
+   */
   if (traits.length === 0) {
+    const analyzed = analysis !== null;
+
     return (
       <ScreenLayout
         header={<ScreenHeader backHref={ROUTES.photos} title="관찰 기록" />}
-        footer={<Button onClick={() => router.push(ROUTES.photos)}>사진 고르러 가기</Button>}
+        footer={
+          <div className="flex flex-col gap-0.5">
+            <Button onClick={() => router.push(ROUTES.photos)}>사진 더 고르기</Button>
+            <Button variant="text" onClick={() => router.push(ROUTES.declared(1))}>
+              질문으로 계속하기
+            </Button>
+          </div>
+        }
       >
-        <EmptyStateView
-          actions={
-            <FillDataRow
-              label="사진 3장 이상 고르기"
-              onClick={() => router.push(ROUTES.photos)}
-            />
-          }
-        />
+        <div className="flex h-full flex-col items-center justify-center gap-4 px-3.5 pb-10 text-center">
+          <Lovy pose="question" size={120} decorative />
+          <h2 className="text-section keep-all">
+            {analyzed
+              ? '사진은 봤는데, 아직 반복되는 신호를 못 찾았어.'
+              : '아직 사진을 관찰하지 않았어.'}
+          </h2>
+          <p className="text-sub keep-all leading-relaxed text-ink-sub">
+            {analyzed
+              ? '생활 패턴이라고 부를 만큼 반복되는 장면이 안 보였어. 없는 걸 있다고 하진 않을게.'
+              : '사진을 고르고 관찰을 시작하면 여기에 결과가 보여.'}
+          </p>
+          {analysis && analysis.limitations.length > 0 ? (
+            <ul className="flex flex-col gap-1.5 pt-1">
+              {analysis.limitations.map((item) => (
+                <li key={item} className="text-meta keep-all leading-relaxed text-ink-faint">
+                  {item}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
       </ScreenLayout>
     );
   }
@@ -112,8 +144,23 @@ export default function ObservedResultPage() {
             eyebrow={
               <div className="flex flex-wrap items-center gap-1.5">
                 <Tag tone="brand">OBSERVED ME</Tag>
-                <Tag tone="mint">{observedEvidenceLabel(answers.photos)}</Tag>
-                {IS_DEMO_AI ? <Tag tone="neutral">DEMO AI</Tag> : null}
+                {/*
+                  근거 배지는 '사진 N장'이 아니라 **실제로 쓰인 근거**를 말한다(§11).
+                  사진 8장을 올렸어도 쓸 만한 근거가 2개면 그렇게 표시한다.
+                */}
+                {mode === 'real' && coverage ? (
+                  <Tag tone="mint">
+                    근거: 사진 {coverage.usableImageCount}/{coverage.imageCount}장
+                  </Tag>
+                ) : (
+                  <Tag tone="mint">{observedEvidenceLabel(answers.photos)}</Tag>
+                )}
+                {/* 실제 분석이면 DEMO 배지를 붙이지 않는다. fallback은 사실대로 알린다(§39) */}
+                {mode === 'real' ? <Tag tone="neutral">AI OBSERVATION</Tag> : null}
+                {mode === 'demo' || mode === 'legacy-demo' ? (
+                  <Tag tone="neutral">DEMO AI</Tag>
+                ) : null}
+                {mode === 'fallback' ? <Tag tone="friction">규칙 기반 대체</Tag> : null}
               </div>
             }
           />
@@ -144,8 +191,34 @@ export default function ObservedResultPage() {
             {LOVY_LINES.observedResult}
           </LovyMessage>
 
+          {/* 이 분석이 못 한 것을 숨기지 않는다 */}
+          {analysis && analysis.limitations.length > 0 ? (
+            <ul className="flex flex-col gap-1.5 px-1">
+              {analysis.limitations.map((item) => (
+                <li
+                  key={item}
+                  className="flex gap-2 text-[11.5px] keep-all leading-relaxed text-ink-sub"
+                >
+                  <span className="flex-none text-ink-faint" aria-hidden>
+                    ·
+                  </span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
           <NoticeBox>{PRIVACY.aiResult}</NoticeBox>
-          {IS_DEMO_AI ? <NoticeBox>{PRIVACY.demoAi}</NoticeBox> : null}
+          {mode === 'real' ? <NoticeBox>{PRIVACY.photoTransfer}</NoticeBox> : null}
+          {mode === 'demo' || mode === 'legacy-demo' ? (
+            <NoticeBox>{PRIVACY.demoAi}</NoticeBox>
+          ) : null}
+          {mode === 'fallback' ? (
+            <NoticeBox>
+              사진 분석에 실패해서 일부 결과를 간단한 규칙 기반으로 보여주고 있어요. 사진 내용을
+              읽은 결과가 아니에요.
+            </NoticeBox>
+          ) : null}
         </div>
       </ScreenLayout>
 
@@ -155,7 +228,7 @@ export default function ObservedResultPage() {
         title="어떻게 다른지 알려줘"
         description={
           editingTrait
-            ? `러비의 관찰: "${editingTrait.text}" — 네 말로 고쳐 적으면 이 문장을 대신 쓸게.`
+            ? `러비의 관찰: "${editingTrait.observation}" — 네 말로 고쳐 적으면 이 문장을 대신 쓸게.`
             : undefined
         }
       >
