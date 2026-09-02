@@ -1,3 +1,9 @@
+import {
+  aggregatePhotoObservations,
+  groupDuplicateLikePhotos,
+  repeatedSignals,
+} from '@/lib/logic/observedSignals';
+import { sanitizePhotoObservation } from '@/services/ai/handlers';
 import { PROMPT_VERSIONS } from '@/services/ai/promptVersions';
 import {
   evidenceRefsAreSubsetOf,
@@ -13,9 +19,10 @@ import {
   parseDeepReportResponse,
   parseHistoryResponse,
   parseObservedResponse,
+  parsePhotoObservationResponse,
   parseRelationshipResponse,
 } from '@/services/ai/schemas';
-import type { EvidenceRef, MirrorAxisKey, MirrorState } from '@/types';
+import type { EvidenceRef, MirrorAxisKey, MirrorState, PhotoObservation } from '@/types';
 
 /**
  * POST /api/ai/contract-test — **개발 전용** AI Contract Test 실행기 (v1.7 · §55 · §56)
@@ -36,6 +43,10 @@ interface ContractRequest {
   allowed?: unknown;
   judgements?: unknown;
   focusAxis?: unknown;
+  /** v1.10 — 사진 1장 관찰 fixture용 */
+  photoId?: unknown;
+  /** v1.10 — Cross-photo Aggregation fixture용 (Provider 없이 규칙만 검증한다) */
+  observations?: unknown;
 }
 
 function notFound(): Response {
@@ -54,6 +65,54 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const { task, raw } = body;
+
+  /* ---------------------------- v1.10 사진 1장 관찰 (§3 · §9 · §10) */
+  if (task === 'observed-photo-analysis') {
+    const photoId = typeof body.photoId === 'string' ? body.photoId : 'p1';
+
+    const parsed = parsePhotoObservationResponse(raw, photoId);
+    if (!parsed) return Response.json({ ok: true, rejected: 'INVALID_OUTPUT' });
+
+    // 실제 서버 경로와 **같은 함수**를 쓴다 — 검증 로직을 테스트용으로 복제하지 않는다.
+    const { observation, violations } = sanitizePhotoObservation(parsed);
+
+    return Response.json({
+      ok: true,
+      promptVersion: PROMPT_VERSIONS.observed,
+      photoId: observation.photoId,
+      usable: observation.usable,
+      scenes: observation.scenes.map((item) => item.label),
+      activities: observation.activities.map((item) => item.label),
+      objects: observation.objects.map((item) => item.label),
+      environment: (observation.environment ?? []).map((item) => item.label),
+      hasEvidenceSummary: observation.evidenceSummary.length > 0,
+      violations,
+    });
+  }
+
+  /* -------------- v1.10 Cross-photo Aggregation (§4 · §5) — 규칙만 돈다 */
+  if (task === 'observed-photo-aggregation') {
+    const observations = (Array.isArray(body.observations)
+      ? body.observations
+      : []) as PhotoObservation[];
+
+    const signals = aggregatePhotoObservations(observations);
+
+    return Response.json({
+      ok: true,
+      signals: signals.map((signal) => ({
+        category: signal.category,
+        label: signal.label,
+        occurrenceCount: signal.occurrenceCount,
+        photoCount: signal.photoIds.length,
+        strength: signal.strength,
+        hasDuplicateLikePhotos: signal.hasDuplicateLikePhotos,
+        evidenceCount: signal.evidence.length,
+      })),
+      repeatedSignalCount: repeatedSignals(signals).length,
+      duplicateLikeGroups: groupDuplicateLikePhotos(observations).length,
+    });
+  }
 
   if (task === 'observed-profile') {
     const allowedImageIds = Array.isArray(body.allowedImageIds)

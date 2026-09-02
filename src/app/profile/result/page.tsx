@@ -142,7 +142,7 @@ function ProfileResultView() {
                 onClick={() => {
                   setFeedback('ok');
                   trackEvent('profile_feedback_positive');
-                  showToast('관찰 기록에 반영했어요');
+                  showToast('관찰 기록에 반영했어');
                 }}
               />
               <FeedbackButton
@@ -166,7 +166,7 @@ function ProfileResultView() {
         open={editOpen}
         onClose={() => setEditOpen(false)}
         title="어디를 고칠까?"
-        description="바꾸면 동기화율과 Relationship Mirror도 함께 다시 계산돼요."
+        description="바꾸면 동기화율과 Relationship Mirror도 함께 다시 계산돼."
       >
         <div className="flex flex-col gap-2">
           <FillDataRow

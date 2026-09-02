@@ -18,6 +18,17 @@ const JPEG_QUALITY = 0.8;
 /** 개당 상한 (서버 검증과 맞춘다) */
 const MAX_BYTES = 1_200_000;
 
+/**
+ * MIME 검사는 **업로드 시점에** 이미 끝난다(`PHOTO_ACCEPTED_TYPES` = jpeg/png/webp).
+ * HEIC/HEIF는 그 목록에 없어서 애초에 세션에 들어오지 못한다 —
+ * 브라우저 대부분이 `<img>`로 디코드하지 못해 캔버스 변환이 실패하기 때문이다(§13).
+ * 여기서 다시 검사하지 않고, 그래도 디코드에 실패하면 `skipped`로 센다.
+ *
+ * ⚠️ EXIF는 **자동으로 제거된다.** 캔버스에 다시 그려 JPEG로 재인코딩하므로 원본의
+ * GPS 좌표·촬영 시각·기기 정보가 결과 data URL에 남지 않는다. 이건 부수효과가 아니라
+ * 이 방식을 택한 이유 중 하나다 — 사진 위치를 Provider에 보내지 않는다.
+ */
+
 export interface PreparedImage {
   imageId: string;
   dataUrl: string;

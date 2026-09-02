@@ -138,18 +138,18 @@ export const PREMIUM_COPY = {
   priceNote: '상세 분석 1회 · 구독 아님',
 
   /** Fake Door reveal — 결제가 가능한 것처럼 표시하지 않는다(§2/§13) */
-  fakeDoorTitle: '상세 분석은 지금 준비 중이에요',
+  fakeDoorTitle: '상세 분석은 지금 준비 중이야',
   fakeDoorBody:
     '아직 결제도, 상세 리포트도 연결 전이야. 방금 누른 건 결제가 아니라 관심 표시로만 기록했어.',
   notifyCta: '출시되면 알려줘',
-  notifyDoneLabel: '관심 표시했어요',
+  notifyDoneLabel: '관심 표시했어',
   notifyNote: '지금은 알림 기능도 연결 전이라 관심 표시만 기록할게. 연락처는 받지 않아.',
-  fakeDoorDismiss: '괜찮아요',
+  fakeDoorDismiss: '괜찮아',
 
   unavailableTitle: '이 상세 렌즈는 아직 준비 중이야',
 
   /** Demo AI일 때 상세도 규칙 기반이라는 사실을 숨기지 않는다(§22) */
-  demoNotice: '상세 분석도 규칙 기반 데모 응답이에요. 실제 AI 개인화 결과가 아니에요.',
+  demoNotice: '상세 분석도 규칙 기반 데모 응답이야. 실제 AI 개인화 결과가 아니야.',
 } as const;
 
 /**
@@ -173,14 +173,14 @@ export const DEEP_REPORT_COPY = {
   previewLabel: '미리 보기 — 3가지만 살짝',
   previewLocked: '나머지는 정밀 관찰 리포트에서 이어서 볼 수 있어',
 
-  fakeDoorTitle: '정밀 관찰 리포트는 지금 준비 중이에요',
+  fakeDoorTitle: '정밀 관찰 리포트는 지금 준비 중이야',
   fakeDoorBody:
     '아직 결제도, 리포트 연결도 전이야. 방금 누른 건 결제가 아니라 관심 표시로만 기록했어.',
   notifyCta: '출시되면 알려줘',
-  notifyDoneLabel: '관심 표시했어요',
+  notifyDoneLabel: '관심 표시했어',
   notifyNote: '지금은 알림 기능도 연결 전이라 관심 표시만 기록할게. 연락처는 받지 않아.',
-  fakeDoorDismiss: '괜찮아요',
+  fakeDoorDismiss: '괜찮아',
 
   unavailableTitle: '아직 연결할 수 있는 신호가 부족해',
-  demoNotice: '이 리포트도 규칙 기반 데모 응답이에요. 실제 AI 개인화 결과가 아니에요.',
+  demoNotice: '이 리포트도 규칙 기반 데모 응답이야. 실제 AI 개인화 결과가 아니야.',
 } as const;

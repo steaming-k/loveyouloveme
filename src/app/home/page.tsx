@@ -173,7 +173,7 @@ export default function HomePage() {
       <ConfirmModal
         open={deleteOpen}
         title="관찰 데이터를 모두 삭제할까?"
-        description="사진 선택 기록, 관계 답변, 상대 정보와 분석 결과를 모두 삭제해요. 되돌릴 수 없어요."
+        description="사진 선택 기록, 관계 답변, 상대 정보와 분석 결과를 모두 삭제해. 되돌릴 수 없어."
         confirmLabel="전체 삭제"
         onCancel={() => setDeleteOpen(false)}
         onConfirm={() => {
@@ -188,8 +188,8 @@ export default function HomePage() {
           setDeleteOpen(false);
           showToast(
             alsoDeleteHistory
-              ? '관찰 데이터와 기록을 모두 삭제했어요'
-              : '현재 관찰 데이터를 삭제했어요',
+              ? '관찰 데이터와 기록을 모두 삭제했어'
+              : '현재 관찰 데이터를 삭제했어',
           );
           router.push(ROUTES.splash);
         }}
@@ -205,7 +205,7 @@ export default function HomePage() {
             <span className="text-meta keep-all leading-relaxed text-ink-sub">
               저장된 관찰 기록 {entries.length}개도 함께 삭제
               <span className="block text-ink-faint">
-                끄면 지금 진행 중인 답변만 지우고, 쌓인 기록은 남겨둬요.
+                끄면 지금 진행 중인 답변만 지우고, 쌓인 기록은 남겨둬.
               </span>
             </span>
           </label>

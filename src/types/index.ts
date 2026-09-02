@@ -652,6 +652,18 @@ export type AiTask =
   /** v1.9 — Cross-source Insight Narrative (§24).판정은 규칙이 이미 끝냈다. */
   | 'deep-report-narrative';
 
+/**
+ * Provider에게 실제로 나가는 작업 단위 (v1.10).
+ *
+ * `AiTask`는 **화면이 부르는 내부 API 1개**에 대응한다. 그런데 사진 분석은 한 번의 화면
+ * 요청(`observed-profile`) 안에서 **사진 장수만큼** Provider를 부른다 — 사진 한 장씩
+ * 따로 봐야 Provider가 '여러 장에서 반복됐다'를 스스로 주장할 수 없기 때문이다(§3).
+ * 그래서 Provider/mock 쪽에서만 쓰는 작업 id를 따로 둔다.
+ *
+ * ⚠️ 이 값은 `aiClient`의 ENDPOINT 표에 들어가지 않는다 — 대응하는 라우트가 없다.
+ */
+export type AiProviderTask = AiTask | 'observed-photo-analysis';
+
 /** 결과 재현·QA를 위한 내부 metadata. 사용자에게 그대로 노출하지 않는다 */
 export interface AiAnalysisMeta {
   mode: AiMode;
@@ -700,6 +712,74 @@ export interface ImageEvidence {
   description: string;
 }
 
+/* ------------------------------- Photo Vision 4계층 (v1.10 §2) */
+
+/** LEVEL 1 Observation — 사진 한 장에서 직접 보이는 것 하나 */
+export interface ObservedLabel {
+  label: string;
+  /** Provider가 준 값. 반복 판정에는 쓰지 않는다 — 그건 규칙이 한다(§3) */
+  confidence?: number;
+}
+
+/**
+ * LEVEL 1 — 사진 **한 장**의 관찰 결과.
+ *
+ * ⚠️ 이 구조에는 '몇 장에서 반복됐는가'가 **없다.** Provider는 자기가 본 사진 한 장만
+ * 알고 있고, 반복 여부는 애플리케이션 로직이 판정한다(§3 · §4).
+ */
+export interface PhotoObservation {
+  photoId: string;
+  scenes: ObservedLabel[];
+  activities: ObservedLabel[];
+  objects: ObservedLabel[];
+  environment?: ObservedLabel[];
+  evidenceSummary: string;
+  /** 흐리거나 판단 불가라 관찰을 만들 수 없었던 사진 */
+  usable: boolean;
+}
+
+/** LEVEL 2 Activity Signal — 관찰 사실을 정규화한 활동 범주 */
+export type ObservedSignalCategory =
+  | 'sports'
+  | 'outdoor'
+  | 'travel'
+  | 'food'
+  | 'cafe'
+  | 'culture'
+  | 'reading'
+  | 'pet'
+  | 'social'
+  | 'other';
+
+/**
+ * LEVEL 3 판정 결과 (§5).
+ * - `single`: 사진 1장 — 단일 관찰. '평소 생활'이라고 부르지 않는다.
+ * - `repeated`: 2장 — 반복 가능성
+ * - `strong_repeated`: 3장 이상 — 반복 신호
+ */
+export type ObservedSignalStrength = 'single' | 'repeated' | 'strong_repeated';
+
+/**
+ * LEVEL 3 — 사진들을 가로질러 집계한 활동 신호.
+ *
+ * ⚠️ `occurrenceCount`는 **사진 장수가 아니라 서로 다른 장면 그룹의 수**다(§5).
+ * 같은 날 같은 장소에서 연속 촬영한 것으로 보이는 사진들은 한 그룹으로 묶여 1회로 센다 —
+ * 사진을 많이 올렸다는 이유로 생활 근거가 부풀지 않게 한다.
+ */
+export interface ObservedSignal {
+  id: string;
+  category: ObservedSignalCategory;
+  label: string;
+  /** §17 Evidence Provenance — 어떤 사진에서 나왔는지 항상 추적 가능해야 한다 */
+  photoIds: string[];
+  occurrenceCount: number;
+  /** 이 신호를 만든 관찰 라벨들 ('야구장' · '유니폼 착용' 같은) */
+  evidence: string[];
+  strength: ObservedSignalStrength;
+  /** 중복처럼 보여 한 그룹으로 묶인 사진이 있었는지 — 화면에서 과대계산을 설명할 때 쓴다 */
+  hasDuplicateLikePhotos: boolean;
+}
+
 /**
  * 사진에서 관찰된 생활 신호.
  *
@@ -716,10 +796,38 @@ export interface AiObservedTrait {
   /** demo·legacy 결과의 문장형 근거 (이미지 단위 evidence가 없던 시절) */
   evidenceText?: string;
   confidence: Confidence;
+  /**
+   * v1.10 — 이 trait을 만든 집계 신호. **실제 사진 분석 결과에만 있다.**
+   * demo/fallback 결과에는 없다 — 없는 반복 근거를 있는 것처럼 만들지 않는다.
+   * `signal.id === trait.id`라서 사용자 수정(§16)이 그대로 신호에 매핑된다.
+   */
+  signal?: ObservedSignal;
 }
 
 /** 사진 수가 아니라 **쓸 만한 근거의 양**으로 판정한다. AI가 스스로 판정하지 않는다(§11) */
 export type EvidenceCoverageLevel = 'low' | 'medium' | 'high';
+
+/**
+ * 화면·Analytics가 구분해야 하는 관찰 상태 (v1.10 §8).
+ *
+ * ⚠️ '분석 실패'와 '반복 없음'을 **절대 같은 상태로 처리하지 않는다.**
+ * 반복이 없다는 건 정상적인 관찰 결과이고, 실패는 우리가 못 한 일이다.
+ */
+export type ObservedAnalysisState =
+  /** A. Vision 성공 + 반복 신호 있음 */
+  | 'repeated_found'
+  /** A'. Vision 성공 + 단일 관찰만 있음 — No Pattern ≠ No Information(§7) */
+  | 'single_only'
+  /** Vision 성공했지만 쓸 만한 관찰 자체가 안 나옴 */
+  | 'no_observation'
+  /** B. Provider 실패 → 규칙 결과로 대체 */
+  | 'provider_failed'
+  /** C. 개발용 mock */
+  | 'mock'
+  /** C. Provider 미연결 데모 */
+  | 'demo'
+  /** D. 분석에 쓸 사진이 부족 */
+  | 'insufficient_photos';
 
 export interface ObservedProfileResult {
   version: string;
@@ -730,6 +838,11 @@ export interface ObservedProfileResult {
     usableImageCount: number;
     level: EvidenceCoverageLevel;
   };
+  /**
+   * v1.10 — 예전 세션에 저장된 결과에는 없다(optional). 없으면 화면이 `meta.mode`로
+   * 예전처럼 판단한다 — 저장된 결과를 마이그레이션한다고 지어내지 않는다.
+   */
+  observedState?: ObservedAnalysisState;
   meta: AiAnalysisMeta;
 }
 

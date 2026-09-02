@@ -12,6 +12,8 @@ import type {
   MirrorAxisKey,
   MirrorState,
   ObservedCategory,
+  ObservedLabel,
+  PhotoObservation,
   RelationshipNarrative,
   TargetAxisKey,
 } from '@/types';
@@ -119,6 +121,73 @@ function parseEvidenceRef(raw: unknown): EvidenceRef | null {
 function parseEvidenceRefs(raw: unknown): EvidenceRef[] {
   if (!Array.isArray(raw)) return [];
   return raw.map(parseEvidenceRef).filter((ref): ref is EvidenceRef => ref !== null);
+}
+
+/* -------------------------------- Photo Observation (v1.10 · §3) */
+
+/** 사진 한 장에서 받을 라벨 상한. 배열마다 적용한다 */
+const MAX_LABELS_PER_GROUP = 8;
+/** 라벨 길이 상한 — 프롬프트가 요구한 '명사구'를 넘으면 문장을 쓴 것이다 */
+const MAX_LABEL_LENGTH = 24;
+
+function parseLabelList(raw: unknown): ObservedLabel[] {
+  if (!Array.isArray(raw)) return [];
+
+  const result: ObservedLabel[] = [];
+  for (const entry of raw) {
+    // 문자열만 온 경우도 받아준다 — 형식 편차로 관찰을 통째로 잃지 않는다.
+    const label = isObject(entry) ? str(entry.label, MAX_LABEL_LENGTH) : str(entry, MAX_LABEL_LENGTH);
+    if (!label) continue;
+
+    const rawConfidence = isObject(entry) ? Number(entry.confidence) : Number.NaN;
+    const confidence =
+      Number.isFinite(rawConfidence) && rawConfidence >= 0 && rawConfidence <= 1
+        ? rawConfidence
+        : undefined;
+
+    if (result.some((item) => item.label === label)) continue;
+    result.push(confidence === undefined ? { label } : { label, confidence });
+    if (result.length >= MAX_LABELS_PER_GROUP) break;
+  }
+  return result;
+}
+
+/**
+ * 사진 **한 장**의 관찰 응답을 파싱한다.
+ *
+ * ⚠️ `photoId`는 응답에서 읽지 않고 **호출자가 넣는다.** Provider는 자기가 본 사진의 세션
+ * id를 알 필요가 없고(§29 원본 파일명 미전송), 알려주면 다른 사진 id를 지어낼 수 있다.
+ *
+ * ⚠️ 반복/occurrenceCount에 해당하는 필드가 **애초에 없다.** 응답에 그런 필드가 있어도
+ * 읽지 않는다 — 반복 판정은 규칙의 몫이다(§3 · §4).
+ */
+export function parsePhotoObservationResponse(
+  raw: unknown,
+  photoId: string,
+): PhotoObservation | null {
+  if (!isObject(raw)) return null;
+
+  const scenes = parseLabelList(raw.scenes);
+  const activities = parseLabelList(raw.activities);
+  const objects = parseLabelList(raw.objects);
+  const environment = parseLabelList(raw.environment);
+  const evidenceSummary = str(raw.evidenceSummary, 200) ?? '';
+
+  // usable을 명시하지 않았으면 라벨 유무로 판단한다 — 라벨이 하나도 없으면 못 읽은 것이다.
+  const declaredUsable = typeof raw.usable === 'boolean' ? raw.usable : null;
+  const hasAnyLabel =
+    scenes.length + activities.length + objects.length + environment.length > 0;
+  const usable = declaredUsable === null ? hasAnyLabel : declaredUsable && hasAnyLabel;
+
+  return {
+    photoId,
+    scenes,
+    activities,
+    objects,
+    environment,
+    evidenceSummary,
+    usable,
+  };
 }
 
 /* --------------------------------------------------- Observed Profile */

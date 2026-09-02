@@ -90,7 +90,7 @@ export default function ConversationQuestionsPage() {
               onToggleSave={() => {
                 const saved = toggleSavedQuestion(question.id);
                 if (saved) trackEvent('conversation_question_save', { question: question.id });
-                showToast(saved ? '질문을 저장했어요' : '저장을 해제했어요');
+                showToast(saved ? '질문을 저장했어' : '저장을 해제했어');
               }}
               onShare={async () => {
                 trackEvent('conversation_question_share', { question: question.id });
@@ -101,12 +101,12 @@ export default function ConversationQuestionsPage() {
                 });
                 showToast(
                   outcome === 'copied'
-                    ? '질문을 클립보드에 복사했어요'
+                    ? '질문을 클립보드에 복사했어'
                     : outcome === 'shared'
-                      ? '공유했어요'
+                      ? '공유했어'
                       : outcome === 'cancelled'
-                        ? '공유를 취소했어요'
-                        : '이 브라우저에서는 공유를 지원하지 않아요',
+                        ? '공유를 취소했어'
+                        : '이 브라우저에서는 공유를 지원하지 않아',
                   outcome === 'unsupported' ? 'warning' : 'default',
                 );
               }}

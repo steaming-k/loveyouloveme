@@ -1,0 +1,29 @@
+{
+  "name": "사진 1장 관찰 · Provider가 반복을 주장해도 무시한다",
+  "task": "observed-photo-analysis",
+  "photoId": "p1",
+  "description": "§3 — 반복 판정은 규칙만 한다. Provider가 occurrenceCount·repeated·traits를 보내도 스키마가 읽지 않는다. 문장형 라벨(24자 초과)도 버린다 — 프롬프트가 요구한 건 명사구다.",
+  "raw": {
+    "scenes": [
+      { "label": "야구장으로 보이는 장소" },
+      { "label": "이 사람은 야구를 자주 보러 다니는 것으로 보이는 장면입니다" }
+    ],
+    "activities": [{ "label": "경기 관람" }],
+    "objects": [{ "label": "유니폼" }],
+    "environment": [{ "label": "실외" }],
+    "evidenceSummary": "야구장으로 보이는 실외 공간이 보였어",
+    "usable": true,
+    "occurrenceCount": 7,
+    "repeated": true,
+    "strength": "strong_repeated",
+    "traits": [{ "label": "스포츠 마니아", "confidence": "high" }]
+  },
+  "expect": {
+    "usable": true,
+    "scenes": ["야구장으로 보이는 장소"],
+    "activities": ["경기 관람"],
+    "objects": ["유니폼"],
+    "environment": ["실외"],
+    "violations": []
+  }
+}

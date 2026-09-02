@@ -30,7 +30,7 @@ export default function ProfileIntroPage() {
           >
             관찰 시작
           </Button>
-          <p className="text-center text-meta text-ink-muted">약 3분 · 중간에 저장돼요</p>
+          <p className="text-center text-meta text-ink-muted">약 3분 · 중간에 저장돼</p>
           <Button
             variant="text"
             onClick={() => {
@@ -54,7 +54,7 @@ export default function ProfileIntroPage() {
         </LovyMessage>
 
         <p className="px-1 text-caption leading-relaxed keep-all text-ink-sub">
-          사진 + 몇 가지 질문 + 관계 경험을 바탕으로 러비가 너에 대한 관찰 기록을 만들어요.
+          사진 + 몇 가지 질문 + 관계 경험을 바탕으로 러비가 너에 대한 관찰 기록을 만들어.
         </p>
 
         <ol className="flex flex-col px-0.5">

@@ -83,7 +83,7 @@ function BirthProfileView() {
                 type="button"
                 onClick={() => {
                   clearBirthProfile('self');
-                  showToast('내 출생정보를 삭제했어요');
+                  showToast('내 출생정보를 삭제했어');
                 }}
                 className="flex min-h-11 items-center text-meta text-ink-faint"
               >
@@ -108,7 +108,7 @@ function BirthProfileView() {
                 type="button"
                 onClick={() => {
                   clearBirthProfile('target');
-                  showToast('상대 출생정보를 삭제했어요');
+                  showToast('상대 출생정보를 삭제했어');
                 }}
                 className="flex min-h-11 items-center text-meta text-ink-faint"
               >

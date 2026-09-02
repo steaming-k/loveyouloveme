@@ -237,7 +237,7 @@ function LowConfidenceView() {
             ))}
           </ul>
           <p className="text-[12.5px] leading-relaxed keep-all text-ink-sub">
-            {Math.max(1, 3 - result.comparedCount)}개 이상 더 알려주면 동기화율을 계산할 수 있어요.
+            {Math.max(1, 3 - result.comparedCount)}개 이상 더 알려주면 동기화율을 계산할 수 있어.
           </p>
         </div>
       </div>

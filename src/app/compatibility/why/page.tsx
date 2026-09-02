@@ -168,7 +168,7 @@ export default function CompatibilityDetailPage() {
             <span className="flex min-w-0 flex-col gap-0.5">
               <span className="text-[12.5px] font-medium">사주 · 별자리 관점으로 우리 둘 보기</span>
               <span className="text-[11px] keep-all text-ink-faint">
-                동기화율에는 반영하지 않는 참고 렌즈예요
+                동기화율에는 반영하지 않는 참고 렌즈야
               </span>
             </span>
             <span className="flex-none text-ink-muted" aria-hidden>

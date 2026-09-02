@@ -42,13 +42,29 @@ export function ObservationCard({
     >
       <div className="flex items-start justify-between gap-2.5">
         <div className="min-w-0">
-          <p className={cn('text-body keep-all', corrected && 'text-ink')}>
+          {/*
+            v1.10 — 실제 사진 분석 결과는 '활동 이름'과 '몇 장에서 보였는지'를 분리해 보여준다(§15).
+            반복 횟수는 규칙이 센 값이라 활동 이름과 같은 줄에 섞으면 단정처럼 읽힌다.
+          */}
+          {trait.signal && !corrected ? (
+            <p className="text-body font-semibold keep-all">{trait.label}</p>
+          ) : null}
+          <p
+            className={cn(
+              'keep-all',
+              trait.signal && !corrected
+                ? 'mt-1 text-sub leading-relaxed text-ink-sub'
+                : 'text-body',
+              corrected && 'text-ink',
+            )}
+          >
             {corrected || trait.observation}
           </p>
           {/* AI Original을 덮어쓰지 않는다 — 사용자가 고쳐도 원본을 함께 남긴다(§13) */}
           {corrected ? (
-            <p className="mt-1.5 text-[11.5px] text-ink-muted">
-              러비의 원래 관찰: {trait.observation}
+            <p className="mt-1.5 text-[11.5px] keep-all text-ink-muted">
+              러비의 원래 관찰: {trait.signal ? `${trait.label} — ` : ''}
+              {trait.observation}
             </p>
           ) : null}
         </div>
@@ -59,7 +75,7 @@ export function ObservationCard({
 
       {excluded ? (
         <div className="flex items-center justify-between gap-2">
-          <span className="text-meta text-ink-sub">분석에서 제외했어요</span>
+          <span className="text-meta text-ink-sub">분석에서 제외했어</span>
           <button
             type="button"
             onClick={onToggleExcluded}
@@ -73,12 +89,12 @@ export function ObservationCard({
         <>
           <div className="flex gap-[7px]">
             <VerdictButton
-              label="맞아요"
+              label="맞아"
               selected={verdict === 'ok'}
               onClick={() => onVerdict('ok')}
             />
             <VerdictButton
-              label="조금 달라요"
+              label="조금 달라"
               muted
               selected={verdict === 'no'}
               onClick={() => {

@@ -77,7 +77,7 @@ export function ProfileLayerStack({
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-meta text-ink-muted">아직 기록이 없어요</p>
+                  <p className="text-meta text-ink-muted">아직 기록이 없어</p>
                 )}
               </div>
             </li>

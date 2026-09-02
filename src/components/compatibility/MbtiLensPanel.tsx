@@ -74,8 +74,8 @@ export function MbtiLensPanel({
       </div>
 
       <p className="rounded-[10px] bg-sunken px-3 py-2.5 text-[12.5px] keep-all leading-relaxed text-ink-sub">
-        유형 자체로 관계의 좋고 나쁨을 판정할 수는 없어요. 대신 서로 다르게 반응할 수 있는 대화
-        주제를 살펴볼 수 있어요.
+        유형 자체로 관계의 좋고 나쁨을 판정할 수는 없어. 대신 서로 다르게 반응할 수 있는 대화
+        주제를 살펴볼 수 있어.
       </p>
 
       {variant === 'full' ? (
@@ -88,7 +88,7 @@ export function MbtiLensPanel({
         <p className="text-[12.5px] text-ink-sub">
           4개 선호 지표 중 <b className="font-semibold text-ink">{report.sameCount}개</b>가 비슷하고,{' '}
           <b className="font-semibold text-ink">{report.differentCount}개</b>는 다르게 나타날 수
-          있어요.
+          있어.
         </p>
       )}
     </div>

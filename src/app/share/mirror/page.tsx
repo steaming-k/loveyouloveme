@@ -73,7 +73,7 @@ export default function ShareMirrorPage() {
                 'loveuloveme-mirror.png',
               );
               showToast(
-                ok ? '카드를 이미지로 저장했어요' : '이미지를 만들지 못했어요',
+                ok ? '카드를 이미지로 저장했어' : '이미지를 만들지 못했어',
                 ok ? 'default' : 'warning',
               );
             }}
@@ -89,12 +89,12 @@ export default function ShareMirrorPage() {
               });
               showToast(
                 outcome === 'copied'
-                  ? '공유 문구를 복사했어요'
+                  ? '공유 문구를 복사했어'
                   : outcome === 'shared'
-                    ? '공유했어요'
+                    ? '공유했어'
                     : outcome === 'cancelled'
-                      ? '공유를 취소했어요'
-                      : '이 브라우저에서는 공유를 지원하지 않아요',
+                      ? '공유를 취소했어'
+                      : '이 브라우저에서는 공유를 지원하지 않아',
                 outcome === 'unsupported' ? 'warning' : 'default',
               );
             }}

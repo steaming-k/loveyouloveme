@@ -1,0 +1,22 @@
+{
+  "name": "SET E · 분석하기 어려운 사진",
+  "task": "observed-photo-analysis",
+  "photoId": "p1",
+  "description": "무엇인지 판단할 수 없으면 usable=false로 두고 빈 결과를 낸다. 억지 추론을 만들지 않는다.",
+  "raw": {
+    "scenes": [],
+    "activities": [],
+    "objects": [],
+    "environment": [],
+    "evidenceSummary": "너무 흐려서 무엇인지 알아보기 어려웠어",
+    "usable": false
+  },
+  "expect": {
+    "usable": false,
+    "scenes": [],
+    "activities": [],
+    "objects": [],
+    "environment": [],
+    "violations": []
+  }
+}

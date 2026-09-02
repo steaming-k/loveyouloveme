@@ -55,7 +55,7 @@ export function SignalCard({
 
       <div className="flex flex-col gap-1.5">
         <p className="text-[10.5px] font-semibold tracking-[0.04em] text-ink-muted">
-          {variant === 'good' ? '이런 점이 편할 수 있어요' : '일어날 수 있는 상황'}
+          {variant === 'good' ? '이런 점이 편할 수 있어' : '일어날 수 있는 상황'}
         </p>
         <p
           className={cn(

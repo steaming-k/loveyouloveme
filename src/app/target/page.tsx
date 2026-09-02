@@ -102,7 +102,7 @@ export default function TargetPage() {
           <span>
             아는 항목 <span className="font-semibold text-ink">{known}</span> / {TARGET_FIELDS.length}
           </span>
-          <span className="text-ink-faint">모름은 점수에서 제외돼요</span>
+          <span className="text-ink-faint">모름은 점수에서 제외돼</span>
         </div>
 
         <div className="flex flex-col gap-2.5 rounded-[16px] border border-line bg-surface p-4">

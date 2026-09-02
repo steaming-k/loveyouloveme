@@ -6,6 +6,7 @@ import type {
   AiMode,
   AiObservedTrait,
   EvidenceCoverageLevel,
+  ObservedAnalysisState,
   ObservedProfileResult,
 } from '@/types';
 
@@ -82,7 +83,7 @@ export function buildDemoObservedResult(input: {
 
   const limitations =
     mode === 'fallback'
-      ? ['실제 사진 분석에 실패해서 규칙 기반 결과로 대체했어. 사진 내용을 읽은 결과가 아니야.']
+      ? ['사진 분석을 완료하지 못해서 규칙 기반 결과로 대체했어. 사진 내용을 읽은 결과가 아니야.']
       : ['이 결과는 규칙 기반 데모야. 실제 사진 내용을 분석하지 않았어.'];
 
   return {
@@ -95,6 +96,8 @@ export function buildDemoObservedResult(input: {
       usableImageCount: 0,
       level: 'low',
     },
+    // §8 — B(Provider 실패)와 C(Demo)를 같은 상태로 만들지 않는다.
+    observedState: mode === 'fallback' ? 'provider_failed' : 'demo',
     meta: buildMeta({
       mode,
       promptVersion: PROMPT_VERSIONS.observed,
@@ -103,26 +106,31 @@ export function buildDemoObservedResult(input: {
   };
 }
 
-/** 빈 결과 — 실패가 아니라 '근거를 못 찾았다'는 정상 상태다(§62) */
+/**
+ * 빈 결과 — 실패가 아니라 '근거를 못 찾았다'는 정상 상태다(§62).
+ *
+ * ⚠️ v1.10 — 문구에서 '생활 패턴'을 뺐다(§6). 사진 몇 장으로 생활 패턴을 판정했다고
+ * 말하는 순간, 없다는 결론조차 과한 주장이 된다.
+ */
 export function buildEmptyObservedResult(input: {
   photoCount: number;
   usableImageCount: number;
   inputFingerprint: string;
   mode: AiMode;
   model?: string;
+  observedState?: ObservedAnalysisState;
   limitations?: string[];
 }): ObservedProfileResult {
   return {
     version: ANALYSIS_VERSION,
     traits: [],
-    limitations: input.limitations ?? [
-      '사진은 봤는데, 생활 패턴이라고 부를 만큼 반복되는 신호는 아직 못 찾았어.',
-    ],
+    limitations: input.limitations ?? ['사진은 봤는데, 관찰로 쓸 만한 장면을 찾지 못했어.'],
     evidenceCoverage: {
       imageCount: input.photoCount,
       usableImageCount: input.usableImageCount,
       level: 'low',
     },
+    observedState: input.observedState ?? 'no_observation',
     meta: buildMeta({
       mode: input.mode,
       promptVersion: PROMPT_VERSIONS.observed,

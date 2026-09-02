@@ -46,7 +46,7 @@ export default function ShareCompatibilityPage() {
   const shareText = [
     `동기화율 ${result.score ?? '?'}`,
     headline.join(' '),
-    '입력된 정보 기준 비교 결과 · 연애 성공확률이 아니에요',
+    '입력된 정보 기준 비교 결과 · 연애 성공확률이 아니야',
   ].join('\n');
 
   return (
@@ -65,13 +65,13 @@ export default function ShareCompatibilityPage() {
                   bigValue: String(result.score ?? '?'),
                   bigValueCaption: '동기화율',
                   headlineLines: headline,
-                  footnote: '입력된 정보 기준 비교 결과 · 연애 성공확률이 아니에요',
+                  footnote: '입력된 정보 기준 비교 결과 · 연애 성공확률이 아니야',
                   items,
                   lovyPose: 'cool',
                 },
                 'loveuloveme-sync.png',
               );
-              showToast(ok ? '카드를 이미지로 저장했어요' : '이미지를 만들지 못했어요', ok ? 'default' : 'warning');
+              showToast(ok ? '카드를 이미지로 저장했어' : '이미지를 만들지 못했어', ok ? 'default' : 'warning');
             }}
           >
             이미지 저장
@@ -82,12 +82,12 @@ export default function ShareCompatibilityPage() {
               const outcome = await share({ title: `${BRAND.name} · 동기화율`, text: shareText });
               showToast(
                 outcome === 'copied'
-                  ? '공유 문구를 복사했어요'
+                  ? '공유 문구를 복사했어'
                   : outcome === 'shared'
-                    ? '공유했어요'
+                    ? '공유했어'
                     : outcome === 'cancelled'
-                      ? '공유를 취소했어요'
-                      : '이 브라우저에서는 공유를 지원하지 않아요',
+                      ? '공유를 취소했어'
+                      : '이 브라우저에서는 공유를 지원하지 않아',
                 outcome === 'unsupported' ? 'warning' : 'default',
               );
             }}
@@ -147,7 +147,7 @@ export default function ShareCompatibilityPage() {
           <div className="flex items-center gap-2.5 border-t border-white/25 pt-3.5">
             <Lovy pose="cool" size={34} decorative />
             <p className="text-[11px] leading-relaxed opacity-80">
-              입력된 정보 기준 비교 결과 · 연애 성공확률이 아니에요
+              입력된 정보 기준 비교 결과 · 연애 성공확률이 아니야
             </p>
           </div>
         </section>
@@ -155,7 +155,7 @@ export default function ShareCompatibilityPage() {
         <div className="flex flex-col gap-2">
           <ToggleRow
             label="상대 정보 표시"
-            description="켜면 네가 입력한 상대 성향 요약이 카드에 들어가요"
+            description="켜면 네가 입력한 상대 성향 요약이 카드에 들어가"
             checked={answers.share.includeTargetInfo}
             onChange={(value) => setShareOption('includeTargetInfo', value)}
           />

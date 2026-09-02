@@ -1,0 +1,51 @@
+{
+  "name": "SET A · 야구 관련 3장 + 카페 1장",
+  "task": "observed-photo-aggregation",
+  "description": "스포츠는 서로 다른 3개 장면에서 나오므로 strong_repeated, 카페는 1장이라 single이어야 한다(§5).",
+  "observations": [
+    {
+      "photoId": "p1",
+      "scenes": [{ "label": "야구장으로 보이는 장소" }],
+      "activities": [],
+      "objects": [{ "label": "유니폼" }],
+      "environment": [{ "label": "실외" }, { "label": "낮" }],
+      "evidenceSummary": "야구장으로 보이는 실외 공간이 보였어",
+      "usable": true
+    },
+    {
+      "photoId": "p3",
+      "scenes": [{ "label": "경기장 관중석" }],
+      "activities": [{ "label": "경기 관람" }],
+      "objects": [],
+      "environment": [{ "label": "밤" }],
+      "evidenceSummary": "관중석으로 보이는 장면이 보였어",
+      "usable": true
+    },
+    {
+      "photoId": "p7",
+      "scenes": [],
+      "activities": [{ "label": "야구 관람" }],
+      "objects": [{ "label": "야구 배트" }],
+      "environment": [],
+      "evidenceSummary": "야구 관련 사물이 보였어",
+      "usable": true
+    },
+    {
+      "photoId": "p9",
+      "scenes": [{ "label": "카페 실내" }],
+      "activities": [],
+      "objects": [{ "label": "커피잔" }],
+      "environment": [{ "label": "실내" }],
+      "evidenceSummary": "카페로 보이는 실내가 보였어",
+      "usable": true
+    }
+  ],
+  "expect": {
+    "repeatedSignalCount": 1,
+    "duplicateLikeGroups": 4,
+    "signals": [
+      { "category": "sports", "occurrenceCount": 3, "strength": "strong_repeated", "hasDuplicateLikePhotos": false },
+      { "category": "cafe", "occurrenceCount": 1, "strength": "single", "hasDuplicateLikePhotos": false }
+    ]
+  }
+}

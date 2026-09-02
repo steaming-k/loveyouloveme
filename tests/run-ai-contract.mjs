@@ -48,6 +48,8 @@ async function run(fixture) {
       allowed: fixture.allowed,
       judgements: fixture.judgements,
       focusAxis: fixture.focusAxis,
+      photoId: fixture.photoId,
+      observations: fixture.observations,
     }),
   });
 
@@ -59,6 +61,67 @@ async function run(fixture) {
   const result = await response.json();
   const expect = fixture.expect ?? {};
   const name = fixture.name;
+
+  /* ------------------- 사진 1장 관찰 (v1.10 · §3 · §9 · §10) */
+  if (fixture.task === 'observed-photo-analysis') {
+    for (const field of ['scenes', 'activities', 'objects', 'environment']) {
+      if (!expect[field]) continue;
+      check(name, `${field} = [${expect[field].join(',')}]`, eq(result[field] ?? [], expect[field]),
+        `실제 [${(result[field] ?? []).join(',')}]`);
+    }
+    if (expect.usable !== undefined) {
+      check(name, `usable ${expect.usable}`, result.usable === expect.usable,
+        `실제 ${result.usable}`);
+    }
+    if (expect.violations) {
+      const actual = result.violations ?? [];
+      for (const label of expect.violations) {
+        check(name, `위반 라벨 '${label}' 감지`, actual.includes(label),
+          `실제 [${actual.join(',')}]`);
+      }
+      if (expect.violations.length === 0) {
+        check(name, '위반 없음', actual.length === 0, `실제 [${actual.join(',')}]`);
+      }
+    }
+  }
+
+  /* ------------- Cross-photo Aggregation (v1.10 · §4 · §5) */
+  if (fixture.task === 'observed-photo-aggregation') {
+    const signals = result.signals ?? [];
+
+    if (expect.signalCount !== undefined) {
+      check(name, `신호 개수 ${expect.signalCount}`, signals.length === expect.signalCount,
+        `실제 ${signals.length}`);
+    }
+    if (expect.repeatedSignalCount !== undefined) {
+      check(name, `반복 신호 ${expect.repeatedSignalCount}개`,
+        result.repeatedSignalCount === expect.repeatedSignalCount,
+        `실제 ${result.repeatedSignalCount}`);
+    }
+    if (expect.duplicateLikeGroups !== undefined) {
+      check(name, `중복 묶기 후 장면 그룹 ${expect.duplicateLikeGroups}개`,
+        result.duplicateLikeGroups === expect.duplicateLikeGroups,
+        `실제 ${result.duplicateLikeGroups}`);
+    }
+    if (expect.allStrengths) {
+      check(name, `모든 신호 strength=${expect.allStrengths}`,
+        signals.every((s) => s.strength === expect.allStrengths),
+        `실제 [${signals.map((s) => s.strength).join(',')}]`);
+    }
+    for (const wanted of expect.signals ?? []) {
+      const actual = signals.find((s) => s.category === wanted.category);
+      if (!actual) {
+        check(name, `${wanted.category} 신호 존재`, false,
+          `실제 [${signals.map((s) => s.category).join(',')}]`);
+        continue;
+      }
+      for (const [field, value] of Object.entries(wanted)) {
+        if (field === 'category') continue;
+        check(name, `${wanted.category}.${field} = ${value}`, actual[field] === value,
+          `실제 ${actual[field]}`);
+      }
+    }
+  }
 
   /* ------------------------------------------------ Observed */
   if (fixture.task === 'observed-profile') {

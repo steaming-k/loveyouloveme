@@ -83,7 +83,7 @@ function LensView() {
           <div className="flex flex-col gap-1 rounded-row border border-brand-edge bg-brand-tint p-4">
             <p className="text-[14.5px] font-semibold text-brand-ink">실제 관계 신호</p>
             <p className="text-[12.5px] keep-all text-brand-pressed">
-              연락 · 갈등 해결 · 개인 시간 · 애정 표현 — 동기화율은 이것만으로 계산해요.
+              연락 · 갈등 해결 · 개인 시간 · 애정 표현 — 동기화율은 이것만으로 계산해.
             </p>
           </div>
         </section>

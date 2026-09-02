@@ -2,7 +2,7 @@ import 'server-only';
 
 import { MIRROR_AXES } from '@/data/axes';
 import { withSubjectParticle, withTopicParticle } from '@/lib/korean';
-import type { AiProvider, GenerateStructuredInput } from './provider';
+import { AiProviderError, type AiProvider, type GenerateStructuredInput } from './provider';
 
 const AXIS_LABEL: Record<string, string> = Object.fromEntries(
   MIRROR_AXES.map((axis) => [axis.key, axis.label]),
@@ -64,37 +64,89 @@ function readPayload(userPayload: string): Record<string, unknown> {
   }
 }
 
-function observedResponse(payload: Record<string, unknown>): unknown {
-  const imageIds = Array.isArray(payload.imageIds) ? (payload.imageIds as string[]) : [];
-  if (imageIds.length === 0) return { traits: [], usableImageCount: 0, limitations: [] };
+/**
+ * 사진 1장 관찰 mock (v1.10).
+ *
+ * ⚠️ **사진을 보지 않는다.** photoId를 해시해 고정 관찰 세트 중 하나를 고를 뿐이다.
+ * 그래서 mock 결과는 실제 사진과 무관하고, `meta.mode='mock'`으로 화면에 그렇게 표시된다(§21).
+ *
+ * 그럼에도 세트를 여러 개 두는 이유: 전부 같은 관찰을 주면 모든 사진이 '같은 장면'으로
+ * 묶여(§5 duplicate-like grouping) 결과가 항상 single이 된다. 그러면 개발 중에
+ * **repeated/strong_repeated 분기와 중복 묶기를 눈으로 구분할 수 없다.**
+ * 그래서 같은 범주 안에서도 라벨이 다른 변형을 둔다 — 범주는 겹치고 장면은 다른 상태.
+ */
+const MOCK_PHOTO_SETS: readonly {
+  scenes: string[];
+  activities: string[];
+  objects: string[];
+  environment: string[];
+  summary: string;
+}[] = [
+  {
+    scenes: ['야구장으로 보이는 장소'],
+    activities: ['경기 관람'],
+    objects: ['유니폼'],
+    environment: ['실외', '낮'],
+    summary: '경기장으로 보이는 실외 공간이 보였어',
+  },
+  {
+    scenes: ['경기장 관중석'],
+    activities: ['야구 관람'],
+    objects: ['응원 도구'],
+    environment: ['밤'],
+    summary: '관중석으로 보이는 장면이 보였어',
+  },
+  {
+    scenes: ['카페 실내'],
+    activities: ['카페 방문'],
+    objects: ['커피잔'],
+    environment: ['실내'],
+    summary: '카페로 보이는 실내 공간이 보였어',
+  },
+  {
+    scenes: ['카페 창가 자리'],
+    activities: [],
+    objects: ['라떼'],
+    environment: ['낮'],
+    summary: '창가 쪽 좌석과 음료가 보였어',
+  },
+  {
+    scenes: ['등산로'],
+    activities: ['등산'],
+    objects: ['등산 배낭'],
+    environment: ['자연'],
+    summary: '산길로 보이는 실외 배경이 보였어',
+  },
+  {
+    scenes: ['공원'],
+    activities: ['산책'],
+    objects: ['자전거'],
+    environment: ['실외'],
+    summary: '공원으로 보이는 실외 공간이 보였어',
+  },
+];
 
-  const first = imageIds[0]!;
-  const second = imageIds[1];
+function hashToIndex(value: string, size: number): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash) % size;
+}
+
+function photoObservationResponse(payload: Record<string, unknown>): unknown {
+  const photoId = typeof payload.photoId === 'string' ? payload.photoId : '';
+  const set = MOCK_PHOTO_SETS[hashToIndex(photoId, MOCK_PHOTO_SETS.length)]!;
+
+  const toLabels = (labels: string[]) => labels.map((label) => ({ label, confidence: 0.7 }));
 
   return {
-    traits: [
-      {
-        category: 'activity',
-        label: '실외 활동',
-        observation: '바깥에서 찍은 사진이 여러 장 보여',
-        evidence: second
-          ? [
-              { imageId: first, description: '야외로 보이는 배경' },
-              { imageId: second, description: '또 다른 야외 장면' },
-            ]
-          : [{ imageId: first, description: '야외로 보이는 배경' }],
-        confidence: 'high',
-      },
-      {
-        category: 'social',
-        label: '함께 있는 장면',
-        observation: '다른 사람과 함께 찍은 사진이 있어',
-        evidence: [{ imageId: first, description: '두 명 이상이 함께 있는 구도' }],
-        confidence: 'medium',
-      },
-    ],
-    usableImageCount: imageIds.length,
-    limitations: ['mock 응답이라 실제 사진 내용을 본 결과가 아니야'],
+    scenes: toLabels(set.scenes),
+    activities: toLabels(set.activities),
+    objects: toLabels(set.objects),
+    environment: toLabels(set.environment),
+    evidenceSummary: set.summary,
+    usable: true,
   };
 }
 
@@ -236,8 +288,12 @@ export function createMockProvider(): AiProvider {
       const payload = readPayload(input.userPayload);
 
       switch (input.task) {
+        case 'observed-photo-analysis':
+          return photoObservationResponse(payload);
         case 'observed-profile':
-          return observedResponse(payload);
+          // v1.10 — 사진 분석은 사진 1장씩 'observed-photo-analysis'로 나간다.
+          // 이 task로 Provider가 불렸다면 배선이 잘못된 것이므로 조용히 넘어가지 않는다.
+          throw new AiProviderError('SERVER_ERROR', 'observed-profile is not a provider task');
         case 'relationship-insight':
           return relationshipResponse(payload);
         case 'compatibility-narrative':

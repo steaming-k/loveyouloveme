@@ -148,15 +148,15 @@ export function DeepInsightCard({
 
       {/* §33 User Correction — Deep Insight는 판정이 아니라 관찰이라 항상 되물어야 한다 */}
       <div className="flex gap-[7px] border-t border-line-soft pt-2.5">
-        <VerdictButton label="맞아요" selected={feedback?.verdict === 'ok'} onClick={() => submitVerdict('ok')} />
+        <VerdictButton label="맞아" selected={feedback?.verdict === 'ok'} onClick={() => submitVerdict('ok')} />
         <VerdictButton
-          label="조금 달라요"
+          label="조금 달라"
           muted
           selected={feedback?.verdict === 'no'}
           onClick={() => submitVerdict('no')}
         />
         <VerdictButton
-          label="잘 모르겠어요"
+          label="잘 모르겠어"
           muted
           selected={Boolean(feedback) && feedback?.verdict === null}
           onClick={() => submitVerdict(null)}

@@ -2,7 +2,7 @@ import 'server-only';
 
 import { createMockProvider } from './mockProvider';
 import { canCallProvider, readAiConfig, type AiServerConfig } from './serverEnv';
-import type { AiFailureReason, AiTask } from '@/types';
+import type { AiFailureReason, AiProviderTask } from '@/types';
 
 /**
  * Provider Abstraction (§5)
@@ -23,7 +23,7 @@ export interface GenerateStructuredInput {
    * 어떤 Task의 요청인지. 실제 Provider 구현은 쓰지 않지만, mock provider가
    * **프롬프트 문자열을 추측하지 않도록** 명시적으로 넘긴다(v1.7).
    */
-  task: AiTask;
+  task: AiProviderTask;
   systemPrompt: string;
   /** 사용자 데이터는 여기에만 담는다 — system instruction과 섞지 않는다(§69) */
   userPayload: string;

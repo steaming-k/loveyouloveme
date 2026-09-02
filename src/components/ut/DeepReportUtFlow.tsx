@@ -171,7 +171,7 @@ export function DeepReportUtFlow({
               {missingValueDraft.length}/{MISSING_VALUE_MAX}
             </p>
             <p className="text-[10.5px] keep-all leading-relaxed text-ink-faint">
-              적어준 내용은 이 기기에만 남고, 외부로는 글자 수만 전달돼요.
+              적어준 내용은 이 기기에만 남고, 외부로는 글자 수만 전달돼.
             </p>
             <button
               type="button"

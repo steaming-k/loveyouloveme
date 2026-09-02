@@ -291,7 +291,7 @@ function PremiumView() {
           </section>
 
           <NoticeBox>
-            무료로 본 결과는 그대로 볼 수 있어요. 상세는 같은 데이터를 더 깊게 보는 거예요.
+            무료로 본 결과는 그대로 볼 수 있어. 상세는 같은 데이터를 더 깊게 보는 거야.
           </NoticeBox>
         </div>
       </ScreenLayout>
@@ -322,7 +322,7 @@ function PremiumView() {
                 trackEvent('premium_notify_intent', { feature: featureId, source });
                 markNotifyIntent(featureId);
                 setNotified(true);
-                showToast('관심 표시를 기록했어요');
+                showToast('관심 표시를 기록했어');
               }}
             >
               {copy.notifyCta}

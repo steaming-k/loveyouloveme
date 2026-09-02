@@ -142,7 +142,7 @@ function CoreInsightView() {
     // Mirror를 만들 수 없으면 History에 쌓지 않는다 (Edge A/B) — 여기 도달하면 보통 통과한다.
     if (!entry) {
       trackEvent('relationship_mirror_complete', { axis: focusAxis ?? '' });
-      showToast('관찰 기록에 저장했어요');
+      showToast('관찰 기록에 저장했어');
       router.push(ROUTES.home);
       return;
     }
@@ -159,7 +159,7 @@ function CoreInsightView() {
     }
     trackEvent('relationship_mirror_complete', { axis: focusAxis ?? '' });
 
-    showToast(created ? '관찰 기록에 저장했어요' : '이미 저장된 관찰이에요');
+    showToast(created ? '관찰 기록에 저장했어' : '이미 저장된 관찰이야');
     // 저장 직후 Change Moment로 보낸다 (§8 첫 기록 / §9 두 번째부터)
     router.push(ROUTES.historySaved);
   };
@@ -208,7 +208,7 @@ function CoreInsightView() {
               onClick={() => {
                 setCoreVerdict('ok');
                 trackEvent('mirror_feedback_positive', { axis: mirror.teaser?.axisKey ?? '' });
-                showToast('다음 관찰의 기준으로 삼을게요');
+                showToast('다음 관찰의 기준으로 삼을게');
               }}
             />
             <VerdictButton
@@ -273,7 +273,7 @@ function CoreInsightView() {
                   setCoreCorrection('');
                   setCoreVerdict(null);
                   setEditOpen(false);
-                  showToast('러비의 원래 관찰로 되돌렸어요');
+                  showToast('러비의 원래 관찰로 되돌렸어');
                 }}
                 className="flex min-h-11 items-center text-meta text-ink-muted"
               >
@@ -289,7 +289,7 @@ function CoreInsightView() {
               }
               setCoreCorrection(draft.trim());
               setEditOpen(false);
-              showToast('관찰 기록을 고쳤어요');
+              showToast('관찰 기록을 고쳤어');
             }}
           >
             이렇게 고칠게

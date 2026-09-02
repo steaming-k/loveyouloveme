@@ -22,7 +22,7 @@ export const ONBOARDING_SLIDES = [
   {
     id: 1,
     title: ['이 사람이랑 나,', '잘 맞을까?'],
-    caption: ['연락 · 대화 · 갈등 해결 · 개인 시간처럼', '실제 관계에서 부딪히는 항목으로 비교해요.'],
+    caption: ['연락 · 대화 · 갈등 해결 · 개인 시간처럼', '실제 관계에서 부딪히는 항목으로 비교해.'],
     visual: 'signal' as const,
   },
   {
@@ -53,11 +53,17 @@ export interface LoadingLine {
   tone: 'whisper' | 'main' | 'doubt';
 }
 
+/**
+ * ⚠️ v1.10 — 문구를 바꿨다. 예전 줄은 '영화 기록 발견' · '밖에서 보내는 시간이 꽤 많네'처럼
+ * **분석이 끝나기도 전에 결과를 말하고 있었다.** 실제 Vision을 붙이면 그 문장들은 사진과
+ * 무관한 거짓말이 된다. 이제는 '무엇을 하고 있는지'만 말한다.
+ * '생활 패턴'이라는 말도 뺐다(§6) — 사진 몇 장으로 판정할 수 있는 것이 아니다.
+ */
 export const OBSERVED_LOADING: readonly LoadingLine[] = [
-  { text: '지구인 생활패턴 관찰 중...', tone: 'whisper' },
-  { text: '영화 기록 발견.', tone: 'whisper' },
-  { text: '밖에서 보내는 시간이 꽤 많네.', tone: 'main' },
-  { text: '음... 이건 확신이 없어.', tone: 'doubt' },
+  { text: '사진을 한 장씩 살펴보는 중...', tone: 'whisper' },
+  { text: '어떤 장면과 활동이 보이는지 적는 중.', tone: 'whisper' },
+  { text: '여러 장에서 겹치는 게 있는지 맞춰보는 중.', tone: 'main' },
+  { text: '없는 건 없다고 할게.', tone: 'doubt' },
 ];
 
 export const COMPATIBILITY_LOADING: readonly LoadingLine[] = [
@@ -72,11 +78,11 @@ export const LOADING_LINE_MS = 1100;
 
 /** 프라이버시 안내 — 민감정보를 입력하는 순간에만 필요한 만큼 보여준다 */
 export const PRIVACY = {
-  profileIntro: '입력한 정보는 언제든 수정·삭제할 수 있어요. 분석에서 제외도 가능해요.',
-  photo: '선택한 사진만 분석해요. 성적 지향·정치·종교·건강·경제 상태는 추론하지 않아요.',
+  profileIntro: '입력한 정보는 언제든 수정·삭제할 수 있어. 분석에서 제외도 가능해.',
+  photo: '선택한 사진만 분석해. 성적 지향·정치·종교·건강·경제 상태는 추론하지 않아.',
   /** v1.6 — 실제 AI 전송이 생겼으므로 사진 처리 방식을 별도로 고지한다 */
   photoTransfer:
-    '선택한 사진은 AI 분석을 위해 전송되고, 분석 후 앱의 기록에는 저장하지 않아요. 외모·나이·체형은 평가하지 않아요.',
+    '선택한 사진은 AI 분석을 위해 전송되고, 분석 후 앱의 기록에는 저장하지 않아. 외모·나이·체형은 평가하지 않아.',
   /**
    * ⚠️ v1.6에서 수정한 문구다. 이전에는 '사진은 브라우저 안에서만 쓰이고 서버로 보내지 않아요'
    * 였는데, 실제 AI Vision을 연결하면서 **거짓이 됐다.**
@@ -84,20 +90,32 @@ export const PRIVACY = {
    * Provider가 요청 데이터를 어떻게 보관·학습에 쓰는지 우리가 검증하지 않았으므로
    * '즉시 완전 삭제' 같은 보장은 하지 않는다(§33). 우리 서비스가 하는 일만 정확히 말한다.
    */
-  photoFooter: '선택한 사진은 AI 분석을 위해 전송돼요. 앱의 기록에는 사진을 저장하지 않아요',
-  /** 실제 분석 모드에서 사진 화면에 보여주는 상세 안내 */
+  photoFooter: '선택한 사진은 AI 분석을 위해 전송돼. 앱의 기록에는 사진을 저장하지 않아',
+  /** Demo 모드 footer — 전송 자체가 없으므로 전송된다고 말하지 않는다 */
+  photoFooterDemo: '지금은 데모 모드라 사진을 전송하지 않아',
+  /**
+   * v1.10 §14 — 실제 Vision이 붙었으므로 '무엇을 위해' 사진을 쓰는지 동작 그대로 적는다.
+   * 성격을 맞히는 게 아니라 장면·활동을 관찰해 초안을 만드는 것이다(§1).
+   */
+  photoPurpose: '선택한 사진에서 활동과 장면을 관찰해 프로필 초안을 만들어.',
+  /**
+   * 실제 분석 모드에서 사진 화면에 보여주는 상세 안내.
+   *
+   * ⚠️ '즉시 삭제됩니다' 같은 표현을 쓰지 않는다(§14). Provider의 보관 정책을 우리가
+   * 확인하지 않았으므로, 우리가 하는 일(앱에 사진을 저장하지 않는다)만 말한다.
+   */
   photoAiNotice:
-    '선택한 사진은 관찰 분석을 위해 AI에 전송돼요. 분석이 끝나면 앱에는 관찰 결과와 근거만 남고 사진 자체는 저장하지 않아요. AI 제공사의 데이터 처리 정책은 저희가 통제하지 않아요.',
+    '선택한 사진은 AI 분석을 위해 서버로 전송될 수 있어. 분석이 끝나면 앱에는 관찰 결과와 근거만 남고 사진 자체는 저장하지 않아. AI 제공사의 데이터 보관 정책은 우리가 통제하지 않아.',
   /** Demo 모드에서는 전송 자체가 없다 — 그 사실을 그대로 말한다 */
-  photoDemoNotice: '지금은 데모 모드라 사진을 전송하지 않아요. 사진 내용도 분석하지 않아요.',
-  past: '관계 경험은 분석에만 사용해요. 언제든 삭제할 수 있어요.',
-  target: '네가 알고 있는 상대의 정보를 기준으로 비교해요. 상대의 실제 마음이나 성격을 판정하지 않아요.',
-  aiResult: 'AI 분석은 지금 입력된 정보를 기준으로 한 해석이에요. 항목별로 수정·삭제할 수 있어요.',
+  photoDemoNotice: '지금은 데모 모드라 사진을 전송하지 않아. 사진 내용도 분석하지 않아.',
+  past: '관계 경험은 분석에만 사용해. 언제든 삭제할 수 있어.',
+  target: '네가 알고 있는 상대의 정보를 기준으로 비교해. 상대의 실제 마음이나 성격을 판정하지 않아.',
+  aiResult: 'AI 분석은 지금 입력된 정보를 기준으로 한 해석이야. 항목별로 수정·삭제할 수 있어.',
   mirror: '이건 판정이 아니야. 네 답변 2개를 비교한 관찰 기록이야.',
-  unknownExcluded: "'모름'으로 남긴 항목은 점수에 반영하지 않았어요.",
-  share: '개인정보는 카드에 포함되지 않아요.',
-  shareMirror: '상대 정보와 개인 답변은 카드에 포함되지 않아요.',
-  demoAi: 'AI 분석은 데모용 규칙 기반 응답이에요. 실제 사진 내용을 분석하지 않아요.',
+  unknownExcluded: "'모름'으로 남긴 항목은 점수에 반영하지 않았어.",
+  share: '개인정보는 카드에 포함되지 않아.',
+  shareMirror: '상대 정보와 개인 답변은 카드에 포함되지 않아.',
+  demoAi: 'AI 분석은 데모용 규칙 기반 응답이야. 실제 사진 내용을 분석하지 않아.',
 } as const;
 
 /** Loading / Empty / Error / Low confidence — 모두 러비 화법으로 */
@@ -162,8 +180,8 @@ export const DATA_LAYERS = [
 /** 동기화율 화면 문구 */
 export const COMPATIBILITY_COPY = {
   scoreLabel: 'SYNC RATE · 동기화율',
-  supporting: ['현재 입력된 두 사람의 정보를 기준으로', '공통점과 차이를 비교한 결과예요.'],
-  notice: '연애 성공확률이 아니에요',
+  supporting: ['현재 입력된 두 사람의 정보를 기준으로', '공통점과 차이를 비교한 결과야.'],
+  notice: '연애 성공확률이 아니야',
   goodCountLabel: '잘 맞는 신호',
   watchCountLabel: '관찰 필요한 신호',
 } as const;
@@ -184,7 +202,7 @@ export const HOME_COPY = {
 export const HISTORY_COPY = {
   badge: 'RELATIONSHIP HISTORY',
   title: ['러비가', '기억하고 있는 나'],
-  caption: '누구와 몇 번 만났는지는 기록하지 않아요. 네 기준이 어떻게 움직였는지만 남겨요.',
+  caption: '누구와 몇 번 만났는지는 기록하지 않아. 네 기준이 어떻게 움직였는지만 남겨.',
 
   empty: {
     title: ['아직 너를', '오래 관찰하진 못했어.'],
@@ -215,7 +233,7 @@ export const HISTORY_COPY = {
   nowLabel: 'NOW',
 
   deleteEntryTitle: '이 관찰 기록을 삭제할까?',
-  deleteEntryBody: '삭제하면 이전 변화 비교에서도 빠져. 되돌릴 수 없어요.',
+  deleteEntryBody: '삭제하면 이전 변화 비교에서도 빠져. 되돌릴 수 없어.',
 } as const;
 
 /** History Change State 화면 라벨. 좋음·나쁨이 아니라 변화의 종류만 말한다. */
@@ -238,7 +256,7 @@ export const HISTORY_STATE_LABEL = {
 export const LENS_COPY = {
   badge: 'LENS',
   title: '러비의 관측 렌즈',
-  caption: '전부 참고용이에요. 궁합 점수는 실제 관계 신호로만 계산해요.',
+  caption: '전부 참고용이야. 궁합 점수는 실제 관계 신호로만 계산해.',
   items: [
     {
       title: 'MBTI Lens',
@@ -249,14 +267,14 @@ export const LENS_COPY = {
     },
     {
       title: '사주 Lens',
-      caption: '전통 해석으로 보는 관점 · 재미로만 봐요',
+      caption: '전통 해석으로 보는 관점 · 재미로만 봐',
       group: 'ENTERTAINMENT' as const,
       ready: true,
       href: '/lens/saju',
     },
     {
       title: 'Astrology Lens',
-      caption: '별자리 관점으로 보는 해석 · 재미로만 봐요',
+      caption: '별자리 관점으로 보는 해석 · 재미로만 봐',
       group: 'ENTERTAINMENT' as const,
       ready: true,
       href: '/lens/astrology',
@@ -281,9 +299,9 @@ export const BIRTH_COPY = {
   timeUnknownLabel: '태어난 시간을 몰라',
   calendarLabel: '달력',
   locationLabel: '출생 지역 (선택)',
-  locationHint: '별자리 상세 계산이나 사주 지역 보정에 쓰여요. 없어도 기본 결과는 볼 수 있어요.',
+  locationHint: '별자리 상세 계산이나 사주 지역 보정에 쓰여. 없어도 기본 결과는 볼 수 있어.',
   privacy:
-    '출생정보는 이 렌즈 분석에만 사용해요. 현재 이 기기에만 저장되고, 언제든 삭제할 수 있어요.',
+    '출생정보는 이 렌즈 분석에만 사용해. 현재 이 기기에만 저장되고, 언제든 삭제할 수 있어.',
   clearSelf: '내 출생정보 삭제',
   clearTarget: '상대 출생정보 삭제',
   errors: {
@@ -348,7 +366,7 @@ export const MBTI_LENS_COPY = {
   caption: '두 유형을 관계를 바라보는 하나의 참고 렌즈로 비교해볼게.',
   lovyNote: '이건 MBTI로 너희 관계를 판정한 건 아니야. 서로 이야기해볼 만한 차이를 하나 더 본 거야.',
   scoreNotice:
-    '동기화율에는 MBTI를 넣지 않아요. 점수는 연락·갈등·개인 시간·애정 표현 같은 실제 관계 신호로만 계산해요.',
+    '동기화율에는 MBTI를 넣지 않아. 점수는 연락·갈등·개인 시간·애정 표현 같은 실제 관계 신호로만 계산해.',
 } as const;
 
 /** X1-b Astrology Lens 화면 */

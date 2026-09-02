@@ -108,6 +108,54 @@ export interface SafetyScanResult {
   violations: string[];
 }
 
+/**
+ * 사진 관찰 전용 추가 검사 (v1.10 · §9 · §10)
+ *
+ * ⚠️ 위 `FORBIDDEN_PATTERNS`만으로는 부족하다. 사진에서 특히 새어 나오기 쉬운 것은
+ * **민감 추론이 아니라 관계 규정과 성격 변환**이다:
+ *   - '친구들과 함께' — 사진 속 사람이 누구인지 우리는 모른다(§9)
+ *   - '활발한 성격' / '감성적인 취향' — 여행 사진 → 자유로운 성격 같은 변환(§10)
+ *   - '행복해 보이는' — 사진 속 사람의 마음 읽기(§9)
+ *
+ * 이 검사는 **라벨 단위**로 돈다. 걸린 라벨만 버리고 사진 전체를 버리지 않는다 —
+ * '카페 테이블'과 '친구들'이 같은 사진에서 나왔다면 앞의 것은 쓸 수 있는 관찰이다.
+ */
+const PHOTO_OBSERVATION_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
+  {
+    /** 사진 속 사람과의 관계를 단정하는 것. '다른 사람과 함께 있는 장면'까지만 허용(§9) */
+    label: 'relationship_label',
+    pattern:
+      /친구|연인|여자친구|남자친구|남친|여친|가족|부부|커플|남매|형제|자매|동료|직장\s*동료|선배|후배|엄마|아빠|어머니|아버지|자녀|아이와/,
+  },
+  {
+    /** 활동 → 성격 변환 금지(§10). Observed는 Behavior/Activity/Environment까지다 */
+    label: 'personality_inference',
+    pattern:
+      /성격|성향|외향적|내향적|사교적|활발한|적극적인|소극적인|감성적|지적인|자유로운\s*영혼|모험심|자기관리|계획적인\s*사람|즉흥적인\s*사람/,
+  },
+  {
+    /** 사진 속 사람의 마음 읽기(§9) */
+    label: 'photo_mind_reading',
+    pattern: /(행복|즐거|기뻐|슬퍼|외로워|우울|불안|편안|설레)[^.\n]{0,6}\s*보(여|이|인)/,
+  },
+  { label: 'ethnicity', pattern: /인종|민족|아시아인|백인|흑인|동양인|서양인/ },
+  { label: 'photo_wealth', pattern: /명품|고급\s*차|비싼|부유해\s*보|형편/ },
+  { label: 'photo_appearance', pattern: /잘생|예쁘|미모|몸매|피부가|동안|나이대?는/ },
+];
+
+/**
+ * 사진 관찰 라벨/요약 1건 검사. 금지 추론 + 사진 전용 패턴을 함께 본다.
+ * 걸리면 그 라벨을 버린다 — 조용히 고쳐 쓰지 않는다(고치면 무엇이 AI 관찰인지 알 수 없다).
+ */
+export function scanPhotoObservation(text: string): SafetyScanResult {
+  const base = scanForForbiddenInference(text);
+  const photo = PHOTO_OBSERVATION_PATTERNS.filter(({ pattern }) => pattern.test(text)).map(
+    ({ label }) => label,
+  );
+  const violations = [...base.violations, ...photo];
+  return { safe: violations.length === 0, violations };
+}
+
 export function scanForForbiddenInference(text: string): SafetyScanResult {
   const violations = FORBIDDEN_PATTERNS.filter(({ pattern }) => pattern.test(text)).map(
     ({ label }) => label,

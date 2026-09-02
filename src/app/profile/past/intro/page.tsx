@@ -13,8 +13,8 @@ import { useSession } from '@/state/SessionProvider';
 
 const INTRO_POINTS = [
   { badge: '3', text: '짧은 질문 3개' },
-  { badge: '·', text: '누구와 만났는지는 묻지 않아요' },
-  { badge: '·', text: '긴 서술은 선택이에요' },
+  { badge: '·', text: '누구와 만났는지는 묻지 않아' },
+  { badge: '·', text: '긴 서술은 선택이야' },
 ] as const;
 
 /** S14 과거 관계 인트로 — 긴 에세이가 아니라 짧은 구조화 질문임을 먼저 알린다 */

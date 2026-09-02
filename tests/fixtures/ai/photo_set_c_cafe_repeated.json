@@ -1,0 +1,41 @@
+{
+  "name": "SET C-1 · 서로 다른 카페 3장",
+  "task": "observed-photo-aggregation",
+  "description": "같은 범주지만 장면이 서로 다르므로 3회로 세고 strong_repeated가 되어야 한다.",
+  "observations": [
+    {
+      "photoId": "p1",
+      "scenes": [{ "label": "카페 창가 자리" }],
+      "activities": [],
+      "objects": [{ "label": "커피잔" }],
+      "environment": [{ "label": "실내" }],
+      "evidenceSummary": "창가 쪽 카페 자리가 보였어",
+      "usable": true
+    },
+    {
+      "photoId": "p2",
+      "scenes": [{ "label": "카페 테라스" }],
+      "activities": [],
+      "objects": [{ "label": "아이스커피" }],
+      "environment": [{ "label": "실외" }],
+      "evidenceSummary": "야외 테라스로 보이는 카페 공간이 보였어",
+      "usable": true
+    },
+    {
+      "photoId": "p3",
+      "scenes": [],
+      "activities": [{ "label": "커피 마시기" }],
+      "objects": [{ "label": "라떼" }],
+      "environment": [{ "label": "낮" }],
+      "evidenceSummary": "음료가 놓인 장면이 보였어",
+      "usable": true
+    }
+  ],
+  "expect": {
+    "repeatedSignalCount": 1,
+    "duplicateLikeGroups": 3,
+    "signals": [
+      { "category": "cafe", "occurrenceCount": 3, "strength": "strong_repeated", "hasDuplicateLikePhotos": false }
+    ]
+  }
+}

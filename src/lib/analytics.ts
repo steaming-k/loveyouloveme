@@ -105,6 +105,16 @@ export const ANALYTICS_EVENTS = [
   'ai_analysis_failure',
   'ai_fallback_used',
   'ai_evidence_correction',
+  // 실제 사진 Vision (v1.10 §22) — 사진 기능의 성공을 '업로드율' 하나로 보지 않기 위해
+  // 업로드 이후 단계를 각각 센다: 분석 성공률 → 관찰 생성률 → 반복 신호 생성률 → 확인/수정률.
+  // ⚠️ property에 raw image · raw caption · 관찰 문장을 절대 넣지 않는다(§22). 개수·분류만.
+  'photo_analysis_start',
+  'photo_analysis_complete',
+  'photo_analysis_fail',
+  'photo_observation_generated',
+  'photo_repeated_signal_generated',
+  'photo_observation_confirm',
+  'photo_observation_correct',
   // AI Narrative 배선 (v1.7) — task × mode로 나눠 보면 AI 품질을 추적할 수 있다(§87).
   // task: observed | compatibility | relationship | history
   // mode: real | demo | fallback

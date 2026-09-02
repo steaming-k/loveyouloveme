@@ -194,7 +194,7 @@ function AstrologyLensView() {
         </LovyMessage>
 
         <EntertainmentNotice>
-          재미로 보는 참고 렌즈예요. 동기화율·Relationship Mirror·관찰 기록에는 반영하지 않아요.
+          재미로 보는 참고 렌즈야. 동기화율·Relationship Mirror·관찰 기록에는 반영하지 않아.
         </EntertainmentNotice>
       </div>
     </ScreenLayout>

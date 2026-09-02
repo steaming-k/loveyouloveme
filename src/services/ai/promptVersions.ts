@@ -13,7 +13,13 @@
  */
 
 export const PROMPT_VERSIONS = {
-  observed: 'observed-v1',
+  /**
+   * v1.10 — 사진 1장씩 관찰만 받고(반복 판정 없음), 집계는 규칙이 한다.
+   * v1(`observed-v1`)은 사진 전체를 한 번에 보내 trait을 바로 받던 방식이었다.
+   */
+  observed: 'observed-v2-photo',
+  /** @deprecated Contract Test fixture 회귀 검증용으로만 남아 있다 */
+  observedLegacy: 'observed-v1',
   /** v1.7 — 길이 제한 · 관련성 필터 · userCorrection 표현 규칙 추가 */
   relationship: 'relationship-v2',
   /** v1.7 — 길이 제한 · 상대 마음 읽기 예시 강화 · uncertainty 필수 조건 명시 */

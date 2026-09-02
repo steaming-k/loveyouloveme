@@ -202,7 +202,7 @@ function HistoryEntryView() {
           trackEvent('relationship_history_entry_delete', { entry_id: entry.id });
           deleteEntry(entry.id);
           setDeleteOpen(false);
-          showToast('관찰 기록을 삭제했어요');
+          showToast('관찰 기록을 삭제했어');
           router.replace(entries.length > 1 ? ROUTES.history : ROUTES.home);
         }}
       />
@@ -250,7 +250,7 @@ function ChipSection({ title, items }: { title: string; items: string[] }) {
           ))}
         </ul>
       ) : (
-        <p className="px-1 text-meta text-ink-muted">기록이 없어요</p>
+        <p className="px-1 text-meta text-ink-muted">기록이 없어</p>
       )}
     </section>
   );

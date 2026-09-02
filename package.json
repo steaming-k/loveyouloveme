@@ -10,6 +10,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test:ai": "node tests/run-ai-contract.mjs",
+    "test:observed": "node tests/run-observed-e2e.mjs",
     "test:ai:e2e": "node tests/run-provider-e2e.mjs"
   },
   "dependencies": {

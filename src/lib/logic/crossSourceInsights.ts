@@ -12,6 +12,7 @@ import type {
   MirrorAxisKey,
   MirrorInsight,
   MirrorReport,
+  ObservedSignalCategory,
   RelationshipExperience,
   RelationshipHistoryEntry,
   RepeatedRelationshipSignal,
@@ -59,16 +60,54 @@ const AXIS_KEYWORDS: Partial<Record<MirrorAxisKey, readonly string[]>> = {
   affection: [],
 };
 
+/**
+ * v1.10 — 실제 사진 분석이 붙으면서 통제된 값(`ObservedSignal.category`)이 생겼다.
+ *
+ * ⚠️ **의미적 연결이 명확한 축만 넣는다**(§18 · §19). 사진에서 관계 기준을 직접 만들지
+ * 않으므로, 여기 없는 축은 사진 신호로 보강되지 않는다:
+ *   - `hobby`(취미를 함께 하는지) ← 반복해서 보인 취미성 활동. 연결이 분명하다.
+ *   - `alone`은 넣지 않는다 — 사진만으로 그 활동을 **혼자** 했는지 알 수 없다.
+ *     '혼자'라는 말이 들어간 사용자 확인/수정 문장이 있을 때만 위 키워드 경로로 잡힌다.
+ *   - `contact` · `conflict` · `affection`은 사진에서 관찰될 수 있는 것이 아니다.
+ */
+const AXIS_SIGNAL_CATEGORIES: Partial<Record<MirrorAxisKey, readonly ObservedSignalCategory[]>> = {
+  hobby: ['sports', 'outdoor', 'travel', 'culture', 'reading'],
+};
+
+/**
+ * @returns 이 축을 보강하는 관찰. 없으면 null — 없으면 조용히 아무 일도 하지 않는다.
+ *
+ * ⚠️ 사진 신호는 **단독으로 GAP/CONTRADICTION을 만들지 못한다.** 이미 Mirror가 판정한
+ * GAP의 근거를 하나 더하는 용도로만 쓰인다(§19: 사진에서 관계 기준을 직접 만들지 않는다).
+ * 그리고 **반복 신호만** 본다 — 사진 한 장짜리 단일 관찰로 관계 해석을 보강하지 않는다(§5).
+ */
 function findCorroboratingObservedTrait(
   axis: MirrorAxisKey,
   validated: readonly ValidatedObservation[],
 ): ValidatedObservation | null {
+  // 사용자가 확인·수정한 관찰만 쓴다 — AI 원문보다 사용자 검증을 우선한다(§16).
+  const confirmed = validated.filter(
+    (item) => item.status === 'confirmed' || item.status === 'corrected',
+  );
+
+  const categories = AXIS_SIGNAL_CATEGORIES[axis];
+  if (categories) {
+    const bySignal = confirmed.find((item) => {
+      const signal = item.original.signal;
+      return (
+        signal !== undefined &&
+        signal.strength !== 'single' &&
+        categories.includes(signal.category)
+      );
+    });
+    if (bySignal) return bySignal;
+  }
+
   const keywords = AXIS_KEYWORDS[axis];
   if (!keywords || keywords.length === 0) return null;
 
   return (
-    validated.find((item) => {
-      if (item.status !== 'confirmed' && item.status !== 'corrected') return false;
+    confirmed.find((item) => {
       const text = item.userCorrection?.trim() || item.original.observation;
       return keywords.some((word) => text.includes(word));
     }) ?? null
@@ -170,7 +209,8 @@ function fromMirrorInsight(
 
   const ruleSummary =
     type === 'CONTRADICTION'
-      ? `${insight.label}에서 네가 말한 기준, 실제 관계 경험, 그리고 사진에서 확인한 생활 패턴까지 서로 다른 방향을 가리키고 있어.`
+      // §6 — '생활 패턴'이라고 부르지 않는다. 사진에서 확인한 것은 반복해서 보인 활동까지다.
+      ? `${insight.label}에서 네가 말한 기준, 실제 관계 경험, 그리고 사진에서 반복해서 보인 활동까지 서로 다른 방향을 가리키고 있어.`
       : `${withTopicParticle(insight.label)} 말한 기준보다 실제 관계에서 더 크게 반응한 축이야.`;
 
   return {

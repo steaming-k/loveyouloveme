@@ -1,0 +1,30 @@
+{
+  "name": "SET E-2 · 읽을 수 없는 사진만 집계",
+  "task": "observed-photo-aggregation",
+  "description": "usable=false 사진은 집계에서 완전히 빠진다. 신호 0개는 실패가 아니라 정상 결과다(§62).",
+  "observations": [
+    {
+      "photoId": "p1",
+      "scenes": [],
+      "activities": [],
+      "objects": [],
+      "environment": [],
+      "evidenceSummary": "너무 흐려서 무엇인지 알아보기 어려웠어",
+      "usable": false
+    },
+    {
+      "photoId": "p2",
+      "scenes": [{ "label": "알 수 없는 배경" }],
+      "activities": [],
+      "objects": [],
+      "environment": [],
+      "evidenceSummary": "무엇인지 판단하기 어려웠어",
+      "usable": true
+    }
+  ],
+  "expect": {
+    "repeatedSignalCount": 0,
+    "duplicateLikeGroups": 1,
+    "signalCount": 0
+  }
+}

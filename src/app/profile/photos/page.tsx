@@ -11,6 +11,7 @@ import { PhotoGrid } from '@/components/profile/PhotoGrid';
 import { PRIVACY } from '@/data/copy';
 import { PHOTO_MAX_COUNT, PHOTO_MIN_COUNT } from '@/data/samplePhotos';
 import { trackEvent } from '@/lib/analytics';
+import { AI_MODE_HINT } from '@/lib/env';
 import { ROUTES } from '@/lib/routes';
 import { isPhotoSelectionValid } from '@/lib/validation';
 import { useSession } from '@/state/SessionProvider';
@@ -23,6 +24,13 @@ export default function PhotoInputPage() {
 
   const count = answers.photos.length;
   const valid = isPhotoSelectionValid(answers);
+  /**
+   * ⚠️ 이건 **표시용 힌트**다. 실제 동작 모드는 서버(`AI_MODE`)가 정하고, 결과의 진짜 모드는
+   * 응답 `meta.mode`가 말한다(S09에서 그 값으로 배지를 그린다). 여기서 이 힌트를 쓰는 이유는
+   * 사진을 고르는 시점에는 아직 응답이 없기 때문이다 — real 배포에서는
+   * `NEXT_PUBLIC_AI_MODE=real`을 함께 맞춘다.
+   */
+  const realAi = AI_MODE_HINT === 'real';
 
   const handleNext = () => {
     if (!valid) {
@@ -43,7 +51,13 @@ export default function PhotoInputPage() {
         <div className="flex flex-col gap-1.5">
           {error ? <InlineError message={error} /> : null}
           <Button onClick={handleNext}>러비에게 보여주기 · {count}장</Button>
-          <p className="text-center text-meta text-ink-muted">{PRIVACY.photoFooter}</p>
+          {/*
+            §14 — Demo 모드에서는 사진이 나가지 않는다. 그런데도 '전송돼요'라고 말하면
+            우리가 하지도 않는 일을 고지하는 것이라 안내가 거짓이 된다.
+          */}
+          <p className="text-center text-meta text-ink-muted">
+            {realAi ? PRIVACY.photoFooter : PRIVACY.photoFooterDemo}
+          </p>
         </div>
       }
       bodyClassName="pt-1.5 pb-3"
@@ -51,7 +65,7 @@ export default function PhotoInputPage() {
       <div className="flex flex-col gap-4">
         <PageHeading
           lines={['평소의 네가 잘 보이는 사진을 골라줘.']}
-          caption="취미, 관심사, 평소 시간을 보내는 방식을 관찰할게."
+          caption={PRIVACY.photoPurpose}
           eyebrow={
             answers.photos.some((photo) => photo.source === 'sample') ? (
               <Tag tone="neutral" className="self-start">
@@ -91,6 +105,7 @@ export default function PhotoInputPage() {
         <PhotoGrid />
 
         <NoticeBox>{PRIVACY.photo}</NoticeBox>
+        <NoticeBox>{realAi ? PRIVACY.photoAiNotice : PRIVACY.photoDemoNotice}</NoticeBox>
       </div>
     </ScreenLayout>
   );

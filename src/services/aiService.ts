@@ -83,8 +83,14 @@ export async function analyzeObservedProfile(photos: PhotoAsset[]): Promise<
   });
 
   if (result.ok) {
-    // 전송하지 못한 사진이 있으면 한계로 덧붙인다 — '사진 N장 = 근거 N개'가 아니다.
-    if (skipped > 0 && result.data.traits.length > 0) {
+    /**
+     * 전송하지 못한 사진이 있으면 한계로 덧붙인다 — '사진 N장 = 근거 N개'가 아니다.
+     *
+     * ⚠️ v1.10 — 관찰이 0개일 때도 붙인다. 예전에는 `traits.length > 0`일 때만 붙였는데,
+     * **그때가 오히려 이 정보가 가장 필요한 순간이다** — 관찰이 하나도 안 나온 이유가
+     * '사진에서 볼 게 없어서'가 아니라 '절반을 아예 못 보내서'일 수 있기 때문이다.
+     */
+    if (skipped > 0) {
       return {
         ok: true,
         data: {

@@ -42,11 +42,17 @@ export function PhotoGrid() {
 
     for (const file of files) {
       if (!PHOTO_ACCEPTED_TYPES.includes(file.type)) {
-        rejected.push(`${file.name} · 이미지 파일이 아니에요`);
+        // §13 — HEIC는 아직 지원하지 않는다. '이미지가 아니다'라고 하면 틀린 말이라
+        // 무엇이 안 되는지 그대로 알린다.
+        rejected.push(
+          /heic|heif/i.test(`${file.type} ${file.name}`)
+            ? `${file.name} · HEIC는 아직 못 읽어. JPG나 PNG로 저장해서 올려줘`
+            : `${file.name} · JPG · PNG · WEBP만 올릴 수 있어`,
+        );
         continue;
       }
       if (file.size > PHOTO_MAX_BYTES) {
-        rejected.push(`${file.name} · 10MB를 넘었어요`);
+        rejected.push(`${file.name} · 10MB를 넘었어`);
         continue;
       }
       if (accepted.length >= remaining) {
@@ -64,10 +70,10 @@ export function PhotoGrid() {
 
     if (accepted.length > 0) {
       addUploadedPhotos(accepted);
-      showToast(`사진 ${accepted.length}장을 추가했어요`);
+      showToast(`사진 ${accepted.length}장을 추가했어`);
     }
     if (rejected.length > 0) {
-      showToast(rejected[0] ?? '일부 사진을 추가하지 못했어요', 'warning');
+      showToast(rejected[0] ?? '일부 사진을 추가하지 못했어', 'warning');
     }
   };
 

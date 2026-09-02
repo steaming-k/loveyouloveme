@@ -44,7 +44,7 @@ export default function SplashPage() {
       </button>
 
       <p className="flex-none px-gutter pb-[30px] text-center text-meta text-ink-faint">
-        화면을 탭하면 관찰이 시작돼요
+        화면을 탭하면 관찰이 시작돼
       </p>
     </div>
   );
