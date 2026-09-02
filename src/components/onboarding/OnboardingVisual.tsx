@@ -1,5 +1,6 @@
 import { Lovy } from '@/components/lovy/Lovy';
 import { ONBOARDING_SLIDES } from '@/data/copy';
+import { LOVY_VISUAL_SCALE } from '@/data/lovy';
 
 /** 온보딩 01 — 나와 상대의 신호를 항목별로 비교한다는 것을 그림으로 먼저 보여준다 */
 const SIGNAL_ROWS = [
@@ -74,8 +75,24 @@ export function GapPreview() {
 }
 
 /** 온보딩 03 */
+const CRYSTAL_BASE_SIZE = 300;
+
 export function LovyPreview() {
+  /**
+   * `Lovy`가 `size`에 포즈별 배율(`LOVY_VISUAL_SCALE`)을 곱해 렌더 크기를 정하는데,
+   * 이 화면은 그 결과를 `w-full`로 다시 부모 폭에 맞춰 늘린다 — 두 값이 따로 있으면
+   * Lovy 내부에서 커진 크기를 이 래퍼의 고정 max-width가 도로 눌러버린다(실측으로 확인:
+   * size=300·crystal 배율 1.35를 곱해도 max-w-[300px]에 걸려 항상 300px로 렌더됐다).
+   *
+   * 그래서 상한을 여기서 하드코딩하지 않고 같은 배율로 계산한다 — 배율이 바뀌면
+   * 이 상한도 같이 움직인다. 실제 렌더 폭은 `min(부모 폭, 이 상한)`이라 화면이 좁으면
+   * 자연히 더 작게 나오고, 넓은 프레임에서는 보정된 크기까지 커진다.
+   */
+  const maxWidth = Math.round(CRYSTAL_BASE_SIZE * LOVY_VISUAL_SCALE.crystal);
+
   return (
-    <Lovy pose="crystal" size={300} decorative className="mt-1 w-full max-w-[300px] self-center" />
+    <div className="mt-1 w-full self-center" style={{ maxWidth }}>
+      <Lovy pose="crystal" size={CRYSTAL_BASE_SIZE} decorative className="w-full" />
+    </div>
   );
 }
