@@ -1,6 +1,6 @@
 import Image from 'next/image';
 
-import { LOVY_ASSETS, type LovyPose } from '@/data/lovy';
+import { LOVY_ASSETS, LOVY_VISUAL_SCALE, type LovyPose } from '@/data/lovy';
 import { cn } from '@/lib/cn';
 
 interface LovyProps {
@@ -24,13 +24,16 @@ export function Lovy({
   decorative = false,
 }: LovyProps) {
   const asset = LOVY_ASSETS[pose];
-  const height = Math.round((size * asset.height) / asset.width);
+  // 새 캐릭터 에셋은 여백이 있는 균일 캔버스라 `size`를 그대로 쓰면 몸통이 작게 보인다 —
+  // 화면 코드의 size 숫자는 건드리지 않고, 여기서 포즈별 실측 배율만큼 키운다.
+  const renderWidth = Math.round(size * (LOVY_VISUAL_SCALE[pose] ?? 1));
+  const height = Math.round((renderWidth * asset.height) / asset.width);
 
   return (
     <Image
       src={asset.src}
       alt={decorative ? '' : asset.alt}
-      width={size}
+      width={renderWidth}
       height={height}
       priority={priority}
       aria-hidden={decorative || undefined}

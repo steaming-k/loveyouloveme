@@ -48,6 +48,35 @@ interface LovyAsset {
  */
 const SQUARE = { width: 291, height: 298 } as const;
 
+/**
+ * 시각 보정 배율 (v1.7 에셋 교체 후 추가).
+ *
+ * 새 에셋은 캐릭터 주위에 여백이 있는 균일 캔버스라, 기존 타이트 크롭 에셋과 같은
+ * `size`를 줘도 캐릭터 몸통이 작게 보인다. 여백을 뺀 **캐릭터 몸통 높이**만 기존/신규
+ * 파일에서 실측해 비율을 구했다(소품 bbox는 제외 — 달력·구슬·노트북이 있는 포즈는
+ * 소품까지 잡히면 실제 캐릭터 크기와 다른 값이 나온다).
+ *
+ * `Lovy`가 `size`에 이 배율을 곱해 렌더 크기를 정하므로, 화면 코드에 있는 기존
+ * `size={46}` 같은 숫자는 그대로 두면서 **캐릭터가 보이는 크기만** 교체 전과
+ * 비슷하게 되돌린다.
+ */
+export const LOVY_VISUAL_SCALE: Record<LovyPose, number> = {
+  hero: 1.06,
+  observe: 1.06,
+  record: 1.06,
+  laptop: 1.0, // 신규가 기존과 같거나 더 커서 보정이 필요 없다
+  question: 1.13,
+  heart: 1.13,
+  chart: 1.13,
+  movie: 1.27,
+  mug: 1.13,
+  cool: 1.13,
+  calendar: 1.05,
+  book: 1.17,
+  crystal: 1.35,
+  wand: 1.3,
+};
+
 export const LOVY_ASSETS: Record<LovyPose, LovyAsset> = {
   // hero만 별도 대형 렌더 (Splash·Onboarding용)
   hero: { src: '/lovy/hero.png', width: 509, height: 558, alt: '러비가 가만히 서 있는 모습' },
