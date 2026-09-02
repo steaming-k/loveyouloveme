@@ -10,6 +10,8 @@ import { SectionLabel } from '@/components/common/primitives';
 import { useToast } from '@/components/common/ToastProvider';
 import { Lovy } from '@/components/lovy/Lovy';
 import { BRAND, HOME_COPY } from '@/data/copy';
+import { clearAiCache } from '@/services/ai/aiClient';
+import { clearDeepReportUt } from '@/lib/deepReportUtStore';
 import { clearPremiumIntents } from '@/lib/premiumIntentStore';
 import { ROUTES } from '@/lib/routes';
 import { useHistoryReport, useHomeHighlights, useMirror } from '@/hooks/useAnalysis';
@@ -176,8 +178,12 @@ export default function HomePage() {
         onCancel={() => setDeleteOpen(false)}
         onConfirm={() => {
           deleteAllData();
-          // 결제 의향 기록도 함께 지운다 — 사용자 데이터를 남겨둘 이유가 없다
+          // 결제 의향 기록·Deep Report UT 응답·AI 캐시도 함께 지운다 — 사용자 데이터를
+          // 남겨둘 이유가 없다(v1.10 §57/§58). deepAnswers/deepInsightFeedback은
+          // SessionAnswers 안에 있어서 deleteAllData()가 이미 지운다.
           clearPremiumIntents();
+          clearDeepReportUt();
+          clearAiCache();
           if (alsoDeleteHistory) clearHistory();
           setDeleteOpen(false);
           showToast(

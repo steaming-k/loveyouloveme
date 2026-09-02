@@ -11,6 +11,11 @@ export function withTopicParticle(word: string): string {
   return word + josa(word, '은', '는');
 }
 
+/** 주격 조사 이/가 — '취미 공유이(가)' 같은 표기를 피한다 */
+export function withSubjectParticle(word: string): string {
+  return word + josa(word, '이', '가');
+}
+
 function josa(word: string, withBatchim: string, withoutBatchim: string): string {
   const lastChar = word.trim().at(-1);
   if (!lastChar) return withoutBatchim;

@@ -1,40 +1,92 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
+import { Button } from '@/components/common/Button';
 import { NoticeBox, SectionLabel } from '@/components/common/primitives';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { DeepInsightCard } from '@/components/premium/DeepInsightCard';
 import { PremiumDetailView } from '@/components/premium/PremiumDetailView';
+import { DeepReportUtFlow } from '@/components/ut/DeepReportUtFlow';
 import type { EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
 import { trackEvent } from '@/lib/analytics';
+import { UT_MODE } from '@/lib/env';
+import { hasCompletedDeepReportUt } from '@/lib/deepReportUtStore';
 import { axisLabel } from '@/services/premiumService';
 import type { RelationshipDeepReport } from '@/types';
 
 /**
- * Relationship Deep Report — "러비의 정밀 관찰 리포트" (v1.9 · §13~§23)
+ * Relationship Deep Report — "러비의 정밀 관찰 리포트" (v1.9 · §13~§23, v1.10 §11~§25/§48~§49)
  *
  * 8개 섹션 순서를 그대로 지킨다: Overview → Relationship Self → Cross-source Insights →
  * Compatibility Deep Dive → Situations → Conversation Questions → History Deep →
  * Final Observation. 데이터가 없는 섹션은 만들어내지 않고 **숨긴다**(§42) — 그래서 이 파일은
  * 각 섹션을 조건부로만 렌더한다.
+ *
+ * `analysisId`는 Deep Report UT 응답을 이 분석에 묶어두는 키다(§20) — Compatibility/Mirror/
+ * History 계산에는 전혀 쓰이지 않는다.
  */
 export function RelationshipDeepReportView({
   report,
   resolverContext,
+  analysisId,
+  accessMode = 'preview',
 }: {
   report: RelationshipDeepReport;
   resolverContext: EvidenceResolverContext;
+  analysisId: string;
+  /** v1.10 §72 — 실제 Payment로 오해되지 않도록 어느 경로로 이 화면에 왔는지 남긴다 */
+  accessMode?: 'preview' | 'beta_ut';
 }) {
   const viewSent = useRef(false);
+  const [utOpen, setUtOpen] = useState(false);
+  const [completed, setCompleted] = useState(false);
+  const scrollDepthSent = useRef<{ 50: boolean; 100: boolean }>({ 50: false, 100: false });
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setCompleted(hasCompletedDeepReportUt(analysisId));
+  }, [analysisId]);
 
   useEffect(() => {
     if (viewSent.current) return;
     viewSent.current = true;
     trackEvent('deep_report_view', {
+      analysis_id: analysisId,
+      access_mode: accessMode,
       insight_count: report.crossSourceInsights.length + report.relationshipSelf.length,
     });
-  }, [report.crossSourceInsights.length, report.relationshipSelf.length]);
+  }, [report.crossSourceInsights.length, report.relationshipSelf.length, analysisId, accessMode]);
+
+  // §49 — 50/100 두 단계만. 이 화면의 스크롤 조상(ScreenLayout의 overflow-y-auto body)을 찾는다.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+
+    let scrollParent: HTMLElement | null = root.parentElement;
+    while (scrollParent && scrollParent !== document.body) {
+      const style = window.getComputedStyle(scrollParent);
+      if (style.overflowY === 'auto' || style.overflowY === 'scroll') break;
+      scrollParent = scrollParent.parentElement;
+    }
+    if (!scrollParent || scrollParent === document.body) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = scrollParent as HTMLElement;
+      if (scrollHeight <= clientHeight) return;
+      const percent = ((scrollTop + clientHeight) / scrollHeight) * 100;
+      if (percent >= 100 && !scrollDepthSent.current[100]) {
+        scrollDepthSent.current[100] = true;
+        trackEvent('deep_report_scroll', { analysis_id: analysisId, depth: 100 });
+      } else if (percent >= 50 && !scrollDepthSent.current[50]) {
+        scrollDepthSent.current[50] = true;
+        trackEvent('deep_report_scroll', { analysis_id: analysisId, depth: 50 });
+      }
+    };
+
+    scrollParent.addEventListener('scroll', handleScroll, { passive: true });
+    return () => scrollParent?.removeEventListener('scroll', handleScroll);
+  }, [analysisId]);
 
   if (!report.available) {
     return (
@@ -44,8 +96,14 @@ export function RelationshipDeepReportView({
     );
   }
 
+  const handleReportComplete = () => {
+    trackEvent('deep_report_complete', { analysis_id: analysisId, access_mode: accessMode });
+    setCompleted(true);
+    if (UT_MODE) setUtOpen(true);
+  };
+
   return (
-    <div className="flex flex-col gap-6">
+    <div ref={rootRef} className="flex flex-col gap-6">
       {/* 01 Overview */}
       <section className="flex flex-col gap-2">
         <h2 className="text-section keep-all font-semibold">{report.overview.headline}</h2>
@@ -60,7 +118,7 @@ export function RelationshipDeepReportView({
           <SectionLabel>나의 관계 안에서</SectionLabel>
           <ul className="flex flex-col gap-2.5">
             {report.relationshipSelf.map((card) => (
-              <DeepInsightCard key={card.insight.id} card={card} resolverContext={resolverContext} />
+              <DeepInsightCard key={card.insight.id} card={card} resolverContext={resolverContext} analysisId={analysisId} />
             ))}
           </ul>
         </section>
@@ -72,7 +130,7 @@ export function RelationshipDeepReportView({
           <SectionLabel>따로 있던 걸 연결해보면</SectionLabel>
           <ul className="flex flex-col gap-2.5">
             {report.crossSourceInsights.map((card) => (
-              <DeepInsightCard key={card.insight.id} card={card} resolverContext={resolverContext} />
+              <DeepInsightCard key={card.insight.id} card={card} resolverContext={resolverContext} analysisId={analysisId} />
             ))}
           </ul>
         </section>
@@ -195,6 +253,20 @@ export function RelationshipDeepReportView({
             ))}
           </ul>
         </section>
+      ) : null}
+
+      {/* v1.10 §48 — 여기가 '리포트를 다 봤다'의 정의다(explicit CTA, viewport 노출 아님). */}
+      <Button variant="secondary" onClick={handleReportComplete} disabled={completed}>
+        {completed ? '확인 완료' : '다 봤어'}
+      </Button>
+
+      {UT_MODE ? (
+        <DeepReportUtFlow
+          open={utOpen}
+          onClose={() => setUtOpen(false)}
+          analysisId={analysisId}
+          properties={{ access_mode: accessMode }}
+        />
       ) : null}
     </div>
   );

@@ -69,3 +69,11 @@ export const PREMIUM_TEST_PRICE_ENV = (() => {
  * 일반 사용자는 Fake Door에서 이 화면에 도달하지 못한다.
  */
 export const PREMIUM_PREVIEW = process.env.NEXT_PUBLIC_PREMIUM_PREVIEW === 'true';
+
+/**
+ * GA4 Measurement ID (v1.10 · §27~§28). 값이 없으면 `null` — 이 세션에는 아직 없다
+ * (`GA4 = NOT CONNECTED`, 기능명세서 §12.3 참고). 있을 때만 `createGa4Adapter`가 실제로
+ * 이벤트를 보낸다. Key가 없어도 앱 동작은 그대로다 — Analytics 때문에 Core Funnel이
+ * 막히면 안 된다(§29).
+ */
+export const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || null;

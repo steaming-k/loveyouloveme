@@ -30,9 +30,12 @@ const TYPE_LABEL: Record<string, string> = {
 export function DeepInsightCard({
   card,
   resolverContext,
+  analysisId,
 }: {
   card: DeepReportInsightCard;
   resolverContext: EvidenceResolverContext;
+  /** v1.10 §25 — Deep Value Funnel을 다른 이벤트와 조인할 수 있게 함께 보낸다 */
+  analysisId?: string;
 }) {
   const { insight, narrative } = card;
   const { answers, setDeepInsightFeedback } = useSession();
@@ -49,7 +52,13 @@ export function DeepInsightCard({
     const next = !evidenceOpen;
     setEvidenceOpen(next);
     if (next) {
-      trackEvent('deep_insight_evidence_expand', { insight: insight.id, type: insight.type });
+      trackEvent('deep_insight_evidence_expand', {
+        analysis_id: analysisId,
+        insight: insight.id,
+        type: insight.type,
+        axis: insight.axis,
+        evidence_count: insight.evidenceRefs.length,
+      });
     }
   };
 
@@ -61,7 +70,7 @@ export function DeepInsightCard({
   const submitCorrection = () => {
     const text = correctionDraft.trim();
     setDeepInsightFeedback(insight.id, 'no', text || undefined);
-    trackEvent('deep_insight_correction_submit', { insight: insight.id });
+    trackEvent('deep_insight_correction_submit', { analysis_id: analysisId, insight: insight.id });
     setCorrectionOpen(false);
   };
 

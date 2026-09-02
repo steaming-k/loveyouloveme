@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 
+import { AiDebugPanel } from '@/components/ai/AiDebugPanel';
 import { PrototypePanel } from './PrototypePanel';
 
 /**
@@ -21,6 +22,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-canvas lg:h-[min(852px,calc(100dvh-88px))] lg:w-[393px] lg:rounded-[41px]">
           <DeviceTopBar />
           <main className="min-h-0 flex-1">{children}</main>
+          <AiDebugPanel />
         </div>
       </div>
 

@@ -157,7 +157,9 @@ src/
 > **AI 모드** — `AI_MODE`(server-only): `demo`(기본·Provider 미호출) / `real`(`AI_API_KEY` 필수) / `mock`(개발 전용). `.env.example` 참고.
 > ⚠️ **실제 Provider end-to-end는 아직 검증되지 않았습니다** (API Key 없음). 자세한 구분은 기능명세서 §8.5.
 >
-> **AI 검증 회귀 테스트**: `npm run dev` 후 `npm run test:ai` (Provider Key 불필요).
+> **AI 검증 회귀 테스트**: `npm run dev` 후 `npm run test:ai` (Provider Key 불필요, 스키마/안전 검증만).
+> **Real Provider E2E**(v1.10): `npm run test:ai:e2e` — 진짜 `/api/ai/*` Route를 왕복한다. Key가 없으면
+> `SKIPPED — KEY NOT AVAILABLE`을 정직하게 보고한다(기능명세서 §12.1).
 
 ### 동기화율 (`lib/logic/compatibility.ts`)
 

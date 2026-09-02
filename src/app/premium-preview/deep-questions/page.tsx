@@ -1,7 +1,7 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
@@ -13,6 +13,7 @@ import { selectDeepQuestions, type DeepQuestionTemplate } from '@/data/deepQuest
 import { PREMIUM_PREVIEW } from '@/lib/env';
 import { cn } from '@/lib/cn';
 import { trackEvent } from '@/lib/analytics';
+import { analysisFingerprint } from '@/lib/logic/history';
 import { ROUTES } from '@/lib/routes';
 import { useCrossSourceInsights } from '@/hooks/useAiNarrative';
 import { useSession } from '@/state/SessionProvider';
@@ -28,15 +29,26 @@ import type { DeepAnalysisAnswer } from '@/types';
 export default function DeepQuestionsPage() {
   return (
     <HydrationGate>
-      <DeepQuestionsView />
+      <Suspense fallback={null}>
+        <DeepQuestionsView />
+      </Suspense>
     </HydrationGate>
   );
 }
 
 function DeepQuestionsView() {
   const router = useRouter();
-  const { addDeepAnswer } = useSession();
+  const searchParams = useSearchParams();
+  const isBetaUt = searchParams.get('mode') === 'ut';
+  const reportHref = isBetaUt
+    ? `${ROUTES.premiumPreview('relationship_deep_report')}?mode=ut`
+    : ROUTES.premiumPreview('relationship_deep_report');
+  const { answers, addDeepAnswer } = useSession();
   const insights = useCrossSourceInsights();
+  const analysisId = useMemo(
+    () => analysisFingerprint(answers.status, answers.declared, answers.experience),
+    [answers.status, answers.declared, answers.experience],
+  );
 
   // 우선순위 Top 1~2 Insight의 축 — 같은 축이 여러 Insight에 걸쳐 반복돼도 질문은 축당 한 번만 뽑는다.
   const focusInsights = useMemo(() => {
@@ -59,8 +71,8 @@ function DeepQuestionsView() {
   useEffect(() => {
     if (startSent.current || questions.length === 0) return;
     startSent.current = true;
-    trackEvent('deep_question_start', { count: questions.length });
-  }, [questions.length]);
+    trackEvent('deep_question_start', { analysis_id: analysisId, count: questions.length, mode: isBetaUt ? 'beta_ut' : 'preview' });
+  }, [questions.length, analysisId, isBetaUt]);
 
   if (!PREMIUM_PREVIEW) {
     return (
@@ -81,9 +93,9 @@ function DeepQuestionsView() {
   if (questions.length === 0) {
     return (
       <ScreenLayout
-        header={<ScreenHeader backHref={ROUTES.premiumPreview('relationship_deep_report')} title="추가 질문" />}
+        header={<ScreenHeader backHref={reportHref} title="추가 질문" />}
         footer={
-          <Button onClick={() => router.replace(ROUTES.premiumPreview('relationship_deep_report'))}>
+          <Button onClick={() => router.replace(reportHref)}>
             리포트로 돌아가기
           </Button>
         }
@@ -122,7 +134,7 @@ function DeepQuestionsView() {
       };
       addDeepAnswer(answer);
     }
-    router.push(ROUTES.premiumPreview('relationship_deep_report'));
+    router.push(reportHref);
   };
 
   const answeredCount = questions.filter((template) => {
@@ -132,7 +144,7 @@ function DeepQuestionsView() {
 
   return (
     <ScreenLayout
-      header={<ScreenHeader backHref={ROUTES.premiumPreview('relationship_deep_report')} title="추가로 몇 가지만" />}
+      header={<ScreenHeader backHref={reportHref} title="추가로 몇 가지만" />}
       footer={
         <Button onClick={handleSubmit} disabled={answeredCount === 0}>
           답변 저장하고 리포트 보기 ({answeredCount}/{questions.length})

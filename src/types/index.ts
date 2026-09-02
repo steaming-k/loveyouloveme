@@ -956,6 +956,25 @@ export interface DeepInsightFeedback {
   correctedText?: string;
 }
 
+/**
+ * Deep Report UT 5문항 (v1.10 · §20). `SessionAnswers`에 넣지 않는다 — 이 응답이
+ * Compatibility/Mirror/History 계산에 영향을 줄 수 없게 별도 저장소(`lym.ut.deep.v1`)에
+ * `analysisId` 기준으로 저장한다.
+ */
+export interface DeepReportUtResponse {
+  analysisId: string;
+  /** '새롭게 알게 된 내용이 있었어?' 1~5 */
+  newInsight?: number;
+  /** '다른 사람에게도 비슷하게 나올 것 같아?' 1~5 — ⚠️ 낮을수록 개인화 인식이 높다는 뜻(역방향) */
+  genericness?: number;
+  /** '여러 정보를 연결해서 분석했다고 느꼈어?' 1~5 */
+  crossSourceValue?: number;
+  wtp?: 'yes' | 'maybe' | 'no';
+  /** 최대 500자. Analytics로는 원문을 보내지 않고 로컬에만 남긴다(§36) */
+  missingValue?: string;
+  completedAt?: string;
+}
+
 /* ---------------------------------- Relationship Deep Report (v1.9 · §13) */
 
 export interface DeepReportInsightCard {

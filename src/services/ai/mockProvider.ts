@@ -1,6 +1,33 @@
 import 'server-only';
 
+import { MIRROR_AXES } from '@/data/axes';
+import { withSubjectParticle, withTopicParticle } from '@/lib/korean';
 import type { AiProvider, GenerateStructuredInput } from './provider';
+
+const AXIS_LABEL: Record<string, string> = Object.fromEntries(
+  MIRROR_AXES.map((axis) => [axis.key, axis.label]),
+);
+
+/**
+ * type·axis별로 다른 문장을 준다 — 전부 같은 headline이 반복되면(실제로 있었던 버그) 화면이
+ * '진짜 연결한 것'이 아니라 '고정 템플릿'처럼 보인다. Mock이라도 카드마다 달라야
+ * Progressive Disclosure·User Correction UI를 눈으로 검증할 수 있다.
+ */
+const HEADLINE_BY_TYPE: Record<string, (axisLabel: string) => string> = {
+  MATCH: (axis) => `${axis}에서는 말과 경험이 같은 방향을 가리켜`,
+  GAP: (axis) => `${axis}, 말한 것보다 실제로 더 크게 반응했어`,
+  CONTRADICTION: (axis) => `${axis}에서 말·경험·사진 신호가 서로 엇갈려`,
+  CHANGE: (axis) => `${withTopicParticle(axis)} 시간이 지나며 우선순위가 달라졌어`,
+  REPEATED_SIGNAL: (axis) => `${axis} 신호, 이번이 처음이 아니야`,
+};
+
+const SITUATION_BY_TYPE: Record<string, (axisLabel: string) => string> = {
+  MATCH: (axis) => `${axis} 관련 상황에서는 이견 없이 넘어갈 가능성이 높아 보여.`,
+  GAP: (axis) => `${withSubjectParticle(axis)} 갑자기 줄어드는 시기에 평소보다 크게 반응할 수 있어.`,
+  CONTRADICTION: (axis) => `${axis}에 대해 말과 실제 반응이 달라서, 상대가 혼란스러워할 수 있어.`,
+  CHANGE: (axis) => `${axis} 기준이 바뀐 걸 상대가 아직 모를 수 있어.`,
+  REPEATED_SIGNAL: (axis) => `${withSubjectParticle(axis)} 다시 문제가 되면, 이번엔 더 빨리 알아챌 수도 있어.`,
+};
 
 /**
  * Mock Provider — **개발 전용** (v1.7 · §5)
@@ -172,22 +199,33 @@ function deepReportResponse(payload: Record<string, unknown>): unknown {
     insights?: Array<{
       id: string;
       type: string;
+      axis?: string | null;
       evidence: Array<{ ref: unknown; text: string }>;
     }>;
   };
   const insights = context.insights ?? [];
 
   return {
-    narratives: insights.map((insight) => ({
-      insightId: insight.id,
-      headline: '따로 보면 안 보이던 게 겹쳐 보여',
-      interpretation:
-        `${insight.evidence[0]?.text ?? ''} 그리고 ${insight.evidence[1]?.text ?? ''} — 이 둘을 같이 보면 하나만 볼 때와는 다른 신호로 읽혀.`,
-      situation: '이 두 신호가 같이 나타나는 순간에 한 번 더 확인해볼 수 있어.',
-      conversationQuestion: '이 부분은 실제로 어떻게 느꼈어?',
-      // ref를 그대로 복사한다 — mock도 실제 evidenceRefsAreSubsetOf 검증을 통과해야 한다.
-      evidenceRefs: insight.evidence.slice(0, 2).map((item) => item.ref),
-    })),
+    narratives: insights.map((insight) => {
+      const axisLabel = insight.axis ? (AXIS_LABEL[insight.axis] ?? insight.axis) : '이 지점';
+      const headline = (HEADLINE_BY_TYPE[insight.type] ?? (() => `${axisLabel}에서 새로운 연결을 하나 찾았어`))(
+        axisLabel,
+      );
+      const situation = (
+        SITUATION_BY_TYPE[insight.type] ?? (() => `${axisLabel} 관련 상황에서 참고할 수 있어.`)
+      )(axisLabel);
+
+      return {
+        insightId: insight.id,
+        headline,
+        interpretation:
+          `${insight.evidence[0]?.text ?? ''} 그리고 ${insight.evidence[1]?.text ?? ''} — 이 둘을 같이 보면 하나만 볼 때와는 다른 신호로 읽혀.`,
+        situation,
+        conversationQuestion: `${withTopicParticle(axisLabel)} 실제로 어떻게 느꼈어?`,
+        // ref를 그대로 복사한다 — mock도 실제 evidenceRefsAreSubsetOf 검증을 통과해야 한다.
+        evidenceRefs: insight.evidence.slice(0, 2).map((item) => item.ref),
+      };
+    }),
   };
 }
 

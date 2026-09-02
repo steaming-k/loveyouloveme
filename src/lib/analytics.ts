@@ -1,3 +1,6 @@
+import { createGa4Adapter, NoopAnalyticsAdapter, type AnalyticsAdapter } from './analyticsAdapter';
+import { GA_MEASUREMENT_ID } from './env';
+
 /**
  * Analytics 추상화
  *
@@ -118,6 +121,8 @@ export const ANALYTICS_EVENTS = [
   // 이 지표들은 'AI 설명 품질'이 아니라 'Cross-source 분석이라는 제품이 가치 있는가'를 본다.
   'deep_report_view',
   'deep_report_complete',
+  /** v1.10 §49 — 50/100 두 단계만. 과도한 스크롤 이벤트를 피한다 */
+  'deep_report_scroll',
   'deep_insight_evidence_expand',
   'deep_insight_feedback',
   'deep_insight_correction_submit',
@@ -176,7 +181,18 @@ function writeStore(store: AnalyticsStore): void {
   }
 }
 
-/** 이벤트 1건 기록. 실제 SDK를 붙일 때 이 함수 안에서 window.gtag 등을 호출하면 된다. */
+/**
+ * v1.10 §26~§28 — 외부(GA4) 전송 어댑터. `readStore`/`writeStore`(위)는 이 파일 고유의
+ * local store이고(dedup·getEventCount·getPrimaryKpi가 직접 읽는다), 이 어댑터는 **그 위에
+ * 추가로** 같은 이벤트를 외부로도 보낼지 결정하는 선택적 레이어다.
+ *
+ * Measurement ID가 없으면 `NoopAnalyticsAdapter`라 아무 일도 없다 — GA4 = NOT CONNECTED.
+ */
+const externalAdapter: AnalyticsAdapter = GA_MEASUREMENT_ID
+  ? createGa4Adapter(GA_MEASUREMENT_ID)
+  : NoopAnalyticsAdapter;
+
+/** 이벤트 1건 기록. local store에 남기고, GA4가 연결돼 있으면 그쪽에도 보낸다. */
 export function trackEvent(name: AnalyticsEvent, properties: AnalyticsProperties = {}): void {
   const store = readStore();
   store.counts[name] = (store.counts[name] ?? 0) + 1;
@@ -185,6 +201,13 @@ export function trackEvent(name: AnalyticsEvent, properties: AnalyticsProperties
 
   if (process.env.NODE_ENV !== 'production') {
     console.info(`[analytics] ${name}`, properties);
+  }
+
+  // §29 — 외부 전송 실패가 Product UX에 영향을 주면 안 된다. console.error도 내지 않는다.
+  try {
+    externalAdapter.track(name, properties);
+  } catch {
+    // 무시
   }
 }
 
