@@ -68,7 +68,7 @@ export default function ShareMirrorPage() {
                   eyebrow: 'RELATIONSHIP MIRROR',
                   headlineLines,
                   footnote: `${BRAND.name} · ${BRAND.tagline}`,
-                  lovySrc: '/lovy/wand.png',
+                  lovyPose: 'wand',
                 },
                 'loveuloveme-mirror.png',
               );

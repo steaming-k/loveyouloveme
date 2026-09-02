@@ -67,7 +67,7 @@ export default function ShareCompatibilityPage() {
                   headlineLines: headline,
                   footnote: '입력된 정보 기준 비교 결과 · 연애 성공확률이 아니에요',
                   items,
-                  lovySrc: '/lovy/cool.png',
+                  lovyPose: 'cool',
                 },
                 'loveuloveme-sync.png',
               );

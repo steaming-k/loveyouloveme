@@ -3,11 +3,20 @@
  *
  * Canvas 2D로 카드를 직접 그려 PNG로 내려준다.
  * 사진·관계 경험·상대 정보 같은 민감한 입력은 호출하는 쪽에서 제외한 값만 넘긴다.
+ *
+ * ⚠️ 이 파일은 `Lovy` 컴포넌트를 쓰지 않는다 — Canvas에 직접 `drawImage`하므로
+ * `LOVY_VISUAL_SCALE` 보정이 자동으로 적용되지 않는다. 캐릭터 에셋을 교체했을 때
+ * 화면 프리뷰(`Lovy`가 그린 것)는 배율이 반영됐는데 **다운로드되는 PNG만 옛날 크기로
+ * 작게 나오는** 불일치가 실제로 있었다 — `lovyPose`로 받아 여기서도 같은 배율을 적용한다.
  */
+
+import { LOVY_ASSETS, LOVY_VISUAL_SCALE, type LovyPose } from '@/data/lovy';
 
 const WIDTH = 1080;
 const HEIGHT = 1350;
 const PADDING = 88;
+/** 화면의 LovyMessage 기본 아바타(40px)와 비슷한 비중으로 잡은 기준 높이 */
+const LOVY_BASE_HEIGHT = 96;
 
 export interface ShareCardSpec {
   variant: 'compatibility' | 'mirror';
@@ -21,7 +30,11 @@ export interface ShareCardSpec {
   footnote: string;
   /** 항목 리스트 (선택) */
   items?: string[];
-  lovySrc: string;
+  /**
+   * 경로 문자열을 직접 받지 않는다 — `LOVY_ASSETS`/`LOVY_VISUAL_SCALE`과 따로
+   * 문자열을 들고 있으면 나중에 또 어긋난다.
+   */
+  lovyPose: LovyPose;
 }
 
 function loadImage(src: string): Promise<HTMLImageElement | null> {
@@ -143,10 +156,10 @@ export async function downloadShareCard(spec: ShareCardSpec, filename: string): 
   ctx.lineTo(left + contentWidth, footerY - 72);
   ctx.stroke();
 
-  const lovy = await loadImage(spec.lovySrc);
+  const lovy = await loadImage(LOVY_ASSETS[spec.lovyPose].src);
   let footerTextLeft = left;
   if (lovy) {
-    const lovyHeight = 96;
+    const lovyHeight = Math.round(LOVY_BASE_HEIGHT * (LOVY_VISUAL_SCALE[spec.lovyPose] ?? 1));
     const lovyWidth = (lovy.width / lovy.height) * lovyHeight;
     ctx.drawImage(lovy, left, footerY - 56, lovyWidth, lovyHeight);
     footerTextLeft = left + lovyWidth + 24;
