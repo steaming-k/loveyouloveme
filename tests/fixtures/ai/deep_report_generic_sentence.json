@@ -1,0 +1,31 @@
+{
+  "name": "deep_report_generic_sentence",
+  "description": "일반론 문장('소통이 중요합니다')이 섞인 Deep Report 응답 — Quality Gate(B)가 통째로 걸러야 한다",
+  "task": "deep-report-narrative",
+  "allowed": [
+    {
+      "id": "cs_mirror_contact",
+      "evidenceRefs": [
+        { "source": "declared", "field": "contact" },
+        { "source": "relationship", "field": "hardest" }
+      ]
+    }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "insightId": "cs_mirror_contact",
+        "headline": "연락에 대한 생각",
+        "interpretation": "연인 사이에는 소통이 중요합니다. 서로 이해하는 것이 중요합니다.",
+        "evidenceRefs": [
+          { "source": "declared", "field": "contact" },
+          { "source": "relationship", "field": "hardest" }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 0,
+    "violationsInclude": ["generic_sentence"]
+  }
+}

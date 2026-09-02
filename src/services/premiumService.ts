@@ -1,11 +1,19 @@
-import { MIRROR_AXES } from '@/data/axes';
+import { AXIS_DEFINITIONS, MIRROR_AXES } from '@/data/axes';
 import { PREMIUM_FEATURES } from '@/data/premium';
 import { HISTORY_STATE_LABEL } from '@/data/copy';
 import { PREMIUM_FAKE_DOOR, SAJU_ENGINE_READY } from '@/lib/env';
+import { resolveEvidenceRefs, type EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
 import type {
   AstrologyCompatibilityResult,
   CompatibilityResult,
   ConversationQuestion,
+  CrossSourceInsight,
+  CrossSourceEvidenceSource,
+  DeepConversationQuestion,
+  DeepFinalObservation,
+  DeepNarrative,
+  DeepReportInsightCard,
+  DeepSituation,
   HistoryReport,
   MbtiLensReport,
   MirrorReport,
@@ -13,6 +21,8 @@ import type {
   PremiumDetailSection,
   PremiumFeature,
   PremiumFeatureId,
+  RelationshipDeepReport,
+  RelationshipDeepReportOverview,
   RepeatedRelationshipSignal,
 } from '@/types';
 
@@ -42,6 +52,8 @@ export function premiumFeatureState(
     historyComparable?: boolean;
     mbtiAvailable?: boolean;
     astrologyAvailable?: boolean;
+    /** v1.9 — Cross-source Insight가 하나도 없으면 Deep Report도 Paywall을 띄우지 않는다 */
+    deepReportAvailable?: boolean;
   } = {},
 ): PremiumFeature {
   const def = PREMIUM_FEATURES[id];
@@ -77,6 +89,9 @@ export function premiumFeatureState(
   }
   if (id === 'astrology_detail' && context.astrologyAvailable === false) {
     return unavailable('두 사람 출생정보가 모두 있어야 상세를 볼 수 있어.');
+  }
+  if (id === 'relationship_deep_report' && context.deepReportAvailable === false) {
+    return unavailable('아직 서로 연결해서 볼 수 있는 신호가 부족해. 관계 경험이나 상대 정보를 더 채우면 볼 수 있어.');
   }
 
   return base;
@@ -329,4 +344,183 @@ export function buildAstrologyDetail(
 /** 축 라벨 조회 — 화면에서 반복 계산하지 않도록 */
 export function axisLabel(key: string): string {
   return MIRROR_AXES.find((axis) => axis.key === key)?.label ?? key;
+}
+
+/* ------------------------------------------- Relationship Deep Report (v1.9) */
+
+/**
+ * §15 Relationship Self vs §16 Cross-source Insights를 나누는 기준.
+ * Target·History가 섞이지 않은 것(=Declared↔Relationship(+Observed) 안쪽 비교)은
+ * '내 안에서의 일관성' 섹션으로, Target·History가 섞인 것은 '연결해야만 보이는 신호'
+ * 섹션으로 보낸다. 새 판정을 만드는 게 아니라 **이미 만들어진 Insight를 분류**할 뿐이다.
+ */
+const RELATIONSHIP_SELF_SOURCES = new Set<CrossSourceEvidenceSource>([
+  'declared',
+  'relationship',
+  'observed',
+  'adaptive',
+  'user_correction',
+]);
+
+function isRelationshipSelfInsight(insight: CrossSourceInsight): boolean {
+  return insight.sources.every((source) => RELATIONSHIP_SELF_SOURCES.has(source));
+}
+
+function cardFor(
+  insight: CrossSourceInsight,
+  narratives: readonly DeepNarrative[],
+): DeepReportInsightCard {
+  return { insight, narrative: narratives.find((item) => item.insightId === insight.id) ?? null };
+}
+
+/**
+ * §19 Relationship Situations. AI 없이 만든다 — 이미 있는 축별 상황 문장(`AXIS_DEFINITIONS`)을
+ * GAP/CONTRADICTION Insight에만 붙인다. MATCH·CHANGE·REPEATED_SIGNAL은 '상황'이 아니라
+ * '관찰'이라 여기서 다루지 않는다.
+ */
+function situationFor(insight: CrossSourceInsight): DeepSituation | null {
+  if (!insight.axis) return null;
+  if (insight.type !== 'GAP' && insight.type !== 'CONTRADICTION') return null;
+
+  const def = AXIS_DEFINITIONS.find((item) => item.key === insight.axis);
+  if (!def) return null;
+
+  return {
+    id: `situation_${insight.id}`,
+    axis: insight.axis,
+    situation: def.scene,
+    myReaction: '말한 기준보다 실제 반응이 더 컸던 지점이라, 이 상황에서 평소보다 크게 반응할 수도 있어.',
+    theirPossibleReaction: '상대는 이 부분을 너와 다르게 느낄 수도 있어.',
+    misunderstanding: def.evidence,
+    question: `${def.label}에서 서로 실제로 어떻게 느끼는지 확인해볼 수 있어.`,
+  };
+}
+
+function conversationQuestionsFor(
+  questions: readonly ConversationQuestion[],
+  insights: readonly CrossSourceInsight[],
+): DeepConversationQuestion[] {
+  return questions.map((question) => {
+    const related = insights.find(
+      (insight) => insight.axis === question.id || insight.sources.includes('target'),
+    );
+    return {
+      question,
+      why: related
+        ? related.ruleSummary
+        : '동기화율 비교에서 차이가 보였던 부분이라 대화로 직접 확인해보면 좋아.',
+    };
+  });
+}
+
+function overviewFor(
+  insights: readonly CrossSourceInsight[],
+  narratives: readonly DeepNarrative[],
+): RelationshipDeepReportOverview {
+  const top = insights.slice(0, 3);
+
+  return {
+    headline:
+      insights.length > 0
+        ? '따로 보면 몰랐을 연결을 몇 가지 찾았어'
+        : '아직 연결해서 볼 수 있는 신호가 부족해',
+    subcopy:
+      insights.length > 0
+        ? '네가 따로 입력했던 것들을 겹쳐서 봤을 때만 보이는 지점이야. 판정이 아니라 관찰이야.'
+        : '관계 경험이나 상대 정보가 더 쌓이면 연결해서 볼 수 있는 게 늘어나.',
+    topSummaries: top.map(
+      (insight) => narratives.find((item) => item.insightId === insight.id)?.headline ?? insight.ruleSummary,
+    ),
+  };
+}
+
+function finalObservationFor(
+  insights: readonly CrossSourceInsight[],
+  resolverContext: EvidenceResolverContext,
+): DeepFinalObservation | null {
+  const top = insights[0];
+  if (!top) return null;
+
+  return {
+    strongestSignalSummary: top.ruleSummary,
+    evidence: resolveEvidenceRefs(top.evidenceRefs, resolverContext).map((item) => item.text),
+    unknown: '상대가 실제로 어떻게 느꼈는지는 대화로 직접 확인해야 알 수 있어.',
+    nextTip: '다음에 비슷한 상황이 오면, 오늘 본 이 연결을 먼저 떠올려봐.',
+  };
+}
+
+function deepReportLimitations(input: {
+  historyReport: HistoryReport;
+  compatibility: CompatibilityResult;
+}): string[] {
+  const limitations = [
+    '이 리포트는 네가 입력한 데이터를 서로 연결해 본 관찰이야. 진단이나 확정이 아니야.',
+  ];
+  if (!input.historyReport.comparable) {
+    limitations.push('저장된 관찰 기록이 2개 미만이라 과거와 지금을 비교하는 부분은 만들지 않았어.');
+  }
+  if (input.compatibility.confidence === 'low') {
+    limitations.push('상대 정보가 적어서 궁합 심화 비교의 폭이 좁아.');
+  }
+  return limitations;
+}
+
+/**
+ * Premium 핵심 상품. **새 점수를 만들지 않는다** — Compatibility/Mirror/History는
+ * 이미 계산된 결과를 그대로 조합하고(§17/§21은 기존 buildCompatibilityDetail/
+ * buildHistoryDetail을 그대로 재사용한다), Cross-source Insight도 이미 만들어진 것을
+ * AI Narrative와 짝짓기만 한다.
+ */
+export function buildRelationshipDeepReport(input: {
+  /** 이미 §6 우선순위로 정렬된 목록(`rankInsights`/`buildCrossSourceInsights`의 반환값) */
+  insights: readonly CrossSourceInsight[];
+  narratives: readonly DeepNarrative[];
+  resolverContext: EvidenceResolverContext;
+  compatibility: CompatibilityResult;
+  compatibilityQuestions: readonly ConversationQuestion[];
+  compatibilityPastObservations: readonly { label: string; text: string }[];
+  historyReport: HistoryReport;
+  repeatedSignals: readonly RepeatedRelationshipSignal[];
+}): RelationshipDeepReport {
+  const {
+    insights,
+    narratives,
+    resolverContext,
+    compatibility,
+    compatibilityQuestions,
+    compatibilityPastObservations,
+    historyReport,
+    repeatedSignals,
+  } = input;
+
+  const cards = insights.map((insight) => cardFor(insight, narratives));
+  const relationshipSelf = cards.filter((card) => isRelationshipSelfInsight(card.insight));
+  const crossSourceInsights = cards.filter((card) => !isRelationshipSelfInsight(card.insight));
+
+  const situations = insights
+    .map(situationFor)
+    .filter((item): item is DeepSituation => item !== null);
+
+  const compatibilityDeepDive = buildCompatibilityDetail({
+    result: compatibility,
+    questions: compatibilityQuestions,
+    pastObservations: compatibilityPastObservations,
+  });
+
+  const historyDeep = historyReport.comparable
+    ? buildHistoryDetail({ report: historyReport, repeated: repeatedSignals })
+    : null;
+
+  return {
+    available: insights.length > 0,
+    overview: overviewFor(insights, narratives),
+    relationshipSelf,
+    crossSourceInsights,
+    compatibilityDeepDive,
+    situations,
+    conversationQuestions: conversationQuestionsFor(compatibilityQuestions, insights),
+    historyDeep,
+    finalObservation: finalObservationFor(insights, resolverContext),
+    limitations: deepReportLimitations({ historyReport, compatibility }),
+  };
 }

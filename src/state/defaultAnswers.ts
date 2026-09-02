@@ -34,6 +34,8 @@ export function createEmptyAnswers(): SessionAnswers {
     birthProfile: createEmptyBirthProfile(),
     legacyZodiac: null,
     share: { includeTargetInfo: false, includeDimensionScores: true },
+    deepAnswers: [],
+    deepInsightFeedback: {},
     completed: {
       onboarding: false,
       observed: false,

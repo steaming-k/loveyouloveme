@@ -19,7 +19,7 @@ import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { premiumFeatureState } from '@/services/premiumService';
 import { ROUTES } from '@/lib/routes';
 import { isLowData } from '@/lib/validation';
-import { useRelationshipNarrative } from '@/hooks/useAiNarrative';
+import { useCrossSourceInsights, useRelationshipNarrative } from '@/hooks/useAiNarrative';
 import { useMirror, useRepeatedSignals } from '@/hooks/useAnalysis';
 import { useSession } from '@/state/SessionProvider';
 
@@ -46,6 +46,7 @@ function MirrorView() {
   const { answers } = useSession();
   const mirror = useMirror();
   const repeated = useRepeatedSignals();
+  const crossSourceInsights = useCrossSourceInsights();
   const [variant] = useState(() => resolvePriceVariant());
 
   // S26에서 prefetch됐으면 캐시를 즉시 읽는다(§61). 실패해도 Mirror Map은 그대로 렌더된다.
@@ -174,9 +175,11 @@ function MirrorView() {
 
         {/* Premium은 Secondary. Primary CTA('가장 중요한 관찰 보기' → S28)를 가리지 않는다 */}
         <PremiumEntryRow
-          feature={premiumFeatureState('mirror_detail', resolvePrice(variant), {
+          feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
             mirrorAvailable: mirror.available,
+            deepReportAvailable: crossSourceInsights.length > 0,
           })}
+          source="mirror"
         />
 
         <AiNarrativeNotice

@@ -1,0 +1,33 @@
+{
+  "name": "valid_deep_report",
+  "description": "정상 Deep Report 응답 — 근거가 원래 Insight의 evidenceRefs와 일치하면 그대로 통과한다",
+  "task": "deep-report-narrative",
+  "allowed": [
+    {
+      "id": "cs_mirror_contact",
+      "evidenceRefs": [
+        { "source": "declared", "field": "contact" },
+        { "source": "relationship", "field": "hardest" }
+      ]
+    }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "insightId": "cs_mirror_contact",
+        "headline": "말한 기준과 실제 반응이 이 축에서만 갈렸어",
+        "interpretation": "연락 중요도는 낮게 답했는데, 가장 힘들었던 순간으로는 연락이 줄어든 때를 골랐어. 이 두 신호를 같이 보면 말보다 경험이 더 크게 반응한 축이라는 걸 알 수 있어.",
+        "situation": "연락이 뜸해지는 시기에 스스로도 예상보다 크게 반응할 수 있어.",
+        "conversationQuestion": "연락이 줄어들면 어떤 의미로 받아들이는 편이야?",
+        "evidenceRefs": [
+          { "source": "declared", "field": "contact" },
+          { "source": "relationship", "field": "hardest" }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 1,
+    "insightIds": ["cs_mirror_contact"]
+  }
+}

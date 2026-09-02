@@ -648,7 +648,9 @@ export type AiTask =
   | 'observed-profile'
   | 'relationship-insight'
   | 'compatibility-narrative'
-  | 'history-insight';
+  | 'history-insight'
+  /** v1.9 — Cross-source Insight Narrative (§24).판정은 규칙이 이미 끝냈다. */
+  | 'deep-report-narrative';
 
 /** 결과 재현·QA를 위한 내부 metadata. 사용자에게 그대로 노출하지 않는다 */
 export interface AiAnalysisMeta {
@@ -682,7 +684,11 @@ export type EvidenceRef =
   | { source: 'relationship'; field: string }
   | { source: 'adaptive'; field: string }
   | { source: 'observed'; traitId: string }
-  | { source: 'history'; entryId: string; axis: string };
+  | { source: 'history'; entryId: string; axis: string }
+  /** v1.9 — 상대에 대해 사용자가 입력한 값(Target Person) */
+  | { source: 'target'; field: string }
+  /** v1.9 — Premium Adaptive Deep Question 답변(§11) */
+  | { source: 'deep_followup'; questionId: string };
 
 /* --------------------------------------------- Observed Me (사진 분석) */
 
@@ -837,6 +843,187 @@ export interface AiNarrativeState<T> {
   mode: AiMode | null;
 }
 
+/* ==================== Cross-source Insight Engine (v1.9) ==================== */
+
+/**
+ * ⚠️ 이 타입들은 **판정을 새로 만들지 않는다.** MATCH/GAP/CHANGE는 이미 있는 Mirror/History
+ * 판정을 재표현한 것이고, CONTRADICTION은 그 위에 관찰(Observed) 근거가 같은 방향으로 겹칠 때만
+ * 붙는 라벨이다(§4). REPEATED_SIGNAL도 이미 있는 `findRepeatedRelationshipSignals` 결과를
+ * 옮긴 것이다. **새 계산이 아니라 기존 계산 결과들을 서로 연결해 보여주는 것**이 이 엔진의 역할이다.
+ */
+export type CrossSourceInsightType =
+  | 'MATCH'
+  | 'GAP'
+  | 'CONTRADICTION'
+  | 'CHANGE'
+  | 'REPEATED_SIGNAL'
+  | 'UNKNOWN';
+
+/** 이 Insight가 어떤 데이터 Source들을 연결했는지. MBTI/Birth는 절대 들어오지 않는다(§18/§44) */
+export type CrossSourceEvidenceSource =
+  | 'observed'
+  | 'declared'
+  | 'relationship'
+  | 'target'
+  | 'history'
+  | 'adaptive'
+  | 'deep_followup'
+  | 'user_correction';
+
+export type InsightStrength = 'strong' | 'medium' | 'weak';
+
+export interface CrossSourceInsight {
+  id: string;
+  type: CrossSourceInsightType;
+  axis?: MirrorAxisKey;
+  /** 2개 이상이어야 '연결한' 것이다. 1개짜리는 이 엔진이 만들지 않는다 */
+  sources: CrossSourceEvidenceSource[];
+  evidenceRefs: EvidenceRef[];
+  strength: InsightStrength;
+  /** 왜 이 강도로 판정했는지 — QA/디버그용, 사용자에게 노출하지 않는다 */
+  confidenceReason?: string;
+  /**
+   * **AI 없이도 항상 존재하는 규칙 기반 설명.** AI Narrative가 Quality Gate를 통과하지
+   * 못하거나 아예 없을 때 화면에 그대로 쓰는 문장이다 — 이것이 §27의 Fallback이다.
+   */
+  ruleSummary: string;
+  /** AI에게 설명을 맡길 만한 근거인지. weak인데 evidence가 1개뿐이면 false */
+  eligibleForNarrative: boolean;
+  relatedHistoryIds?: string[];
+}
+
+/* -------------------------------------- Deep Narrative (AI, v1.9 · §24) */
+
+/**
+ * AI는 headline/interpretation/situation/question **문장만** 쓴다.
+ * type·axis·strength·evidenceRefs는 CrossSourceInsight에서 그대로 가져오고,
+ * AI가 다른 evidenceRefs를 보내면 버린다(§26-E).
+ */
+export interface DeepNarrative {
+  insightId: string;
+  headline: string;
+  interpretation: string;
+  situation?: string;
+  uncertainty?: string;
+  conversationQuestion?: string;
+  evidenceRefs: EvidenceRef[];
+}
+
+export interface DeepNarrativeBundle {
+  narratives: DeepNarrative[];
+  meta: AiNarrativeMeta;
+}
+
+/* --------------------------------- Adaptive Deep Question (v1.9 · §8~§11) */
+
+export type DeepAnswerType = 'single' | 'multi' | 'scale' | 'text';
+
+export interface DeepQuestionOption {
+  id: string;
+  label: string;
+}
+
+export interface DeepQuestion {
+  id: string;
+  /** 이 질문이 어떤 Insight에서 나왔는지 — 답변의 evidenceRef 근거가 된다 */
+  insightId: string;
+  axis: MirrorAxisKey;
+  prompt: string;
+  /** '아까 네가 말한 기준과 실제 경험에서 조금 다른 신호가 보여서 물어볼게' 같은 짧은 이유 */
+  reason?: string;
+  answerType: DeepAnswerType;
+  options?: readonly DeepQuestionOption[];
+  /** 선택지 + 직접 입력 구조일 때 true */
+  allowCustomText?: boolean;
+}
+
+/**
+ * v1.9 §11 — 기존 Adaptive Follow-up(`AdaptiveAnswer`, S16a)과 별도 모델이다.
+ * 원래 답을 덮어쓰지 않고 **새 Evidence Source(`deep_followup`)로 추가한다.**
+ */
+export interface DeepAnalysisAnswer {
+  questionId: string;
+  insightId: string;
+  axis?: MirrorAxisKey;
+  answerType: DeepAnswerType;
+  value: string | string[] | number;
+  createdAt: string;
+}
+
+/** Deep Insight 카드에 대한 사용자 확인(§16/§33). 기존 Verdict 재사용 + 짧은 Correction */
+export interface DeepInsightFeedback {
+  verdict: Verdict;
+  correctedText?: string;
+}
+
+/* ---------------------------------- Relationship Deep Report (v1.9 · §13) */
+
+export interface DeepReportInsightCard {
+  insight: CrossSourceInsight;
+  narrative: DeepNarrative | null;
+}
+
+export interface DeepSituation {
+  id: string;
+  axis: MirrorAxisKey;
+  /** 상황 */
+  situation: string;
+  /** 나에게 나타날 수 있는 반응 */
+  myReaction: string;
+  /** 상대에게 나타날 수 있는 반응 — 반드시 '~할 수 있어' 톤 (§19) */
+  theirPossibleReaction: string;
+  /** 어디서 오해가 생길 수 있는지 */
+  misunderstanding: string;
+  /** 확인할 질문 */
+  question: string;
+}
+
+export interface DeepConversationQuestion {
+  question: ConversationQuestion;
+  /** 이 질문을 왜 추천했는지 — 근거 연결 문장(§20) */
+  why: string;
+}
+
+export interface DeepFinalObservation {
+  strongestSignalSummary: string;
+  evidence: string[];
+  unknown: string;
+  nextTip: string;
+}
+
+export interface RelationshipDeepReportOverview {
+  headline: string;
+  subcopy: string;
+  /** 최대 3개. Report Navigation 역할만 한다(§14) */
+  topSummaries: string[];
+}
+
+/**
+ * Premium의 핵심 상품. **새 점수를 만들지 않는다** — Compatibility/Mirror/History는
+ * 이미 계산된 결과를 그대로 조합한다(§17 compatibilityDeepDive, §21 historyDeep이
+ * `PremiumDetailReport`를 그대로 재사용하는 이유다).
+ */
+export interface RelationshipDeepReport {
+  available: boolean;
+  overview: RelationshipDeepReportOverview;
+  /** §15 Relationship Self — Observed/Declared/Relationship을 연결한 카드들 */
+  relationshipSelf: DeepReportInsightCard[];
+  /** §16 Cross-source Insights — Premium의 핵심. 우선순위대로 정렬됨(§6) */
+  crossSourceInsights: DeepReportInsightCard[];
+  /** §17 — 기존 buildCompatibilityDetail() 결과를 그대로 재사용 */
+  compatibilityDeepDive: PremiumDetailReport;
+  /** §19 — 관련 Insight가 있는 것만 존재 */
+  situations: DeepSituation[];
+  /** §20 — 기존 대화 질문 재사용 + Deep 질문 추가 */
+  conversationQuestions: DeepConversationQuestion[];
+  /** §21 — 기존 buildHistoryDetail() 재사용. History Entry < 2면 null(섹션 숨김) */
+  historyDeep: PremiumDetailReport | null;
+  /** §23 Lovy Final Observation. Insight가 하나도 없으면 null */
+  finalObservation: DeepFinalObservation | null;
+  /** 이 리포트가 못 하는 것 — 항상 사용자에게 보여준다 */
+  limitations: string[];
+}
+
 /* ------------------------------------------ Premium (v1.5, Fake Door) */
 
 /**
@@ -855,7 +1042,13 @@ export type PremiumFeatureId =
   | 'history_detail'
   | 'mbti_detail'
   | 'astrology_detail'
-  | 'saju_detail';
+  | 'saju_detail'
+  /**
+   * v1.9 — Premium의 새 핵심 상품. compatibility_detail/mirror_detail/history_detail이
+   * 각자 만들던 개별 상세를 하나의 리포트로 통합한다(§12). 그 세 파일이 만든 계산 결과는
+   * 이 리포트 안에서 그대로 재사용한다 — 점수·판정을 다시 계산하지 않는다.
+   */
+  | 'relationship_deep_report';
 
 /** Premium 진입 지점 — 무엇에 돈을 내고 싶어하는지 판단하는 핵심 데이터(§31) */
 export type PremiumSource =
@@ -988,6 +1181,13 @@ export interface SessionAnswers {
     includeTargetInfo: boolean;
     includeDimensionScores: boolean;
   };
+  /**
+   * v1.9 — Premium Adaptive Deep Question 답변.
+   * 기존 답변을 덮어쓰지 않는 별도 Evidence Source다(§11). insightId 기준으로 누적된다.
+   */
+  deepAnswers: DeepAnalysisAnswer[];
+  /** v1.9 — Deep Insight 카드별 사용자 확인(§33). insight.id → feedback */
+  deepInsightFeedback: Record<string, DeepInsightFeedback>;
   /** 진행 상황 플래그 */
   completed: {
     onboarding: boolean;

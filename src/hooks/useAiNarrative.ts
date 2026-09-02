@@ -4,26 +4,36 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   compatibilityNarrativeFingerprint,
+  deepReportFingerprint,
   historyNarrativeFingerprint,
   relationshipNarrativeFingerprint,
 } from '@/lib/aiFingerprint';
 import type { EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
+import { buildCrossSourceInsights } from '@/lib/logic/crossSourceInsights';
 import { getCachedAiResult } from '@/services/ai/aiClient';
 import {
   requestCompatibilityNarrative,
+  requestDeepReportNarrative,
   requestHistoryNarrative,
   requestRelationshipNarrative,
   toValidatedObservations,
 } from '@/services/aiService';
 import { useHistory } from '@/state/HistoryProvider';
 import { useSession } from '@/state/SessionProvider';
-import { useCompatibility, useHistoryReport, useMirror } from '@/hooks/useAnalysis';
+import {
+  useCompatibility,
+  useHistoryReport,
+  useMirror,
+  useRepeatedSignals,
+} from '@/hooks/useAnalysis';
 import type {
   AiFailureReason,
   AiMode,
   AiNarrativeState,
   AiTask,
   CompatibilityNarrativeBundle,
+  CrossSourceInsight,
+  DeepNarrativeBundle,
   HistoryNarrativeBundle,
   RelationshipNarrativeBundle,
   ValidatedObservation,
@@ -129,8 +139,47 @@ export function useEvidenceContext(): EvidenceResolverContext {
   const validated = useValidatedObservations();
 
   return useMemo(
-    () => ({ answers, validated, historyEntries: entries }),
+    () => ({ answers, validated, historyEntries: entries, deepAnswers: answers.deepAnswers }),
     [answers, validated, entries],
+  );
+}
+
+/**
+ * v1.9 — Cross-source Insight 목록. Mirror/History/Compatibility가 이미 계산한 결과를
+ * 서로 연결하기만 한다(판정을 새로 만들지 않는다) — `crossSourceInsights.ts` 참고.
+ */
+export function useCrossSourceInsights(): CrossSourceInsight[] {
+  const { answers } = useSession();
+  const { latest } = useHistory();
+  const mirror = useMirror();
+  const validated = useValidatedObservations();
+  const report = useHistoryReport();
+  const repeatedSignals = useRepeatedSignals();
+
+  return useMemo(
+    () =>
+      buildCrossSourceInsights({
+        declared: answers.declared,
+        experience: answers.experience,
+        target: answers.target,
+        mirror,
+        validated,
+        historyChanges: report.changes,
+        repeatedSignals,
+        latestHistoryEntry: latest,
+        deepAnswers: answers.deepAnswers,
+      }),
+    [
+      answers.declared,
+      answers.experience,
+      answers.target,
+      mirror,
+      validated,
+      report.changes,
+      repeatedSignals,
+      latest,
+      answers.deepAnswers,
+    ],
   );
 }
 
@@ -240,6 +289,46 @@ export function useHistoryNarrative(enabled = true): AiNarrativeState<HistoryNar
     fingerprint,
     enabled: enabled && report.comparable && judged.length > 0,
     hasItems: historyHasItems,
+    run,
+  });
+}
+
+/* -------------------------------------------------- Deep Report (v1.9) */
+
+const deepReportHasItems: HasItems<DeepNarrativeBundle> = (data) => data.narratives.length > 0;
+
+/**
+ * Relationship Deep Report §24 — Cross-source Insight에 headline/interpretation을 붙인다.
+ * `insights`는 이미 Quality Gate 이전 단계(우선순위 정렬)까지 끝난 목록을 넘긴다 —
+ * 실제로 AI에게 보낼지는 Context Builder의 Quality Gate (A)가 한 번 더 정한다.
+ */
+export function useDeepReportNarrative(
+  insights: readonly CrossSourceInsight[],
+  enabled = true,
+): AiNarrativeState<DeepNarrativeBundle> {
+  const { answers } = useSession();
+  const validated = useValidatedObservations();
+  const resolverContext = useEvidenceContext();
+
+  const fingerprint = useMemo(
+    () =>
+      deepReportFingerprint({
+        insights,
+        declared: answers.declared,
+        target: answers.target,
+        validated,
+        deepAnswers: answers.deepAnswers,
+      }),
+    [insights, answers.declared, answers.target, validated, answers.deepAnswers],
+  );
+
+  const run = () => requestDeepReportNarrative(insights, resolverContext, fingerprint);
+
+  return useNarrativeTask<DeepNarrativeBundle>({
+    task: 'deep-report-narrative',
+    fingerprint,
+    enabled: enabled && insights.length > 0,
+    hasItems: deepReportHasItems,
     run,
   });
 }

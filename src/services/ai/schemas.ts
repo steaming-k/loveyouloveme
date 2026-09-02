@@ -50,7 +50,15 @@ function oneOf<T extends string>(value: unknown, allowed: readonly T[]): T | nul
 
 const CONFIDENCES: readonly Confidence[] = ['low', 'medium', 'high'];
 const CATEGORIES: readonly ObservedCategory[] = ['interest', 'activity', 'social', 'lifestyle'];
-const EVIDENCE_SOURCES = ['declared', 'relationship', 'adaptive', 'observed', 'history'] as const;
+const EVIDENCE_SOURCES = [
+  'declared',
+  'relationship',
+  'adaptive',
+  'observed',
+  'history',
+  'target',
+  'deep_followup',
+] as const;
 
 const MIRROR_AXIS_KEYS: readonly MirrorAxisKey[] = MIRROR_AXES.map((axis) => axis.key);
 const TARGET_AXIS_KEYS: readonly TargetAxisKey[] = AXIS_DEFINITIONS.map((axis) => axis.key);
@@ -77,6 +85,11 @@ export const NARRATIVE_LIMITS = {
   coreSummary: 240,
   historySummary: 220,
   uncertainty: 140,
+  /** v1.9 — Deep Report Cross-source Insight 카드 */
+  deepHeadline: 70,
+  deepInterpretation: 260,
+  deepSituation: 220,
+  deepQuestion: 140,
 } as const;
 
 /* ------------------------------------------------------ EvidenceRef */
@@ -94,6 +107,10 @@ function parseEvidenceRef(raw: unknown): EvidenceRef | null {
     const entryId = str(raw.entryId ?? raw.field, 80);
     const axis = str(raw.axis, 40);
     return entryId && axis ? { source, entryId, axis } : null;
+  }
+  if (source === 'deep_followup') {
+    const questionId = str(raw.questionId ?? raw.field, 80);
+    return questionId ? { source, questionId } : null;
   }
   const field = str(raw.field, 80);
   return field ? { source, field } : null;
@@ -340,6 +357,61 @@ export function parseHistoryResponse(
       uncertainty: uncertainty
         ? clampNarrativeText(uncertainty, NARRATIVE_LIMITS.uncertainty)
         : undefined,
+    });
+  }
+
+  return result;
+}
+
+/* ------------------------------------------------- Deep Report (v1.9) */
+
+/**
+ * @param allowedInsightIds AI가 설명해도 되는 Insight id만 허용한다. 이 Task 하나가
+ *   여러 insight의 설명을 한 번에 만든다(§40 Performance — insight마다 별도 요청 안 함).
+ */
+export function parseDeepReportResponse(
+  raw: unknown,
+  allowedInsightIds: readonly string[],
+): { insightId: string; headline: string; interpretation: string; situation?: string; uncertainty?: string; conversationQuestion?: string; evidenceRefs: EvidenceRef[] }[] {
+  if (!isObject(raw) || !Array.isArray(raw.narratives)) return [];
+
+  const allowed = new Set(allowedInsightIds);
+  const seen = new Set<string>();
+  const result: ReturnType<typeof parseDeepReportResponse> = [];
+
+  for (const item of raw.narratives) {
+    if (!isObject(item)) continue;
+    const insightId = str(item.insightId, 60);
+    // 같은 insight를 두 번 설명하지 않는다 — AI가 만들어낸 id/판정되지 않은 id는 버린다.
+    if (!insightId || !allowed.has(insightId) || seen.has(insightId)) continue;
+
+    const headline = str(item.headline, 200);
+    const interpretation = str(item.interpretation, 500);
+    if (!headline || !interpretation) continue;
+
+    const evidenceRefs = parseEvidenceRefs(item.evidenceRefs);
+    const uncertainty = str(item.uncertainty, 300);
+
+    // §13 — 근거도 한계도 없으면 버린다. Cross-source Insight는 특히 근거 2개 이상을 기대한다.
+    if (evidenceRefs.length === 0 && !uncertainty) continue;
+
+    seen.add(insightId);
+    result.push({
+      insightId,
+      headline: clampNarrativeText(headline, NARRATIVE_LIMITS.deepHeadline),
+      interpretation: clampNarrativeText(interpretation, NARRATIVE_LIMITS.deepInterpretation),
+      situation: (() => {
+        const s = str(item.situation, 400);
+        return s ? clampNarrativeText(s, NARRATIVE_LIMITS.deepSituation) : undefined;
+      })(),
+      uncertainty: uncertainty
+        ? clampNarrativeText(uncertainty, NARRATIVE_LIMITS.uncertainty)
+        : undefined,
+      conversationQuestion: (() => {
+        const q = str(item.conversationQuestion, 200);
+        return q ? clampNarrativeText(q, NARRATIVE_LIMITS.deepQuestion) : undefined;
+      })(),
+      evidenceRefs,
     });
   }
 

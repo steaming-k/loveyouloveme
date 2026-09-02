@@ -7,10 +7,13 @@ import {
   HOBBY_LABEL,
   PAST_FACTOR_LABEL,
 } from '@/data/labels';
+import { resolveEvidenceRef, type EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
 import { sanitizeFreeText } from './safety';
 import type {
   CompatibilityResult,
+  CrossSourceInsight,
   DeclaredPreference,
+  EvidenceRef,
   HistoryAxisChange,
   MirrorReport,
   RelationshipExperience,
@@ -231,6 +234,61 @@ export function buildHistoryContext(changes: readonly HistoryAxisChange[]): Hist
         declaredDelta: change.declaredDelta,
       })),
   };
+}
+
+/* ------------------------------------------------------- Deep Report */
+
+export interface DeepReportContext {
+  insights: Array<{
+    id: string;
+    type: string;
+    axis: string | null;
+    sources: string[];
+    /**
+     * AI가 문장을 지어내는 대신 **여기 있는 것만 그대로 인용**한다. ref는 서버가 이미
+     * 갖고 있는 EvidenceRef를 그대로 보여주는 것이고, text는 Resolver가 실제 세션 데이터로
+     * 만든 문장이다 — AI는 이 text를 evidence로 다시 쓰지 않고 그대로 참조만 한다.
+     */
+    evidence: Array<{ ref: EvidenceRef; text: string }>;
+    strength: string;
+  }>;
+}
+
+/**
+ * Quality Gate (A) — 근거가 2개 이상 실제로 해석되는 Insight만 AI에게 보낸다(§26).
+ * 1개짜리는 '연결'이 아니라 '되풀이'라서 여기서 걸러진다 — AI가 근거 없이
+ * 뭔가를 지어낼 여지도 원천적으로 없어진다.
+ */
+export function buildDeepReportContext(
+  insights: readonly CrossSourceInsight[],
+  resolverContext: EvidenceResolverContext,
+): DeepReportContext {
+  const built: DeepReportContext['insights'] = [];
+
+  for (const insight of insights) {
+    if (!insight.eligibleForNarrative) continue;
+
+    const seen = new Set<string>();
+    const evidence: Array<{ ref: EvidenceRef; text: string }> = [];
+    for (const ref of insight.evidenceRefs) {
+      const resolved = resolveEvidenceRef(ref, resolverContext);
+      if (!resolved || seen.has(resolved.key)) continue;
+      seen.add(resolved.key);
+      evidence.push({ ref, text: resolved.text });
+    }
+    if (evidence.length < 2) continue;
+
+    built.push({
+      id: insight.id,
+      type: insight.type,
+      axis: insight.axis ?? null,
+      sources: insight.sources,
+      evidence,
+      strength: insight.strength,
+    });
+  }
+
+  return { insights: built };
 }
 
 /** Mirror 축 라벨 — 화면·프롬프트에서 공통으로 쓴다 */

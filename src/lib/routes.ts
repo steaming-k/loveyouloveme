@@ -51,6 +51,11 @@ export const ROUTES = {
   premiumBase: '/premium',
   /** 개발·UT용 상세 미리보기. NEXT_PUBLIC_PREMIUM_PREVIEW=true일 때만 열린다 */
   premiumPreview: (feature: string) => `/premium-preview/${feature}`,
+  /**
+   * v1.9 — Premium Adaptive Deep Question. 실제 결제·리포트 연결이 없는 지금은
+   * 개발·UT 통로로만 연다(§8) — 아무 보상 없이 프로덕션에서 심층 답변을 모으지 않는다.
+   */
+  deepQuestions: '/premium-preview/deep-questions',
 } as const;
 
 /** 데스크톱 프로토타입 패널의 화면 점프 목록 (와이어프레임 1b 보드와 동일 순서) */
@@ -132,5 +137,19 @@ export const SCREEN_BOARD: readonly ScreenBoardEntry[] = [
     name: 'Premium Paywall',
     group: 'Add-on',
     href: ROUTES.premium('compatibility'),
+  },
+  {
+    id: 'p2',
+    short: 'P2',
+    name: '정밀 관찰 리포트 (개발용)',
+    group: 'Add-on',
+    href: ROUTES.premiumPreview('relationship_deep_report'),
+  },
+  {
+    id: 'p3',
+    short: 'P3',
+    name: 'Deep Question (개발용)',
+    group: 'Add-on',
+    href: ROUTES.deepQuestions,
   },
 ];

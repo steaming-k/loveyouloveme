@@ -1,6 +1,8 @@
 import type {
   CompatibilityResult,
+  CrossSourceInsight,
   DeclaredPreference,
+  DeepAnalysisAnswer,
   HistoryAxisChange,
   MirrorAxisKey,
   RelationshipExperience,
@@ -110,5 +112,38 @@ export function historyNarrativeFingerprint(
     entries.length,
     ...entries.slice(-2).map((entry) => entry.id),
     ...changes.map((change) => `${change.axis}:${change.state}`),
+  ])}`;
+}
+
+/**
+ * Deep Report Narrative — Cross-source Insight 목록 자체(id·type·strength)와,
+ * 그 근거의 **실제 내용**이 바뀌는 지점(관찰 수정, 상대 정보, Deep Followup 답변)이 기준이다.
+ *
+ * ⚠️ evidenceRefs는 '어디를 봤는지'일 뿐 텍스트를 담지 않는다. 그래서 예를 들어 사용자가
+ * observed trait을 수정해도 ref 자체는 안 바뀐다 — validated의 correction 여부를 별도로
+ * 넣어야 "같은 근거인데 내용이 달라졌다"를 지문이 알 수 있다(§40 Evidence Revision).
+ */
+export function deepReportFingerprint(input: {
+  insights: readonly CrossSourceInsight[];
+  declared: DeclaredPreference;
+  target: TargetProfile;
+  validated: readonly ValidatedObservation[];
+  deepAnswers: readonly DeepAnalysisAnswer[];
+}): string {
+  const { insights, declared, target, validated, deepAnswers } = input;
+
+  return `dr_${digest([
+    ...insights.map((insight) => `${insight.id}:${insight.type}:${insight.strength}`),
+    ...declaredParts(declared),
+    target.contact,
+    target.conflict,
+    target.alone,
+    target.affection,
+    ...validated.map(
+      (item) => `${item.original.id}:${item.status}:${item.userCorrection ? 'c' : '-'}`,
+    ),
+    ...deepAnswers.map(
+      (answer) => `${answer.questionId}:${Array.isArray(answer.value) ? answer.value.join(',') : answer.value}`,
+    ),
   ])}`;
 }

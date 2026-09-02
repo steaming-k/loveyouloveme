@@ -21,6 +21,7 @@ import type {
   BirthProfile,
   ConversationQuestionId,
   DeclaredPreference,
+  DeepAnalysisAnswer,
   HardestMoment,
   MbtiType,
   MirrorAxisKey,
@@ -98,6 +99,11 @@ interface SessionContextValue {
 
   setShareOption: (key: keyof SessionAnswers['share'], value: boolean) => void;
 
+  /** v1.9 — Premium Adaptive Deep Question 답변 추가. 같은 questionId면 교체(재답변) */
+  addDeepAnswer: (answer: DeepAnalysisAnswer) => void;
+  /** v1.9 — Deep Insight 카드 확인/수정(§33). '조금 달라요'는 correctedText와 함께 온다 */
+  setDeepInsightFeedback: (insightId: string, verdict: Verdict, correctedText?: string) => void;
+
   markComplete: (key: CompletionKey) => void;
   loadSampleSession: () => void;
   reset: () => void;
@@ -171,6 +177,9 @@ function deserialize(raw: string): SessionAnswers | null {
       photos,
       observations: parsed.observations ?? {},
       savedQuestions: Array.isArray(parsed.savedQuestions) ? parsed.savedQuestions : [],
+      // v1.9 이전 세션에는 없던 필드 — 빈 값으로 마이그레이션한다.
+      deepAnswers: Array.isArray(parsed.deepAnswers) ? parsed.deepAnswers : [],
+      deepInsightFeedback: parsed.deepInsightFeedback ?? {},
     };
   } catch {
     return null;
@@ -450,6 +459,38 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setAnswers((prev) => ({ ...prev, share: { ...prev.share, [key]: value } }));
   }, []);
 
+  /**
+   * v1.9 — 기존 답변을 덮어쓰지 않는다(§11). 같은 질문에 다시 답하면(재답변) 그 항목만
+   * 교체하고, 새 질문이면 추가한다.
+   */
+  const addDeepAnswer = useCallback((answer: DeepAnalysisAnswer) => {
+    setAnswers((prev) => ({
+      ...prev,
+      deepAnswers: [
+        ...prev.deepAnswers.filter((item) => item.questionId !== answer.questionId),
+        answer,
+      ],
+    }));
+    trackEvent('deep_question_complete', { insight: answer.insightId, axis: answer.axis ?? '' });
+  }, []);
+
+  const setDeepInsightFeedback = useCallback(
+    (insightId: string, verdict: Verdict, correctedText?: string) => {
+      setAnswers((prev) => ({
+        ...prev,
+        deepInsightFeedback: {
+          ...prev.deepInsightFeedback,
+          [insightId]: { verdict, correctedText },
+        },
+      }));
+      trackEvent('deep_insight_feedback', {
+        insight: insightId,
+        verdict: verdict === 'ok' ? 'agree' : verdict === 'no' ? 'correction' : 'unsure',
+      });
+    },
+    [],
+  );
+
   const markComplete = useCallback((key: CompletionKey) => {
     setAnswers((prev) =>
       prev.completed[key] ? prev : { ...prev, completed: { ...prev.completed, [key]: true } },
@@ -515,6 +556,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setBirthProfile,
       clearBirthProfile,
       setShareOption,
+      addDeepAnswer,
+      setDeepInsightFeedback,
       markComplete,
       loadSampleSession,
       reset,
@@ -551,6 +594,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setBirthProfile,
       clearBirthProfile,
       setShareOption,
+      addDeepAnswer,
+      setDeepInsightFeedback,
       markComplete,
       loadSampleSession,
       reset,

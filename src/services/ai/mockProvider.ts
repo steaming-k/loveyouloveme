@@ -165,6 +165,32 @@ function historyResponse(payload: Record<string, unknown>): unknown {
   };
 }
 
+function deepReportResponse(payload: Record<string, unknown>): unknown {
+  const context = (typeof payload.context === 'object' && payload.context !== null
+    ? payload.context
+    : {}) as {
+    insights?: Array<{
+      id: string;
+      type: string;
+      evidence: Array<{ ref: unknown; text: string }>;
+    }>;
+  };
+  const insights = context.insights ?? [];
+
+  return {
+    narratives: insights.map((insight) => ({
+      insightId: insight.id,
+      headline: '따로 보면 안 보이던 게 겹쳐 보여',
+      interpretation:
+        `${insight.evidence[0]?.text ?? ''} 그리고 ${insight.evidence[1]?.text ?? ''} — 이 둘을 같이 보면 하나만 볼 때와는 다른 신호로 읽혀.`,
+      situation: '이 두 신호가 같이 나타나는 순간에 한 번 더 확인해볼 수 있어.',
+      conversationQuestion: '이 부분은 실제로 어떻게 느꼈어?',
+      // ref를 그대로 복사한다 — mock도 실제 evidenceRefsAreSubsetOf 검증을 통과해야 한다.
+      evidenceRefs: insight.evidence.slice(0, 2).map((item) => item.ref),
+    })),
+  };
+}
+
 export function createMockProvider(): AiProvider {
   return {
     model: MOCK_MODEL,
@@ -180,6 +206,8 @@ export function createMockProvider(): AiProvider {
           return compatibilityResponse(payload);
         case 'history-insight':
           return historyResponse(payload);
+        case 'deep-report-narrative':
+          return deepReportResponse(payload);
       }
     },
   };

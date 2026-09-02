@@ -1,0 +1,31 @@
+{
+  "name": "deep_report_mind_reading",
+  "description": "상대 마음 읽기가 섞인 Deep Report 응답 — scanDeepNarrative가 scanCoreNarrative를 포함해 걸러야 한다",
+  "task": "deep-report-narrative",
+  "allowed": [
+    {
+      "id": "cs_reltarget_contact",
+      "evidenceRefs": [
+        { "source": "relationship", "field": "hardest" },
+        { "source": "target", "field": "contact" }
+      ]
+    }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "insightId": "cs_reltarget_contact",
+        "headline": "연락 축 해석",
+        "interpretation": "상대는 분명 너를 덜 좋아해서 연락이 적은 거야.",
+        "evidenceRefs": [
+          { "source": "relationship", "field": "hardest" },
+          { "source": "target", "field": "contact" }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 0,
+    "violationsInclude": ["mind_reading"]
+  }
+}

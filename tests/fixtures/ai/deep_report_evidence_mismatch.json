@@ -1,0 +1,30 @@
+{
+  "name": "deep_report_evidence_mismatch",
+  "description": "원래 Insight에 없는 evidenceRef를 들고 온 응답 — Quality Gate(E)가 그 항목 전체를 버려야 한다",
+  "task": "deep-report-narrative",
+  "allowed": [
+    {
+      "id": "cs_mirror_contact",
+      "evidenceRefs": [
+        { "source": "declared", "field": "contact" },
+        { "source": "relationship", "field": "hardest" }
+      ]
+    }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "insightId": "cs_mirror_contact",
+        "headline": "연락 축 해석",
+        "interpretation": "이 두 신호를 같이 보면 연락 축에서 말한 기준과 실제 반응이 갈렸다는 걸 알 수 있어.",
+        "evidenceRefs": [
+          { "source": "declared", "field": "contact" },
+          { "source": "history", "entryId": "made_up_entry", "axis": "contact" }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 0
+  }
+}

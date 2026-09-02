@@ -1,0 +1,31 @@
+{
+  "name": "deep_report_unsupported_certainty",
+  "description": "근거 없는 확정 표현('분명', '원래 이런 사람')이 섞인 응답 — Quality Gate(C)가 걸러야 한다",
+  "task": "deep-report-narrative",
+  "allowed": [
+    {
+      "id": "cs_mirror_contact",
+      "evidenceRefs": [
+        { "source": "declared", "field": "contact" },
+        { "source": "relationship", "field": "hardest" }
+      ]
+    }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "insightId": "cs_mirror_contact",
+        "headline": "연락 축 해석",
+        "interpretation": "너는 분명 원래 이런 사람이라 연락에 무심할 수밖에 없어.",
+        "evidenceRefs": [
+          { "source": "declared", "field": "contact" },
+          { "source": "relationship", "field": "hardest" }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 0,
+    "violationsInclude": ["unsupported_certainty"]
+  }
+}

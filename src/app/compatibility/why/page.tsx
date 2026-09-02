@@ -22,7 +22,7 @@ import { trackEvent } from '@/lib/analytics';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { premiumFeatureState } from '@/services/premiumService';
 import { ROUTES } from '@/lib/routes';
-import { useCompatibilityNarrative } from '@/hooks/useAiNarrative';
+import { useCompatibilityNarrative, useCrossSourceInsights } from '@/hooks/useAiNarrative';
 import { useCompatibility, useMbtiLens, usePastObservation } from '@/hooks/useAnalysis';
 
 /**
@@ -62,7 +62,10 @@ export default function CompatibilityDetailPage() {
 
   // Premium 진입 상태. 가격은 세션에 고정된 variant를 따른다.
   const [variant] = useState(() => resolvePriceVariant());
-  const premiumFeature = premiumFeatureState('compatibility_detail', resolvePrice(variant));
+  const crossSourceInsights = useCrossSourceInsights();
+  const premiumFeature = premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
+    deepReportAvailable: crossSourceInsights.length > 0,
+  });
 
   return (
     <ScreenLayout
@@ -212,7 +215,7 @@ export default function CompatibilityDetailPage() {
           Sticky Primary CTA는 여전히 '다음 관찰 보기'(→ Mirror)다. Premium이 Mirror Funnel보다
           강해지면 안 된다(§33 Guardrail).
         */}
-        <PremiumEntryRow feature={premiumFeature} />
+        <PremiumEntryRow feature={premiumFeature} source="compatibility" />
 
         {/* AI 설명이 없는 이유를 숨기지 않는다. demo에서는 아무 말도 하지 않는다(§64) */}
         <AiNarrativeNotice

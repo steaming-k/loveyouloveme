@@ -1,3 +1,5 @@
+import type { EvidenceRef } from '@/types';
+
 /**
  * AI Safety (§43 · §69 · §89 · §90)
  *
@@ -145,6 +147,68 @@ export function scanHistoryNarrative(text: string): SafetyScanResult {
   );
   const violations = [...core.violations, ...growth];
   return { safe: violations.length === 0, violations };
+}
+
+/**
+ * Anti-generic Quality Gate (v1.9 · §26)
+ *
+ * '사용자 데이터 없이도 성립하는 문장'을 잡는다. 완벽한 탐지기가 아니다 — 알려진 템플릿
+ * 문구와 단정 표현만 최후 방어선으로 막는다. 1차 방어는 프롬프트(§25)와 Evidence 개수
+ * 요구(엔진이 `eligibleForNarrative`로 이미 2-source 이상만 통과시킨다)다.
+ */
+const GENERIC_SENTENCE_PATTERNS: readonly RegExp[] = [
+  /소통이\s*중요합니다?/,
+  /서로\s*이해하는\s*것이\s*중요합니다?/,
+  /대화를?\s*통해\s*해결할\s*수\s*있습니다?/,
+  /관심과\s*배려가\s*필요합니다?/,
+  /노력이\s*필요합니다?\.?$/,
+  /서로\s*(를\s*)?존중해야\s*합니다?/,
+];
+
+/** '분명'·'항상'·'절대'처럼 데이터가 뒷받침할 수 없는 단정 표현(§26-C) */
+const UNSUPPORTED_CERTAINTY_PATTERNS: readonly RegExp[] = [
+  /분명(히)?/,
+  /항상|언제나/,
+  /절대(로)?/,
+  /틀림없이/,
+  /원래\s*(부터)?\s*이런\s*사람/,
+  /무조건/,
+];
+
+export function isGenericSentence(text: string): boolean {
+  return GENERIC_SENTENCE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+export function hasUnsupportedCertainty(text: string): boolean {
+  return UNSUPPORTED_CERTAINTY_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+/**
+ * Deep Report Narrative 전용 검사(§26). Core 검사(금지 추론·Lens 누출) +
+ * 성장 서사 금지(History와 같은 이유로 필요하다 — 변화를 다루므로) +
+ * Generic 문장 + 단정 표현까지 함께 본다.
+ */
+export function scanDeepNarrative(text: string): SafetyScanResult {
+  const base = scanHistoryNarrative(text);
+  const violations = [...base.violations];
+  if (isGenericSentence(text)) violations.push('generic_sentence');
+  if (hasUnsupportedCertainty(text)) violations.push('unsupported_certainty');
+  return { safe: violations.length === 0, violations };
+}
+
+/**
+ * §26-E Evidence Mismatch — Narrative가 참조한 evidenceRef가 원래 Insight의
+ * evidenceRefs에 실제로 있었는지 확인한다. AI가 있지도 않은 근거를 새로 지어내 붙이면
+ * 걸린다. 하나라도 없으면 전체 Narrative를 버린다(부분 통과시키지 않는다 — 그러면
+ * '어떤 근거가 진짜인지' 사용자가 구분할 방법이 없다).
+ */
+export function evidenceRefsAreSubsetOf(
+  narrativeRefs: readonly EvidenceRef[],
+  insightRefs: readonly EvidenceRef[],
+): boolean {
+  const key = (ref: EvidenceRef): string => JSON.stringify(ref);
+  const allowed = new Set(insightRefs.map(key));
+  return narrativeRefs.every((ref) => allowed.has(key(ref)));
 }
 
 /**

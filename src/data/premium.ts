@@ -96,6 +96,31 @@ export const PREMIUM_FEATURES: Record<PremiumFeatureId, PremiumFeatureDefinition
     freeRecap: [],
     additions: [],
   },
+  /**
+   * v1.9 — 궁합/Mirror/변화 리포트 진입점을 하나로 모은 flagship Premium.
+   * ⚠️ '더 긴 AI 설명'이 아니다 — 따로 있던 데이터를 연결했을 때만 보이는 신호를 판다(§55).
+   */
+  relationship_deep_report: {
+    id: 'relationship_deep_report',
+    source: 'compatibility',
+    title: '정밀 관찰 리포트',
+    description: '따로 답했던 것들을 연결해서 보면, 너 혼자서는 못 봤을 신호가 보여.',
+    freeRecap: [
+      '동기화율',
+      '대표 잘 맞는 신호 1개',
+      'Relationship Mirror 핵심 판정',
+      '기본 변화 요약',
+    ],
+    additions: [
+      '서로 다른 데이터를 연결해서만 보이는 Cross-source Insight',
+      'Relationship Self 심화 해석',
+      '4축 궁합 심화 비교',
+      '실제 벌어질 수 있는 상황 시뮬레이션',
+      '너에게 맞춰 고른 추가 질문',
+      '과거 기록과 지금을 나란히 놓은 비교',
+      '러비의 최종 관찰',
+    ],
+  },
 };
 
 export const PREMIUM_COPY = {
@@ -125,4 +150,37 @@ export const PREMIUM_COPY = {
 
   /** Demo AI일 때 상세도 규칙 기반이라는 사실을 숨기지 않는다(§22) */
   demoNotice: '상세 분석도 규칙 기반 데모 응답이에요. 실제 AI 개인화 결과가 아니에요.',
+} as const;
+
+/**
+ * v1.9 §29 — Relationship Deep Report 전용 문구.
+ * 기존 PREMIUM_COPY(궁합/Mirror/History 개별 상세)는 그대로 두고, 이 리포트만 따로 둔다 —
+ * "더 긴 설명을 판다"가 아니라 "더 연결해서 본다"는 차이를 문구에서부터 지킨다.
+ */
+export const DEEP_REPORT_COPY = {
+  entryLabel: 'PRECISION REPORT',
+  entryCta: '정밀 관찰 리포트 보기',
+
+  paywallTitle: ['러비가 조금 더', '연결해서 본 게 있어'],
+  paywallLovy:
+    '네가 따로 답했던 것들을 겹쳐보니까, 하나씩 볼 때는 안 보이던 게 보여. 무료로 본 결과가 없어지는 건 아니야.',
+  freeRecapLabel: '무료로 본 내용',
+  additionsLabel: '정밀 관찰 리포트에서 더 보이는 것',
+  purchaseCta: '정밀 관찰 리포트 보기',
+  dismissCta: '지금은 괜찮아',
+  priceNote: '정밀 관찰 리포트 1회 · 구독 아님',
+
+  previewLabel: '미리 보기 — 3가지만 살짝',
+  previewLocked: '나머지는 정밀 관찰 리포트에서 이어서 볼 수 있어',
+
+  fakeDoorTitle: '정밀 관찰 리포트는 지금 준비 중이에요',
+  fakeDoorBody:
+    '아직 결제도, 리포트 연결도 전이야. 방금 누른 건 결제가 아니라 관심 표시로만 기록했어.',
+  notifyCta: '출시되면 알려줘',
+  notifyDoneLabel: '관심 표시했어요',
+  notifyNote: '지금은 알림 기능도 연결 전이라 관심 표시만 기록할게. 연락처는 받지 않아.',
+  fakeDoorDismiss: '괜찮아요',
+
+  unavailableTitle: '아직 연결할 수 있는 신호가 부족해',
+  demoNotice: '이 리포트도 규칙 기반 데모 응답이에요. 실제 AI 개인화 결과가 아니에요.',
 } as const;

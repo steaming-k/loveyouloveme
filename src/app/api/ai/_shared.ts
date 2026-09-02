@@ -18,6 +18,7 @@ const ALLOWED_TASKS: readonly AiTask[] = [
   'relationship-insight',
   'compatibility-narrative',
   'history-insight',
+  'deep-report-narrative',
 ];
 
 export function isAllowedTask(task: string): task is AiTask {

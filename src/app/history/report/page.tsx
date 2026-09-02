@@ -21,7 +21,7 @@ import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { premiumFeatureState } from '@/services/premiumService';
 import { formatEntryDate } from '@/lib/historyFormat';
 import { ROUTES } from '@/lib/routes';
-import { useHistoryNarrative } from '@/hooks/useAiNarrative';
+import { useCrossSourceInsights, useHistoryNarrative } from '@/hooks/useAiNarrative';
 import { useHistoryReport, useRepeatedSignals } from '@/hooks/useAnalysis';
 import { useHistory } from '@/state/HistoryProvider';
 import type { HistoryAxisChange } from '@/types';
@@ -45,6 +45,7 @@ function HistoryReportView() {
   const { entries, previous, latest } = useHistory();
   const report = useHistoryReport();
   const repeated = useRepeatedSignals();
+  const crossSourceInsights = useCrossSourceInsights();
   const [variant] = useState(() => resolvePriceVariant());
 
   /**
@@ -220,9 +221,11 @@ function HistoryReportView() {
 
         {/* 사용자 본인의 기록·타임라인·기본 비교는 전부 무료다. Premium은 해석의 깊이만(§34) */}
         <PremiumEntryRow
-          feature={premiumFeatureState('history_detail', resolvePrice(variant), {
+          feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
             historyComparable: report.comparable,
+            deepReportAvailable: crossSourceInsights.length > 0,
           })}
+          source="history"
         />
 
         <AiNarrativeNotice

@@ -41,7 +41,8 @@ import { DECLARED_HAS_NATIVE_SCALE, toDeclaredMirrorValues } from './values';
  * 채우지 않기 위해서다 (Missing data ≠ neutral).
  */
 
-const HARDEST_TO_AXIS: Partial<Record<string, MirrorAxisKey>> = {
+/** v1.9 crossSourceInsights.ts에서도 쓴다 — Relationship↔Target 비교의 축 매핑 기준. */
+export const HARDEST_TO_AXIS: Partial<Record<string, MirrorAxisKey>> = {
   contact_drop: 'contact',
   fight_silence: 'conflict',
   no_time: 'alone',

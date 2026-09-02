@@ -1,18 +1,21 @@
 import { PROMPT_VERSIONS } from '@/services/ai/promptVersions';
 import {
+  evidenceRefsAreSubsetOf,
   filterSafeItems,
   scanCoreNarrative,
+  scanDeepNarrative,
   scanHistoryNarrative,
 } from '@/services/ai/safety';
 import {
   applyObservedBusinessRules,
   attachRuleStates,
   parseCompatibilityResponse,
+  parseDeepReportResponse,
   parseHistoryResponse,
   parseObservedResponse,
   parseRelationshipResponse,
 } from '@/services/ai/schemas';
-import type { MirrorAxisKey, MirrorState } from '@/types';
+import type { EvidenceRef, MirrorAxisKey, MirrorState } from '@/types';
 
 /**
  * POST /api/ai/contract-test — **개발 전용** AI Contract Test 실행기 (v1.7 · §55 · §56)
@@ -175,6 +178,40 @@ export async function POST(request: Request): Promise<Response> {
         axis: item.axis,
         state: item.state,
         explanationLength: item.explanation.length,
+        evidenceCount: item.evidenceRefs.length,
+        hasUncertainty: Boolean(item.uncertainty),
+      })),
+      violations: scan.violations,
+    });
+  }
+
+  if (task === 'deep-report-narrative') {
+    const insights = (Array.isArray(body.allowed) ? body.allowed : []) as Array<{
+      id: string;
+      evidenceRefs: EvidenceRef[];
+    }>;
+    const allowedIds = insights.map((item) => item.id);
+    const evidenceByInsight = new Map(insights.map((item) => [item.id, item.evidenceRefs]));
+
+    const parsed = parseDeepReportResponse(raw, allowedIds);
+    // §26(E) — 원래 Insight에 없던 evidenceRef를 들고 오면 그 항목 전체를 버린다.
+    const refChecked = parsed.filter((item) =>
+      evidenceRefsAreSubsetOf(item.evidenceRefs, evidenceByInsight.get(item.insightId) ?? []),
+    );
+    const scan = filterSafeItems(
+      refChecked,
+      (item) =>
+        `${item.headline} ${item.interpretation} ${item.situation ?? ''} ${item.conversationQuestion ?? ''}`,
+      scanDeepNarrative,
+    );
+
+    return Response.json({
+      ok: true,
+      promptVersion: PROMPT_VERSIONS.deepReport,
+      narratives: scan.items.map((item) => ({
+        insightId: item.insightId,
+        headlineLength: item.headline.length,
+        interpretationLength: item.interpretation.length,
         evidenceCount: item.evidenceRefs.length,
         hasUncertainty: Boolean(item.uncertainty),
       })),

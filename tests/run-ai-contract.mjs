@@ -168,6 +168,28 @@ async function run(fixture) {
     }
   }
 
+  /* -------------------------------------------- Deep Report (v1.9) */
+  if (fixture.task === 'deep-report-narrative') {
+    const narratives = result.narratives ?? [];
+    if (expect.narrativeCount !== undefined) {
+      check(name, `narrative 개수 ${expect.narrativeCount}`,
+        narratives.length === expect.narrativeCount, `실제 ${narratives.length}`);
+    }
+    if (expect.insightIds) {
+      check(name, `insightId ${expect.insightIds.join(',')}`,
+        eq(narratives.map((n) => n.insightId), expect.insightIds),
+        `실제 ${narratives.map((n) => n.insightId).join(',')}`);
+    }
+    for (const item of narratives) {
+      check(name, `headline ≤ 70 (${item.insightId})`, item.headlineLength <= 70,
+        `실제 ${item.headlineLength}`);
+      check(name, `interpretation ≤ 260 (${item.insightId})`, item.interpretationLength <= 260,
+        `실제 ${item.interpretationLength}`);
+      check(name, `근거 또는 한계 동반 (${item.insightId})`,
+        item.evidenceCount > 0 || item.hasUncertainty);
+    }
+  }
+
   /* ------------------------------------------- 공통: 위반 라벨 */
   if (expect.violationsInclude) {
     for (const label of expect.violationsInclude) {

@@ -9,14 +9,17 @@ import {
 import { AiProviderError, resolveProvider, type ProviderImage } from './provider';
 import {
   COMPATIBILITY_SYSTEM_PROMPT,
+  DEEP_REPORT_SYSTEM_PROMPT,
   HISTORY_SYSTEM_PROMPT,
   OBSERVED_SYSTEM_PROMPT,
   PROMPT_VERSIONS,
   RELATIONSHIP_SYSTEM_PROMPT,
 } from './promptTemplates';
 import {
+  evidenceRefsAreSubsetOf,
   filterSafeItems,
   scanCoreNarrative,
+  scanDeepNarrative,
   scanHistoryNarrative,
   wrapUserData,
 } from './safety';
@@ -24,6 +27,7 @@ import {
   applyObservedBusinessRules,
   attachRuleStates,
   parseCompatibilityResponse,
+  parseDeepReportResponse,
   parseHistoryResponse,
   parseObservedResponse,
   parseRelationshipResponse,
@@ -35,6 +39,9 @@ import type {
   AiObservedTrait,
   CompatibilityNarrative,
   CompatibilityNarrativeBundle,
+  CrossSourceInsight,
+  DeepNarrative,
+  DeepNarrativeBundle,
   HistoryNarrative,
   HistoryNarrativeBundle,
   MirrorAxisKey,
@@ -345,6 +352,87 @@ export async function runHistoryTask(
     );
 
     return { ok: true, data: { narratives: scan.items, meta: metaFor(config.mode === 'mock' ? 'mock' : 'real', provider.model) } };
+  } catch (error) {
+    return failureFrom(error);
+  }
+}
+
+/* -------------------------------------------------------- Deep Report */
+
+export interface DeepReportRequest {
+  inputFingerprint: string;
+  context: unknown;
+  /** Quality Gate (A)를 통과해 실제로 AI에게 보낸 Insight만 — id 허용목록 + evidenceRef 대조용 */
+  insights: readonly Pick<CrossSourceInsight, 'id' | 'evidenceRefs'>[];
+}
+
+export async function runDeepReportTask(
+  request: DeepReportRequest,
+): Promise<TaskResult<DeepNarrativeBundle>> {
+  const config = readAiConfig();
+  const provider = resolveProvider(false);
+
+  const metaFor = (mode: AiMode, model?: string) =>
+    buildMeta({
+      mode,
+      promptVersion: PROMPT_VERSIONS.deepReport,
+      inputFingerprint: request.inputFingerprint,
+      model,
+    });
+
+  if (!provider) {
+    if (config.mode === 'real') return { ok: false, reason: 'CONFIG_ERROR' };
+    // Demo에서는 AI Narrative를 만들지 않는다 — 화면이 각 Insight의 ruleSummary를 쓴다.
+    return { ok: true, data: { narratives: [], meta: metaFor('demo') } };
+  }
+
+  // 보낼 게 없으면(모든 Insight가 Quality Gate 이전에 이미 걸러짐) AI를 부르지 않는다(§40).
+  if (request.insights.length === 0) {
+    return {
+      ok: true,
+      data: { narratives: [], meta: metaFor(config.mode === 'mock' ? 'mock' : 'real', provider.model) },
+    };
+  }
+
+  const allowedIds = request.insights.map((item) => item.id);
+  const evidenceByInsight = new Map(request.insights.map((item) => [item.id, item.evidenceRefs]));
+
+  try {
+    const raw = await provider.generateStructured({
+      task: 'deep-report-narrative',
+      systemPrompt: DEEP_REPORT_SYSTEM_PROMPT,
+      userPayload: wrapUserData({ context: request.context }),
+    });
+
+    const parsed = parseDeepReportResponse(raw, allowedIds);
+
+    // Quality Gate (E) — 원래 Insight에 없던 evidenceRef를 들고 오면 그 항목 전체를 버린다.
+    const refChecked = parsed.filter((item) =>
+      evidenceRefsAreSubsetOf(item.evidenceRefs, evidenceByInsight.get(item.insightId) ?? []),
+    );
+
+    // Quality Gate (B)(C) — 일반론·근거 없는 확정 표현은 scanDeepNarrative가 걸러낸다.
+    const scan = filterSafeItems(
+      refChecked,
+      (item) =>
+        `${item.headline} ${item.interpretation} ${item.situation ?? ''} ${item.conversationQuestion ?? ''}`,
+      scanDeepNarrative,
+    );
+
+    const narratives: DeepNarrative[] = scan.items.map((item) => ({
+      insightId: item.insightId,
+      headline: item.headline,
+      interpretation: item.interpretation,
+      situation: item.situation,
+      uncertainty: item.uncertainty,
+      conversationQuestion: item.conversationQuestion,
+      evidenceRefs: item.evidenceRefs,
+    }));
+
+    return {
+      ok: true,
+      data: { narratives, meta: metaFor(config.mode === 'mock' ? 'mock' : 'real', provider.model) },
+    };
   } catch (error) {
     return failureFrom(error);
   }

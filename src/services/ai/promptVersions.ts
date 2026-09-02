@@ -20,6 +20,8 @@ export const PROMPT_VERSIONS = {
   compatibility: 'compatibility-v2',
   /** v1.7 — 길이 제한 · '~수도 있어' 톤 강제 · 반복 신호 확정 금지 */
   history: 'history-v2',
+  /** v1.9 — Cross-source Insight 설명. headline/interpretation/situation/question만 쓴다 */
+  deepReport: 'deep-report-v1',
 } as const;
 
 export const ANALYSIS_VERSION = '1.0';

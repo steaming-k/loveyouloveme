@@ -24,6 +24,7 @@ const ENDPOINT: Record<AiTask, string> = {
   'relationship-insight': '/api/ai/relationship-insight',
   'compatibility-narrative': '/api/ai/compatibility-narrative',
   'history-insight': '/api/ai/history-insight',
+  'deep-report-narrative': '/api/ai/deep-report-narrative',
 };
 
 /** 같은 (task, fingerprint)에 대한 진행 중 요청 */

@@ -1,5 +1,6 @@
 import { adaptiveOptionLabel } from '@/data/adaptive';
-import { MIRROR_AXES } from '@/data/axes';
+import { AXIS_DEFINITIONS, MIRROR_AXES } from '@/data/axes';
+import { DEEP_QUESTION_BANK, type DeepQuestionTemplate } from '@/data/deepQuestions';
 import {
   AFFECTION_LABEL,
   CONFLICT_LABEL,
@@ -10,9 +11,11 @@ import {
 } from '@/data/labels';
 import { withObjectParticle } from '@/lib/korean';
 import type {
+  DeepAnalysisAnswer,
   EvidenceRef,
   RelationshipHistoryEntry,
   SessionAnswers,
+  TargetAxisKey,
   ValidatedObservation,
 } from '@/types';
 
@@ -38,7 +41,9 @@ export type EvidenceSourceLabel =
   | '추가 질문'
   | '사진에서 관찰'
   | '사용자 수정'
-  | '과거 관찰';
+  | '과거 관찰'
+  | '상대에 대해 입력한 내용'
+  | '정밀 관찰 추가 답변';
 
 export interface ResolvedEvidence {
   key: string;
@@ -50,6 +55,8 @@ export interface EvidenceResolverContext {
   answers: SessionAnswers;
   validated: readonly ValidatedObservation[];
   historyEntries?: readonly RelationshipHistoryEntry[];
+  /** v1.9 — Premium Adaptive Deep Question 답변. 없으면 target/deep_followup ref는 해석되지 않는다 */
+  deepAnswers?: readonly DeepAnalysisAnswer[];
 }
 
 const MIRROR_AXIS_LABEL = new Map(MIRROR_AXES.map((axis) => [axis.key as string, axis.label]));
@@ -178,6 +185,60 @@ function resolveHistory(
   };
 }
 
+/* ------------------------------------------------------------- target */
+
+/** 상대 정보는 '사용자가 알고 있다고 입력한 값'이다 — 그렇게 고지한다(§28) */
+function resolveTarget(field: string, answers: SessionAnswers): string | null {
+  const def = AXIS_DEFINITIONS.find((item) => item.key === field);
+  if (!def) return null;
+  const level = answers.target[field as TargetAxisKey];
+  if (level === 'x') return null;
+  return `네가 입력한 상대 정보로는 ${def.label} ${quoted(def.theirsPhrase[level])}이야`;
+}
+
+/* ------------------------------------------------------- deep_followup */
+
+function findDeepQuestionTemplate(questionId: string): DeepQuestionTemplate | null {
+  for (const bank of Object.values(DEEP_QUESTION_BANK)) {
+    const found = bank.find((item) => item.id === questionId);
+    if (found) return found;
+  }
+  return null;
+}
+
+function deepAnswerValueText(answer: DeepAnalysisAnswer, template: DeepQuestionTemplate | null): string | null {
+  const { value } = answer;
+  const optionLabel = (id: string): string | null => {
+    const option = template?.options?.find((item) => item.id === id);
+    return option && option.id !== 'custom' ? option.label : null;
+  };
+
+  if (Array.isArray(value)) {
+    const labels = value.map((id) => optionLabel(id) ?? id).filter((text) => text.trim().length > 0);
+    return labels.length > 0 ? labels.join(' · ') : null;
+  }
+  if (typeof value === 'number') return `${value}`;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return optionLabel(trimmed) ?? trimmed.slice(0, 120);
+}
+
+function resolveDeepFollowup(
+  questionId: string,
+  deepAnswers: readonly DeepAnalysisAnswer[],
+): ResolvedEvidence | null {
+  const answer = deepAnswers.find((item) => item.questionId === questionId);
+  if (!answer) return null;
+  const template = findDeepQuestionTemplate(questionId);
+  const valueText = deepAnswerValueText(answer, template);
+  if (!valueText) return null;
+
+  const prompt = template?.prompt;
+  const text = prompt ? `'${prompt}'에 ${quoted(valueText)} 답했어` : `추가 질문에 ${quoted(valueText)} 답했어`;
+  return { key: `deep_followup:${questionId}`, sourceLabel: '정밀 관찰 추가 답변', text };
+}
+
 /* --------------------------------------------------------- resolver */
 
 export function resolveEvidenceRef(
@@ -201,6 +262,12 @@ export function resolveEvidenceRef(
       return resolveObserved(ref.traitId, context.validated);
     case 'history':
       return resolveHistory(ref.entryId, ref.axis, context.historyEntries ?? []);
+    case 'target': {
+      const text = resolveTarget(ref.field, context.answers);
+      return text ? { key: `target:${ref.field}`, sourceLabel: '상대에 대해 입력한 내용', text } : null;
+    }
+    case 'deep_followup':
+      return resolveDeepFollowup(ref.questionId, context.deepAnswers ?? []);
     default:
       return null;
   }

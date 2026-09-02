@@ -6,19 +6,23 @@ import { buildHomeHighlights, buildRelationshipProfile } from '@/lib/logic/profi
 import { callAiTask } from '@/services/ai/aiClient';
 import {
   buildCompatibilityContext,
+  buildDeepReportContext,
   buildHistoryContext,
   buildRelationshipContext,
   compatibilityAllowList,
 } from '@/services/ai/contextBuilders';
-import { buildDemoObservedResult } from '@/services/ai/fallback';
+import { buildDemoObservedResult, buildMeta } from '@/services/ai/fallback';
 import { photoFingerprint, prepareImagesForAnalysis } from '@/services/ai/imagePrep';
+import type { EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
 import type {
   AiFailureReason,
   AiTask,
   CompatibilityNarrativeBundle,
   CompatibilityResult,
   ConversationQuestion,
+  CrossSourceInsight,
   DeclaredPreference,
+  DeepNarrativeBundle,
   HistoryAxisChange,
   HistoryNarrativeBundle,
   MbtiLensReport,
@@ -225,6 +229,37 @@ export function requestHistoryNarrative(
   return requestNarrative<HistoryNarrativeBundle>('history-insight', fingerprint, {
     context: buildHistoryContext(changes),
     allowed: judged.map((change) => ({ axis: change.axis, state: change.state })),
+  });
+}
+
+/**
+ * v1.9 — 이미 계산된 Cross-source Insight 목록에 headline/interpretation 문장을 붙인다.
+ * Quality Gate (A)로 걸러진 뒤 남은 Insight가 없으면 서버를 부르지 않고 빈 결과를 돌려준다
+ * (§40 — 필요 없는 AI 호출을 만들지 않는다).
+ */
+export function requestDeepReportNarrative(
+  insights: readonly CrossSourceInsight[],
+  resolverContext: EvidenceResolverContext,
+  fingerprint: string,
+): Promise<{ ok: true; data: DeepNarrativeBundle } | { ok: false; reason: AiFailureReason }> {
+  const context = buildDeepReportContext(insights, resolverContext);
+
+  if (context.insights.length === 0) {
+    return Promise.resolve({
+      ok: true,
+      data: {
+        narratives: [],
+        meta: buildMeta({ mode: 'demo', promptVersion: 'deep-report-v1', inputFingerprint: fingerprint }),
+      },
+    });
+  }
+
+  return requestNarrative<DeepNarrativeBundle>('deep-report-narrative', fingerprint, {
+    context,
+    insights: context.insights.map((item) => ({
+      id: item.id,
+      evidenceRefs: item.evidence.map((entry) => entry.ref),
+    })),
   });
 }
 

@@ -9,6 +9,7 @@ import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { PageHeading, Tag } from '@/components/common/primitives';
 import { PremiumDetailView } from '@/components/premium/PremiumDetailView';
+import { RelationshipDeepReportView } from '@/components/premium/RelationshipDeepReportView';
 import { Lovy } from '@/components/lovy/Lovy';
 import { PREMIUM_FEATURES } from '@/data/premium';
 import { PREMIUM_PREVIEW } from '@/lib/env';
@@ -21,6 +22,7 @@ import {
   buildHistoryDetail,
   buildMbtiDetail,
   buildMirrorDetail,
+  buildRelationshipDeepReport,
 } from '@/services/premiumService';
 import { buildAstrologyCompatibility } from '@/services/astrologyService';
 import {
@@ -32,6 +34,11 @@ import {
   usePastObservation,
   useRepeatedSignals,
 } from '@/hooks/useAnalysis';
+import {
+  useCrossSourceInsights,
+  useDeepReportNarrative,
+  useEvidenceContext,
+} from '@/hooks/useAiNarrative';
 import { useSession } from '@/state/SessionProvider';
 import type { PremiumFeatureId } from '@/types';
 
@@ -55,6 +62,7 @@ const VALID: readonly PremiumFeatureId[] = [
   'history_detail',
   'mbti_detail',
   'astrology_detail',
+  'relationship_deep_report',
 ];
 
 function PremiumPreviewView() {
@@ -74,6 +82,11 @@ function PremiumPreviewView() {
   const mbtiLens = useMbtiLens();
   const frictionPast = usePastObservation(compatibility.frictionSignals[0]?.key ?? null);
   const mirrorPast = usePastObservation(mirror.teaser?.axisKey ?? null);
+
+  // v1.9 — Relationship Deep Report 전용. 다른 feature일 때도 훅은 항상 호출한다(조건 없이).
+  const crossSourceInsights = useCrossSourceInsights();
+  const resolverContext = useEvidenceContext();
+  const deepNarrative = useDeepReportNarrative(crossSourceInsights, featureId === 'relationship_deep_report');
 
   useEffect(() => {
     if (PREMIUM_PREVIEW && featureId) trackEvent('premium_preview_view', { feature: featureId });
@@ -112,6 +125,24 @@ function PremiumPreviewView() {
         return buildAstrologyDetail(
           buildAstrologyCompatibility(answers.birthProfile, answers.target.birthProfile, today),
         );
+      case 'relationship_deep_report':
+        return buildRelationshipDeepReport({
+          insights: crossSourceInsights,
+          narratives: deepNarrative.data?.narratives ?? [],
+          resolverContext,
+          compatibility,
+          compatibilityQuestions: questions,
+          compatibilityPastObservations: frictionPast
+            ? [
+                {
+                  label: compatibility.frictionSignals[0]?.label ?? '관찰 필요 신호',
+                  text: frictionPast.text,
+                },
+              ]
+            : [],
+          historyReport,
+          repeatedSignals: repeated,
+        });
     }
   }, [
     featureId,
@@ -126,6 +157,9 @@ function PremiumPreviewView() {
     answers.birthProfile,
     answers.target.birthProfile,
     today,
+    crossSourceInsights,
+    deepNarrative.data,
+    resolverContext,
   ]);
 
   // Flag OFF 또는 알 수 없는 feature — 일반 사용자에게 열어주지 않는다.
@@ -154,9 +188,14 @@ function PremiumPreviewView() {
     <ScreenLayout
       header={<ScreenHeader backHref={ROUTES.home} action={<Tag tone="neutral">PREVIEW</Tag>} />}
       footer={
-        <Button variant="secondary" onClick={() => router.replace(ROUTES.home)}>
-          홈으로
-        </Button>
+        <div className="flex flex-col gap-2">
+          {featureId === 'relationship_deep_report' ? (
+            <Button onClick={() => router.push(ROUTES.deepQuestions)}>추가 질문에 답하기</Button>
+          ) : null}
+          <Button variant="secondary" onClick={() => router.replace(ROUTES.home)}>
+            홈으로
+          </Button>
+        </div>
       }
       bodyClassName="pt-1.5 pb-4"
     >
@@ -166,7 +205,11 @@ function PremiumPreviewView() {
           caption={`개발용 미리보기 · ${PREMIUM_FEATURES[featureId].description}`}
         />
         {featureId === 'astrology_detail' && !birth.couple ? null : null}
-        <PremiumDetailView report={report} />
+        {'overview' in report ? (
+          <RelationshipDeepReportView report={report} resolverContext={resolverContext} />
+        ) : (
+          <PremiumDetailView report={report} />
+        )}
       </div>
     </ScreenLayout>
   );

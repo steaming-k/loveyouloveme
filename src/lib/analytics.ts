@@ -114,6 +114,23 @@ export const ANALYTICS_EVENTS = [
   'ut_evidence_clarity_rate',
   'ut_self_understanding_helpfulness',
   'ut_photo_value_rate',
+  // Relationship Deep Report (v1.9 · §34~§36) — Primary KPI(Mirror Entry Rate)는 바꾸지 않는다.
+  // 이 지표들은 'AI 설명 품질'이 아니라 'Cross-source 분석이라는 제품이 가치 있는가'를 본다.
+  'deep_report_view',
+  'deep_report_complete',
+  'deep_insight_evidence_expand',
+  'deep_insight_feedback',
+  'deep_insight_correction_submit',
+  'deep_question_start',
+  'deep_question_complete',
+  'history_deep_insight_view',
+  // UT Mode 전용 — Deep Analysis Product Value(§35). 기존 ut_* 지표(AI 문장 품질)와는
+  // 다른 것을 측정한다 — '더 상세히 말해줬냐'가 아니라 '연결해서 보여준 게 새로웠냐'.
+  'ut_new_insight_rate',
+  'ut_genericness_rate',
+  'ut_cross_source_value_rate',
+  'ut_deep_report_wtp',
+  'ut_deep_report_missing_value',
 ] as const;
 
 export type AnalyticsEvent = (typeof ANALYTICS_EVENTS)[number];
