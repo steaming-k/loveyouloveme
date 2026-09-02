@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 
 import { Button } from '@/components/common/Button';
@@ -18,6 +18,7 @@ import {
 } from '@/data/declaredQuestions';
 import { MBTI_TYPES } from '@/data/mbti';
 import { trackEvent } from '@/lib/analytics';
+import { resolveReturnDestination, withReturnTo } from '@/lib/returnTo';
 import { ROUTES } from '@/lib/routes';
 import { isDeclaredStepComplete } from '@/lib/validation';
 import { useSession } from '@/state/SessionProvider';
@@ -32,6 +33,7 @@ import type { AffectionStyle, ConflictStyle, HobbyStyle, ScaleValue } from '@/ty
  */
 export function DeclaredStepView({ step }: { step: DeclaredStep }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { answers, setDeclared, setMbti, markComplete } = useSession();
   const [error, setError] = useState<string | null>(null);
 
@@ -61,11 +63,13 @@ export function DeclaredStepView({ step }: { step: DeclaredStep }) {
         // MBTI는 Optional이므로 완료 조건이 아니다. 입력률만 함께 관찰한다.
         mbti: answers.mbti ?? '',
       });
-      router.push(ROUTES.pastIntro);
+      // v1.11 — Profile Revisit에서 '관계 성향 답변 고치기'로 들어온 거면 Past Funnel로
+      // 계속 밀지 않고 Profile Revisit으로 돌려보낸다(§27).
+      router.push(resolveReturnDestination(searchParams, ROUTES.pastIntro));
       return;
     }
 
-    router.push(ROUTES.declared(step + 1));
+    router.push(withReturnTo(ROUTES.declared(step + 1), searchParams));
   };
 
   return (

@@ -1,7 +1,7 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useRef, useState } from 'react';
 
 import { BottomSheet } from '@/components/common/BottomSheet';
 import { Button } from '@/components/common/Button';
@@ -15,6 +15,8 @@ import { ProfileLayerStack } from '@/components/profile/ProfileLayerStack';
 import { PRIVACY } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
+import { PROFILE_REVISIT_RETURN, RETURN_TO_PARAM } from '@/lib/returnTo';
+import { isRevisit, revisitHref, revisitSource } from '@/lib/resultView';
 import { ROUTES } from '@/lib/routes';
 import { canBuildProfile } from '@/lib/validation';
 import { useRelationshipProfile } from '@/hooks/useAnalysis';
@@ -26,15 +28,19 @@ import { useSession } from '@/state/SessionProvider';
  * 사용자가 '맞다 / 조금 다르다'로 확인할 수 있게 한다.
  */
 export default function ProfileResultPage() {
+  // v1.11 — ProfileResultView가 Revisit 판정(§25)을 위해 useSearchParams()를 쓴다.
   return (
-    <HydrationGate>
-      <ProfileResultView />
-    </HydrationGate>
+    <Suspense fallback={null}>
+      <HydrationGate>
+        <ProfileResultView />
+      </HydrationGate>
+    </Suspense>
   );
 }
 
 function ProfileResultView() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { showToast } = useToast();
   const { answers, markComplete } = useSession();
   const profile = useRelationshipProfile();
@@ -43,6 +49,11 @@ function ProfileResultView() {
   const [editOpen, setEditOpen] = useState(false);
 
   const ready = canBuildProfile(answers);
+  const revisit = isRevisit(searchParams);
+
+  /** Revisit에서 편집 Route로 보낼 때만 `from`을 붙인다 — 첫 방문 수정은 원래 Funnel 그대로 */
+  const editHref = (base: string) =>
+    revisit ? `${base}?${RETURN_TO_PARAM}=${PROFILE_REVISIT_RETURN}` : base;
 
   useEffect(() => {
     if (!ready) return;
@@ -52,6 +63,15 @@ function ProfileResultView() {
       observed_items: profile.layers[0]?.items.length ?? 0,
     });
   }, [ready, markComplete, profile.confidence, profile.layers]);
+
+  const revisitFiredRef = useRef(false);
+  useEffect(() => {
+    // StrictMode 이중 마운트로 중복 발생하지 않게 mount 기준 1회만(§86 패턴과 동일)
+    if (!revisit || !ready || revisitFiredRef.current) return;
+    revisitFiredRef.current = true;
+    trackEvent('profile_result_revisit', { source: revisitSource(searchParams) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revisit, ready]);
 
   if (!ready) {
     return (
@@ -85,7 +105,8 @@ function ProfileResultView() {
       <ScreenLayout
         header={
           <ScreenHeader
-            backHref={ROUTES.past(3)}
+            backHref={revisit ? ROUTES.home : ROUTES.past(3)}
+            title={revisit ? '내 관계 프로필' : undefined}
             action={
               <button
                 type="button"
@@ -98,18 +119,30 @@ function ProfileResultView() {
           />
         }
         footer={
-          <div className="flex flex-col gap-0.5">
-            <Button
-              onClick={() => {
-                router.push(ROUTES.target);
-              }}
-            >
-              이제 상대를 관찰하기
-            </Button>
-            <Button variant="text" onClick={() => setEditOpen(true)}>
-              관찰 기록 수정하기
-            </Button>
-          </div>
+          revisit ? (
+            <div className="flex flex-col gap-0.5">
+              <Button onClick={() => setEditOpen(true)}>정보 수정</Button>
+              <Button
+                variant="secondary"
+                onClick={() => router.push(revisitHref(ROUTES.mirror, 'direct'))}
+              >
+                최근 Mirror 보기
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-0.5">
+              <Button
+                onClick={() => {
+                  router.push(ROUTES.target);
+                }}
+              >
+                이제 상대를 관찰하기
+              </Button>
+              <Button variant="text" onClick={() => setEditOpen(true)}>
+                관찰 기록 수정하기
+              </Button>
+            </div>
+          )
         }
         bodyClassName="pt-1 pb-4"
       >
@@ -172,17 +205,26 @@ function ProfileResultView() {
           <FillDataRow
             label="사진 관찰 다시 보기"
             actionLabel="이동"
-            onClick={() => router.push(ROUTES.observed)}
+            onClick={() => {
+              if (revisit) trackEvent('result_edit_entry', { section: 'observed' });
+              router.push(editHref(ROUTES.observed));
+            }}
           />
           <FillDataRow
             label="관계 성향 답변 고치기"
             actionLabel="이동"
-            onClick={() => router.push(ROUTES.declared(1))}
+            onClick={() => {
+              if (revisit) trackEvent('result_edit_entry', { section: 'declared' });
+              router.push(editHref(ROUTES.declared(1)));
+            }}
           />
           <FillDataRow
             label="이전 관계 경험 고치기"
             actionLabel="이동"
-            onClick={() => router.push(ROUTES.past(1))}
+            onClick={() => {
+              if (revisit) trackEvent('result_edit_entry', { section: 'experience' });
+              router.push(editHref(ROUTES.past(1)));
+            }}
           />
           <Button variant="secondary" className="mt-1.5" onClick={() => setEditOpen(false)}>
             그대로 둘게

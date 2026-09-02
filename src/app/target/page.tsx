@@ -82,7 +82,7 @@ export default function TargetPage() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-3.5 rounded-[16px] border border-line bg-surface p-4">
+        <div className="flex flex-col gap-[19px] rounded-[16px] border border-line bg-surface p-4">
           {TARGET_FIELDS.map((field) => (
             <SegmentedField
               key={field.key}

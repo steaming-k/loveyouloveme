@@ -17,6 +17,8 @@ const GROUP_CHIP: Record<ScreenBoardEntry['group'], string> = {
   Future: 'bg-chip text-[#555]',
   Share: 'bg-chip text-[#555]',
   'Add-on': 'bg-chip text-[#555]',
+  /** v1.11 — S21~S25/S27~S28이 합쳐지며 남은 개별 Route. redirect는 되지만 위계상 후순위 */
+  Legacy: 'bg-chip text-ink-faint opacity-60',
 };
 
 /**

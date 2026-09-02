@@ -1,7 +1,7 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect } from 'react';
 
 import { Button } from '@/components/common/Button';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
@@ -12,6 +12,7 @@ import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { ADAPTIVE_FOLLOWUP } from '@/data/adaptive';
 import { LOVY_LINES } from '@/data/copy';
 import { pickAdaptiveTriggerAxis } from '@/lib/logic/mirror';
+import { withReturnTo } from '@/lib/returnTo';
 import { ROUTES } from '@/lib/routes';
 import { useSession } from '@/state/SessionProvider';
 
@@ -22,7 +23,17 @@ import { useSession } from '@/state/SessionProvider';
  * 모순 후보(GAP)가 발견됐을 때만 등장한다. 답은 선택이며, 건너뛰어도 다음으로 넘어간다.
  */
 export default function AdaptiveFollowupPage() {
+  // v1.11 — 아래 View가 Edit Return(§27)을 위해 useSearchParams()를 쓴다.
+  return (
+    <Suspense fallback={null}>
+      <AdaptiveFollowupView />
+    </Suspense>
+  );
+}
+
+function AdaptiveFollowupView() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { answers, setAdaptiveAnswer } = useSession();
   const { declared, experience } = answers;
 
@@ -32,7 +43,8 @@ export default function AdaptiveFollowupPage() {
 
   useEffect(() => {
     // 더는 물어볼 이유가 없으면(모순 후보가 사라졌으면) 조용히 다음 단계로 넘어간다.
-    if (!axis) router.replace(ROUTES.past(3));
+    if (!axis) router.replace(withReturnTo(ROUTES.past(3), searchParams));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [axis, router]);
 
   if (!axis) return null;
@@ -42,7 +54,11 @@ export default function AdaptiveFollowupPage() {
   return (
     <ScreenLayout
       header={<ScreenHeader backHref={ROUTES.past(2)} progress={75} />}
-      footer={<Button onClick={() => router.push(ROUTES.past(3))}>다음</Button>}
+      footer={
+        <Button onClick={() => router.push(withReturnTo(ROUTES.past(3), searchParams))}>
+          다음
+        </Button>
+      }
       bodyClassName="pt-4 pb-3"
     >
       <div className="flex flex-col gap-6">

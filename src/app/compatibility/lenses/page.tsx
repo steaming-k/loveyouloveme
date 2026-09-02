@@ -11,7 +11,7 @@ import { PageHeading, SectionLabel, Tag } from '@/components/common/primitives';
 import { LENS_HUB_COPY } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { lensAvailability } from '@/lib/logic/birth';
-import { ROUTES } from '@/lib/routes';
+import { RESULT_ANCHORS, ROUTES } from '@/lib/routes';
 import { useCompatibility, useMbtiLens } from '@/hooks/useAnalysis';
 import { useSession } from '@/state/SessionProvider';
 import type { EntertainmentLensType } from '@/types';
@@ -55,10 +55,18 @@ function CompatibilityLensesView() {
 
   return (
     <ScreenLayout
-      header={<ScreenHeader backHref={ROUTES.compatibilityWhy} title="다른 렌즈" />}
+      header={
+        <ScreenHeader
+          backHref={`${ROUTES.compatibility}#${RESULT_ANCHORS.compatibilityLenses}`}
+          title="다른 렌즈"
+        />
+      }
       footer={
-        <Button variant="secondary" onClick={() => router.push(ROUTES.compatibilityWhy)}>
-          궁합 상세로 돌아가기
+        <Button
+          variant="secondary"
+          onClick={() => router.push(`${ROUTES.compatibility}#${RESULT_ANCHORS.compatibilityLenses}`)}
+        >
+          궁합 결과로 돌아가기
         </Button>
       }
       bodyClassName="pt-1.5 pb-4"
@@ -71,7 +79,9 @@ function CompatibilityLensesView() {
           <SectionLabel>{LENS_HUB_COPY.coreLabel}</SectionLabel>
           <button
             type="button"
-            onClick={() => router.push(ROUTES.compatibilityWhy)}
+            onClick={() =>
+              router.push(`${ROUTES.compatibility}#${RESULT_ANCHORS.compatibilitySummary}`)
+            }
             className="flex items-center justify-between gap-3 rounded-row border border-brand-edge bg-brand-tint p-4 text-left"
           >
             <div className="flex min-w-0 flex-col gap-1">

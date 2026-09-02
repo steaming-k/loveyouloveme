@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 
 import { Button } from '@/components/common/Button';
@@ -24,12 +24,14 @@ import {
 } from '@/data/pastQuestions';
 import { trackEvent } from '@/lib/analytics';
 import { pickAdaptiveTriggerAxis } from '@/lib/logic/mirror';
+import { resolveReturnDestination, withReturnTo } from '@/lib/returnTo';
 import { ROUTES } from '@/lib/routes';
 import { useSession } from '@/state/SessionProvider';
 
 /** S15~S17 Relationship Me — 구조화 입력 먼저, 서술은 선택 */
 export function PastStepView({ step }: { step: PastStep }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { showToast } = useToast();
   const {
     answers,
@@ -78,7 +80,9 @@ export function PastStepView({ step }: { step: PastStep }) {
         self_gap: experience.selfGap ?? '',
         has_note: experience.note.trim().length > 0,
       });
-      router.push(ROUTES.profileResult);
+      // v1.11 — Profile Revisit에서 '이전 관계 경험 고치기'로 들어온 거면 그대로
+      // /profile/result?view=revisit로 돌려보낸다(§27). 아니면 원래처럼 첫 완료 화면으로.
+      router.push(resolveReturnDestination(searchParams, ROUTES.profileResult));
       return;
     }
 
@@ -87,12 +91,12 @@ export function PastStepView({ step }: { step: PastStep }) {
     if (step === 2) {
       const triggerAxis = pickAdaptiveTriggerAxis(answers.declared, experience);
       if (triggerAxis && !adaptiveShown) {
-        router.push(ROUTES.pastAdaptive);
+        router.push(withReturnTo(ROUTES.pastAdaptive, searchParams));
         return;
       }
     }
 
-    router.push(ROUTES.past(step + 1));
+    router.push(withReturnTo(ROUTES.past(step + 1), searchParams));
   };
 
   return (

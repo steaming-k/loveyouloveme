@@ -105,6 +105,8 @@ interface SessionContextValue {
   setDeepInsightFeedback: (insightId: string, verdict: Verdict, correctedText?: string) => void;
 
   markComplete: (key: CompletionKey) => void;
+  /** v1.11 — Home '최근 궁합'/'최근 Mirror' 카드에 보여줄 타임스탬프만 갱신한다(§42) */
+  markResultViewed: (kind: 'compatibility' | 'mirror') => void;
   loadSampleSession: () => void;
   reset: () => void;
   /** 사용자가 명시적으로 요청한 전체 삭제. reset()과 동작은 같지만 analytics 이벤트가 다르다. */
@@ -180,6 +182,8 @@ function deserialize(raw: string): SessionAnswers | null {
       // v1.9 이전 세션에는 없던 필드 — 빈 값으로 마이그레이션한다.
       deepAnswers: Array.isArray(parsed.deepAnswers) ? parsed.deepAnswers : [],
       deepInsightFeedback: parsed.deepInsightFeedback ?? {},
+      // v1.11 이전 세션에는 없다 — 없는 걸 있다고 만들지 않고 그대로 undefined로 둔다.
+      currentAnalysisMeta: parsed.currentAnalysisMeta,
     };
   } catch {
     return null;
@@ -497,6 +501,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const markResultViewed = useCallback((kind: 'compatibility' | 'mirror') => {
+    setAnswers((prev) => {
+      const now = new Date().toISOString();
+      return {
+        ...prev,
+        currentAnalysisMeta: {
+          ...prev.currentAnalysisMeta,
+          [kind === 'compatibility' ? 'compatibilityViewedAt' : 'mirrorViewedAt']: now,
+          updatedAt: now,
+        },
+      };
+    });
+  }, []);
+
   const loadSampleSession = useCallback(() => {
     setAnswers(createSampleAnswers());
   }, []);
@@ -559,6 +577,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       addDeepAnswer,
       setDeepInsightFeedback,
       markComplete,
+      markResultViewed,
       loadSampleSession,
       reset,
       deleteAllData,
@@ -597,6 +616,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       addDeepAnswer,
       setDeepInsightFeedback,
       markComplete,
+      markResultViewed,
       loadSampleSession,
       reset,
       deleteAllData,

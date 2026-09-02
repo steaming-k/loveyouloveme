@@ -1,7 +1,7 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useMemo, useState } from 'react';
 
 import { BottomSheet } from '@/components/common/BottomSheet';
 import { Button } from '@/components/common/Button';
@@ -17,6 +17,7 @@ import { UtRatingCard } from '@/components/ut/UtRatingCard';
 import { LOVY_LINES, PRIVACY } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { observedEvidenceLabel } from '@/lib/logic/observed';
+import { resolveReturnDestination } from '@/lib/returnTo';
 import { ROUTES } from '@/lib/routes';
 import { isObservedReviewComplete } from '@/lib/validation';
 import { useSession } from '@/state/SessionProvider';
@@ -68,7 +69,17 @@ function emptyStateCopy(
 
 /** S09 Observed Me 결과 — 러비의 관찰은 초안이고, 사용자가 고칠 수 있다. */
 export default function ObservedResultPage() {
+  // v1.11 — 아래 View가 Edit Return(§27)을 위해 useSearchParams()를 쓴다.
+  return (
+    <Suspense fallback={null}>
+      <ObservedResultView />
+    </Suspense>
+  );
+}
+
+function ObservedResultView() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { showToast } = useToast();
   const {
     answers,
@@ -140,7 +151,9 @@ export default function ObservedResultPage() {
       corrected: Object.values(answers.observations).filter((f) => f.correctedText).length,
       excluded: Object.values(answers.observations).filter((f) => f.excluded).length,
     });
-    router.push(ROUTES.declared(1));
+    // v1.11 — Profile Revisit에서 '사진 관찰 다시 보기'로 들어온 거면 Declared Funnel로
+    // 계속 밀지 않고 Profile Revisit으로 돌려보낸다(§27) — 새 입력 UI를 만들지 않는다.
+    router.push(resolveReturnDestination(searchParams, ROUTES.declared(1)));
   };
 
   /**

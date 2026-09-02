@@ -69,7 +69,8 @@ const FEATURE_BY_SOURCE: Record<string, PremiumFeatureId> = {
 
 /** source → 닫았을 때 돌아갈 곳 */
 const BACK_BY_SOURCE: Record<string, string> = {
-  compatibility: ROUTES.compatibilityWhy,
+  // v1.11 — S22 Detail이 Compatibility Result(`/compatibility`)로 합쳐졌다.
+  compatibility: ROUTES.compatibility,
   mirror: ROUTES.mirror,
   history: ROUTES.historyReport,
   mbti: ROUTES.lensMbti,
@@ -85,7 +86,7 @@ function PremiumView() {
 
   const source = (params.get('source') ?? 'compatibility') as PremiumSource;
   const featureId = FEATURE_BY_SOURCE[source] ?? 'compatibility_detail';
-  const backHref = BACK_BY_SOURCE[source] ?? ROUTES.compatibilityWhy;
+  const backHref = BACK_BY_SOURCE[source] ?? ROUTES.compatibility;
 
   const [variant] = useState(() => resolvePriceVariant());
   const [today] = useState(() => new Date());

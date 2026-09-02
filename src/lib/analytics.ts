@@ -146,6 +146,26 @@ export const ANALYTICS_EVENTS = [
   'ut_cross_source_value_rate',
   'ut_deep_report_wtp',
   'ut_deep_report_missing_value',
+  // Result Experience Consolidation (v1.11 §47) — Compatibility(S21~S25)와 Mirror(S27~S28)를
+  // 각각 한 Route로 합치면서 생긴 '다시 보기' 전용 지표. Primary KPI(§48)를 오염시키지 않기
+  // 위해 기존 trackOnce 이벤트(compatibility_result_view 등)와는 별도 이름을 쓴다.
+  'compatibility_result_revisit',
+  'mirror_result_revisit',
+  'profile_result_revisit',
+  /** Compatibility Result의 아코디언('N개 더 보기')을 열었을 때. properties: section */
+  'result_section_expand',
+  /** Legacy Route redirect 또는 #hash 직접 진입 후 실제로 해당 섹션까지 스크롤했을 때 */
+  'result_anchor_navigation',
+  /** Profile Revisit에서 '수정' 진입점을 눌렀을 때. properties: section */
+  'result_edit_entry',
+  /**
+   * @deprecated v1.11 — 이번 버전에서는 발생시키지 않는다. Compatibility/Mirror 결과는
+   * 세션에서 매번 다시 계산되는 순수 함수라 '재분석'이 버튼→로딩을 거치는 별도 프로세스가
+   * 아니다(다음 렌더에 바로 반영된다). 향후 실제 비동기 재분석이 생기면 그때 발생시킨다.
+   */
+  'result_reanalysis_start',
+  /** @deprecated v1.11 — 위와 동일한 이유로 이번 버전에서는 발생시키지 않는다 */
+  'result_reanalysis_complete',
 ] as const;
 
 export type AnalyticsEvent = (typeof ANALYTICS_EVENTS)[number];

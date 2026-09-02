@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { Suspense } from 'react';
 
 import { DECLARED_STEPS, type DeclaredStep } from '@/data/declaredQuestions';
 import { DeclaredStepView } from './DeclaredStepView';
@@ -17,5 +18,10 @@ export default async function DeclaredStepPage({
 
   if (!DECLARED_STEPS.includes(parsed as DeclaredStep)) notFound();
 
-  return <DeclaredStepView step={parsed as DeclaredStep} />;
+  // v1.11 — DeclaredStepView가 Edit Return(§27)을 위해 useSearchParams()를 쓴다.
+  return (
+    <Suspense fallback={null}>
+      <DeclaredStepView step={parsed as DeclaredStep} />
+    </Suspense>
+  );
 }

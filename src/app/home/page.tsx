@@ -13,8 +13,14 @@ import { BRAND, HOME_COPY } from '@/data/copy';
 import { clearAiCache } from '@/services/ai/aiClient';
 import { clearDeepReportUt } from '@/lib/deepReportUtStore';
 import { clearPremiumIntents } from '@/lib/premiumIntentStore';
+import { revisitHref } from '@/lib/resultView';
 import { ROUTES } from '@/lib/routes';
-import { useHistoryReport, useHomeHighlights, useMirror } from '@/hooks/useAnalysis';
+import {
+  useCompatibility,
+  useHistoryReport,
+  useHomeHighlights,
+  useMirror,
+} from '@/hooks/useAnalysis';
 import { useHistory } from '@/state/HistoryProvider';
 import { useSession } from '@/state/SessionProvider';
 
@@ -27,6 +33,7 @@ export default function HomePage() {
   const { answers, deleteAllData } = useSession();
   const { showToast } = useToast();
   const mirror = useMirror();
+  const compatibility = useCompatibility();
   const highlights = useHomeHighlights();
   const { entries, latest, clearAll: clearHistory } = useHistory();
   const report = useHistoryReport();
@@ -73,6 +80,36 @@ export default function HomePage() {
   const experienceCount = answers.experience.skipped
     ? 0
     : answers.experience.important.length + (answers.experience.hardest ? 1 : 0);
+
+  /**
+   * v1.11 §22/§45 — '최근 분석' 카드. 새 저장소를 쓰지 않는다 — Compatibility/Mirror는
+   * 세션에서 매번 다시 계산되는 순수 함수라(`useCompatibility`/`useMirror`) 그 결과를
+   * 그대로 미리보기로 재사용한다. `completed.*`가 true일 때만, 즉 실제로 한 번은 그
+   * 결과 화면에 도달했을 때만 카드를 보여준다.
+   */
+  const compatibilityPreview =
+    answers.completed.compatibility && compatibility.score !== null
+      ? {
+          score: compatibility.score,
+          line: (() => {
+            const good = compatibility.goodSignals[0]?.label;
+            const friction = compatibility.frictionSignals[0]?.label;
+            if (good && friction) return `${good}은 비슷하고, ${friction}에서는 확인이 필요해.`;
+            if (good) return `${good}에서 잘 맞는 신호가 보여.`;
+            if (friction) return `${friction}에서는 확인이 필요해.`;
+            return '지금 입력으로는 뚜렷한 차이를 못 찾았어.';
+          })(),
+        }
+      : null;
+
+  const mirrorPreview =
+    answers.completed.mirror && mirror.available && mirror.teaser
+      ? {
+          axisLabel: mirror.teaser.axisLabel,
+          state: mirror.insights.find((insight) => insight.key === mirror.teaser?.axisKey)?.state ?? null,
+          note: mirror.core?.summary ?? '',
+        }
+      : null;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -129,6 +166,58 @@ export default function HomePage() {
             </ul>
           </section>
 
+          {/* v1.11 §22/§45 — Current Result Revisit. History(과거 스냅샷)와 분리한다 */}
+          {compatibilityPreview || mirrorPreview ? (
+            <section className="flex flex-col gap-2.5">
+              <SectionLabel>최근 분석</SectionLabel>
+              <ul className="flex flex-col gap-2.5">
+                {compatibilityPreview ? (
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => router.push(revisitHref(ROUTES.compatibility, 'home'))}
+                      className="flex w-full items-center justify-between gap-3 rounded-row border border-line bg-surface p-[15px] text-left active:bg-sunken"
+                    >
+                      <span className="flex min-w-0 flex-col gap-1">
+                        <span className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
+                          최근 궁합 · 동기화율 {compatibilityPreview.score}
+                        </span>
+                        <span className="text-[12.5px] keep-all leading-relaxed text-ink-sub">
+                          {compatibilityPreview.line}
+                        </span>
+                      </span>
+                      <span className="flex-none rounded-[6px] bg-brand-tint px-2 py-1.5 text-label font-semibold text-brand-pressed">
+                        다시 보기
+                      </span>
+                    </button>
+                  </li>
+                ) : null}
+                {mirrorPreview ? (
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => router.push(revisitHref(ROUTES.mirror, 'home'))}
+                      className="flex w-full items-center justify-between gap-3 rounded-row border border-line bg-surface p-[15px] text-left active:bg-sunken"
+                    >
+                      <span className="flex min-w-0 flex-col gap-1">
+                        <span className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
+                          최근 Relationship Mirror · {mirrorPreview.state ?? '관찰'} ·{' '}
+                          {mirrorPreview.axisLabel}
+                        </span>
+                        <span className="text-[12.5px] keep-all leading-relaxed text-ink-sub">
+                          {mirrorPreview.note}
+                        </span>
+                      </span>
+                      <span className="flex-none rounded-[6px] bg-brand-tint px-2 py-1.5 text-label font-semibold text-brand-pressed">
+                        다시 보기
+                      </span>
+                    </button>
+                  </li>
+                ) : null}
+              </ul>
+            </section>
+          ) : null}
+
           {/* §27 — History 상태를 실제로 보여준다. COMING SOON은 제거됐다. */}
           <button
             type="button"
@@ -151,11 +240,23 @@ export default function HomePage() {
             </span>
           </button>
 
+          {/* v1.11 §24 — Relationship Profile(S18)도 언제든 다시 볼 수 있어야 한다 */}
+          {answers.completed.profile ? (
+            <button
+              type="button"
+              onClick={() => router.push(revisitHref(ROUTES.profileResult, 'home'))}
+              className="flex min-h-11 items-center justify-between rounded-row border border-line bg-surface px-4 text-sub active:bg-sunken"
+            >
+              내 관계 프로필 보기
+              <span className="text-ink-faint" aria-hidden>
+                →
+              </span>
+            </button>
+          ) : null}
+
+          {/* 새 분석 시작 — Revisit 기능이 생겼다고 이 CTA를 없애지 않는다(§46) */}
           <div className="flex flex-col gap-2 pt-0.5">
             <Button onClick={() => router.push(ROUTES.target)}>새로운 사람과 궁합 보기</Button>
-            <Button variant="secondary" onClick={() => router.push(ROUTES.mirror)}>
-              Relationship Mirror 다시 보기
-            </Button>
           </div>
 
           <button

@@ -1320,6 +1320,19 @@ export interface SessionAnswers {
   deepAnswers: DeepAnalysisAnswer[];
   /** v1.9 — Deep Insight 카드별 사용자 확인(§33). insight.id → feedback */
   deepInsightFeedback: Record<string, DeepInsightFeedback>;
+  /**
+   * v1.11 — Result Revisit UX용 최소 타임스탬프(§42).
+   *
+   * ⚠️ 결과 자체(점수·Mirror 판정)는 여기 저장하지 않는다 — Compatibility/Mirror는
+   * `useCompatibility()`/`useMirror()`가 세션에서 매번 다시 계산하는 순수 함수라
+   * 중복 저장할 이유가 없다. 이 필드는 Home의 '최근 궁합' / '최근 Mirror' 카드에
+   * '언제 봤는지'를 보여주기 위한 표시용 값일 뿐이다. optional — 구 세션에는 없다.
+   */
+  currentAnalysisMeta?: {
+    compatibilityViewedAt?: string;
+    mirrorViewedAt?: string;
+    updatedAt: string;
+  };
   /** 진행 상황 플래그 */
   completed: {
     onboarding: boolean;

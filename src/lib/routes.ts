@@ -16,13 +16,23 @@ export const ROUTES = {
   profileResult: '/profile/result',
   target: '/target',
   compatibilityAnalyzing: '/compatibility/analyzing',
+  /** v1.11 — S21~S25(Hero+Detail+Good+Friction+Questions)를 합친 Canonical Route */
   compatibility: '/compatibility',
+  /**
+   * @deprecated v1.11 — `/compatibility`로 합쳐졌다. 이 상수는 Legacy Redirect 페이지가
+   * `redirect()` 대상을 만들 때만 쓴다. 새 코드에서 링크로 쓰지 않는다.
+   */
   compatibilityWhy: '/compatibility/why',
+  /** @deprecated v1.11 — `/compatibility#good`으로 합쳐졌다. Legacy Redirect 전용 */
   goodSignal: '/compatibility/good',
+  /** @deprecated v1.11 — `/compatibility#friction`으로 합쳐졌다. Legacy Redirect 전용 */
   frictionSignal: '/compatibility/friction',
+  /** @deprecated v1.11 — `/compatibility#questions`로 합쳐졌다. Legacy Redirect 전용 */
   questions: '/compatibility/questions',
   mirrorTeaser: '/mirror/teaser',
+  /** v1.11 — S27~S28(Map+Core Insight)을 합친 Canonical Route */
   mirror: '/mirror',
+  /** @deprecated v1.11 — `/mirror#core-insight`로 합쳐졌다. Legacy Redirect 전용 */
   coreInsight: '/mirror/insight',
   home: '/home',
   shareCompatibility: '/share/compatibility',
@@ -58,12 +68,26 @@ export const ROUTES = {
   deepQuestions: '/premium-preview/deep-questions',
 } as const;
 
+/**
+ * v1.11 — 통합된 Result 화면 안의 section anchor id. Legacy Redirect와 Home 카드
+ * '다시 보기' 링크가 여기 정의된 id로만 이동한다 — 문자열을 여기저기 흩뿌리지 않는다.
+ */
+export const RESULT_ANCHORS = {
+  compatibilitySummary: 'summary',
+  compatibilityWhy: 'why',
+  compatibilityGood: 'good',
+  compatibilityFriction: 'friction',
+  compatibilityLenses: 'lenses',
+  compatibilityQuestions: 'questions',
+  mirrorCoreInsight: 'core-insight',
+} as const;
+
 /** 데스크톱 프로토타입 패널의 화면 점프 목록 (와이어프레임 1b 보드와 동일 순서) */
 export interface ScreenBoardEntry {
   id: string;
   short: string;
   name: string;
-  group: 'Core' | 'Key' | 'Edge' | 'Future' | 'Share' | 'Add-on';
+  group: 'Core' | 'Key' | 'Edge' | 'Future' | 'Share' | 'Add-on' | 'Legacy';
   href: string;
 }
 
@@ -93,14 +117,46 @@ export const SCREEN_BOARD: readonly ScreenBoardEntry[] = [
   { id: 's18', short: 'S18', name: 'Relationship Profile', group: 'Key', href: ROUTES.profileResult },
   { id: 's19', short: 'S19', name: '상대 정보 입력', group: 'Core', href: ROUTES.target },
   { id: 's20', short: 'S20', name: '궁합 로딩', group: 'Core', href: ROUTES.compatibilityAnalyzing },
-  { id: 's21', short: 'S21', name: 'Compatibility Hero', group: 'Key', href: ROUTES.compatibility },
-  { id: 's22', short: 'S22', name: 'Compatibility Detail', group: 'Key', href: ROUTES.compatibilityWhy },
-  { id: 's23', short: 'S23', name: 'Good Signal', group: 'Core', href: ROUTES.goodSignal },
-  { id: 's24', short: 'S24', name: 'Friction Signal', group: 'Key', href: ROUTES.frictionSignal },
-  { id: 's25', short: 'S25', name: '대화 질문', group: 'Core', href: ROUTES.questions },
+  {
+    id: 's21r',
+    short: 'S21R',
+    name: 'Compatibility Result (구 S21~S25)',
+    group: 'Key',
+    href: ROUTES.compatibility,
+  },
+  // v1.11 — 아래 4개는 /compatibility 안의 section으로 합쳐졌다. Route는 redirect로
+  // 남아있으므로 점프 목록에서도 Legacy로 옮겨 접근은 유지하되 위계는 낮춘다(§52).
+  {
+    id: 's22',
+    short: 'S22',
+    name: 'Compatibility Detail (Legacy)',
+    group: 'Legacy',
+    href: ROUTES.compatibilityWhy,
+  },
+  { id: 's23', short: 'S23', name: 'Good Signal (Legacy)', group: 'Legacy', href: ROUTES.goodSignal },
+  {
+    id: 's24',
+    short: 'S24',
+    name: 'Friction Signal (Legacy)',
+    group: 'Legacy',
+    href: ROUTES.frictionSignal,
+  },
+  { id: 's25', short: 'S25', name: '대화 질문 (Legacy)', group: 'Legacy', href: ROUTES.questions },
   { id: 's26', short: 'S26', name: 'Mirror Teaser', group: 'Key', href: ROUTES.mirrorTeaser },
-  { id: 's27', short: 'S27', name: 'Relationship Mirror', group: 'Key', href: ROUTES.mirror },
-  { id: 's28', short: 'S28', name: 'Core Insight', group: 'Key', href: ROUTES.coreInsight },
+  {
+    id: 's27r',
+    short: 'S27R',
+    name: 'Mirror Result (구 S27~S28)',
+    group: 'Key',
+    href: ROUTES.mirror,
+  },
+  {
+    id: 's28',
+    short: 'S28',
+    name: 'Core Insight (Legacy)',
+    group: 'Legacy',
+    href: ROUTES.coreInsight,
+  },
   { id: 's29', short: 'S29', name: '분석 후 홈', group: 'Core', href: ROUTES.home },
   // Edge 상태는 별도 화면이 아니라 실제 화면 안의 상태로 구현되어 있다.
   { id: 'e1', short: 'E1', name: '데이터 부족 (Mirror)', group: 'Edge', href: ROUTES.mirror },

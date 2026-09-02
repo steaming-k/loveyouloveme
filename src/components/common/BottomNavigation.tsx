@@ -4,6 +4,7 @@ import { Activity, House, UserRound } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 
 import { cn } from '@/lib/cn';
+import { revisitHref } from '@/lib/resultView';
 import { ROUTES } from '@/lib/routes';
 import { useToast } from './ToastProvider';
 import { useSession } from '@/state/SessionProvider';
@@ -11,10 +12,15 @@ import { useSession } from '@/state/SessionProvider';
 /**
  * MVP는 3탭. 매칭·커뮤니티·Relationship History는 Main Navigation에 넣지 않는다.
  * 아직 기록이 없는 탭은 죽은 버튼으로 두지 않고, 왜 못 들어가는지 알려준다.
+ *
+ * v1.11 §23 — '나' 탭은 Mirror가 아니라 Relationship Profile(내 관계 프로필)로 향한다.
+ * Profile Result가 이미 '현재의 나' 허브 역할(현재 프로필 + 수정 + Mirror 다시 보기 링크)을
+ * 하므로, Mirror로 바로 보내는 것보다 여기로 보내는 쪽이 '나'라는 탭 이름과 더 맞는다.
+ * Bottom Nav 구조(3탭)·`isReady` 게이팅은 그대로 두고 target 한 줄만 바꾼다.
  */
 const TABS = [
   { key: 'home', label: '홈', href: ROUTES.home, Icon: House },
-  { key: 'me', label: '나', href: ROUTES.mirror, Icon: UserRound },
+  { key: 'me', label: '나', href: revisitHref(ROUTES.profileResult, 'direct'), Icon: UserRound },
   { key: 'analysis', label: '분석', href: ROUTES.compatibility, Icon: Activity },
 ] as const;
 
@@ -49,7 +55,9 @@ export function BottomNavigation() {
       aria-label="주요 메뉴"
     >
       {TABS.map((tab) => {
-        const active = pathname === tab.href;
+        // v1.11 — 'me' 탭 href에는 `?view=revisit`이 붙어 있어 순수 pathname과 다르다.
+        // 활성 표시는 쿼리 없는 경로만 비교한다.
+        const active = pathname === tab.href.split('?')[0];
         const ready = isReady(tab.key);
 
         return (
