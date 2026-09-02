@@ -74,8 +74,13 @@ export function GapPreview() {
   );
 }
 
-/** 온보딩 03 */
-const CRYSTAL_BASE_SIZE = 300;
+/**
+ * 온보딩 03 — 실제 화면에 보이던 크기(부모 폭 327px에 꽉 차 있던 상태)에서 30% 축소.
+ * 이전 `CRYSTAL_BASE_SIZE=300`은 배율(1.35)을 곱해도 405px라 부모 폭(327px)에
+ * 걸려 항상 327px로 꽉 차게 렌더됐다 — 그래서 상한(maxWidth) 자체를 부모 폭보다
+ * 작게 낮춰야 실제로 작아진다.
+ */
+const CRYSTAL_BASE_SIZE = 170;
 
 export function LovyPreview() {
   /**

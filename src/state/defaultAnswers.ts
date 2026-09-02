@@ -49,7 +49,7 @@ export function createEmptyAnswers(): SessionAnswers {
 }
 
 /**
- * 데모용 대표 사용자 — 김지수(29세, 현재 솔로, 이전 연애 경험 있음)
+ * 데모용 대표 사용자 — 한사랑(29세, 현재 솔로, 이전 연애 경험 있음)
  * 기획서 §4.4 Persona / 프롬프트 §13 Mock Data 기준.
  *
  * 이 값들은 UT나 포트폴리오 시연에서 '동기화율 78 → 연락 GAP → 연결감 Core Insight'

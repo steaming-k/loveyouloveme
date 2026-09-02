@@ -77,7 +77,7 @@ export function PrototypePanel() {
         }}
         className="rounded-tag border border-brand-edge bg-brand-tint py-2.5 text-meta font-medium text-brand-pressed transition-colors hover:bg-[#E9E2FD]"
       >
-        김지수 샘플 세션 불러오기
+        한사랑 샘플 세션 불러오기
       </button>
 
       <div className="h-px bg-line-soft" />
