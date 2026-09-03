@@ -198,8 +198,12 @@ function MirrorView() {
     });
 
     if (!entry) {
+      // v1.11.1 §21~§23 — mirror.core가 있는 시점에만 이 버튼이 렌더되므로(위 가드 참고)
+      // 정상 화면에서는 도달하지 않는 defensive edge다. 그래도 실제로 History에 저장되지
+      // 않았으므로 '저장했어'라고 말하지 않는다 — Mirror 소비 자체는 완료했으니 complete는
+      // 유지하되(relationship_history_entry_created는 발생시키지 않는다), copy는 사실대로.
       trackEvent('relationship_mirror_complete', { axis: focusAxis ?? '' });
-      showToast('관찰 기록에 저장했어');
+      showToast('이번 결과는 기록으로 남길 수 있는 근거가 부족했어');
       router.push(ROUTES.home);
       return;
     }

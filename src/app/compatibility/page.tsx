@@ -135,7 +135,12 @@ function CompatibilityView() {
   useEffect(() => {
     if (result.score === null) return;
     // Primary KPI 분모 — 세션당 한 번만. Revisit 여부와 무관하게 기존 정책 그대로(§12).
-    trackOnce('compatibility_result_view', { score: result.score, compared: result.comparedCount });
+    // v1.11.1 §17~§20 — 실제 0점과 헷갈리지 않게 result_state:'scored'를 항상 함께 남긴다.
+    trackOnce('compatibility_result_view', {
+      score: result.score,
+      result_state: 'scored',
+      compared: result.comparedCount,
+    });
   }, [result.score, result.comparedCount]);
 
   useEffect(() => {
@@ -491,7 +496,13 @@ function LowConfidenceView() {
   const result = useCompatibility();
 
   useEffect(() => {
-    trackOnce('compatibility_result_view', { score: 0, compared: result.comparedCount });
+    // v1.11.1 §17~§20 — E3(확신 낮음)는 '0점'이 아니라 '계산 자체가 불가능한 상태'다.
+    // 0으로 기록하면 실제 0점(4축 모두 최대 차이)과 Analytics에서 구분할 수 없다.
+    trackOnce('compatibility_result_view', {
+      score: null,
+      result_state: 'insufficient',
+      compared: result.comparedCount,
+    });
   }, [result.comparedCount]);
 
   return (

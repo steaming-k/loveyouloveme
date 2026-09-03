@@ -17,8 +17,10 @@ interface SegmentedFieldProps {
  */
 export function SegmentedField({ label, value, options, onChange, name }: SegmentedFieldProps) {
   return (
-    <fieldset className="flex flex-col gap-2">
-      <legend className="text-[13.5px] font-semibold">{label}</legend>
+    <fieldset className="flex flex-col">
+      {/* <legend>은 fieldset이 flex여도 gap에 반응하지 않는 브라우저 동작이 있어
+          margin-bottom으로 직접 간격을 준다 */}
+      <legend className="mb-2 text-[13.5px] font-semibold">{label}</legend>
 
       <div className="flex gap-1.5">
         {options.map((option) => {

@@ -1,6 +1,23 @@
 import { SAMPLE_PHOTOS } from '@/data/samplePhotos';
 import { createEmptyBirthProfile } from '@/lib/logic/birth';
-import type { SessionAnswers } from '@/types';
+import type { SessionAnswers, TargetProfile } from '@/types';
+
+/**
+ * 상대(Target)에 종속된 데이터의 기본값 — Main Funnel 최초 진입과 v1.11.1
+ * `resetTargetContext()`(새로운 사람과 궁합 보기)가 공용으로 쓴다.
+ * Home에서 직접 빈 객체를 새로 만들지 않는다(§7).
+ */
+export function createEmptyTargetProfile(): TargetProfile {
+  return {
+    relation: null,
+    contact: 'x',
+    conflict: 'x',
+    alone: 'x',
+    affection: 'x',
+    mbti: null,
+    birthProfile: createEmptyBirthProfile(),
+  };
+}
 
 /** 빈 세션 — 모든 질문은 미응답으로 시작한다. Validation이 실제로 동작해야 하기 때문이다. */
 export function createEmptyAnswers(): SessionAnswers {
@@ -18,15 +35,7 @@ export function createEmptyAnswers(): SessionAnswers {
       skipped: false,
       adaptive: null,
     },
-    target: {
-      relation: null,
-      contact: 'x',
-      conflict: 'x',
-      alone: 'x',
-      affection: 'x',
-      mbti: null,
-      birthProfile: createEmptyBirthProfile(),
-    },
+    target: createEmptyTargetProfile(),
     savedQuestions: [],
     coreVerdict: null,
     coreCorrection: '',

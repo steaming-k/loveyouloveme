@@ -30,7 +30,7 @@ import { useSession } from '@/state/SessionProvider';
  */
 export default function HomePage() {
   const router = useRouter();
-  const { answers, deleteAllData } = useSession();
+  const { answers, deleteAllData, resetTargetContext } = useSession();
   const { showToast } = useToast();
   const mirror = useMirror();
   const compatibility = useCompatibility();
@@ -255,8 +255,21 @@ export default function HomePage() {
           ) : null}
 
           {/* 새 분석 시작 — Revisit 기능이 생겼다고 이 CTA를 없애지 않는다(§46) */}
-          <div className="flex flex-col gap-2 pt-0.5">
-            <Button onClick={() => router.push(ROUTES.target)}>새로운 사람과 궁합 보기</Button>
+          <div className="flex flex-col gap-1.5 pt-0.5">
+            <Button
+              onClick={() => {
+                resetTargetContext();
+                router.push(ROUTES.target);
+              }}
+            >
+              새로운 사람과 궁합 보기
+            </Button>
+            {/* v1.11.1 §9 — 과도한 Confirm Modal 대신 작은 안내 문구로 대체한다 */}
+            {compatibilityPreview ? (
+              <p className="px-1 text-center text-meta text-ink-faint">
+                새로운 사람을 입력하면 최근 궁합 결과가 새 결과로 바뀌어. History는 그대로 남아.
+              </p>
+            ) : null}
           </div>
 
           <button

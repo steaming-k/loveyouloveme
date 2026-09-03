@@ -36,7 +36,7 @@ import type {
   Verdict,
   ZodiacSign,
 } from '@/types';
-import { createEmptyAnswers, createSampleAnswers } from './defaultAnswers';
+import { createEmptyAnswers, createEmptyTargetProfile, createSampleAnswers } from './defaultAnswers';
 
 const STORAGE_KEY = 'lym.session.v1';
 
@@ -107,6 +107,15 @@ interface SessionContextValue {
   markComplete: (key: CompletionKey) => void;
   /** v1.11 — Home '최근 궁합'/'최근 Mirror' 카드에 보여줄 타임스탬프만 갱신한다(§42) */
   markResultViewed: (kind: 'compatibility' | 'mirror') => void;
+  /**
+   * v1.11.1 — '새로운 사람과 궁합 보기'의 Source of Truth(§5/§6).
+   *
+   * SELF(사진·관찰·Declared·Relationship 경험·내 MBTI·내 출생정보)와 History는 전부
+   * 유지하고, **상대(Target)에 종속된 데이터만** 초기화한다. Mirror는 Target을 계산에
+   * 쓰지 않으므로(Declared vs Relationship) `completed.mirror`는 건드리지 않는다 —
+   * 이미 본 Mirror 결과는 새 상대와 무관하게 여전히 유효하다.
+   */
+  resetTargetContext: () => void;
   loadSampleSession: () => void;
   reset: () => void;
   /** 사용자가 명시적으로 요청한 전체 삭제. reset()과 동작은 같지만 analytics 이벤트가 다르다. */
@@ -515,6 +524,32 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  /**
+   * v1.11.1 §6 — 상대(Target)에 종속된 상태만 초기화한다.
+   *
+   * 초기화 대상: target(관계 행동 4축·상대 MBTI·상대 출생정보) · savedQuestions(전부
+   * 상대 궁합 축 또는 상대 MBTI 비교에서 나온 질문 id라 상대와 무관한 항목이 없다) ·
+   * completed.compatibility(다시 그 화면에 도달하기 전까지 Home '최근 궁합' 카드를
+   * 보여주지 않기 위해) · currentAnalysisMeta.compatibilityViewedAt.
+   *
+   * 유지 대상: SELF 데이터 전부, Relationship History 전부, completed.mirror(Mirror는
+   * Target을 쓰지 않는다), deepAnswers/deepInsightFeedback(사용자 자신의 관계 성찰 —
+   * 참조하는 insightId가 새 상대로 재계산되며 자연히 못 쓰게 될 뿐 잘못 노출되지 않는다),
+   * AI Narrative 캐시(fingerprint에 이미 target이 들어있어 새 상대는 별도 키로 계산된다 —
+   * 재사용 위험이 없는 캐시까지 지우지 않는다, §13 최소 무효화 원칙).
+   */
+  const resetTargetContext = useCallback(() => {
+    setAnswers((prev) => ({
+      ...prev,
+      target: createEmptyTargetProfile(),
+      savedQuestions: [],
+      completed: { ...prev.completed, compatibility: false },
+      currentAnalysisMeta: prev.currentAnalysisMeta
+        ? { mirrorViewedAt: prev.currentAnalysisMeta.mirrorViewedAt, updatedAt: new Date().toISOString() }
+        : undefined,
+    }));
+  }, []);
+
   const loadSampleSession = useCallback(() => {
     setAnswers(createSampleAnswers());
   }, []);
@@ -578,6 +613,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setDeepInsightFeedback,
       markComplete,
       markResultViewed,
+      resetTargetContext,
       loadSampleSession,
       reset,
       deleteAllData,
@@ -617,6 +653,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setDeepInsightFeedback,
       markComplete,
       markResultViewed,
+      resetTargetContext,
       loadSampleSession,
       reset,
       deleteAllData,
