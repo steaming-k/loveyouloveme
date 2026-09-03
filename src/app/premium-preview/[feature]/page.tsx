@@ -158,6 +158,7 @@ function PremiumPreviewView() {
             : [],
           historyReport,
           repeatedSignals: repeated,
+          target: answers.target,
         });
     }
   }, [
@@ -171,7 +172,7 @@ function PremiumPreviewView() {
     repeated,
     mbtiLens,
     answers.birthProfile,
-    answers.target.birthProfile,
+    answers.target,
     today,
     crossSourceInsights,
     deepNarrative.data,

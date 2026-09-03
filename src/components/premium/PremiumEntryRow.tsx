@@ -24,6 +24,7 @@ import type { PremiumFeature, PremiumSource } from '@/types';
 export function PremiumEntryRow({
   feature,
   source,
+  hook,
 }: {
   feature: PremiumFeature;
   /**
@@ -33,6 +34,13 @@ export function PremiumEntryRow({
    * 넘기지 않으면 기존처럼 `feature.source`를 그대로 쓴다(mbti/astrology 등).
    */
   source?: PremiumSource;
+  /**
+   * v1.15 — Contextual Premium Hook(§4). '궁금증이 생기는 순간'에 실제 데이터로 개인화한
+   * 제목·설명·CTA를 보여주고, 어느 Hook이 Intent를 만드는지 구분할 수 있게 hook_variant를
+   * 함께 남긴다. 넘기지 않으면 기존처럼 `feature.title`/`feature.description`/일반 CTA를 쓴다
+   * — 이 컴포넌트가 하나뿐이라는 사실도, `unavailable` 처리·Fake Door 가드도 그대로 재사용된다.
+   */
+  hook?: { variant: string; title: string; description: string; cta: string };
 }) {
   const router = useRouter();
   const [variant] = useState(() => resolvePriceVariant());
@@ -55,8 +63,10 @@ export function PremiumEntryRow({
       source: entrySource,
       price,
       variant,
+      ...(hook ? { hook_variant: hook.variant } : {}),
     });
-  }, [feature.id, entrySource, price, variant, isFakeDoor]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feature.id, entrySource, price, variant, isFakeDoor, hook?.variant]);
 
   if (!PREMIUM_FAKE_DOOR) return null;
 
@@ -88,15 +98,16 @@ export function PremiumEntryRow({
             source: entrySource,
             price,
             variant,
+            ...(hook ? { hook_variant: hook.variant } : {}),
           });
-          router.push(ROUTES.premium(entrySource));
+          router.push(ROUTES.premium(entrySource, hook?.variant));
         }}
         className="flex w-full items-center justify-between gap-3 rounded-row border border-line bg-surface px-4 py-3.5 text-left active:bg-sunken"
       >
         <span className="flex min-w-0 flex-col gap-1">
-          <span className="text-[13px] font-medium">{feature.title}</span>
+          <span className="text-[13px] font-medium">{hook?.title ?? feature.title}</span>
           <span className="text-[11.5px] keep-all leading-relaxed text-ink-sub">
-            {feature.description}
+            {hook?.description ?? feature.description}
           </span>
         </span>
         <span className="flex flex-none flex-col items-end gap-1">
@@ -104,7 +115,7 @@ export function PremiumEntryRow({
             {formatPrice(price)}
             <span className="sr-only"> ({priceForScreenReader(price)})</span>
           </span>
-          <span className="text-[11px] text-ink-muted">{copy.entryCta} →</span>
+          <span className="text-[11px] text-ink-muted">{hook?.cta ?? copy.entryCta} →</span>
         </span>
       </button>
     </section>

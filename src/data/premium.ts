@@ -5,7 +5,7 @@ import type { PremiumFeatureId, PremiumSource } from '@/types';
  *
  * 문구 원칙(§41):
  *   ⭕ '조금 더 깊게 볼까?' · '무료 결과보다 상세한 근거와 상황을 볼 수 있어.'
- *      '상세 분석 1회 · ₩3,900' · '현재 상세 분석은 준비 중이야.'
+ *      '상세 분석 1회 · ₩1,900' · '현재 상세 분석은 준비 중이야.'
  *   ❌ '지금 안 보면 놓쳐' · '반드시 필요한 분석' · '관계 성공률을 높여줘'
  *      '90% 정확' · 'Premium이면 더 정확' · 정가/할인/이번 주만
  *
@@ -116,6 +116,7 @@ export const PREMIUM_FEATURES: Record<PremiumFeatureId, PremiumFeatureDefinition
       'Relationship Self 심화 해석',
       '4축 궁합 심화 비교',
       '실제 벌어질 수 있는 상황 시뮬레이션',
+      '상대 취향과 내 관계 방식을 연결한 다가가는 힌트',
       '너에게 맞춰 고른 추가 질문',
       '과거 기록과 지금을 나란히 놓은 비교',
       '러비의 최종 관찰',
@@ -183,4 +184,30 @@ export const DEEP_REPORT_COPY = {
 
   unavailableTitle: '아직 연결할 수 있는 신호가 부족해',
   demoNotice: '이 리포트도 규칙 기반 데모 응답이야. 실제 AI 개인화 결과가 아니야.',
+} as const;
+
+/**
+ * v1.15 §4 — Contextual Premium Hook.
+ *
+ * '결과 화면 하단에 Premium Entry 하나'가 아니라, 궁금증이 생기는 순간마다(최대 3곳)
+ * 실제 데이터로 개인화한 설명을 보여준다. 여기 있는 title/cta는 화면 문구의 고정 부분이고,
+ * description은 호출부(각 결과 화면)가 실제 사용자 데이터로 채운다 — 이 파일은 정적 카피만
+ * 갖고 있고, 개인화 문장을 만들지 않는다(§41 원칙 그대로).
+ */
+export const PREMIUM_HOOK_COPY = {
+  /** A. Compatibility — Friction Signal 다음 */
+  friction_why: {
+    title: '이 차이가 실제 연애에서는 어떻게 나타날까?',
+    cta: 'Deep Report에서 관계 상황 보기',
+  },
+  /** B. Relationship Mirror — Core Insight 다음. 럽유럽미 Product Identity와 가장 가깝다 */
+  mirror_why: {
+    title: '왜 나는 생각했던 나와 다르게 행동했을까?',
+    cta: '내 관계를 더 깊게 보기',
+  },
+  /** C. History — 비교 가능한 과거 기록이 있을 때만 */
+  history_change: {
+    title: '이 모습, 이번 관계에서만 나타난 걸까?',
+    cta: '관계를 거치며 달라진 나 보기',
+  },
 } as const;

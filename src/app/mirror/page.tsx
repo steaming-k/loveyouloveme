@@ -19,6 +19,7 @@ import { MirrorComparisonRow, MirrorLegend } from '@/components/mirror/MirrorCom
 import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
 import { UtRatingCard } from '@/components/ut/UtRatingCard';
 import { LOVY_LINES } from '@/data/copy';
+import { PREMIUM_HOOK_COPY } from '@/data/premium';
 import { useAnchorScroll } from '@/hooks/useAnchorScroll';
 import { resolveEvidenceRefs } from '@/lib/aiEvidenceResolver';
 import { trackEvent } from '@/lib/analytics';
@@ -310,6 +311,29 @@ function MirrorView() {
 
           <EvidenceList items={evidence} label="이렇게 생각한 이유" />
 
+          {/*
+            v1.15 §4 Hook B — Core Insight를 다 읽은 직후. '왜 나는 생각했던 나와 다르게
+            행동했을까'라는, 럽유럽미 Product Identity에 가장 가까운 궁금증이 생기는 지점이다.
+            차이(GAP)가 하나도 없으면 이 질문 자체가 성립하지 않으므로 만들지 않는다.
+            무료 Mirror 본문(근거·검증 버튼·저장)은 이 아래로 그대로 이어진다 — 끝까지 읽을 수 있다.
+          */}
+          {gapInsights.length > 0 ? (
+            <PremiumEntryRow
+              feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
+                mirrorAvailable: mirror.available,
+                deepReportAvailable: crossSourceInsights.length > 0,
+              })}
+              source="mirror"
+              hook={{
+                variant: 'mirror_why',
+                title: PREMIUM_HOOK_COPY.mirror_why.title,
+                description:
+                  '네가 중요하다고 말한 기준, 실제 연애에서의 경험, 이번 상대와의 차이를 함께 연결해봤어.',
+                cta: PREMIUM_HOOK_COPY.mirror_why.cta,
+              }}
+            />
+          ) : null}
+
           <div className="flex gap-2">
             <VerdictButton
               label="맞는 것 같아"
@@ -350,14 +374,6 @@ function MirrorView() {
             properties={{ task: 'relationship', mode: narrative.mode ?? 'none' }}
             lowLabel="전혀 모르겠어"
             highLabel="충분히 이해됐어"
-          />
-
-          <PremiumEntryRow
-            feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
-              mirrorAvailable: mirror.available,
-              deepReportAvailable: crossSourceInsights.length > 0,
-            })}
-            source="mirror"
           />
         </div>
       </ScreenLayout>

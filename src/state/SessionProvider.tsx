@@ -16,6 +16,7 @@ import { PHOTO_MAX_COUNT, SAMPLE_PHOTOS, DEMO_PHOTO_IDS } from '@/data/samplePho
 import { TARGET_INTEREST_MAX, TARGET_CUSTOM_INTEREST_MAX_LENGTH } from '@/data/targetPreferences';
 import { clearSessionDedup, trackEvent } from '@/lib/analytics';
 import { createEmptyBirthProfile } from '@/lib/logic/birth';
+import { clearPremiumIntents } from '@/lib/premiumIntentStore';
 import { buildDemoObservedResult } from '@/services/ai/fallback';
 import type {
   ObservedProfileResult,
@@ -645,8 +646,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
    * 참조하는 insightId가 새 상대로 재계산되며 자연히 못 쓰게 될 뿐 잘못 노출되지 않는다),
    * AI Narrative 캐시(fingerprint에 이미 target이 들어있어 새 상대는 별도 키로 계산된다 —
    * 재사용 위험이 없는 캐시까지 지우지 않는다, §13 최소 무효화 원칙).
+   *
+   * v1.15 — Premium Intent(`lym.premium-intent.v1`)도 여기서 함께 지운다. 이 저장소는
+   * `feature`(예: `relationship_deep_report`)로만 키를 잡아 Target을 구분하지 않으므로,
+   * 지우지 않으면 이전 상대에게서 나온 '출시되면 알려줘' 클릭이 새 상대의 Paywall에
+   * 그대로 남아있는 것처럼 보인다(Audit에서 발견한 실제 누수). Compatibility/Mirror/History
+   * 계산에는 어차피 관여하지 않는 저장소라 지워도 분석 결과에는 영향이 없다.
    */
   const resetTargetContext = useCallback(() => {
+    clearPremiumIntents();
     setAnswers((prev) => ({
       ...prev,
       // v1.13 §38 — target.preferences(좋아하는 것)는 TargetProfile 안에 있어서

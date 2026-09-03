@@ -3,12 +3,14 @@ import { PREMIUM_FEATURES } from '@/data/premium';
 import { HISTORY_STATE_LABEL } from '@/data/copy';
 import { PREMIUM_FAKE_DOOR, SAJU_ENGINE_READY } from '@/lib/env';
 import { resolveEvidenceRefs, type EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
+import { buildApproachHints } from '@/lib/logic/approachHints';
 import type {
   AstrologyCompatibilityResult,
   CompatibilityResult,
   ConversationQuestion,
   CrossSourceInsight,
   CrossSourceEvidenceSource,
+  DeepApproachInsight,
   DeepConversationQuestion,
   DeepFinalObservation,
   DeepNarrative,
@@ -24,6 +26,7 @@ import type {
   RelationshipDeepReport,
   RelationshipDeepReportOverview,
   RepeatedRelationshipSignal,
+  TargetProfile,
 } from '@/types';
 
 /**
@@ -449,6 +452,43 @@ function finalObservationFor(
   };
 }
 
+/**
+ * v1.15 §5 — Approach Hints × Premium. 무료 힌트(`buildApproachHints`)는 다시 계산하거나
+ * 숨기지 않는다 — 그 함수가 이미 만든 'activity' 힌트(Target Preference × Target Axis)를
+ * 그대로 재사용하고, 여기서는 사용자 자신의 관계 축(이미 계산된 `compatibility.dimensions`
+ * — 재계산 없음)까지 한 겹 더 연결했을 때만 보이는 문장을 추가로 만든다. 셋 중 하나라도
+ * 없으면(관심사가 없거나, 그 축에서 내 값을 모르면) null이다 — 없는 연결을 억지로
+ * 만들지 않는다(§29 원칙 재사용).
+ */
+function approachInsightFor(
+  target: TargetProfile,
+  compatibility: CompatibilityResult,
+): DeepApproachInsight | null {
+  const primary = target.preferences.interests[0];
+  if (!primary) return null;
+
+  const activity = buildApproachHints(target, compatibility).find((hint) => hint.kind === 'activity');
+  if (!activity) return null;
+
+  const aloneDimension = compatibility.dimensions.find((dimension) => dimension.key === 'alone');
+  if (target.alone === 'h' && aloneDimension?.minePhrase) {
+    return {
+      title: `${primary.label}, 선택지를 열어두고 제안해봐`,
+      text: `${activity.rationale} 너는 개인 시간을 ${aloneDimension.minePhrase}로 답했어 — 이 차이를 생각하면, 계획을 일방적으로 잡기보다 선택지를 열어두는 제안이 더 자연스러울 수 있어.`,
+    };
+  }
+
+  const contactDimension = compatibility.dimensions.find((dimension) => dimension.key === 'contact');
+  if (target.contact === 'h' && contactDimension?.minePhrase) {
+    return {
+      title: `${primary.label} 이야기로 먼저 연락해봐`,
+      text: `${activity.rationale} 너는 연락 방식을 ${contactDimension.minePhrase}로 답했어 — 그 리듬 차이를 알고 있으면, ${primary.label} 이야기로 먼저 말을 걸어보는 게 더 자연스러울 수 있어.`,
+    };
+  }
+
+  return null;
+}
+
 function deepReportLimitations(input: {
   historyReport: HistoryReport;
   compatibility: CompatibilityResult;
@@ -481,6 +521,7 @@ export function buildRelationshipDeepReport(input: {
   compatibilityPastObservations: readonly { label: string; text: string }[];
   historyReport: HistoryReport;
   repeatedSignals: readonly RepeatedRelationshipSignal[];
+  target: TargetProfile;
 }): RelationshipDeepReport {
   const {
     insights,
@@ -491,6 +532,7 @@ export function buildRelationshipDeepReport(input: {
     compatibilityPastObservations,
     historyReport,
     repeatedSignals,
+    target,
   } = input;
 
   const cards = insights.map((insight) => cardFor(insight, narratives));
@@ -521,6 +563,7 @@ export function buildRelationshipDeepReport(input: {
     conversationQuestions: conversationQuestionsFor(compatibilityQuestions, insights),
     historyDeep,
     finalObservation: finalObservationFor(insights, resolverContext),
+    approachInsight: approachInsightFor(target, compatibility),
     limitations: deepReportLimitations({ historyReport, compatibility }),
   };
 }

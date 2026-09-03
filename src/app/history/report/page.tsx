@@ -16,6 +16,7 @@ import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
 import { Lovy } from '@/components/lovy/Lovy';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { HISTORY_COPY, LOVY_LINES } from '@/data/copy';
+import { PREMIUM_HOOK_COPY } from '@/data/premium';
 import { trackEvent } from '@/lib/analytics';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { premiumFeatureState } from '@/services/premiumService';
@@ -219,13 +220,24 @@ function HistoryReportView() {
           </section>
         ) : null}
 
-        {/* 사용자 본인의 기록·타임라인·기본 비교는 전부 무료다. Premium은 해석의 깊이만(§34) */}
+        {/*
+          v1.15 §4 Hook C — 사용자 본인의 기록·타임라인·기본 비교는 전부 무료다(§34).
+          이 Hook은 실제로 비교 가능한 History가 있을 때만 보여준다 — 이 화면 자체가 이미
+          `report.comparable` 분기 안에서만 렌더되므로(위 early return 참고) 별도 조건은
+          필요 없다.
+        */}
         <PremiumEntryRow
           feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
             historyComparable: report.comparable,
             deepReportAvailable: crossSourceInsights.length > 0,
           })}
           source="history"
+          hook={{
+            variant: 'history_change',
+            title: PREMIUM_HOOK_COPY.history_change.title,
+            description: '이전 관계와 비교하면 계속 유지된 기준과 달라진 기준을 나눠볼 수 있어.',
+            cta: PREMIUM_HOOK_COPY.history_change.cta,
+          }}
         />
 
         <AiNarrativeNotice

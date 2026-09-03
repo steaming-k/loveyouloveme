@@ -97,6 +97,9 @@ export const ANALYTICS_EVENTS = [
   // 지표: Premium CTR = entry_click / entry_view
   //       Paywall Intent Rate = purchase_intent / paywall_view
   //       Notify Intent Rate = notify_intent / fake_door_reveal
+  // v1.15 — 새 이벤트를 늘리지 않고 아래 6개 property를 확장했다: `hook_variant`
+  // (friction_why/mirror_why/history_change — Contextual Hook에서 온 경우만),
+  // `price`는 이제 항상 1900.
   'premium_entry_view',
   'premium_entry_click',
   'premium_paywall_view',
@@ -105,6 +108,12 @@ export const ANALYTICS_EVENTS = [
   'premium_notify_intent',
   'premium_dismiss',
   'premium_preview_view',
+  // v1.15 §10 — Paywall에서만 묻는 가격/가치 UT. 이미 보고 있던 Deep Report 전체를
+  // 다시 볼 의향(`ut_deep_report_wtp`, Preview/UT 전용 화면)과는 다른 질문이다 — 이건
+  // 무료 결과 + Paywall Preview만 본 상태에서, 그 이상을 결제할 의향이 있는지를 묻는다.
+  // 지불 의향은 실제 WTP FACT가 아니라 '의향'으로만 기록한다.
+  'ut_premium_value_diff_rate',
+  'ut_premium_price_wtp',
   // AI Analysis Pipeline (v1.6) — Primary KPI에는 넣지 않는다.
   // ⚠️ property에 자유서술·AI 문장·사진 description을 넣지 않는다(§79). 개수·분류·소요시간만.
   // 품질 지표: Observed Confirmation/Correction/Exclusion Rate · AI Failure Rate · Fallback Rate

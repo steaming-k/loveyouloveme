@@ -25,6 +25,7 @@ import { PastObservationNote } from '@/components/history/PastObservationNote';
 import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
 import { useToast } from '@/components/common/ToastProvider';
 import { BRAND, COMPATIBILITY_COPY, LOVY_LINES, PRIVACY, STATE_COPY } from '@/data/copy';
+import { PREMIUM_HOOK_COPY } from '@/data/premium';
 import { useAnchorScroll } from '@/hooks/useAnchorScroll';
 import { narrativeIsShowable } from '@/lib/aiEvidenceResolver';
 import { compatibilityNarrativeFingerprint } from '@/lib/aiFingerprint';
@@ -381,6 +382,25 @@ function CompatibilityView() {
           )}
         </section>
 
+        {/*
+          v1.15 §4 Hook A — Friction 신호를 본 직후, '이 차이가 실제로는 어떻게 나타날까'라는
+          궁금증이 생기는 지점에만 둔다. Friction이 없으면 이 궁금증 자체가 없으므로 만들지
+          않는다(기존처럼 화면 맨 아래에 일반 Entry를 두지 않는다 — §4 "모든 섹션마다
+          Paywall을 만들지 않는다"). Score Hero 바로 아래가 아니라 Friction을 다 본 다음이다.
+        */}
+        {hasFriction && topFriction ? (
+          <PremiumEntryRow
+            feature={premiumFeature}
+            source="compatibility"
+            hook={{
+              variant: 'friction_why',
+              title: PREMIUM_HOOK_COPY.friction_why.title,
+              description: `같은 ${topFriction.label}에서도 너와 상대가 서로 다르게 받아들일 수 있는 순간이 있어.`,
+              cta: PREMIUM_HOOK_COPY.friction_why.cta,
+            }}
+          />
+        ) : null}
+
         {pastObservation ? (
           <section className="flex flex-col gap-2.5">
             <SectionLabel>과거 관찰 · 참고</SectionLabel>
@@ -545,8 +565,6 @@ function CompatibilityView() {
             </section>
           ) : null}
         </section>
-
-        <PremiumEntryRow feature={premiumFeature} source="compatibility" />
 
         <AiNarrativeNotice
           task="compatibility-narrative"

@@ -125,7 +125,7 @@ export function RelationshipDeepReportView({
       ) : null}
 
       {/* 03 Cross-source Insights — Premium의 핵심 */}
-      {report.crossSourceInsights.length > 0 ? (
+      {report.crossSourceInsights.length > 0 || report.approachInsight ? (
         <section className="flex flex-col gap-2.5">
           <SectionLabel>따로 있던 걸 연결해보면</SectionLabel>
           <ul className="flex flex-col gap-2.5">
@@ -133,6 +133,20 @@ export function RelationshipDeepReportView({
               <DeepInsightCard key={card.insight.id} card={card} resolverContext={resolverContext} analysisId={analysisId} />
             ))}
           </ul>
+
+          {/* v1.15 §5 — Target Preference × Target Axis × User Style. 다가가는 힌트(무료)를
+              대체하지 않는다 — 여기에 내 축까지 한 겹 더 연결됐을 때만 보이는 문장 하나다. */}
+          {report.approachInsight ? (
+            <div className="flex flex-col gap-1.5 rounded-card border border-brand-edge bg-brand-tint p-4">
+              <p className="text-[10px] font-semibold tracking-[0.06em] text-brand-pressed">
+                다가가는 힌트 · 연결해서 보면
+              </p>
+              <p className="text-caption font-medium text-brand-ink">{report.approachInsight.title}</p>
+              <p className="text-[12.5px] keep-all leading-relaxed text-brand-ink">
+                {report.approachInsight.text}
+              </p>
+            </div>
+          ) : null}
         </section>
       ) : null}
 

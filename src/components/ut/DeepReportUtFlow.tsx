@@ -6,6 +6,7 @@ import { BottomSheet } from '@/components/common/BottomSheet';
 import { cn } from '@/lib/cn';
 import { trackEvent } from '@/lib/analytics';
 import { saveDeepReportUtAnswer, completeDeepReportUt } from '@/lib/deepReportUtStore';
+import { formatPrice, resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import type { DeepReportUtResponse } from '@/types';
 
 /**
@@ -39,6 +40,7 @@ export function DeepReportUtFlow({
 }) {
   const [step, setStep] = useState(1);
   const [missingValueDraft, setMissingValueDraft] = useState('');
+  const [price] = useState(() => resolvePrice(resolvePriceVariant()));
 
   const advance = () => {
     if (step >= TOTAL_STEPS) {
@@ -127,7 +129,7 @@ export function DeepReportUtFlow({
         {step === 4 ? (
           <div className="flex flex-col gap-2.5">
             <p className="text-caption keep-all leading-relaxed">
-              이 정도의 정밀 분석이라면 4,900원을 내고 다시 볼 의향이 있어?
+              이 정도의 정밀 분석이라면 {formatPrice(price)}을 내고 다시 볼 의향이 있어?
             </p>
             <p className="text-[10.5px] keep-all text-ink-faint">
               실제 결제가 아니라 의향을 묻는 질문이야.

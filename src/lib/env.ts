@@ -47,12 +47,13 @@ export const SAJU_ENGINE_READY = process.env.NEXT_PUBLIC_SAJU_ENGINE_READY === '
 export const PREMIUM_FAKE_DOOR = process.env.NEXT_PUBLIC_PREMIUM_FAKE_DOOR !== 'false';
 
 /**
- * 가격 실험 variant. 설문에서 4,900원 이하 구간에 응답이 모였지만 **검증된 가격이 아니다** —
- * 두 후보를 노출해 의향 차이를 관찰하기 위한 테스트 값이다.
+ * 가격 실험 variant. v1.5~v1.14는 `A`=3,900원 · `B`=4,900원 두 후보를 노출해 의향 차이를
+ * 관찰하는 테스트였다(그 시절 설문 데이터는 검증된 가격이 아니었다). v1.15부터 두 variant
+ * 모두 **₩1,900**(MVP 단일 가격 HYPOTHESIS)을 가리킨다 — 이 값은 실험 골격만 남기고, 실제
+ * 사용자는 항상 같은 가격을 본다(`src/lib/premiumVariant.ts`의 `PREMIUM_PRICE` 참고).
  *
- * `A` = 3,900원 · `B` = 4,900원. 지정하지 않으면 A.
- * 같은 세션에서 가격이 바뀌면 안 되므로, 실제 노출 값은 sessionStorage에 고정한다
- * (`src/lib/premiumVariant.ts`).
+ * 지정하지 않으면 A. 같은 세션에서 가격이 바뀌면 안 되므로, 실제 노출 값은 sessionStorage에
+ * 고정한다(`src/lib/premiumVariant.ts`).
  */
 export const PREMIUM_VARIANT_ENV =
   process.env.NEXT_PUBLIC_PREMIUM_VARIANT === 'B' ? 'B' : 'A';

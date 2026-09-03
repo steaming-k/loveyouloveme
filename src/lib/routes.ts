@@ -56,8 +56,14 @@ export const ROUTES = {
    * Premium Paywall (v1.5 Fake Door).
    * Route를 기능별로 늘리지 않고 `?source=`로 진입 지점을 구분한다 —
    * 어디서 들어왔는지가 '무엇에 돈을 내고 싶어하는지'를 판단하는 핵심 데이터다.
+   *
+   * v1.15 — `hook`은 궁합/Mirror/History의 어느 Contextual Hook에서 들어왔는지
+   * (`friction_why`/`mirror_why`/`history_change`)만 함께 넘긴다. Paywall이 보여줄
+   * Feature 자체(`FEATURE_BY_SOURCE`)는 여전히 `source`만으로 정해진다 — hook은 순수
+   * Analytics 구분용이다.
    */
-  premium: (source: string) => `/premium?source=${source}`,
+  premium: (source: string, hook?: string) =>
+    hook ? `/premium?source=${source}&hook=${hook}` : `/premium?source=${source}`,
   premiumBase: '/premium',
   /** 개발·UT용 상세 미리보기. NEXT_PUBLIC_PREMIUM_PREVIEW=true일 때만 열린다 */
   premiumPreview: (feature: string) => `/premium-preview/${feature}`,

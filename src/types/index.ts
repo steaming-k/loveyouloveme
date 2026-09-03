@@ -1215,6 +1215,17 @@ export interface RelationshipDeepReportOverview {
 }
 
 /**
+ * v1.15 §5 — Target Preference × Target Relationship Axis × User Relationship Style을
+ * 연결한 Premium 전용 문장. 무료 Approach Hint(`ApproachHint`)를 대체하지 않는다 — 무료
+ * 힌트는 항상 그대로 보이고, 이건 거기에 사용자 자신의 축까지 한 겹 더 연결했을 때만 만든다.
+ * 조건이 안 맞으면(연결할 게 없으면) null이다 — 억지로 만들지 않는다.
+ */
+export interface DeepApproachInsight {
+  title: string;
+  text: string;
+}
+
+/**
  * Premium의 핵심 상품. **새 점수를 만들지 않는다** — Compatibility/Mirror/History는
  * 이미 계산된 결과를 그대로 조합한다(§17 compatibilityDeepDive, §21 historyDeep이
  * `PremiumDetailReport`를 그대로 재사용하는 이유다).
@@ -1236,6 +1247,8 @@ export interface RelationshipDeepReport {
   historyDeep: PremiumDetailReport | null;
   /** §23 Lovy Final Observation. Insight가 하나도 없으면 null */
   finalObservation: DeepFinalObservation | null;
+  /** v1.15 §5 — Target Preference를 사용자 자신의 축과 연결한 Premium 전용 통찰. 없으면 null */
+  approachInsight: DeepApproachInsight | null;
   /** 이 리포트가 못 하는 것 — 항상 사용자에게 보여준다 */
   limitations: string[];
 }

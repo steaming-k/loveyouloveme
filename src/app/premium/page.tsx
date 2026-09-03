@@ -13,8 +13,10 @@ import { useToast } from '@/components/common/ToastProvider';
 import { Lovy } from '@/components/lovy/Lovy';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { DEEP_REPORT_COPY, PREMIUM_COPY, PREMIUM_FEATURES } from '@/data/premium';
-import { PREMIUM_FAKE_DOOR } from '@/lib/env';
+import { PREMIUM_FAKE_DOOR, UT_MODE } from '@/lib/env';
+import { UtRatingCard } from '@/components/ut/UtRatingCard';
 import { trackEvent } from '@/lib/analytics';
+import { cn } from '@/lib/cn';
 import { hasNotifyIntent, markNotifyIntent, recordPremiumIntent } from '@/lib/premiumIntentStore';
 import {
   formatPrice,
@@ -87,6 +89,10 @@ function PremiumView() {
   const source = (params.get('source') ?? 'compatibility') as PremiumSource;
   const featureId = FEATURE_BY_SOURCE[source] ?? 'compatibility_detail';
   const backHref = BACK_BY_SOURCE[source] ?? ROUTES.compatibility;
+  // v1.15 §8 — 어느 Contextual Hook에서 들어왔는지. 순수 Analytics 구분용이라 없어도
+  // Paywall이 보여줄 Feature 자체(FEATURE_BY_SOURCE)에는 영향을 주지 않는다.
+  const hookVariant = params.get('hook') ?? undefined;
+  const [wtpChoice, setWtpChoice] = useState<'yes' | 'maybe' | 'no' | null>(null);
 
   const [variant] = useState(() => resolvePriceVariant());
   const [today] = useState(() => new Date());
@@ -151,8 +157,14 @@ function PremiumView() {
     if (!PREMIUM_FAKE_DOOR || feature.status !== 'fake-door') return;
     if (paywallViewSent.current === featureId) return;
     paywallViewSent.current = featureId;
-    trackEvent('premium_paywall_view', { feature: featureId, source, price, variant });
-  }, [featureId, source, price, variant, feature.status]);
+    trackEvent('premium_paywall_view', {
+      feature: featureId,
+      source,
+      price,
+      variant,
+      ...(hookVariant ? { hook_variant: hookVariant } : {}),
+    });
+  }, [featureId, source, price, variant, feature.status, hookVariant]);
 
   if (!PREMIUM_FAKE_DOOR) return null;
 
@@ -176,7 +188,13 @@ function PremiumView() {
 
   const handlePurchaseIntent = () => {
     // ① 의향 기록 (연락처는 받지 않는다)
-    trackEvent('premium_purchase_intent', { feature: featureId, source, price, variant });
+    trackEvent('premium_purchase_intent', {
+      feature: featureId,
+      source,
+      price,
+      variant,
+      ...(hookVariant ? { hook_variant: hookVariant } : {}),
+    });
     recordPremiumIntent({
       feature: featureId,
       source,
@@ -187,7 +205,11 @@ function PremiumView() {
     });
 
     // ② 즉시 '준비 중' 공개 — 결제 화면으로 가지 않는다
-    trackEvent('premium_fake_door_reveal', { feature: featureId, source });
+    trackEvent('premium_fake_door_reveal', {
+      feature: featureId,
+      source,
+      ...(hookVariant ? { hook_variant: hookVariant } : {}),
+    });
     setSheetOpen(true);
   };
 
@@ -210,7 +232,12 @@ function PremiumView() {
             <Button
               variant="text"
               onClick={() => {
-                trackEvent('premium_dismiss', { feature: featureId, source, step: 'paywall' });
+                trackEvent('premium_dismiss', {
+                  feature: featureId,
+                  source,
+                  step: 'paywall',
+                  ...(hookVariant ? { hook_variant: hookVariant } : {}),
+                });
                 router.replace(backHref);
               }}
             >
@@ -294,6 +321,27 @@ function PremiumView() {
           <NoticeBox>
             무료로 본 결과는 그대로 볼 수 있어. 상세는 같은 데이터를 더 깊게 보는 거야.
           </NoticeBox>
+
+          {/*
+            v1.15 §10 — Premium 가격/가치 검증 UT. 질문을 많이 추가하지 않는다(2개 이내).
+            이미 있던 DeepReportUtFlow의 WTP 질문(step 4)과는 대상이 다르다 — 그건 전체
+            리포트를 다 본 사람에게 "다시 볼 의향"을 묻고, 이건 무료 결과 + 이 Preview만 본
+            사람에게 "지금 결제할 의향"을 묻는다. 실제 결제 전까지는 '의향'으로만 기록한다.
+          */}
+          <UtRatingCard
+            question="이 리포트에서 무료 결과와 다른 가치를 느꼈어?"
+            event="ut_premium_value_diff_rate"
+            properties={{ feature: featureId, source, price }}
+            lowLabel="전혀 못 느꼈어"
+            highLabel="확실히 다르게 느꼈어"
+          />
+          <PremiumWtpQuestion
+            featureId={featureId}
+            source={source}
+            price={price}
+            choice={wtpChoice}
+            onSelect={setWtpChoice}
+          />
         </div>
       </ScreenLayout>
 
@@ -301,7 +349,12 @@ function PremiumView() {
       <BottomSheet
         open={sheetOpen}
         onClose={() => {
-          trackEvent('premium_dismiss', { feature: featureId, source, step: 'fake_door' });
+          trackEvent('premium_dismiss', {
+            feature: featureId,
+            source,
+            step: 'fake_door',
+            ...(hookVariant ? { hook_variant: hookVariant } : {}),
+          });
           setSheetOpen(false);
         }}
         title={copy.fakeDoorTitle}
@@ -337,7 +390,12 @@ function PremiumView() {
           <Button
             variant="secondary"
             onClick={() => {
-              trackEvent('premium_dismiss', { feature: featureId, source, step: 'fake_door' });
+              trackEvent('premium_dismiss', {
+                feature: featureId,
+                source,
+                step: 'fake_door',
+                ...(hookVariant ? { hook_variant: hookVariant } : {}),
+              });
               setSheetOpen(false);
               router.replace(backHref);
             }}
@@ -347,5 +405,72 @@ function PremiumView() {
         </div>
       </BottomSheet>
     </>
+  );
+}
+
+/**
+ * v1.15 §10 Q2 — "1,900원을 내고 전체 리포트를 볼 의향이 있어?" 3지선다.
+ * `UtRatingCard`와 같은 lock-after-answer 패턴을 쓰지만 척도가 아니라 선택지라 별도로 둔다.
+ * `UT_MODE`가 꺼져 있으면 아무것도 렌더하지 않는다(다른 UT 컴포넌트와 동일한 가드).
+ */
+function PremiumWtpQuestion({
+  featureId,
+  source,
+  price,
+  choice,
+  onSelect,
+}: {
+  featureId: PremiumFeatureId;
+  source: PremiumSource;
+  price: number;
+  choice: 'yes' | 'maybe' | 'no' | null;
+  onSelect: (value: 'yes' | 'maybe' | 'no') => void;
+}) {
+  if (!UT_MODE) return null;
+
+  const options: { value: 'yes' | 'maybe' | 'no'; label: string }[] = [
+    { value: 'yes', label: '실제로 결제할 의향이 있다' },
+    { value: 'maybe', label: '결과를 더 봐야 판단할 수 있다' },
+    { value: 'no', label: '무료 결과로 충분하다' },
+  ];
+
+  return (
+    <section className="flex flex-col gap-2.5 rounded-card border border-dashed border-line-strong bg-canvas-warm p-4">
+      <span className="w-fit rounded-tag bg-chip px-2 py-0.5 text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
+        UT
+      </span>
+      <p className="text-caption keep-all leading-relaxed">
+        {formatPrice(price)}을 내고 전체 리포트를 볼 의향이 있어?
+      </p>
+      <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="결제 의향">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={choice === option.value}
+            disabled={choice !== null}
+            onClick={() => {
+              trackEvent('ut_premium_price_wtp', { feature: featureId, source, price, choice: option.value });
+              onSelect(option.value);
+            }}
+            className={cn(
+              'min-h-11 rounded-[10px] border px-3.5 py-2.5 text-left text-caption disabled:opacity-60',
+              choice === option.value
+                ? 'border-brand bg-brand-tint font-semibold text-ink'
+                : 'border-line bg-surface active:bg-sunken',
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      {choice ? (
+        <p className="text-[11px] keep-all text-ink-faint">
+          기록했어. 실제 결제 전까지는 의향으로만 남겨둘게.
+        </p>
+      ) : (
+        <p className="text-[10.5px] keep-all text-ink-faint">실제 결제가 아니라 의향을 묻는 질문이야.</p>
+      )}
+    </section>
   );
 }
