@@ -16,6 +16,7 @@ export function createEmptyTargetProfile(): TargetProfile {
     affection: 'x',
     mbti: null,
     birthProfile: createEmptyBirthProfile(),
+    preferences: { interests: [] },
   };
 }
 
@@ -96,6 +97,7 @@ export function createSampleAnswers(): SessionAnswers {
       // Entertainment Lens는 사용자가 직접 입력했을 때만 켜지는 걸 보여주기 위해서다.
       mbti: null,
       birthProfile: createEmptyBirthProfile(),
+      preferences: { interests: [] },
     },
     completed: {
       onboarding: true,

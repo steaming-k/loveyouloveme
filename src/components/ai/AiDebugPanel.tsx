@@ -28,7 +28,10 @@ export function AiDebugPanel() {
     return () => clearInterval(timer);
   }, [open]);
 
-  if (!AI_DEBUG) return null;
+  // v1.12 §52 — 플래그(NEXT_PUBLIC_AI_DEBUG)뿐 아니라 production 자체를 이중으로 막는다.
+  // 배포 환경변수 실수 하나로 API 호출 메타데이터·CrossSourceInsight 진단이 일반 사용자
+  // 화면에 노출되면 안 된다.
+  if (!AI_DEBUG || process.env.NODE_ENV === 'production') return null;
 
   const callCounts = log.reduce<Record<string, number>>((acc, entry) => {
     acc[entry.task] = (acc[entry.task] ?? 0) + 1;

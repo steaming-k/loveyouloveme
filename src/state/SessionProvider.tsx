@@ -13,6 +13,7 @@ import {
 
 import { MAX_PAST_FACTORS } from '@/data/labels';
 import { PHOTO_MAX_COUNT, SAMPLE_PHOTOS, DEMO_PHOTO_IDS } from '@/data/samplePhotos';
+import { TARGET_INTEREST_MAX, TARGET_CUSTOM_INTEREST_MAX_LENGTH } from '@/data/targetPreferences';
 import { clearSessionDedup, trackEvent } from '@/lib/analytics';
 import { createEmptyBirthProfile } from '@/lib/logic/birth';
 import { buildDemoObservedResult } from '@/services/ai/fallback';
@@ -31,6 +32,8 @@ import type {
   SelfGapAnswer,
   SessionAnswers,
   TargetAxisKey,
+  TargetInterest,
+  TargetInterestCategory,
   TargetLevel,
   TargetRelation,
   Verdict,
@@ -84,6 +87,11 @@ interface SessionContextValue {
   setTargetRelation: (value: TargetRelation) => void;
   setTargetLevel: (key: TargetAxisKey, value: TargetLevel) => void;
   setTargetMbti: (value: MbtiType | null) => void;
+  /** v1.13 — '좋아하는 것' 미리 정의 카테고리 토글. 최대 개수 초과 시 false */
+  toggleTargetInterest: (category: Exclude<TargetInterestCategory, 'custom'>, label: string) => boolean;
+  /** v1.13 — 직접 입력. 빈 문자열이거나 최대 개수 초과 시 false */
+  addCustomTargetInterest: (text: string) => boolean;
+  removeTargetInterest: (id: string) => void;
 
   toggleSavedQuestion: (id: ConversationQuestionId) => boolean;
 
@@ -180,6 +188,12 @@ function deserialize(raw: string): SessionAnswers | null {
         ...base.target,
         ...parsed.target,
         birthProfile: { ...base.target.birthProfile, ...parsed.target?.birthProfile },
+        // v1.13 이전 세션에는 preferences가 없다 — 빈 값으로 안전 복원한다(§57).
+        preferences: {
+          interests: Array.isArray(parsed.target?.preferences?.interests)
+            ? parsed.target.preferences.interests
+            : [],
+        },
       },
       birthProfile: { ...base.birthProfile, ...parsed.birthProfile },
       legacyZodiac,
@@ -213,6 +227,27 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
     setHydrated(true);
   }, []);
+
+  /**
+   * v1.12 §20 — 모든 세션은 언젠가 `funnelAnalysisId`를 가져야 한다. 새 상대는
+   * `resetTargetContext()`가 즉시 새로 발급하지만, 이 값이 아직 없는 세션(첫 분석 · v1.12
+   * 이전 세션)은 hydration 이후에 한 번 채워 넣는다 — SSR과 값이 달라지면 안 되므로
+   * useState 초기값이 아니라 반드시 이 effect(클라이언트 전용)에서만 생성한다.
+   */
+  useEffect(() => {
+    if (!hydrated) return;
+    setAnswers((prev) => {
+      if (prev.currentAnalysisMeta?.funnelAnalysisId) return prev;
+      return {
+        ...prev,
+        currentAnalysisMeta: {
+          ...prev.currentAnalysisMeta,
+          funnelAnalysisId: crypto.randomUUID(),
+          updatedAt: prev.currentAnalysisMeta?.updatedAt ?? new Date().toISOString(),
+        },
+      };
+    });
+  }, [hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -414,6 +449,79 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     trackEvent('target_mbti_select', { mbti: value ?? '' });
   }, []);
 
+  /**
+   * v1.13 §5~§9 — 미리 정의된 카테고리 토글(다시 누르면 해제). 최대 개수를 넘으면
+   * 아무 일도 하지 않는다 — validation 조건에 넣지 않고 조용히 무시한다(§9).
+   * @returns 실제로 추가/해제됐는지
+   */
+  const toggleTargetInterest = useCallback(
+    (category: Exclude<TargetInterestCategory, 'custom'>, label: string) => {
+      let changed = true;
+      setAnswers((prev) => {
+        const interests = prev.target.preferences.interests;
+        const exists = interests.some((item) => item.category === category);
+        if (exists) {
+          return {
+            ...prev,
+            target: {
+              ...prev.target,
+              preferences: { interests: interests.filter((item) => item.category !== category) },
+            },
+          };
+        }
+        if (interests.length >= TARGET_INTEREST_MAX) {
+          changed = false;
+          return prev;
+        }
+        const interest: TargetInterest = { id: category, category, label };
+        return {
+          ...prev,
+          target: { ...prev.target, preferences: { interests: [...interests, interest] } },
+        };
+      });
+      if (changed) trackEvent('target_preference_add', { source: 'predefined' });
+      return changed;
+    },
+    [],
+  );
+
+  /** v1.13 §6 — 직접 입력. 길이 제한만 두고 Analytics에는 raw text를 보내지 않는다(§40) */
+  const addCustomTargetInterest = useCallback((text: string) => {
+    const trimmed = text.trim().slice(0, TARGET_CUSTOM_INTEREST_MAX_LENGTH);
+    if (!trimmed) return false;
+    let added = true;
+    setAnswers((prev) => {
+      if (prev.target.preferences.interests.length >= TARGET_INTEREST_MAX) {
+        added = false;
+        return prev;
+      }
+      const interest: TargetInterest = {
+        id: `custom-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4).toString(36)}`,
+        category: 'custom',
+        label: trimmed,
+      };
+      return {
+        ...prev,
+        target: {
+          ...prev.target,
+          preferences: { interests: [...prev.target.preferences.interests, interest] },
+        },
+      };
+    });
+    if (added) trackEvent('target_preference_add', { source: 'custom' });
+    return added;
+  }, []);
+
+  const removeTargetInterest = useCallback((id: string) => {
+    setAnswers((prev) => ({
+      ...prev,
+      target: {
+        ...prev.target,
+        preferences: { interests: prev.target.preferences.interests.filter((item) => item.id !== id) },
+      },
+    }));
+  }, []);
+
   /** @returns 저장된 상태인지 (true = 방금 저장, false = 저장 해제) */
   const toggleSavedQuestion = useCallback((id: ConversationQuestionId) => {
     let saved = true;
@@ -541,12 +649,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const resetTargetContext = useCallback(() => {
     setAnswers((prev) => ({
       ...prev,
+      // v1.13 §38 — target.preferences(좋아하는 것)는 TargetProfile 안에 있어서
+      // createEmptyTargetProfile() 하나로 함께 초기화된다. 별도 처리가 필요 없다.
       target: createEmptyTargetProfile(),
       savedQuestions: [],
       completed: { ...prev.completed, compatibility: false },
-      currentAnalysisMeta: prev.currentAnalysisMeta
-        ? { mirrorViewedAt: prev.currentAnalysisMeta.mirrorViewedAt, updatedAt: new Date().toISOString() }
-        : undefined,
+      // v1.12 §20 — 새 상대 = 새 funnel 단위. 랜덤 UUID만 쓰고 상대 개인정보는 담지 않는다.
+      currentAnalysisMeta: {
+        mirrorViewedAt: prev.currentAnalysisMeta?.mirrorViewedAt,
+        updatedAt: new Date().toISOString(),
+        funnelAnalysisId: crypto.randomUUID(),
+      },
     }));
   }, []);
 
@@ -602,6 +715,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setTargetRelation,
       setTargetLevel,
       setTargetMbti,
+      toggleTargetInterest,
+      addCustomTargetInterest,
+      removeTargetInterest,
       toggleSavedQuestion,
       setCoreVerdict,
       setCoreCorrection,
@@ -642,6 +758,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setTargetRelation,
       setTargetLevel,
       setTargetMbti,
+      toggleTargetInterest,
+      addCustomTargetInterest,
+      removeTargetInterest,
       toggleSavedQuestion,
       setCoreVerdict,
       setCoreCorrection,

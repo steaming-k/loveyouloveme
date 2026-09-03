@@ -106,6 +106,13 @@ export default function PhotoInputPage() {
 
         <NoticeBox>{PRIVACY.photo}</NoticeBox>
         <NoticeBox>{realAi ? PRIVACY.photoAiNotice : PRIVACY.photoDemoNotice}</NoticeBox>
+        <button
+          type="button"
+          onClick={() => router.push(ROUTES.privacy)}
+          className="flex min-h-11 items-center justify-center text-meta text-ink-faint"
+        >
+          자세히 보기
+        </button>
       </div>
     </ScreenLayout>
   );

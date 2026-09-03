@@ -96,6 +96,7 @@ Mirror 결과(S27~S28, 2개 화면)가 각각 Canonical Route 1개로 합쳐졌�
 | SH1 / SH2 | 궁합 / Mirror 공유 카드 | `/share/compatibility`, `/share/mirror` |
 | X1 / X1-a / X1-b / X1-c | 다른 렌즈 허브 / MBTI / Astrology / 사주 | `/lens`, `/lens/mbti`, `/lens/astrology`, `/lens/saju` |
 | P1 | Premium Paywall (Fake Door — 실제 결제 없음) | `/premium?source=...` |
+| — | Privacy Policy + Analytics Consent 변경(v1.12 신설) | `/privacy` |
 
 **Legacy Route (삭제하지 않고 redirect)**: `/compatibility/why`·`good`·`friction`·
 `questions` → `/compatibility#...`, `/mirror/insight` → `/mirror#core-insight`.
@@ -115,7 +116,8 @@ src/
 │  └─ api/ai/**            AI Route Handler (server-only 경계, 6개 dynamic)
 ├─ components/
 │  ├─ common/              Button, ScreenLayout/Header, BottomSheet, ConfirmModal,
-│  │                       Toast, BottomNavigation, ResultSectionNav(v1.11), primitives
+│  │                       Toast, BottomNavigation, ResultSectionNav(v1.11),
+│  │                       ConsentBanner(v1.12), primitives
 │  ├─ ai/                  AiModeNotice, NarrativeViews, AiDebugPanel
 │  ├─ lovy/                Lovy, LovyMessage, LovyLoading
 │  ├─ profile/             PhotoGrid, ObservationCard, ProfileLayerStack
@@ -124,9 +126,12 @@ src/
 │  ├─ history/             HistoryChangeRow, PastObservationNote
 │  ├─ premium/             PremiumEntryRow, RelationshipDeepReportView, DeepInsightCard
 │  ├─ ut/                  UtRatingCard, UtSummaryCard, DeepReportUtFlow
-│  └─ shell/               AppShell, PrototypePanel, MotionProvider
+│  └─ shell/               AppShell, PrototypePanel(prod 숨김, v1.12), MotionProvider,
+│                           GaScriptLoader(v1.12)
+├─ app/privacy/            Privacy Policy + Analytics Consent 변경 화면(v1.12)
 ├─ data/                   질문·라벨·카피·러비 에셋·축 정의 (순수 데이터)
-├─ hooks/                  useAnalysis(결과 셀렉터) · useAiNarrative(AI 설명 캐시/재호출) · useAnchorScroll(v1.11) · useShare
+├─ hooks/                  useAnalysis(결과 셀렉터) · useAiNarrative(AI 설명 캐시/재호출) ·
+│                          useAnchorScroll(v1.11) · useShare · useAnalyticsConsent(v1.12)
 ├─ lib/
 │  ├─ logic/               values · compatibility · mirror · profile · observed ·
 │  │                       observedSignals(사진 신호 집계) · history · crossSourceInsights (순수 함수)
@@ -135,13 +140,16 @@ src/
 │  ├─ historyRepository.ts localStorage 직접 접근 유일 지점(History 저장소 경계)
 │  ├─ resultView.ts        Revisit 판정/링크 생성(v1.11)
 │  ├─ returnTo.ts          Profile Revisit → 입력 Funnel → 복귀 경로(v1.11)
-│  ├─ analytics.ts         trackEvent + Primary KPI 스냅샷
+│  ├─ analytics.ts         trackEvent + Primary/Analysis-level KPI 스냅샷(v1.12)
+│  ├─ analyticsConsent.ts  GA4 전송 동의 상태(v1.12)
+│  ├─ utExport.ts          UT 결과 JSON 내보내기(v1.12)
 │  ├─ validation.ts        입력 검증
 │  ├─ routes.ts            Route 상수 + `RESULT_ANCHORS`(v1.11) + 화면 보드
 │  └─ shareCard.ts         Canvas 2D 공유 카드 PNG 저장
 ├─ services/ai/            Provider 추상화 · 프롬프트 · 스키마 검증 · 안전장치 · 클라이언트
 ├─ services/aiService.ts   화면이 쓰는 유일한 분석 파사드
-├─ state/                  SessionProvider(현재 세션) · HistoryProvider(과거 Snapshot) · defaultAnswers
+├─ state/                  SessionProvider(현재 세션, funnelAnalysisId 포함 v1.12) ·
+│                          HistoryProvider(과거 Snapshot) · defaultAnswers
 ├─ styles/globals.css      Design Token (@theme) + reveal/Lovy 애니메이션
 └─ types/                  도메인 타입
 ```
@@ -253,7 +261,20 @@ Primary KPI = relationship_mirror_entry_click / compatibility_result_view
 오염시키지 않습니다.
 
 `getPrimaryKpi()`로 현재 진입률을 읽을 수 있고, 데스크톱 프로토타입 패널에 실시간
-표시됩니다. 전체 이벤트 목록은 `ANALYTICS_EVENTS` 상수(`lib/analytics.ts`)를 참고하세요.
+표시됩니다(개발 모드 전용 — production 빌드에서는 렌더되지 않습니다). 전체 이벤트
+목록은 `ANALYTICS_EVENTS` 상수(`lib/analytics.ts`)를 참고하세요.
+
+**v1.12 — Analysis-level Funnel(추가, 기존 지표는 불변).** 위 Primary KPI는 세션(탭)
+단위로만 dedup해서, 같은 탭에서 상대를 두 번 분석하면 분모는 그대로인데 분자만 늘 수
+있었습니다. `funnelAnalysisId`(상대가 바뀔 때마다 새로 발급되는 랜덤 UUID)로 dedup하는
+`compatibility_analysis_result_view`/`relationship_mirror_analysis_entry`를 별도로
+추가해 분석 단위 전환율(`getAnalysisPrimaryKpi()`)도 볼 수 있습니다.
+
+**GA4 — v1.12부터 실제로 연결 가능합니다.** `NEXT_PUBLIC_GA_MEASUREMENT_ID`가 있고,
+production 빌드이고, 사용자가 `/privacy`의 Consent Gate에서 동의했을 때만
+`next/script`로 gtag.js가 로드됩니다. 세 조건 중 하나라도 빠지면 로컬 store에만
+남고 외부로는 나가지 않습니다 — **아직 실제 Measurement ID로 수신을 확인하지는
+않았습니다(NOT VERIFIED).**
 
 > 개발 모드에서는 React StrictMode가 effect를 두 번 실행하므로 화면 노출 계열 이벤트가 2로 보일 수 있습니다. 프로덕션 빌드에서는 1회만 발생합니다.
 
@@ -276,6 +297,7 @@ Primary KPI = relationship_mirror_entry_click / compatibility_result_view
 - 상대 분석은 *"네가 알고 있는 정보를 기준으로"* 비교하며, 상대의 실제 마음이나 성격을 판정하지 않습니다.
 - 공유 카드는 기본적으로 상대 정보를 포함하지 않습니다(토글로 선택).
 - 사진에서 성적 지향·정치·종교·건강·경제 상태·인종은 추론하지 않고, 관계 규정(친구/연인/가족)도 단정하지 않습니다.
+- 전체 정책은 `/privacy` 화면과 [`docs/privacy-policy.md`](./docs/privacy-policy.md)에서 볼 수 있습니다(v1.12). Home과 사진 입력 화면에 진입점이 있습니다. 같은 화면에서 Analytics Consent(동의/거부)도 언제든 바꿀 수 있습니다.
 
 ---
 
@@ -292,4 +314,6 @@ semantic HTML · 실제 `button`/`input[type=radio]`/`checkbox` 사용 · 모든
 - **Supabase 미연동.** 세션은 `localStorage`에만 저장됩니다. `docs/supabase-info.md`의 자격 증명은 아직 쓰지 않습니다. 붙일 때는 `services/aiService.ts`와 `state/SessionProvider.tsx` 두 경계만 건드리면 됩니다.
 - **실제 AI Provider end-to-end 미검증.** API Key가 없어 스키마/안전 검증은 로컬 스텁으로 실측했지만, 실제 Provider 응답으로 왕복한 적은 없습니다.
 - **사주 명식 계산 엔진 미연결.** 절입 시각·진태양시 등 정밀 계산이 필요해 `NEXT_PUBLIC_SAJU_ENGINE_READY=false`로 정직하게 "준비 중" 상태를 보여줍니다.
-- 실제 사용자 매칭 · 실제 결제(PG) · GA4 실제 연결(Measurement ID)은 포함하지 않습니다.
+- **GA4는 코드상 연결 가능하지만 실제 수신은 미검증.** Measurement ID를 넣고 Consent까지 동의해도, 실제 GA4 대시보드에 이벤트가 도착하는 것을 확인한 적은 없습니다.
+- **Rate Limit은 여전히 인스턴스 메모리 기반.** `RateLimitStore` 인터페이스로 경계는 분리했지만(v1.12), 연결할 공유 저장소(Redis 등) credential이 없어 `SharedRateLimitStore`는 구현하지 않았습니다 — 서버리스 다중 인스턴스에서 정확하지 않습니다(distributed rate limiting NOT VERIFIED).
+- 실제 사용자 매칭 · 실제 결제(PG)는 포함하지 않습니다.

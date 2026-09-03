@@ -12,6 +12,11 @@ import { InlineError, NoticeBox, PageHeading, Tag } from '@/components/common/pr
 import { PRIVACY } from '@/data/copy';
 import { MBTI_TYPES } from '@/data/mbti';
 import { TARGET_FIELDS, TARGET_MIN_KNOWN, TARGET_RELATION_OPTIONS } from '@/data/targetFields';
+import {
+  TARGET_CUSTOM_INTEREST_MAX_LENGTH,
+  TARGET_INTEREST_CATEGORIES,
+  TARGET_INTEREST_MAX,
+} from '@/data/targetPreferences';
 import { trackEvent } from '@/lib/analytics';
 import { ROUTES } from '@/lib/routes';
 import { targetKnownCount } from '@/lib/validation';
@@ -28,9 +33,23 @@ import { useSession } from '@/state/SessionProvider';
  */
 export default function TargetPage() {
   const router = useRouter();
-  const { answers, setTargetRelation, setTargetLevel, setTargetMbti } = useSession();
+  const {
+    answers,
+    setTargetRelation,
+    setTargetLevel,
+    setTargetMbti,
+    toggleTargetInterest,
+    addCustomTargetInterest,
+    removeTargetInterest,
+  } = useSession();
   const [error, setError] = useState<string | null>(null);
   const [mbtiOpen, setMbtiOpen] = useState(false);
+  const [interestOpen, setInterestOpen] = useState(false);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customText, setCustomText] = useState('');
+
+  const interests = answers.target.preferences.interests;
+  const interestFull = interests.length >= TARGET_INTEREST_MAX;
 
   const known = targetKnownCount(answers.target);
 
@@ -141,6 +160,107 @@ export default function TargetPage() {
                 selected={answers.target.mbti === null}
                 onToggle={() => setTargetMbti(null)}
               />
+            </div>
+          ) : null}
+        </div>
+
+        {/* v1.13 §8 — '다가가는 힌트'의 재료. MBTI Optional Section과 같은 Progressive
+            Disclosure 패턴을 재사용한다. 새 장문 Survey를 만들지 않는다. */}
+        <div className="flex flex-col gap-2.5 rounded-[16px] border border-line bg-surface p-4">
+          <button
+            type="button"
+            onClick={() => setInterestOpen((prev) => !prev)}
+            aria-expanded={interestOpen}
+            className="flex min-h-11 items-center justify-between gap-3 text-left"
+          >
+            <span className="flex min-w-0 flex-col gap-1">
+              <span className="text-[10.5px] font-semibold tracking-[0.05em] text-ink-muted">
+                다가가는 힌트 · 선택
+              </span>
+              <span className="text-caption font-medium">이 사람이 좋아하는 것도 알고 있어?</span>
+              <span className="text-[11.5px] keep-all text-ink-faint">
+                잘 모르겠어도 괜찮아. 네가 알고 있는 것만 볼게.
+              </span>
+            </span>
+            <Tag tone={interests.length > 0 ? 'brand' : 'neutral'}>
+              {interests.length > 0 ? `${interests.length}개` : interestOpen ? '접기' : '펼치기'}
+            </Tag>
+          </button>
+
+          {interestOpen ? (
+            <div className="flex flex-col gap-3 pt-1">
+              <div
+                className="flex flex-wrap gap-2"
+                role="group"
+                aria-label="이 사람이 좋아하는 것"
+              >
+                {TARGET_INTEREST_CATEGORIES.map((option) => (
+                  <ChoiceChip
+                    key={option.value}
+                    label={option.label}
+                    selected={interests.some((item) => item.category === option.value)}
+                    onToggle={() => toggleTargetInterest(option.value, option.label)}
+                  />
+                ))}
+                <ChoiceChip
+                  label="기타 · 직접 적기"
+                  selected={customOpen}
+                  onToggle={() => setCustomOpen((prev) => !prev)}
+                />
+              </div>
+
+              {customOpen ? (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={customText}
+                    onChange={(event) =>
+                      setCustomText(event.target.value.slice(0, TARGET_CUSTOM_INTEREST_MAX_LENGTH))
+                    }
+                    maxLength={TARGET_CUSTOM_INTEREST_MAX_LENGTH}
+                    placeholder="예) 야구 보러 가는 걸 좋아해"
+                    disabled={interestFull}
+                    className="min-h-11 flex-1 rounded-row border border-line bg-surface px-3.5 text-caption outline-none placeholder:text-ink-faint focus:border-brand disabled:opacity-40"
+                  />
+                  <button
+                    type="button"
+                    disabled={interestFull || customText.trim().length === 0}
+                    onClick={() => {
+                      if (addCustomTargetInterest(customText)) setCustomText('');
+                    }}
+                    className="flex min-h-11 flex-none items-center rounded-row border border-line bg-surface px-3.5 text-caption font-medium text-ink disabled:opacity-40"
+                  >
+                    추가
+                  </button>
+                </div>
+              ) : null}
+
+              {interests.length > 0 ? (
+                <ul className="flex flex-wrap gap-1.5">
+                  {interests.map((interest) => (
+                    <li
+                      key={interest.id}
+                      className="flex items-center gap-1.5 rounded-tag bg-brand-tint py-1.5 pl-2.5 pr-1.5 text-[11.5px] font-medium text-brand-pressed"
+                    >
+                      {interest.label}
+                      <button
+                        type="button"
+                        onClick={() => removeTargetInterest(interest.id)}
+                        aria-label={`${interest.label} 삭제`}
+                        className="flex h-5 w-5 items-center justify-center rounded-full text-brand-pressed active:bg-brand/20"
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
+              <p className="text-[11px] text-ink-faint">
+                {interestFull
+                  ? `최대 ${TARGET_INTEREST_MAX}개까지 골랐어`
+                  : `최대 ${TARGET_INTEREST_MAX}개까지 고를 수 있어`}
+              </p>
             </div>
           ) : null}
         </div>

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 
 import { ToastProvider } from '@/components/common/ToastProvider';
 import { AppShell } from '@/components/shell/AppShell';
+import { GaScriptLoader } from '@/components/shell/GaScriptLoader';
 import { MotionProvider } from '@/components/shell/MotionProvider';
 import { HistoryProvider } from '@/state/HistoryProvider';
 import { SessionProvider } from '@/state/SessionProvider';
@@ -26,6 +27,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ko">
       <body>
+        <GaScriptLoader />
         <MotionProvider>
           <SessionProvider>
             <HistoryProvider>

@@ -354,9 +354,78 @@ export interface TargetProfile {
    * 상대가 직접 입력한 것처럼 표현하지 않고, 결과에도 '네가 입력한 정보 기준'을 고지한다.
    */
   birthProfile: BirthProfile;
+  /**
+   * v1.13 — '다가가는 힌트'(Approach Hints)의 재료. **선택 입력**이고 동기화율(Compatibility
+   * Score)·Mirror MATCH/GAP/CHANGE 어디에도 절대 들어가지 않는다(§11/§12) — 취향 일치는
+   * 연애 성공 예측 근거가 아니다. 출처는 항상 'USER-REPORTED TARGET INFO'다 — AI가 사진이나
+   * 다른 데이터에서 상대 취향을 추론해 채우지 않는다(§10/§51).
+   */
+  preferences: TargetPreferences;
 }
 
 export type TargetAxisKey = 'contact' | 'conflict' | 'alone' | 'affection';
+
+/* --------------------------------------------- Target Preference (v1.13) */
+
+export type TargetInterestCategory =
+  | 'food'
+  | 'cafe'
+  | 'exhibition'
+  | 'movie_show'
+  | 'music'
+  | 'exercise'
+  | 'walk'
+  | 'travel'
+  | 'game'
+  | 'reading'
+  | 'pet'
+  | 'photo'
+  | 'shopping'
+  | 'drink'
+  | 'home'
+  | 'custom';
+
+/** 최대 5개(§5). `category==='custom'`이면 `label`이 사용자가 직접 적은 문장이다(§6) */
+export interface TargetInterest {
+  id: string;
+  category: TargetInterestCategory;
+  label: string;
+}
+
+export interface TargetPreferences {
+  interests: TargetInterest[];
+}
+
+/**
+ * '다가가는 힌트'가 실제로 참조한 근거. AI가 새로운 상대 사실을 만들어내지 못하게
+ * 이 유니온에 없는 값은 evidence로 쓸 수 없다(§17).
+ */
+export type TargetEvidenceRef =
+  | { type: 'interest'; id: string }
+  | { type: 'contact'; value: TargetLevel }
+  | { type: 'alone'; value: TargetLevel }
+  | { type: 'affection'; value: TargetLevel }
+  | { type: 'conflict'; value: TargetLevel };
+
+export type ApproachHintKind = 'activity' | 'communication' | 'pace' | 'affection' | 'conversation';
+
+/**
+ * '다가가는 힌트' 카드 하나 (v1.13 §16).
+ *
+ * ⚠️ 이건 호감도 예측이나 공략법이 아니다 — 사용자가 알려준 상대 정보를 존중해서 다가가는
+ * 방법일 뿐이다(§53). `kind: 'conversation'`은 근거가 부족해 조언 대신 질문을 제안하는
+ * 경우다(§29~§31, "KNOW → Suggest / UNKNOWN → Ask").
+ */
+export interface ApproachHint {
+  id: string;
+  kind: ApproachHintKind;
+  title: string;
+  rationale: string;
+  evidenceRefs: TargetEvidenceRef[];
+  /** 'direct' = 사용자가 직접 입력한 값 그대로. 'contextual' = 두 근거를 조합했거나 질문 제안 */
+  confidence: 'direct' | 'contextual';
+  caution?: string;
+}
 
 /* ------------------------------------------------------- Compatibility (S21~S25) */
 
@@ -1347,6 +1416,13 @@ export interface SessionAnswers {
     compatibilityViewedAt?: string;
     mirrorViewedAt?: string;
     updatedAt: string;
+    /**
+     * v1.12 — Analysis-level KPI dedup 키(§18~§23). `RelationshipHistoryEntry.analysisId`
+     * (declared/experience 기반 deterministic fingerprint)와 **의도적으로 다른 개념**이라
+     * 이름을 분리했다 — 이건 그냥 random UUID이고, 상대 개인정보를 담지 않으며,
+     * `resetTargetContext()`가 새 상대마다 새로 발급한다.
+     */
+    funnelAnalysisId?: string;
   };
   /** 진행 상황 플래그 */
   completed: {

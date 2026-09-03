@@ -26,6 +26,15 @@ const GROUP_CHIP: Record<ScreenBoardEntry['group'], string> = {
  * 답변을 바꾸면 동기화율·신호·Mirror GAP이 실시간으로 어떻게 달라지는지 보여준다.
  */
 export function PrototypePanel() {
+  // v1.12 §51 — 개발용 패널이 프로덕션 빌드에서도 그대로 보이고 있었다(데스크톱 폭에서만
+  // 노출되는 CSS 조건 하나뿐이었고 NODE_ENV 체크가 아예 없었다). 일반 사용자에게 동기화율
+  // 실시간 계산값 · 화면 점프 · 답변 초기화 버튼을 보여줄 이유가 없다.
+  if (process.env.NODE_ENV === 'production') return null;
+
+  return <PrototypePanelInner />;
+}
+
+function PrototypePanelInner() {
   const pathname = usePathname();
   const router = useRouter();
   const { answers, hydrated, reset, loadSampleSession } = useSession();

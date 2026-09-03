@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 
+import { buildApproachHints } from '@/lib/logic/approachHints';
 import {
   analysisFingerprint,
   buildHistoryReport,
@@ -12,6 +13,7 @@ import { aiSelectors } from '@/services/aiService';
 import { useHistory } from '@/state/HistoryProvider';
 import { useSession } from '@/state/SessionProvider';
 import type {
+  ApproachHint,
   CompatibilityResult,
   ConversationQuestion,
   HistoryReport,
@@ -36,6 +38,20 @@ export function useCompatibility(): CompatibilityResult {
   return useMemo(
     () => aiSelectors.compatibility(answers.declared, answers.target),
     [answers.declared, answers.target],
+  );
+}
+
+/**
+ * v1.13 — '다가가는 힌트'. Compatibility Score와 마찬가지로 순수 함수라 Target을 고치면
+ * 다음 렌더에 바로 반영된다(재계산 버튼이 필요 없다, §37). MBTI/사주/출생정보는 evidence
+ * source로 쓰지 않는다(§49/§50) — `target`에서 `preferences`·4축만 읽는다.
+ */
+export function useApproachHints(): ApproachHint[] {
+  const { answers } = useSession();
+  const compatibility = useCompatibility();
+  return useMemo(
+    () => buildApproachHints(answers.target, compatibility),
+    [answers.target, compatibility],
   );
 }
 

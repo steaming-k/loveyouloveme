@@ -1,4 +1,5 @@
 import { createGa4Adapter, NoopAnalyticsAdapter, type AnalyticsAdapter } from './analyticsAdapter';
+import { getAnalyticsConsent } from './analyticsConsent';
 import { GA_MEASUREMENT_ID } from './env';
 
 /**
@@ -31,6 +32,13 @@ export const ANALYTICS_EVENTS = [
   'profile_feedback_positive',
   'profile_feedback_edit',
   'target_profile_complete',
+  // Target Preference + Approach Hints (v1.13 §42~§43) — Primary KPI에는 넣지 않는다.
+  // Secondary: Approach Hint View Rate = approach_hint_view / compatibility_result_view
+  // ⚠️ raw interest 텍스트·힌트 문장 원문은 절대 property로 보내지 않는다(§40).
+  'target_preference_add',
+  'approach_hint_view',
+  'approach_hint_expand',
+  'approach_hint_question_click',
   'compatibility_complete',
   'compatibility_low_confidence',
   'compatibility_result_view',
@@ -166,6 +174,18 @@ export const ANALYTICS_EVENTS = [
   'result_reanalysis_start',
   /** @deprecated v1.11 — 위와 동일한 이유로 이번 버전에서는 발생시키지 않는다 */
   'result_reanalysis_complete',
+  // Analysis-level Funnel (v1.12 §18~§23) — 기존 Session KPI(trackOnce, §17.1)는 그대로
+  // 둔 채 별도로 추가한 지표. sessionStorage[event명] 하나로만 dedup하는 기존 방식은
+  // 같은 탭에서 두 번째 상대를 분석해도 재발생하지 않는 한계가 있었다 — 이 두 이벤트는
+  // `funnelAnalysisId`(상대가 바뀔 때마다 새로 발급되는 랜덤 UUID) 기준으로 dedup한다
+  // (`trackOncePerAnalysis`). Primary KPI 정의 자체는 바꾸지 않는다(§19) — 이건 별도의
+  // Analysis Funnel Conversion 지표다.
+  'compatibility_analysis_result_view',
+  'relationship_mirror_analysis_entry',
+  // v1.12 §9~§11 AI latency/failure metrics — 새 이벤트를 추가하지 않는다. v1.6부터 있던
+  // `ai_analysis_request`/`ai_analysis_success`/`ai_analysis_failure`(아래, aiClient.ts)가
+  // 이미 task·duration_ms·mode·evidence_count(result_items)·failure reason을 전부 갖고
+  // 있다 — 이름만 다른 이벤트를 새로 만들면 같은 사실을 두 이름으로 중복 기록하게 된다.
 ] as const;
 
 export type AnalyticsEvent = (typeof ANALYTICS_EVENTS)[number];
@@ -212,17 +232,27 @@ function writeStore(store: AnalyticsStore): void {
 }
 
 /**
- * v1.10 §26~§28 — 외부(GA4) 전송 어댑터. `readStore`/`writeStore`(위)는 이 파일 고유의
- * local store이고(dedup·getEventCount·getPrimaryKpi가 직접 읽는다), 이 어댑터는 **그 위에
- * 추가로** 같은 이벤트를 외부로도 보낼지 결정하는 선택적 레이어다.
+ * v1.10 §26~§28, v1.12 §12~§16 — 외부(GA4) 전송 어댑터. `readStore`/`writeStore`(위)는
+ * 이 파일 고유의 local store이고(dedup·getEventCount·getPrimaryKpi가 직접 읽는다), 이
+ * 어댑터는 **그 위에 추가로** 같은 이벤트를 외부로도 보낼지 결정하는 선택적 레이어다.
  *
- * Measurement ID가 없으면 `NoopAnalyticsAdapter`라 아무 일도 없다 — GA4 = NOT CONNECTED.
+ * 매 호출마다 다시 판단한다(모듈 로드 시점에 한 번 고정하지 않는다) — Consent는 세션
+ * 중간에 바뀔 수 있기 때문이다.
+ *   - Development: 항상 Noop. Local store(위 `writeStore`)만 쌓인다 — GA4로 개발 중
+ *     이벤트가 새 나가지 않는다(§16).
+ *   - Production + GA Measurement ID 없음: Noop — GA4 = NOT CONNECTED.
+ *   - Production + Measurement ID 있음 + Consent 'granted': GA4.
+ *   - Production + Measurement ID 있음 + Consent 'unknown'/'denied': Noop — 동의 전에는
+ *     외부로 아무 것도 나가지 않는다(§14).
  */
-const externalAdapter: AnalyticsAdapter = GA_MEASUREMENT_ID
-  ? createGa4Adapter(GA_MEASUREMENT_ID)
-  : NoopAnalyticsAdapter;
+function resolveExternalAdapter(): AnalyticsAdapter {
+  if (process.env.NODE_ENV !== 'production') return NoopAnalyticsAdapter;
+  if (!GA_MEASUREMENT_ID) return NoopAnalyticsAdapter;
+  if (getAnalyticsConsent() !== 'granted') return NoopAnalyticsAdapter;
+  return createGa4Adapter(GA_MEASUREMENT_ID);
+}
 
-/** 이벤트 1건 기록. local store에 남기고, GA4가 연결돼 있으면 그쪽에도 보낸다. */
+/** 이벤트 1건 기록. local store에 남기고, GA4 전송 조건(§16)을 만족하면 그쪽에도 보낸다. */
 export function trackEvent(name: AnalyticsEvent, properties: AnalyticsProperties = {}): void {
   const store = readStore();
   store.counts[name] = (store.counts[name] ?? 0) + 1;
@@ -235,7 +265,7 @@ export function trackEvent(name: AnalyticsEvent, properties: AnalyticsProperties
 
   // §29 — 외부 전송 실패가 Product UX에 영향을 주면 안 된다. console.error도 내지 않는다.
   try {
-    externalAdapter.track(name, properties);
+    resolveExternalAdapter().track(name, properties);
   } catch {
     // 무시
   }
@@ -268,6 +298,38 @@ export function trackOnce(name: AnalyticsEvent, properties: AnalyticsProperties 
   trackEvent(name, properties);
 }
 
+const ANALYSIS_DEDUP_PREFIX = 'lym.analysis_fired.';
+
+/**
+ * v1.12 §18~§23 — Analysis 단위로 딱 한 번만 발생해야 하는 이벤트용.
+ *
+ * `trackOnce`(세션/탭 단위)와 별개다. 같은 탭에서 두 번째 상대를 분석하면 `trackOnce`는
+ * 이미 쐈던 이벤트를 다시 쏘지 않지만, 이건 `funnelAnalysisId`가 바뀌었으므로 다시 쏜다.
+ * 같은 분석을 새로고침하거나 Revisit으로 다시 봐도(§23) `funnelAnalysisId`가 그대로라
+ * 재발생하지 않는다. 값이 아직 없으면(hydration 이전 등) 조용히 아무 것도 하지 않는다 —
+ * 나중에 값이 생겨도 그 시점에 놓친 이벤트를 소급해서 쏘지 않는다.
+ *
+ * ⚠️ property 이름을 `analysis_id`가 아니라 `funnel_analysis_id`로 보낸다 — 기존
+ * `*_result_revisit` 이벤트들은 `analysis_id`를 **declared/experience 기반 deterministic
+ * fingerprint**(History의 `analysisId`와 같은 개념) 의미로 이미 쓰고 있다(§20). 같은
+ * property 이름에 두 가지 다른 값을 섞으면 로그를 해석할 때 혼동된다.
+ */
+export function trackOncePerAnalysis(
+  name: AnalyticsEvent,
+  funnelAnalysisId: string | null | undefined,
+  properties: AnalyticsProperties = {},
+): void {
+  if (typeof window === 'undefined' || !funnelAnalysisId) return;
+  const key = `${ANALYSIS_DEDUP_PREFIX}${funnelAnalysisId}.${name}`;
+  try {
+    if (window.sessionStorage.getItem(key)) return;
+    window.sessionStorage.setItem(key, '1');
+  } catch {
+    // sessionStorage를 못 쓰면 dedup 없이라도 이벤트는 기록한다.
+  }
+  trackEvent(name, { ...properties, funnel_analysis_id: funnelAnalysisId });
+}
+
 /** Primary KPI 스냅샷 — 궁합 결과를 본 사용자 중 Relationship Mirror에 진입한 비율 */
 export function getPrimaryKpi(): {
   compatibilityResultView: number;
@@ -287,6 +349,29 @@ export function getPrimaryKpi(): {
       compatibilityResultView === 0
         ? null
         : Math.round((mirrorEntryClick / compatibilityResultView) * 100),
+  };
+}
+
+/**
+ * v1.12 §19 — Analysis Funnel Conversion. 기존 `getPrimaryKpi()`(세션/탭 단위)를
+ * 대체하지 않는다 — '분석 단위로 보면 얼마나 다른가'를 보여주는 별도 지표다.
+ */
+export function getAnalysisPrimaryKpi(): {
+  analysisResultView: number;
+  analysisMirrorEntry: number;
+  entryRate: number | null;
+} {
+  const counts = readStore().counts;
+  const analysisResultView = counts.compatibility_analysis_result_view ?? 0;
+  const analysisMirrorEntry = counts.relationship_mirror_analysis_entry ?? 0;
+
+  return {
+    analysisResultView,
+    analysisMirrorEntry,
+    entryRate:
+      analysisResultView === 0
+        ? null
+        : Math.round((analysisMirrorEntry / analysisResultView) * 100),
   };
 }
 

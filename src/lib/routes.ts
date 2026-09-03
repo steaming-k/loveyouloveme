@@ -66,6 +66,8 @@ export const ROUTES = {
    * 개발·UT 통로로만 연다(§8) — 아무 보상 없이 프로덕션에서 심층 답변을 모으지 않는다.
    */
   deepQuestions: '/premium-preview/deep-questions',
+  /** v1.12 §28 — 실제 데이터 동작 그대로 설명하는 Privacy 화면. 새 Settings 페이지는 만들지 않는다 */
+  privacy: '/privacy',
 } as const;
 
 /**
@@ -77,6 +79,8 @@ export const RESULT_ANCHORS = {
   compatibilityWhy: 'why',
   compatibilityGood: 'good',
   compatibilityFriction: 'friction',
+  /** v1.13 — '다가가는 힌트'(Approach Hints) */
+  compatibilityApproach: 'approach',
   compatibilityLenses: 'lenses',
   compatibilityQuestions: 'questions',
   mirrorCoreInsight: 'core-insight',

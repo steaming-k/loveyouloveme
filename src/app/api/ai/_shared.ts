@@ -39,36 +39,73 @@ export function createRequestId(): string {
 /* --------------------------------------------------------- Rate Limit */
 
 /**
- * ⚠️ **경계 명시.** 계정 시스템이 없어 완전한 보호는 불가능하다. 이 구현은
- * 인스턴스 메모리 기반이라 서버리스 다중 인스턴스에서는 정확하지 않다.
- * 실서비스 전환 시 외부 저장소(Redis 등) 기반으로 교체해야 한다.
+ * v1.12 §29~§31 — Shared Store 경계.
  *
- * TODO(v1.7): 공유 저장소 기반 rate limit + 인증 도입
+ * ⚠️ **경계 명시.** 계정 시스템이 없어 완전한 보호는 불가능하다. `MemoryRateLimitStore`는
+ * 인스턴스 메모리 기반이라 서버리스 다중 인스턴스에서는 정확하지 않다(같은 사용자가 다른
+ * 인스턴스로 라우팅되면 새 버킷이 생긴다).
+ *
+ * 인터페이스를 미리 분리해두는 이유: 나중에 실제 공유 백엔드(Redis/Upstash 등)를 연결할 때
+ * 이 파일의 호출부(`rateLimit(key)`)를 바꾸지 않고 `resolveRateLimitStore()`만 교체하면
+ * 되게 하기 위해서다. **이번 버전에서 새 외부 dependency(자격 증명이 없는 서비스)를 강제로
+ * 끌어오지 않는다** — `SHARED_RATE_LIMIT_URL`이 설정돼 있지 않으면 항상 Memory로
+ * fallback하고, production에서 그 상태이면 로그로 한 번 경고한다.
  */
+export interface RateLimitStore {
+  /** @returns 허용 여부와, 막혔다면 몇 초 뒤에 재시도 가능한지 */
+  hit(key: string, windowMs: number, max: number): { allowed: boolean; retryAfterSec: number };
+}
+
+class MemoryRateLimitStore implements RateLimitStore {
+  private readonly buckets = new Map<string, number[]>();
+
+  hit(key: string, windowMs: number, max: number) {
+    const now = Date.now();
+    const hits = (this.buckets.get(key) ?? []).filter((time) => now - time < windowMs);
+
+    if (hits.length >= max) {
+      const oldest = hits[0] ?? now;
+      return { allowed: false, retryAfterSec: Math.ceil((windowMs - (now - oldest)) / 1000) };
+    }
+
+    hits.push(now);
+    this.buckets.set(key, hits);
+
+    // 메모리 누수 방지 — 오래된 버킷 정리
+    if (this.buckets.size > 500) {
+      for (const [bucketKey, times] of this.buckets) {
+        if (times.every((time) => now - time >= windowMs)) this.buckets.delete(bucketKey);
+      }
+    }
+
+    return { allowed: true, retryAfterSec: 0 };
+  }
+}
+
+/**
+ * `SharedRateLimitStore`는 아직 구현하지 않는다 — 연결할 실제 서비스(자격 증명)가 없는
+ * 동안 코드로 그 존재를 흉내 내지 않는다(§31). `SHARED_RATE_LIMIT_URL`이 생기면 그 값을
+ * 읽어 실제 구현을 반환하도록 이 함수 하나만 바꾸면 된다.
+ */
+const memoryStore = new MemoryRateLimitStore();
+let warnedMemoryFallback = false;
+
+function resolveRateLimitStore(): RateLimitStore {
+  if (process.env.NODE_ENV === 'production' && !process.env.SHARED_RATE_LIMIT_URL && !warnedMemoryFallback) {
+    warnedMemoryFallback = true;
+    console.warn(
+      '[rate-limit] SHARED_RATE_LIMIT_URL not set — using per-instance memory store in production. ' +
+        'Distributed rate limiting NOT VERIFIED (v1.12 §31).',
+    );
+  }
+  return memoryStore;
+}
+
 const WINDOW_MS = 60_000;
 const MAX_PER_WINDOW = 12;
-const buckets = new Map<string, number[]>();
 
 export function rateLimit(key: string): { allowed: boolean; retryAfterSec: number } {
-  const now = Date.now();
-  const hits = (buckets.get(key) ?? []).filter((time) => now - time < WINDOW_MS);
-
-  if (hits.length >= MAX_PER_WINDOW) {
-    const oldest = hits[0] ?? now;
-    return { allowed: false, retryAfterSec: Math.ceil((WINDOW_MS - (now - oldest)) / 1000) };
-  }
-
-  hits.push(now);
-  buckets.set(key, hits);
-
-  // 메모리 누수 방지 — 오래된 버킷 정리
-  if (buckets.size > 500) {
-    for (const [bucketKey, times] of buckets) {
-      if (times.every((time) => now - time >= WINDOW_MS)) buckets.delete(bucketKey);
-    }
-  }
-
-  return { allowed: true, retryAfterSec: 0 };
+  return resolveRateLimitStore().hit(key, WINDOW_MS, MAX_PER_WINDOW);
 }
 
 /** 세션 헤더가 없으면 IP로 — 둘 다 없으면 공용 버킷 */

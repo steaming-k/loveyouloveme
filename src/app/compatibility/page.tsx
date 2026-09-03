@@ -16,6 +16,7 @@ import { ResultSectionNav } from '@/components/common/ResultSectionNav';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
+import { ApproachHintCard } from '@/components/compatibility/ApproachHintCard';
 import { MbtiLensPanel } from '@/components/compatibility/MbtiLensPanel';
 import { SignalCard } from '@/components/compatibility/SignalCard';
 import { ConversationCard } from '@/components/compatibility/ConversationCard';
@@ -27,7 +28,7 @@ import { BRAND, COMPATIBILITY_COPY, LOVY_LINES, PRIVACY, STATE_COPY } from '@/da
 import { useAnchorScroll } from '@/hooks/useAnchorScroll';
 import { narrativeIsShowable } from '@/lib/aiEvidenceResolver';
 import { compatibilityNarrativeFingerprint } from '@/lib/aiFingerprint';
-import { trackEvent, trackOnce } from '@/lib/analytics';
+import { trackEvent, trackOnce, trackOncePerAnalysis } from '@/lib/analytics';
 import { lensAvailability } from '@/lib/logic/birth';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { isRevisit, revisitHref, revisitSource } from '@/lib/resultView';
@@ -39,6 +40,7 @@ import {
   useEvidenceContext,
 } from '@/hooks/useAiNarrative';
 import {
+  useApproachHints,
   useCompatibility,
   useConversationQuestions,
   useMbtiLens,
@@ -104,6 +106,7 @@ function CompatibilityView() {
   const restGood = result.goodSignals.slice(1);
   const restFriction = result.frictionSignals.slice(1);
   const pastObservation = usePastObservation(topFriction?.key ?? null);
+  const approachHints = useApproachHints();
 
   const [showAllGood, setShowAllGood] = useState(false);
   const [showAllFriction, setShowAllFriction] = useState(false);
@@ -132,6 +135,8 @@ function CompatibilityView() {
 
   useAnchorScroll(result.score !== null);
 
+  const funnelAnalysisId = answers.currentAnalysisMeta?.funnelAnalysisId ?? null;
+
   useEffect(() => {
     if (result.score === null) return;
     // Primary KPI 분모 — 세션당 한 번만. Revisit 여부와 무관하게 기존 정책 그대로(§12).
@@ -141,7 +146,13 @@ function CompatibilityView() {
       result_state: 'scored',
       compared: result.comparedCount,
     });
-  }, [result.score, result.comparedCount]);
+    // v1.12 §18~§23 — Analysis Funnel Conversion 분모. Revisit이어도 같은
+    // funnelAnalysisId라 재발생하지 않고, 새 상대(새 funnelAnalysisId)마다 다시 발생한다.
+    trackOncePerAnalysis('compatibility_analysis_result_view', funnelAnalysisId, {
+      score: result.score,
+      result_state: 'scored',
+    });
+  }, [result.score, result.comparedCount, funnelAnalysisId]);
 
   useEffect(() => {
     if (!mbtiLens) return;
@@ -168,6 +179,13 @@ function CompatibilityView() {
     if (mbtiQuestionCount === 0) return;
     trackEvent('mbti_conversation_question_view', { count: mbtiQuestionCount });
   }, [mbtiQuestionCount]);
+
+  // v1.13 §43 — Secondary 지표(Approach Hint View Rate)용. Primary KPI가 아니므로
+  // 다른 세션-단위 지표처럼 엄격히 dedup하지 않는다(§22 mbti_conversation_question_view와
+  // 같은 수준). raw interest 텍스트·힌트 문장 원문은 절대 보내지 않는다(§40).
+  useEffect(() => {
+    trackEvent('approach_hint_view', { hint_count: approachHints.length });
+  }, [approachHints.length]);
 
   if (result.score === null) {
     return <LowConfidenceView />;
@@ -237,6 +255,7 @@ function CompatibilityView() {
             { id: RESULT_ANCHORS.compatibilityWhy, label: '왜 이 점수야' },
             { id: RESULT_ANCHORS.compatibilityGood, label: '잘 맞는 점' },
             { id: RESULT_ANCHORS.compatibilityFriction, label: '확인할 점' },
+            { id: RESULT_ANCHORS.compatibilityApproach, label: '다가갈 때' },
             { id: RESULT_ANCHORS.compatibilityQuestions, label: '질문' },
           ]}
         />
@@ -407,6 +426,56 @@ function CompatibilityView() {
           </button>
         </section>
 
+        {/* v1.13 — 다가가는 힌트(Approach Hints). 호감도 예측·공략법이 아니다(§2/§46) —
+            네가 알려준 취향·관계 방식을 존중해서 다가가는 방법일 뿐이다. */}
+        <section id={RESULT_ANCHORS.compatibilityApproach} className="flex flex-col gap-2.5">
+          <SectionLabel>이 사람에게 다가갈 때</SectionLabel>
+          <p className="px-1 text-caption keep-all leading-relaxed text-ink-sub">
+            네가 알려준 이 사람의 취향과 관계 방식을 기준으로 생각해봤어.
+          </p>
+
+          {approachHints.length > 0 ? (
+            <ul className="flex flex-col gap-2.5">
+              {approachHints.map((hint) => (
+                <ApproachHintCard
+                  key={hint.id}
+                  hint={hint}
+                  target={answers.target}
+                  onExpand={() => trackEvent('approach_hint_expand', { kind: hint.kind })}
+                />
+              ))}
+            </ul>
+          ) : (
+            <div className="flex flex-col gap-2 rounded-card border border-dashed border-line-strong bg-canvas-warm p-4">
+              <p className="text-caption keep-all leading-relaxed text-ink-sub">
+                아직 이 사람이 좋아하는 걸 많이 알진 못하네.
+              </p>
+              <a
+                href={`#${RESULT_ANCHORS.compatibilityQuestions}`}
+                onClick={() => trackEvent('approach_hint_question_click', {})}
+                className="text-[12.5px] font-medium text-brand-pressed"
+              >
+                이야기해볼 질문 보러 가기 →
+              </a>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between px-1">
+            <p className="text-[11px] keep-all text-ink-faint">
+              이건 공략법은 아니야. 실제론 직접 물어보는 게 가장 정확해.
+            </p>
+            {/* v1.13 §36 — 상대 정보는 틀릴 수 있다. resetTargetContext()를 쓰지 않는다 —
+                그건 새 상대용이고, 여기는 지금 값을 그대로 고치는 것이다. */}
+            <button
+              type="button"
+              onClick={() => router.push(ROUTES.target)}
+              className="flex-none text-[11px] font-medium text-brand-pressed"
+            >
+              상대 정보 수정
+            </button>
+          </div>
+        </section>
+
         <section id={RESULT_ANCHORS.compatibilityQuestions} className="flex flex-col gap-2.5">
           <SectionLabel>이야기해볼 질문</SectionLabel>
           <ul className="flex flex-col gap-2.5">
@@ -494,6 +563,12 @@ function CompatibilityView() {
 function LowConfidenceView() {
   const router = useRouter();
   const result = useCompatibility();
+  const { answers } = useSession();
+  const funnelAnalysisId = answers.currentAnalysisMeta?.funnelAnalysisId ?? null;
+  // v1.13 — interests는 comparedCount에 들어가지 않아서(§11), E3(확신 낮음)이어도
+  // '좋아하는 것'만 알고 있으면 활동 힌트는 만들 수 있다. friction 힌트(§24)는
+  // score===null이라 frictionSignals가 비어 있으므로 자연히 만들어지지 않는다.
+  const approachHints = useApproachHints();
 
   useEffect(() => {
     // v1.11.1 §17~§20 — E3(확신 낮음)는 '0점'이 아니라 '계산 자체가 불가능한 상태'다.
@@ -503,7 +578,17 @@ function LowConfidenceView() {
       result_state: 'insufficient',
       compared: result.comparedCount,
     });
-  }, [result.comparedCount]);
+    // v1.12 §18~§23 — 기존 정책 그대로 E3도 Analysis Funnel 분모에 포함한다.
+    trackOncePerAnalysis('compatibility_analysis_result_view', funnelAnalysisId, {
+      score: null,
+      result_state: 'insufficient',
+    });
+  }, [result.comparedCount, funnelAnalysisId]);
+
+  useEffect(() => {
+    if (approachHints.length === 0) return;
+    trackEvent('approach_hint_view', { hint_count: approachHints.length });
+  }, [approachHints.length]);
 
   return (
     <ScreenLayout
@@ -549,6 +634,28 @@ function LowConfidenceView() {
             {Math.max(1, 3 - result.comparedCount)}개 이상 더 알려주면 동기화율을 계산할 수 있어.
           </p>
         </div>
+
+        {approachHints.length > 0 ? (
+          <section id={RESULT_ANCHORS.compatibilityApproach} className="flex flex-col gap-2.5">
+            <SectionLabel>이 사람에게 다가갈 때</SectionLabel>
+            <p className="px-1 text-caption keep-all leading-relaxed text-ink-sub">
+              동기화율은 아직 못 냈지만, 네가 알려준 것만으로도 생각해볼 게 있어.
+            </p>
+            <ul className="flex flex-col gap-2.5">
+              {approachHints.map((hint) => (
+                <ApproachHintCard
+                  key={hint.id}
+                  hint={hint}
+                  target={answers.target}
+                  onExpand={() => trackEvent('approach_hint_expand', { kind: hint.kind })}
+                />
+              ))}
+            </ul>
+            <p className="px-1 text-[11px] keep-all text-ink-faint">
+              이건 공략법은 아니야. 실제론 직접 물어보는 게 가장 정확해.
+            </p>
+          </section>
+        ) : null}
       </div>
     </ScreenLayout>
   );

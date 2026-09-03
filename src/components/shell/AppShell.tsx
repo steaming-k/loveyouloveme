@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 
 import { AiDebugPanel } from '@/components/ai/AiDebugPanel';
+import { ConsentBanner } from '@/components/common/ConsentBanner';
 import { PrototypePanel } from './PrototypePanel';
 
 /**
@@ -23,6 +24,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <DeviceTopBar />
           <main className="min-h-0 flex-1">{children}</main>
           <AiDebugPanel />
+          <ConsentBanner />
         </div>
       </div>
 

@@ -10,11 +10,12 @@ import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { Lovy } from '@/components/lovy/Lovy';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { LOVY_LINES, PRIVACY, STATE_COPY } from '@/data/copy';
-import { trackEvent } from '@/lib/analytics';
+import { trackEvent, trackOncePerAnalysis } from '@/lib/analytics';
 import { ROUTES } from '@/lib/routes';
 import { TeaserComparison } from '@/components/mirror/TeaserComparison';
 import { useRelationshipNarrative } from '@/hooks/useAiNarrative';
 import { useCompatibility, useMirror } from '@/hooks/useAnalysis';
+import { useSession } from '@/state/SessionProvider';
 
 /**
  * S26 Relationship Mirror Teaser — 가장 중요한 Funnel Transition
@@ -37,6 +38,8 @@ function MirrorTeaserView() {
   const router = useRouter();
   const mirror = useMirror();
   const compatibility = useCompatibility();
+  const { answers } = useSession();
+  const funnelAnalysisId = answers.currentAnalysisMeta?.funnelAnalysisId ?? null;
 
   /**
    * v1.7 §61 — Relationship Narrative **Prefetch.**
@@ -103,6 +106,11 @@ function MirrorTeaserView() {
               trackEvent('relationship_mirror_entry_click', {
                 axis: teaser.axisKey,
                 score: compatibility.score ?? 0,
+              });
+              // v1.12 §18~§23 — Analysis Funnel Conversion 분자. 새 상대(새
+              // funnelAnalysisId)마다 다시 발생하고, 같은 분석을 여러 번 눌러도 1회만.
+              trackOncePerAnalysis('relationship_mirror_analysis_entry', funnelAnalysisId, {
+                axis: teaser.axisKey,
               });
               router.push(ROUTES.mirror);
             }}

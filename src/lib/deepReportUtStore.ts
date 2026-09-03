@@ -35,6 +35,11 @@ export function getDeepReportUt(analysisId: string): DeepReportUtResponse | null
   return readAll().find((item) => item.analysisId === analysisId) ?? null;
 }
 
+/** v1.12 §38 — UT 결과 내보내기가 전체 응답 목록을 읽을 때 쓴다 */
+export function getAllDeepReportUt(): DeepReportUtResponse[] {
+  return readAll();
+}
+
 export function hasCompletedDeepReportUt(analysisId: string): boolean {
   return Boolean(getDeepReportUt(analysisId)?.completedAt);
 }
