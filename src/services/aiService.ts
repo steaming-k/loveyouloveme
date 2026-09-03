@@ -16,6 +16,7 @@ import { photoFingerprint, prepareImagesForAnalysis } from '@/services/ai/imageP
 import type { EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
 import type {
   AiFailureReason,
+  AiObservedTrait,
   AiTask,
   CompatibilityNarrativeBundle,
   CompatibilityResult,
@@ -270,12 +271,13 @@ export function requestDeepReportNarrative(
 }
 
 export async function generateRelationshipProfile(input: {
+  traits: readonly AiObservedTrait[];
   observations: Record<string, ObservationFeedback>;
   declared: DeclaredPreference;
   experience: RelationshipExperience;
 }): Promise<RelationshipProfile> {
   return withLatency(
-    buildRelationshipProfile(input.observations, input.declared, input.experience),
+    buildRelationshipProfile(input.traits, input.observations, input.declared, input.experience),
   );
 }
 

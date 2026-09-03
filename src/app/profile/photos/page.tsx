@@ -1,7 +1,7 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 
 import { Button } from '@/components/common/Button';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
@@ -12,18 +12,32 @@ import { PRIVACY } from '@/data/copy';
 import { PHOTO_MAX_COUNT, PHOTO_MIN_COUNT } from '@/data/samplePhotos';
 import { trackEvent } from '@/lib/analytics';
 import { AI_MODE_HINT } from '@/lib/env';
+import { isProfileRevisitReturn, resolveReturnDestination, withReturnTo } from '@/lib/returnTo';
 import { ROUTES } from '@/lib/routes';
 import { isPhotoSelectionValid } from '@/lib/validation';
 import { useSession } from '@/state/SessionProvider';
 
 /** S07 사진 입력 — 실제 file input + 샘플 타일. 업로드 없이도 흐름이 막히지 않는다. */
 export default function PhotoInputPage() {
+  // v1.16 — Profile Revisit(§27)에서 들어왔을 때 `from`을 잃지 않도록 PhotoInputView가
+  // useSearchParams()를 쓴다.
+  return (
+    <Suspense fallback={null}>
+      <PhotoInputView />
+    </Suspense>
+  );
+}
+
+function PhotoInputView() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { answers, applyDemoPhotos, clearPhotos } = useSession();
   const [error, setError] = useState<string | null>(null);
 
   const count = answers.photos.length;
   const valid = isPhotoSelectionValid(answers);
+  /** v1.16 — Profile Result(Revisit)의 '사진 추가·수정'/Observed 뒤로가기로 들어온 경우 */
+  const editingExisting = isProfileRevisitReturn(searchParams);
   /**
    * ⚠️ 이건 **표시용 힌트**다. 실제 동작 모드는 서버(`AI_MODE`)가 정하고, 결과의 진짜 모드는
    * 응답 `meta.mode`가 말한다(S09에서 그 값으로 배지를 그린다). 여기서 이 힌트를 쓰는 이유는
@@ -41,16 +55,29 @@ export default function PhotoInputPage() {
       count,
       uploads: answers.photos.filter((photo) => photo.source === 'upload').length,
     });
-    router.push(ROUTES.photoAnalyzing);
+    router.push(withReturnTo(ROUTES.photoAnalyzing, searchParams));
   };
 
   return (
     <ScreenLayout
-      header={<ScreenHeader backHref={ROUTES.profileIntro} progress={22} counter="1/3" />}
+      header={
+        <ScreenHeader
+          backHref={
+            editingExisting
+              ? resolveReturnDestination(searchParams, ROUTES.profileIntro)
+              : ROUTES.profileIntro
+          }
+          progress={editingExisting ? undefined : 22}
+          counter={editingExisting ? undefined : '1/3'}
+          title={editingExisting ? '사진 추가·수정' : undefined}
+        />
+      }
       footer={
         <div className="flex flex-col gap-1.5">
           {error ? <InlineError message={error} /> : null}
-          <Button onClick={handleNext}>러비에게 보여주기 · {count}장</Button>
+          <Button onClick={handleNext}>
+            {editingExisting ? `이 사진으로 다시 분석 · ${count}장` : `러비에게 보여주기 · ${count}장`}
+          </Button>
           {/*
             §14 — Demo 모드에서는 사진이 나가지 않는다. 그런데도 '전송돼요'라고 말하면
             우리가 하지도 않는 일을 고지하는 것이라 안내가 거짓이 된다.
@@ -74,6 +101,12 @@ export default function PhotoInputPage() {
             ) : undefined
           }
         />
+
+        {editingExisting ? (
+          <NoticeBox>
+            사진을 바꾸면 Observed Me만 다시 분석돼. 관계 성향·이전 경험·상대 정보는 그대로 남아.
+          </NoticeBox>
+        ) : null}
 
         <div className="flex items-center justify-between px-1">
           <p className="text-meta text-ink-sub">

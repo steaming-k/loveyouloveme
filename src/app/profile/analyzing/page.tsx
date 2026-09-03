@@ -1,7 +1,7 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/common/Button';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
@@ -9,6 +9,7 @@ import { LovyLoading } from '@/components/lovy/LovyLoading';
 import { AiFailureView } from '@/components/profile/AiFailureView';
 import { OBSERVED_LOADING } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
+import { resolveReturnDestination, withReturnTo } from '@/lib/returnTo';
 import { ROUTES } from '@/lib/routes';
 import { analyzeObservedProfile } from '@/services/aiService';
 import { useSession } from '@/state/SessionProvider';
@@ -27,7 +28,17 @@ import type { AiFailureReason } from '@/types';
  * ?error=1 로 진입하면 실패 상태(E2)를 그대로 확인할 수 있다.
  */
 export default function ObservedLoadingPage() {
+  // v1.16 — Photo Revisit(§27)에서 들어온 `from`을 잃지 않도록 View가 useSearchParams()를 쓴다.
+  return (
+    <Suspense fallback={null}>
+      <ObservedLoadingView />
+    </Suspense>
+  );
+}
+
+function ObservedLoadingView() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { answers, setObservedAnalysis } = useSession();
 
   const [failure, setFailure] = useState<AiFailureReason | null>(null);
@@ -50,8 +61,10 @@ export default function ObservedLoadingPage() {
   const completedKey = useRef<string | null>(null);
 
   const goNext = useCallback(() => {
-    if (analysisDone.current && sequenceDone.current) router.replace(ROUTES.observed);
-  }, [router]);
+    if (analysisDone.current && sequenceDone.current) {
+      router.replace(withReturnTo(ROUTES.observed, searchParams));
+    }
+  }, [router, searchParams]);
 
   useEffect(() => {
     const key = `${retryCount}:${answers.photos.map((photo) => photo.id).join(',')}`;
@@ -170,10 +183,16 @@ export default function ObservedLoadingPage() {
             >
               다시 분석
             </Button>
-            <Button variant="text" onClick={() => router.push(ROUTES.photos)}>
+            <Button
+              variant="text"
+              onClick={() => router.push(withReturnTo(ROUTES.photos, searchParams))}
+            >
               사진 다시 고르기
             </Button>
-            <Button variant="text" onClick={() => router.push(ROUTES.declared(1))}>
+            <Button
+              variant="text"
+              onClick={() => router.push(resolveReturnDestination(searchParams, ROUTES.declared(1)))}
+            >
               질문으로 계속하기
             </Button>
           </div>

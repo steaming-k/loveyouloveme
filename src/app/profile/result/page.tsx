@@ -199,9 +199,17 @@ function ProfileResultView() {
         open={editOpen}
         onClose={() => setEditOpen(false)}
         title="어디를 고칠까?"
-        description="바꾸면 동기화율과 Relationship Mirror도 함께 다시 계산돼."
+        description="사진을 바꾸면 Observed Me만 다시 분석돼. 관계 성향·이전 경험을 바꾸면 동기화율과 Relationship Mirror도 함께 다시 계산돼."
       >
         <div className="flex flex-col gap-2">
+          <FillDataRow
+            label="사진 추가·수정"
+            actionLabel="이동"
+            onClick={() => {
+              if (revisit) trackEvent('result_edit_entry', { section: 'photos' });
+              router.push(editHref(ROUTES.photos));
+            }}
+          />
           <FillDataRow
             label="사진 관찰 다시 보기"
             actionLabel="이동"

@@ -17,7 +17,7 @@ import { UtRatingCard } from '@/components/ut/UtRatingCard';
 import { LOVY_LINES, PRIVACY } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { observedEvidenceLabel } from '@/lib/logic/observed';
-import { resolveReturnDestination } from '@/lib/returnTo';
+import { resolveReturnDestination, withReturnTo } from '@/lib/returnTo';
 import { ROUTES } from '@/lib/routes';
 import { isObservedReviewComplete } from '@/lib/validation';
 import { useSession } from '@/state/SessionProvider';
@@ -34,11 +34,25 @@ import type { AiMode, ObservedAnalysisState } from '@/types';
 function emptyStateCopy(
   state: ObservedAnalysisState | null,
   mode: AiMode,
+  photosGone: boolean,
 ): { title: string; body: string } {
   if (state === null) {
     return {
       title: '아직 사진을 관찰하지 않았어.',
       body: '사진을 고르고 관찰을 시작하면 여기에 결과가 보여.',
+    };
+  }
+
+  /**
+   * v1.16 — Photo Revisit §4-D. 예전 분석은 있는데 지금은 근거 사진이 하나도 없는 상태다.
+   * 이건 '분석 실패'도 '반복 없음'도 아니다 — 근거 자체가 사라졌으니 stale 결과를 현재
+   * 결과인 것처럼 보여주지 않는다. 확인·수정 기록(`observations`)은 지우지 않으므로,
+   * 사진을 다시 고르고 재분석하면 같은 trait id에 대한 과거 correction이 그대로 돌아온다.
+   */
+  if (photosGone) {
+    return {
+      title: '지금은 볼 수 있는 사진이 없어.',
+      body: '이전 관찰 기록은 남겨뒀어. 사진을 다시 고르면 새로 관찰할 수 있어.',
     };
   }
 
@@ -156,20 +170,30 @@ function ObservedResultView() {
     router.push(resolveReturnDestination(searchParams, ROUTES.declared(1)));
   };
 
+  /** v1.16 — Photo Revisit §4-D. 예전 분석이 있어도 지금 근거 사진이 없으면 stale로 다룬다 */
+  const photosGone = answers.photos.length === 0;
+
   /**
    * §62 — Trait 0개는 **실패가 아니다.** '근거를 못 찾았다'는 정상 상태이고,
    * 사진 분석이 약하다고 Core Funnel을 막지 않는다(§63) — 질문으로 계속할 길을 함께 준다.
    */
-  if (traits.length === 0) {
-    const empty = emptyStateCopy(analysis === null ? null : observedState, mode);
+  if (traits.length === 0 || photosGone) {
+    const empty = emptyStateCopy(analysis === null ? null : observedState, mode, photosGone);
 
     return (
       <ScreenLayout
-        header={<ScreenHeader backHref={ROUTES.photos} title="관찰 기록" />}
+        header={
+          <ScreenHeader backHref={withReturnTo(ROUTES.photos, searchParams)} title="관찰 기록" />
+        }
         footer={
           <div className="flex flex-col gap-0.5">
-            <Button onClick={() => router.push(ROUTES.photos)}>사진 더 고르기</Button>
-            <Button variant="text" onClick={() => router.push(ROUTES.declared(1))}>
+            <Button onClick={() => router.push(withReturnTo(ROUTES.photos, searchParams))}>
+              사진 더 고르기
+            </Button>
+            <Button
+              variant="text"
+              onClick={() => router.push(resolveReturnDestination(searchParams, ROUTES.declared(1)))}
+            >
               질문으로 계속하기
             </Button>
           </div>
@@ -179,7 +203,8 @@ function ObservedResultView() {
           <Lovy pose="question" size={120} decorative />
           <h2 className="text-section keep-all">{empty.title}</h2>
           <p className="text-sub keep-all leading-relaxed text-ink-sub">{empty.body}</p>
-          {analysis && analysis.limitations.length > 0 ? (
+          {/* photosGone일 때는 예전 근거의 limitations를 지금 상태처럼 보여주지 않는다 */}
+          {!photosGone && analysis && analysis.limitations.length > 0 ? (
             <ul className="flex flex-col gap-1.5 pt-1">
               {analysis.limitations.map((item) => (
                 <li key={item} className="text-meta keep-all leading-relaxed text-ink-faint">
@@ -196,7 +221,13 @@ function ObservedResultView() {
   return (
     <>
       <ScreenLayout
-        header={<ScreenHeader backHref={ROUTES.photos} progress={30} counter="2/3" />}
+        header={
+          <ScreenHeader
+            backHref={withReturnTo(ROUTES.photos, searchParams)}
+            progress={30}
+            counter="2/3"
+          />
+        }
         footer={
           <div className="flex flex-col gap-2">
             {error ? <InlineError message={error} /> : null}

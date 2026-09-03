@@ -126,12 +126,20 @@ export function useHistoryReport(): HistoryReport {
   return useMemo(() => buildHistoryReport(entries), [entries]);
 }
 
+/**
+ * v1.16 — 사진이 하나도 없으면(전체 삭제) 예전 `observedAnalysis`가 남아 있어도 그 근거로
+ * 삼지 않는다(Photo Revisit §4-D) — 근거 사진이 없는 관찰을 현재 결과인 것처럼 보여주지
+ * 않는다. `observations`(사용자 확인/수정 기록)는 지우지 않으므로, 사진을 다시 고르고
+ * 재분석하면 같은 trait id에 대한 과거 correction이 그대로 다시 살아난다.
+ */
 export function useRelationshipProfile(): RelationshipProfile {
   const { answers } = useSession();
-  return useMemo(
-    () => aiSelectors.profile(answers.observations, answers.declared, answers.experience),
-    [answers.observations, answers.declared, answers.experience],
-  );
+  const hasPhotos = answers.photos.length > 0;
+  const observedTraits = answers.observedAnalysis?.traits;
+  return useMemo(() => {
+    const traits = hasPhotos ? (observedTraits ?? []) : [];
+    return aiSelectors.profile(traits, answers.observations, answers.declared, answers.experience);
+  }, [hasPhotos, observedTraits, answers.observations, answers.declared, answers.experience]);
 }
 
 export function useHomeHighlights(): { key: string; value: string }[] {

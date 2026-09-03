@@ -12,7 +12,7 @@
 export const RETURN_TO_PARAM = 'from';
 export const PROFILE_REVISIT_RETURN = 'profile-revisit';
 
-function isProfileRevisitReturn(searchParams: URLSearchParams | null | undefined): boolean {
+export function isProfileRevisitReturn(searchParams: URLSearchParams | null | undefined): boolean {
   return searchParams?.get(RETURN_TO_PARAM) === PROFILE_REVISIT_RETURN;
 }
 

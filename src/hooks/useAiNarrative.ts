@@ -120,12 +120,22 @@ function useNarrativeTask<T extends { meta: { mode: AiMode } }>(input: {
 
 /* -------------------------------------------------- 검증된 관찰 */
 
-/** 사용자 확인·수정을 반영한 관찰 목록. Narrative Context와 Evidence Resolver가 함께 쓴다 */
+/**
+ * 사용자 확인·수정을 반영한 관찰 목록. Narrative Context와 Evidence Resolver가 함께 쓴다.
+ *
+ * v1.16 — 사진이 하나도 없으면(전체 삭제) 예전 `observedAnalysis`가 남아 있어도 근거로
+ * 삼지 않는다(Photo Revisit §4-D, `useRelationshipProfile`와 같은 원칙). 이 훅이 유일한
+ * 소스라 여기서 한 번 막으면 Deep Report Cross-source Insight의 관측 근거 승격
+ * (`crossSourceInsights.findCorroboratingObservedTrait`)과 그 지문(`deepReportFingerprint`/
+ * `relationshipNarrativeFingerprint`)까지 함께 무효화된다 — Compatibility Score·Mirror
+ * classification·History는 이 값을 아예 쓰지 않으므로 영향이 없다.
+ */
 export function useValidatedObservations(): ValidatedObservation[] {
   const { answers } = useSession();
+  const hasPhotos = answers.photos.length > 0;
   return useMemo(
-    () => toValidatedObservations(answers.observedAnalysis, answers.observations),
-    [answers.observedAnalysis, answers.observations],
+    () => (hasPhotos ? toValidatedObservations(answers.observedAnalysis, answers.observations) : []),
+    [hasPhotos, answers.observedAnalysis, answers.observations],
   );
 }
 

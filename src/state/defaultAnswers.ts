@@ -1,5 +1,6 @@
 import { SAMPLE_PHOTOS } from '@/data/samplePhotos';
 import { createEmptyBirthProfile } from '@/lib/logic/birth';
+import { buildDemoObservedResult } from '@/services/ai/fallback';
 import type { SessionAnswers, TargetProfile } from '@/types';
 
 /**
@@ -72,6 +73,17 @@ export function createSampleAnswers(): SessionAnswers {
     ...base,
     status: 'solo_exp',
     photos: SAMPLE_PHOTOS.slice(0, 6).map((photo) => ({ ...photo })),
+    /**
+     * v1.16 — Profile Result(S18)의 OBSERVED ME 칩이 이제 `observedAnalysis.traits`를 근거로
+     * 삼는다(profile.ts `observedItems` 참고). 이 값이 없으면(예전엔 없어도 되던 필드) 데모
+     * 세션에서 그 칩이 비어 보인다 — 아래 `observations`(ob1~ob4)와 짝이 맞는 데모 분석
+     * 결과를 함께 채워둔다.
+     */
+    observedAnalysis: buildDemoObservedResult({
+      photoCount: 6,
+      inputFingerprint: 'sample',
+      mode: 'demo',
+    }),
     observations: {
       ob1: { verdict: 'ok' },
       ob2: { verdict: 'ok' },

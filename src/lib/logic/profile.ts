@@ -1,4 +1,4 @@
-import { OBSERVED_SHORT_LABEL, OBSERVED_TRAITS } from '@/data/observations';
+import { OBSERVED_SHORT_LABEL } from '@/data/observations';
 import {
   AFFECTION_LABEL,
   CONFLICT_LABEL,
@@ -8,6 +8,7 @@ import {
   PAST_FACTOR_LABEL,
 } from '@/data/labels';
 import type {
+  AiObservedTrait,
   Confidence,
   DeclaredPreference,
   HardestMoment,
@@ -41,10 +42,17 @@ function confidenceOf(experience: RelationshipExperience): Confidence {
   return experience.note.trim().length > 0 ? 'high' : 'medium';
 }
 
+/**
+ * v1.16 — 이 화면(S18)의 OBSERVED ME 칩은 **실제 분석 결과**(`answers.observedAnalysis.traits`)를
+ * 근거로 삼는다. 예전에는 고정된 데모 목록(`OBSERVED_TRAITS`, ob1~ob4)만 봤는데, real/mock
+ * 모드의 실제 trait id는 사진 신호 기반으로 동적으로 생성되어 그 목록과 전혀 겹치지 않았다 —
+ * 그래서 사진을 다시 분석해도 이 칩은 절대 바뀌지 않았다(Photo Revisit §12 위반).
+ */
 export function observedItems(
+  traits: readonly AiObservedTrait[],
   observations: Record<string, ObservationFeedback>,
 ): { id: string; label: string; corrected: boolean }[] {
-  return OBSERVED_TRAITS.filter((trait) => {
+  return traits.filter((trait) => {
     const feedback = observations[trait.id];
     if (feedback?.excluded) return false;
     // '조금 달라요'만 누른 항목은 빼고, 사용자가 직접 고쳐 쓴 항목은 고친 문장으로 남긴다.
@@ -54,7 +62,9 @@ export function observedItems(
     const corrected = observations[trait.id]?.correctedText?.trim();
     return {
       id: trait.id,
-      label: corrected || OBSERVED_SHORT_LABEL[trait.id] || trait.text,
+      // demo/legacy-demo는 짧은 라벨이 따로 있었다 — 있으면 그대로 쓰고, 없으면(real/mock)
+      // trait.label을 쓴다(스키마상 이미 짧은 명사구다, services/ai/schemas.ts 참고).
+      label: corrected || OBSERVED_SHORT_LABEL[trait.id] || trait.label,
       corrected: Boolean(corrected),
     };
   });
@@ -128,6 +138,7 @@ export function buildProfileSummary(
 }
 
 export function buildRelationshipProfile(
+  traits: readonly AiObservedTrait[],
   observations: Record<string, ObservationFeedback>,
   declared: DeclaredPreference,
   experience: RelationshipExperience,
@@ -137,7 +148,7 @@ export function buildRelationshipProfile(
       id: 'observed',
       title: 'OBSERVED ME',
       caption: '사진 관찰',
-      items: observedItems(observations).map((item) => item.label),
+      items: observedItems(traits, observations).map((item) => item.label),
     },
     {
       id: 'declared',
