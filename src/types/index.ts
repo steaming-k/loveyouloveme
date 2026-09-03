@@ -69,6 +69,21 @@ export interface MbtiLensReport {
   differentCount: number;
 }
 
+/** 한 사람의 MBTI만으로 보는 Self Lens — Couple 여부와 무관하게 항상 만들 수 있다(Self First) */
+export interface MbtiSelfAxis {
+  key: MbtiAxisKey;
+  eyebrow: string;
+  label: string;
+  letter: string;
+}
+
+export interface MbtiSelfLens {
+  type: MbtiType;
+  axes: MbtiSelfAxis[];
+  /** 자기탐색용 한 줄 — MBTI_SELF_NOTE */
+  note: string;
+}
+
 /* ------------------------------------------- Birth Profile (v1.4, 공용) */
 
 /**

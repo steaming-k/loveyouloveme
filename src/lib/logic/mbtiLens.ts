@@ -1,8 +1,9 @@
-import { MBTI_AXES } from '@/data/mbti';
+import { MBTI_AXES, MBTI_SELF_NOTE } from '@/data/mbti';
 import type {
   ConversationQuestion,
   MbtiAxisComparison,
   MbtiLensReport,
+  MbtiSelfLens,
   MbtiType,
 } from '@/types';
 
@@ -47,6 +48,23 @@ export function buildMbtiLens(
     sameCount,
     differentCount: axes.length - sameCount,
   };
+}
+
+/**
+ * 한 사람의 MBTI만으로 보는 Self Lens (Self First) — 상대 유무와 무관하게 항상 만들 수 있다.
+ * 비교가 아니라 '내 유형을 이 렌즈로 보면'이므로, 축별 같음/다름 판정을 하지 않는다.
+ */
+export function buildMbtiSelfLens(type: MbtiType | null): MbtiSelfLens | null {
+  if (!type) return null;
+
+  const axes = MBTI_AXES.map((def) => ({
+    key: def.key,
+    eyebrow: def.eyebrow,
+    label: def.label,
+    letter: type[def.index]!,
+  }));
+
+  return { type, axes, note: MBTI_SELF_NOTE[type] };
 }
 
 /**

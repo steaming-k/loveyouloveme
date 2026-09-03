@@ -213,7 +213,7 @@ export const HISTORY_COPY = {
   /** 저장 직후 Change Moment (§8/§9) */
   saved: {
     firstTitle: ['첫 관찰 기록을', '저장했어.'],
-    firstBody: '아직 비교할 과거의 너는 없네. 다음에 다시 관찰하면 그때 달라진 것도 알려줄게.',
+    firstBody: ['아직 비교할 과거의 너는 없네.', '다음에 다시 관찰하면 그때 달라진 것도 알려줄게.'],
     firstCta: '내 기록 보기',
     againTitle: ['지난 관찰과', '비교할 수 있게 됐어.'],
     againBody: '어느 쪽이 맞다고 판정하진 않을게. 달라진 지점만 보여줄게.',
@@ -324,8 +324,12 @@ export const SAJU_COPY = {
   selfCta: '내 사주 보기',
   coupleCta: '우리 사주 궁합 보기',
   engineOffTitle: '아직 계산 엔진이 연결되지 않았어',
-  engineOffBody:
-    '정확한 사주 명식 계산에는 절입 시각·진태양시·지역 보정이 필요해. 없는 결과를 내가 채워 넣진 않을게.',
+  /** SELF만 준비됐을 때(§13) */
+  engineOffBodySelf:
+    '네 정보는 준비됐어. 사주 계산 엔진이 연결되면 먼저 네 사주 렌즈부터 볼 수 있어.',
+  /** SELF + TARGET 모두 준비됐을 때(§13) */
+  engineOffBodyCouple:
+    '두 사람의 정보는 준비됐어. 엔진이 연결되면 각각의 결과와 둘의 비교까지 볼 수 있어.',
 } as const;
 
 /** X1-b Astrology Lens */
@@ -334,6 +338,7 @@ export const ASTROLOGY_COPY = {
   title: ['별자리 렌즈'],
   caption: '생년월일로 태양궁을 보고, 관계에서 이야기해볼 주제를 찾아볼게.',
   selfLabel: '나의 태양궁',
+  targetLabel: '상대의 태양궁',
   coupleCta: '우리 별자리 함께 보기',
   similarLabel: '비슷하게 읽힐 수 있는 부분',
   differentLabel: '다르게 나타날 수 있는 부분',
@@ -367,6 +372,20 @@ export const MBTI_LENS_COPY = {
   lovyNote: '이건 MBTI로 너희 관계를 판정한 건 아니야. 서로 이야기해볼 만한 차이를 하나 더 본 거야.',
   scoreNotice:
     '동기화율에는 MBTI를 넣지 않아. 점수는 연락·갈등·개인 시간·애정 표현 같은 실제 관계 신호로만 계산해.',
+  selfSectionLabel: '나',
+  targetSectionLabel: '상대',
+  togetherSectionLabel: '함께 보면',
+  /** State A — 내 MBTI가 없을 때 */
+  noSelfTitle: '아직 네 MBTI가 없어.',
+  noSelfBody: '입력하면 바로 네 성향부터 볼 수 있어.',
+  noSelfCta: '내 MBTI 입력하기',
+  /** State B — 내 MBTI만 있을 때, 상대 입력은 Optional CTA */
+  noTargetTitle: '상대 MBTI도 알고 있어?',
+  noTargetBody: '입력하면 상대의 결과와 둘의 비교도 볼 수 있어.',
+  noTargetCta: '상대 MBTI 입력하기',
+  /** Edge — 상대만 있고 내 MBTI가 없을 때(§22) */
+  targetOnlyBody: '상대 정보는 남아 있어. 먼저 네 정보를 입력하면 각자의 결과와 둘의 비교를 볼 수 있어.',
+  targetOnlyCta: '내 정보 입력',
 } as const;
 
 /** X1-b Astrology Lens 화면 */

@@ -1,5 +1,5 @@
 import { cn } from '@/lib/cn';
-import type { MbtiAxisComparison, MbtiLensReport } from '@/types';
+import type { MbtiAxisComparison, MbtiLensReport, MbtiSelfLens } from '@/types';
 
 /**
  * MBTI Lens 패널 — Supporting Lens
@@ -91,6 +91,44 @@ export function MbtiLensPanel({
           있어.
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * MBTI Self Lens 패널 — 상대 유무와 무관하게 항상 렌더링 가능한 '나 혼자 보는' 결과(Self First).
+ * 비교가 아니므로 축마다 글자 하나만 보여주고, 같음/다름 판정은 하지 않는다.
+ */
+export function MbtiSelfPanel({ lens, label }: { lens: MbtiSelfLens; label: string }) {
+  return (
+    <div className="flex flex-col gap-3.5 rounded-card border border-line bg-surface p-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[10.5px] font-semibold tracking-[0.05em] text-ink-muted">{label}</p>
+        <p className="text-body font-semibold tracking-[-0.2px]">{lens.type}</p>
+      </div>
+
+      <p className="rounded-[10px] bg-sunken px-3 py-2.5 text-[12.5px] keep-all leading-relaxed text-ink-sub">
+        {lens.note}
+      </p>
+
+      <ul className="flex flex-col gap-2.5">
+        {lens.axes.map((axis) => (
+          <li
+            key={axis.key}
+            className="flex items-center justify-between gap-3 border-t border-line-soft pt-2.5 first:border-t-0 first:pt-0"
+          >
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <p className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
+                {axis.eyebrow}
+              </p>
+              <p className="text-caption keep-all">{axis.label}</p>
+            </div>
+            <span className="flex-none rounded-[6px] bg-sunken px-2 py-1 text-[12px] font-semibold tnum text-ink">
+              {axis.letter}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

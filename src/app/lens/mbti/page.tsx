@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
@@ -9,12 +9,12 @@ import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { FillDataRow } from '@/components/common/StateScreens';
 import { NoticeBox, PageHeading, SectionLabel, Tag } from '@/components/common/primitives';
-import { MbtiLensPanel } from '@/components/compatibility/MbtiLensPanel';
+import { MbtiLensPanel, MbtiSelfPanel } from '@/components/compatibility/MbtiLensPanel';
 import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { MBTI_LENS_COPY } from '@/data/copy';
-import { MBTI_SELF_NOTE } from '@/data/mbti';
 import { trackEvent } from '@/lib/analytics';
+import { buildMbtiSelfLens } from '@/lib/logic/mbtiLens';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { premiumFeatureState } from '@/services/premiumService';
 import { ROUTES } from '@/lib/routes';
@@ -44,17 +44,20 @@ function MbtiLensView() {
   const report = useMbtiLens();
   const [variant] = useState(() => resolvePriceVariant());
 
-  useEffect(() => {
-    if (!report) return;
-    trackEvent('mbti_lens_view', {
-      self_mbti: report.mine,
-      target_mbti: report.theirs,
-      same_axes: report.sameCount,
-      different_axes: report.differentCount,
-    });
-  }, [report]);
+  const selfLens = useMemo(() => buildMbtiSelfLens(answers.mbti), [answers.mbti]);
+  const targetLens = useMemo(() => buildMbtiSelfLens(answers.target.mbti), [answers.target.mbti]);
 
-  const selfNote = answers.mbti ? MBTI_SELF_NOTE[answers.mbti] : null;
+  useEffect(() => {
+    trackEvent('mbti_lens_view', {
+      mode: report ? 'couple' : selfLens ? 'self' : 'empty',
+      has_self: Boolean(answers.mbti),
+      has_target: Boolean(answers.target.mbti),
+      self_mbti: answers.mbti ?? undefined,
+      target_mbti: answers.target.mbti ?? undefined,
+      same_axes: report?.sameCount,
+      different_axes: report?.differentCount,
+    });
+  }, [report, selfLens, answers.mbti, answers.target.mbti]);
 
   return (
     <ScreenLayout
@@ -69,34 +72,52 @@ function MbtiLensView() {
       <div className="flex flex-col gap-5">
         <PageHeading lines={MBTI_LENS_COPY.title} caption={MBTI_LENS_COPY.caption} />
 
-        {report ? (
+        {/* STATE A — 내 MBTI가 없으면 상대 유무와 무관하게 내 입력부터 유도한다(Self First) */}
+        {!selfLens ? (
+          <section className="flex flex-col gap-3">
+            <LovyMessage pose="question" size={52}>
+              {answers.target.mbti ? MBTI_LENS_COPY.targetOnlyBody : MBTI_LENS_COPY.noSelfBody}
+            </LovyMessage>
+            <Button onClick={() => router.push(ROUTES.declared(4))}>
+              {answers.target.mbti ? MBTI_LENS_COPY.targetOnlyCta : MBTI_LENS_COPY.noSelfCta}
+            </Button>
+          </section>
+        ) : (
           <>
+            {/* 01 MY LENS — 항상 먼저, 상대 정보와 무관하게 */}
             <section className="flex flex-col gap-2.5">
-              <SectionLabel>4가지 성향 비교</SectionLabel>
-              <MbtiLensPanel report={report} variant="full" />
+              <SectionLabel>{MBTI_LENS_COPY.selfSectionLabel}</SectionLabel>
+              <MbtiSelfPanel lens={selfLens} label={MBTI_LENS_COPY.selfSectionLabel} />
             </section>
 
-            <LovyMessage pose="book" size={56}>
-              {MBTI_LENS_COPY.lovyNote}
-            </LovyMessage>
-          </>
-        ) : (
-          <section className="flex flex-col gap-3">
-            <NoticeBox>
-              {answers.mbti
-                ? '상대 MBTI가 아직 없어. 두 유형이 모두 있어야 비교 렌즈를 만들 수 있어.'
-                : answers.target.mbti
-                  ? '네 MBTI가 아직 없어. 두 유형이 모두 있어야 비교 렌즈를 만들 수 있어.'
-                  : '아직 두 유형 모두 없어. 비교는 둘 다 입력했을 때만 할 수 있어.'}
-            </NoticeBox>
+            {targetLens && report ? (
+              <>
+                {/* 02 TARGET LENS — 상대 정보가 있을 때만 */}
+                <section className="flex flex-col gap-2.5">
+                  <SectionLabel>{MBTI_LENS_COPY.targetSectionLabel}</SectionLabel>
+                  <MbtiSelfPanel lens={targetLens} label={MBTI_LENS_COPY.targetSectionLabel} />
+                </section>
 
-            {selfNote ? (
-              <LovyMessage pose="book" size={52}>
-                <p className="mb-1.5 font-medium">{answers.mbti} · 이런 이야기가 있어</p>
-                <p className="text-ink-sub">{selfNote}</p>
-              </LovyMessage>
-            ) : null}
-          </section>
+                {/* 03 TOGETHER — 둘 다 있을 때만 */}
+                <section className="flex flex-col gap-2.5">
+                  <SectionLabel>{MBTI_LENS_COPY.togetherSectionLabel}</SectionLabel>
+                  <MbtiLensPanel report={report} variant="full" />
+                </section>
+
+                <LovyMessage pose="book" size={56}>
+                  {MBTI_LENS_COPY.lovyNote}
+                </LovyMessage>
+              </>
+            ) : (
+              // 상대 정보는 항상 Optional — 없다고 내 결과를 막지 않는다
+              <section className="flex flex-col gap-3">
+                <NoticeBox>{MBTI_LENS_COPY.noTargetTitle} {MBTI_LENS_COPY.noTargetBody}</NoticeBox>
+                <Button variant="secondary" onClick={() => router.push(ROUTES.target)}>
+                  {MBTI_LENS_COPY.noTargetCta}
+                </Button>
+              </section>
+            )}
+          </>
         )}
 
         <section className="flex flex-col gap-2">

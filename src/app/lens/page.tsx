@@ -57,6 +57,31 @@ function LensView() {
     return { label: '보기 →', active: false };
   };
 
+  /**
+   * Self First / Target Optional / Couple Progressive — 카드 설명을 상태별로 공통화한다.
+   * SELF 없음 → 입력 유도, SELF만 있음 → 내 결과 + 상대 추가 Optional 안내, 둘 다 → 함께 보기.
+   */
+  const captionFor = (href: string): string | null => {
+    if (href === ROUTES.lensMbti) {
+      if (!answers.mbti) return '내 정보 입력하기';
+      if (!answers.target.mbti)
+        return '내 MBTI 보기 · 상대 정보를 추가하면 둘도 비교할 수 있어';
+      return '우리 둘 보기';
+    }
+    if (href === ROUTES.lensAstrology) {
+      if (!selfBirthReady) return '생년월일 입력하기';
+      if (!availability.couple) return '내 별자리 보기 · 상대 정보를 추가하면 둘도 비교할 수 있어';
+      return '나 × 상대 보기';
+    }
+    if (href === ROUTES.lensSaju) {
+      if (!selfBirthReady) return '출생정보 입력하기';
+      if (!availability.couple)
+        return '내 사주 렌즈 보기 · 상대 정보를 추가하면 둘도 비교할 수 있어';
+      return '우리 둘의 사주 렌즈 보기';
+    }
+    return null;
+  };
+
   const groups = [
     { key: 'SUPPORTING' as const, label: 'SUPPORTING' },
     { key: 'ENTERTAINMENT' as const, label: 'ENTERTAINMENT · 재미로 보기' },
@@ -116,7 +141,9 @@ function LensView() {
                       >
                         <div className="flex min-w-0 flex-col gap-1">
                           <h3 className="text-[14.5px] font-medium">{item.title}</h3>
-                          <p className="text-[12.5px] keep-all text-ink-sub">{item.caption}</p>
+                          <p className="text-[12.5px] keep-all text-ink-sub">
+                            {captionFor(item.href ?? '') ?? item.caption}
+                          </p>
                         </div>
                         <Tag tone={status.active ? 'brand' : 'neutral'}>{status.label}</Tag>
                       </button>

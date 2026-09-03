@@ -65,8 +65,10 @@ function SajuLensView() {
     trackEvent('saju_lens_view', {
       mode: availability.couple ? 'compatibility' : 'self',
       engine_available: sajuEngineAvailable,
+      has_self: availability.self,
+      has_target: availability.couple || availability.missing === 'self',
     });
-  }, [availability.couple]);
+  }, [availability.couple, availability.self, availability.missing]);
 
   const showEngineNotice = availability.self && !sajuEngineAvailable;
 
@@ -98,7 +100,7 @@ function SajuLensView() {
             <Lovy pose="book" size={92} decorative />
             <h2 className="text-section keep-all">{SAJU_COPY.engineOffTitle}</h2>
             <p className="text-caption keep-all leading-relaxed text-ink-sub">
-              {SAJU_COPY.engineOffBody}
+              {availability.couple ? SAJU_COPY.engineOffBodyCouple : SAJU_COPY.engineOffBodySelf}
             </p>
             <span className="rounded-tag bg-chip px-2.5 py-1.5 text-[11px] font-semibold text-ink-muted">
               DEMO · 계산 엔진 미연결

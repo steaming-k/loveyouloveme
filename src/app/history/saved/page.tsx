@@ -76,7 +76,8 @@ function HistorySavedView() {
           )}
         </div>
       }
-      bodyClassName="pt-6 pb-4"
+      centered
+      bodyClassName="py-4"
     >
       <div className="flex flex-col items-center gap-5">
         <Lovy pose={first ? 'record' : 'calendar'} size={112} decorative />

@@ -56,6 +56,8 @@ function AstrologyLensView() {
   const availability = lensAvailability(mine, theirs, today);
 
   const self = useMemo(() => buildAstrologySelfLens(mine, today), [mine, today]);
+  // getSunSign 기반 계산을 self/target에 대칭적으로 적용한다 — TARGET도 단독 Result를 가진다(§9/§10)
+  const targetSelf = useMemo(() => buildAstrologySelfLens(theirs, today), [theirs, today]);
   const couple = useMemo(
     () => buildAstrologyCompatibility(mine, theirs, today),
     [mine, theirs, today],
@@ -64,12 +66,20 @@ function AstrologyLensView() {
   useEffect(() => {
     trackEvent('astrology_lens_view', {
       mode: availability.couple ? 'compatibility' : 'self',
+      has_self: availability.self,
+      has_target: targetSelf.available,
     });
-  }, [availability.couple]);
+  }, [availability.couple, availability.self, targetSelf.available]);
 
   const mergedLimitations = useMemo(
-    () => [...new Set([...self.limitations, ...(availability.couple ? couple.limitations : [])])],
-    [self.limitations, couple.limitations, availability.couple],
+    () => [
+      ...new Set([
+        ...self.limitations,
+        ...(availability.self ? targetSelf.limitations : []),
+        ...(availability.couple ? couple.limitations : []),
+      ]),
+    ],
+    [self.limitations, targetSelf.limitations, couple.limitations, availability.self, availability.couple],
   );
 
   return (
@@ -108,6 +118,24 @@ function AstrologyLensView() {
               </p>
               <p className="text-[21px] font-semibold tracking-[-0.5px]">{self.sunSignLabel}</p>
               <p className="text-caption keep-all leading-relaxed text-ink-sub">{self.trait}</p>
+            </div>
+          </section>
+        ) : null}
+
+        {/* Target Lens — 상대 정보가 있으면 Couple 여부와 무관하게 단독으로도 보여준다(§9/§10) */}
+        {availability.self && targetSelf.available && targetSelf.sunSign ? (
+          <section className="flex flex-col gap-2.5">
+            <SectionLabel>{ASTROLOGY_COPY.targetLabel}</SectionLabel>
+            <div className="flex flex-col gap-2 rounded-card border border-line bg-surface p-4">
+              <p className="text-[10.5px] font-semibold tracking-[0.06em] text-ink-muted">
+                SUN SIGN
+              </p>
+              <p className="text-[21px] font-semibold tracking-[-0.5px]">
+                {targetSelf.sunSignLabel}
+              </p>
+              <p className="text-caption keep-all leading-relaxed text-ink-sub">
+                {targetSelf.trait}
+              </p>
             </div>
           </section>
         ) : null}
