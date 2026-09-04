@@ -44,6 +44,23 @@ export function hasCompletedDeepReportUt(analysisId: string): boolean {
   return Boolean(getDeepReportUt(analysisId)?.completedAt);
 }
 
+/**
+ * v1.19 §13 — '리포트를 다 봤다'(= `deep_report_complete`)를 이미 기록했는지.
+ *
+ * `hasCompletedDeepReportUt`(위, UT 5문항 완료)와 **다른 사실**이다. Production에는 UT
+ * 5문항이 없어서 그 함수만으로는 완독 여부를 알 수 없고, 그러면 새로고침할 때마다 '다 봤어'
+ * 버튼이 다시 열려 Completion Rate 분자가 부풀어 오른다.
+ */
+export function hasCompletedDeepReport(analysisId: string): boolean {
+  return Boolean(getDeepReportUt(analysisId)?.reportCompletedAt);
+}
+
+/** 리포트 완독 시각을 남긴다. 이미 있으면 덮어쓰지 않는다 — 첫 완독 시점이 유지돼야 한다. */
+export function markDeepReportCompleted(analysisId: string): void {
+  if (hasCompletedDeepReport(analysisId)) return;
+  saveDeepReportUtAnswer(analysisId, { reportCompletedAt: new Date().toISOString() });
+}
+
 /** 질문 하나씩 저장한다 — 중간에 이탈해도 그때까지 답한 것은 남는다. */
 export function saveDeepReportUtAnswer(
   analysisId: string,

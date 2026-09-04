@@ -76,6 +76,7 @@ export function buildCompatibility(
     const theirsValue = targetValues[def.key];
     const similarity = similarityOf(mineValue, theirsValue);
     const level = target[def.key];
+    const tone = toneOf(similarity);
 
     return {
       key: def.key,
@@ -86,9 +87,19 @@ export function buildCompatibility(
       theirsPhrase: level === 'x' ? '모름' : def.theirsPhrase[level],
       // UI 게이지(5칸)용으로만 0~5에 매핑한다. 반올림 특성상 완전 반대(similarity=0)만 0칸이 된다.
       alignment: similarity === null ? null : Math.round(similarity * 5),
-      tone: toneOf(similarity),
-      evidence: def.evidence,
-      scene: def.scene,
+      tone,
+      /**
+       * v1.19 Release Gate §4 — 판정(`tone`)에 맞는 문장을 고른다.
+       *
+       * 이전에는 `def.evidence`/`def.scene`이 축당 문자열 하나였고 tone과 무관하게 그대로
+       * 붙었다. 그래서 '관찰 필요'로 판정된 축에 "…같은 구간이야"/"가능성이 낮아 보여"처럼
+       * **판정과 반대되는 문장**이 나갔다(무료 SignalCard·Premium 상세 양쪽 모두).
+       *
+       * ⚠️ 여기서 바뀌는 건 **표시 문구뿐**이다. `similarityOf`·`toneOf`·`alignment`·
+       * 동기화율 계산은 한 줄도 건드리지 않았다 — 같은 입력이면 점수도 판정도 그대로다.
+       */
+      evidence: def.evidence[tone],
+      scene: def.scene[tone],
     };
   });
 

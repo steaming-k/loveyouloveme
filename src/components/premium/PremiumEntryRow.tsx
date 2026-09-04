@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 
 import { SectionLabel } from '@/components/common/primitives';
@@ -8,7 +8,9 @@ import { DEEP_REPORT_COPY, PREMIUM_COPY } from '@/data/premium';
 import { PREMIUM_FAKE_DOOR } from '@/lib/env';
 import { trackEvent } from '@/lib/analytics';
 import { formatPrice, priceForScreenReader, resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
+import { isRevisit, revisitSource } from '@/lib/resultView';
 import { ROUTES } from '@/lib/routes';
+import { useSession } from '@/state/SessionProvider';
 import type { PremiumFeature, PremiumSource } from '@/types';
 
 /**
@@ -43,7 +45,25 @@ export function PremiumEntryRow({
   hook?: { variant: string; title: string; description: string; cta: string };
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { answers, hydrated } = useSession();
   const [variant] = useState(() => resolvePriceVariant());
+
+  /**
+   * v1.19 §29 — 지금 화면이 Revisit(v1.18 Bottom Navigation이 붙는 상태)이면 그 사실을
+   * Paywall까지 들고 간다. 그래야 '지금은 괜찮아'로 닫았을 때 하단 메뉴가 있는 화면으로
+   * 정확히 돌아온다. Revisit이 아니면 아무 것도 붙이지 않는다(기존 동작 그대로).
+   */
+  const returnTo = isRevisit(searchParams) ? revisitSource(searchParams) : undefined;
+
+  /**
+   * v1.19 §3 — Hook Attribution의 키. 같은 탭에서 두 번째 상대를 분석하면 새로 발급되므로
+   * (`SessionProvider`), 첫 상대에서 본 Hook과 두 번째 상대의 Intent가 섞이지 않는다.
+   * 여기서 URL로 넘기지 않고 Paywall도 같은 세션 값을 직접 읽는다 — 사용자가 주소창을
+   * 편집해서 attribution을 바꿀 수 없고, URL에 분석 식별자가 노출되지도 않는다.
+   * 아직 값이 없으면(hydration 이전 등) property 자체를 붙이지 않는다.
+   */
+  const funnelAnalysisId = answers.currentAnalysisMeta?.funnelAnalysisId ?? null;
 
   const price = feature.price ?? resolvePrice(variant);
   const isFakeDoor = feature.status === 'fake-door';
@@ -56,6 +76,20 @@ export function PremiumEntryRow({
 
   useEffect(() => {
     if (!PREMIUM_FAKE_DOOR || !isFakeDoor) return;
+    /**
+     * v1.19 §3 + Release Gate — **`funnel_analysis_id`가 실제로 생긴 뒤에** 보낸다.
+     *
+     * 이 행(궁합/Mirror/History)은 Paywall과 달리 `HydrationGate` 안에 있지 않다. 그래서
+     * 첫 렌더(빈 세션)에서 이벤트가 나가고 아래 ref 가드에 막혀 **`funnel_analysis_id`가
+     * 영영 붙지 않는** 문제가 있었다 — Hook CTR의 분모가 통째로 빈다.
+     *
+     * `hydrated`만 기다리는 것으로는 부족했다(Release Gate 실측에서 재현): React는 자식
+     * effect를 부모보다 **먼저** 실행하므로, hydration이 끝난 그 커밋에서 이 effect가
+     * `SessionProvider`의 id 발급 effect보다 앞서 돌아 값이 아직 없는 상태로 나갔다.
+     * 세션에 id가 처음 생기는 사용자(= 진짜 신규 사용자)의 **첫 Hook 노출**이 정확히 이
+     * 경우다. `SessionProvider`가 hydration 직후 반드시 발급하므로(§20), 그 값을 기다린다.
+     */
+    if (!hydrated || !funnelAnalysisId) return;
     if (viewSent.current === feature.id) return;
     viewSent.current = feature.id;
     trackEvent('premium_entry_view', {
@@ -64,9 +98,10 @@ export function PremiumEntryRow({
       price,
       variant,
       ...(hook ? { hook_variant: hook.variant } : {}),
+      funnel_analysis_id: funnelAnalysisId,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feature.id, entrySource, price, variant, isFakeDoor, hook?.variant]);
+  }, [feature.id, entrySource, price, variant, isFakeDoor, hook?.variant, funnelAnalysisId, hydrated]);
 
   if (!PREMIUM_FAKE_DOOR) return null;
 
@@ -99,8 +134,9 @@ export function PremiumEntryRow({
             price,
             variant,
             ...(hook ? { hook_variant: hook.variant } : {}),
+            ...(funnelAnalysisId ? { funnel_analysis_id: funnelAnalysisId } : {}),
           });
-          router.push(ROUTES.premium(entrySource, hook?.variant));
+          router.push(ROUTES.premium(entrySource, hook?.variant, returnTo));
         }}
         className="flex w-full flex-col gap-3 rounded-row border border-line bg-surface px-4 py-3.5 text-left active:bg-sunken"
       >

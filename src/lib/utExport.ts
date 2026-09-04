@@ -15,7 +15,14 @@ import { getEventLog } from './analytics';
 
 /** UT 참가자 평가와 직접 관련된 이벤트만 골라낸다 — 다른 Funnel 이벤트는 섞지 않는다 */
 const UT_EVENT_PREFIXES = ['ut_'];
-const UT_EVENT_NAMES = new Set(['deep_report_view', 'deep_report_complete']);
+// v1.19 — 사후 평가 2문항도 회수 대상이다. 이 둘은 Production에서도 발생하지만, 이 파일은
+// UT_MODE 연구자 화면에서만 호출되므로 노출 경로는 그대로다(§25).
+const UT_EVENT_NAMES = new Set([
+  'deep_report_view',
+  'deep_report_complete',
+  'deep_report_value_rating',
+  'deep_report_wtp_after_view',
+]);
 
 export interface UtExportPayload {
   exportedAt: string;
@@ -26,7 +33,12 @@ export interface UtExportPayload {
     genericness?: number;
     crossSourceValue?: number;
     wtp?: string;
+    /** v1.19 §10 Q1 — 무료 대비 추가 가치 1~5 */
+    valueRating?: number;
+    /** v1.19 §10 Q2 — 리포트를 다 본 뒤의 지불 '의향'(실제 결제 아님) */
+    wtpAfterView?: string;
     missingValueLength: number;
+    reportCompletedAt?: string;
     completedAt?: string;
   }>;
 }
@@ -45,7 +57,10 @@ export function buildUtExportPayload(): UtExportPayload {
     genericness: item.genericness,
     crossSourceValue: item.crossSourceValue,
     wtp: item.wtp,
+    valueRating: item.valueRating,
+    wtpAfterView: item.wtpAfterView,
     missingValueLength: item.missingValue?.length ?? 0,
+    reportCompletedAt: item.reportCompletedAt,
     completedAt: item.completedAt,
   }));
 

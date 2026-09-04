@@ -391,10 +391,19 @@ function situationFor(insight: CrossSourceInsight): DeepSituation | null {
   return {
     id: `situation_${insight.id}`,
     axis: insight.axis,
-    situation: def.scene,
+    /**
+     * v1.19 Release Gate §4 — `watch`(차이) 문장을 고정으로 쓴다.
+     *
+     * 이 함수는 위 가드에서 이미 **GAP/CONTRADICTION Insight만** 통과시킨다 — 즉 여기 오는
+     * 축은 정의상 '차이'다. 그런데 예전 `AXIS_DEFINITIONS`는 축당 문장이 하나뿐이었고
+     * alone/affection의 그 한 문장은 **잘 맞을 때** 기준으로 쓰여 있었다. 그래서 개인 시간
+     * GAP인데 "각자 시간을 보내는 걸 거절로 받아들일 가능성이 비교적 낮아 보여"가 붙는,
+     * 판정과 정반대인 상황 설명이 나갔다.
+     */
+    situation: def.scene.watch,
     myReaction: '말한 기준보다 실제 반응이 더 컸던 지점이라, 이 상황에서 평소보다 크게 반응할 수도 있어.',
     theirPossibleReaction: '상대는 이 부분을 너와 다르게 느낄 수도 있어.',
-    misunderstanding: def.evidence,
+    misunderstanding: def.evidence.watch,
     question: `${def.label}에서 서로 실제로 어떻게 느끼는지 확인해볼 수 있어.`,
   };
 }
@@ -459,6 +468,14 @@ function finalObservationFor(
  * — 재계산 없음)까지 한 겹 더 연결했을 때만 보이는 문장을 추가로 만든다. 셋 중 하나라도
  * 없으면(관심사가 없거나, 그 축에서 내 값을 모르면) null이다 — 없는 연결을 억지로
  * 만들지 않는다(§29 원칙 재사용).
+ *
+ * ⚠️ v1.19 §18 — 무료 힌트 문장(`activity.rationale`)을 **그대로 옮겨 적지 않는다.**
+ * 예전에는 이 문장을 통째로 앞에 붙이고 뒤에 내 축을 덧댔는데, 그러면 유료 카드의 절반이
+ * 사용자가 궁합 결과에서 이미 무료로 읽은 문장과 완전히 같아진다. `activity` 힌트의
+ * **존재 여부**는 그대로 게이트로 쓰되(= 이 관심사로 제안할 근거가 있다는 판정 재사용),
+ * 문장은 '무료 힌트가 왜 지금 이 관계 맥락에서 의미가 있는지'만 말한다.
+ *   FREE:    "무엇을 해보면 좋은지"       (상대 취향 → 행동 제안)
+ *   PREMIUM: "왜 그 제안이 지금 맞는지"   (상대 취향 × 상대 축 × **내 축**)
  */
 function approachInsightFor(
   target: TargetProfile,
@@ -474,7 +491,7 @@ function approachInsightFor(
   if (target.alone === 'h' && aloneDimension?.minePhrase) {
     return {
       title: `${primary.label}, 선택지를 열어두고 제안해봐`,
-      text: `${activity.rationale} 너는 개인 시간을 ${aloneDimension.minePhrase}로 답했어 — 이 차이를 생각하면, 계획을 일방적으로 잡기보다 선택지를 열어두는 제안이 더 자연스러울 수 있어.`,
+      text: `상대는 ${primary.label}을(를) 좋아하면서 개인 시간도 중요하게 보는 쪽인데, 너는 개인 시간을 ${aloneDimension.minePhrase}로 답했어. 무료 힌트에서 본 '하나를 구체적으로 제안하기'가 이 조합에서 특히 의미가 있는 이유가 여기 있어 — 일정을 확정해서 통보하면 상대는 자기 시간을 뺏겼다고 느낄 수 있고, 아무 제안도 안 하면 너는 관계가 진전되지 않는다고 느끼기 쉬워. 선택지를 열어둔 제안이 둘 다를 피하는 지점이야.`,
     };
   }
 
@@ -482,7 +499,7 @@ function approachInsightFor(
   if (target.contact === 'h' && contactDimension?.minePhrase) {
     return {
       title: `${primary.label} 이야기로 먼저 연락해봐`,
-      text: `${activity.rationale} 너는 연락 방식을 ${contactDimension.minePhrase}로 답했어 — 그 리듬 차이를 알고 있으면, ${primary.label} 이야기로 먼저 말을 걸어보는 게 더 자연스러울 수 있어.`,
+      text: `상대는 연락을 자주 주고받는 걸 편하게 느끼는 쪽이고, 너는 연락 방식을 ${contactDimension.minePhrase}로 답했어. 이 리듬 차이를 모르면 '무슨 말을 걸어야 할지 모르겠다'가 연락 자체를 미루는 이유가 되기 쉬워. ${primary.label}처럼 이미 알고 있는 공통 소재가 있으면, 용건을 만들지 않아도 말을 시작할 수 있어서 리듬 차이가 덜 부담스러워져.`,
     };
   }
 

@@ -102,6 +102,12 @@ export const ANALYTICS_EVENTS = [
   // v1.15 — 새 이벤트를 늘리지 않고 아래 6개 property를 확장했다: `hook_variant`
   // (friction_why/mirror_why/history_change — Contextual Hook에서 온 경우만),
   // `price`는 이제 항상 1900.
+  // v1.19 §3 — 여기에 `funnel_analysis_id`를 추가했다(새 이벤트는 늘리지 않는다).
+  // entry_view → entry_click → paywall_view → purchase_intent 전 구간에 같은 값이 붙어야
+  // '어느 Hook이 이 분석에서 Intent를 만들었는가'를 GA4에서 계산할 수 있다. 같은 탭에서
+  // 두 번째 상대를 분석하면 이 값이 새로 발급되므로 첫 상대의 Hook과 섞이지 않는다.
+  // ⚠️ 이건 **실제 구매가 아니다**(§5). purchase / payment_complete / revenue로 보내지
+  // 않고, GA4 ecommerce purchase event에도 매핑하지 않는다 — 전부 '의향'이다.
   'premium_entry_view',
   'premium_entry_click',
   'premium_paywall_view',
@@ -152,6 +158,15 @@ export const ANALYTICS_EVENTS = [
   'deep_report_complete',
   /** v1.10 §49 — 50/100 두 단계만. 과도한 스크롤 이벤트를 피한다 */
   'deep_report_scroll',
+  // v1.19 §10~§12 — Deep Report **사후** 가치 평가. Production에서도 노출된다(UT_MODE 전용이
+  // 아니다). 아래 `ut_*` 5문항(연구자용 심화 문항)과 목적이 다르다 — 이 둘은 Premium Value
+  // Metrics(§14 D·E)를 계산하기 위한 최소 정량 2문항이다.
+  //
+  // ⚠️ `deep_report_wtp_after_view`는 `premium_purchase_intent`(리포트를 **보기 전** 기대
+  // 가치)와 절대 섞지 않는다(§11). 전자는 '다 보고 난 뒤의 체감 가치', 후자는 '보기 전 기대'다.
+  // 둘 다 **의향**이며 실제 결제도, GA4 purchase/revenue도 아니다(§5).
+  'deep_report_value_rating',
+  'deep_report_wtp_after_view',
   'deep_insight_evidence_expand',
   'deep_insight_feedback',
   'deep_insight_correction_submit',
@@ -263,6 +278,74 @@ function resolveExternalAdapter(): AnalyticsAdapter {
   return createGa4Adapter(GA_MEASUREMENT_ID);
 }
 
+/**
+ * v1.19 Release Gate §1~§2 — **내부 식별자 / 외부 Analytics 식별자 경계.**
+ *
+ * 실제 GA4 전송 본문을 열어보고 발견한 문제다: `deep_report_view` 등이
+ * `analysis_id=solo_exp|2|now|5|a2|h3|…|contact_drop|yes|…`를 싣고 있었다. 이건 단순
+ * 식별자가 아니라 `analysisFingerprint()`가 만든 **답변을 그대로 이어붙인 문자열**이라,
+ * 외부 Analytics에 남으면 사용자의 응답 프로필이 복원된다.
+ *
+ * 호출부는 전부 고쳤지만, 사람이 고친 것은 다시 되돌아온다. 그래서 경계를 **코드로**
+ * 세운다 — 이 함수가 외부 어댑터로 나가는 payload에서 금지 property를 걸러낸다.
+ *
+ * ⚠️ **local store에는 원래 payload를 그대로 남긴다.** 기기 밖으로 나가지 않고,
+ * UT 결과 회수(`utExport`)와 디버깅이 그 값을 필요로 한다. 걸러내는 건 외부 전송뿐이다.
+ *
+ * 분석 단위 연결이 필요하면 `funnel_analysis_id`를 쓴다 — 상대가 바뀔 때마다 새로 발급되는
+ * random UUID라 답변 내용을 encode하지 않는다.
+ */
+const EXTERNAL_FORBIDDEN_KEYS = new Set([
+  /** `analysisFingerprint()`/`compatibilityNarrativeFingerprint()` — 답변 파생 지문 */
+  'analysis_id',
+  'analysisId',
+  /** 원문 계열 — 실수로 붙는 것을 막는다(§24) */
+  'text',
+  'note',
+  'narrative',
+  'headline',
+  'interpretation',
+  'question_text',
+  'correction',
+  'birth_date',
+  'birth_time',
+  'birth_location',
+]);
+
+/**
+ * 값 모양으로도 한 번 더 막는다. 위 목록에 없는 이름으로 같은 지문을 보내는 실수를 잡는다 —
+ * `analysisFingerprint()`의 출력은 `|`로 이어붙인 10개 필드라서 구분자가 여러 개 나온다.
+ */
+function looksLikeFingerprint(value: unknown): boolean {
+  return typeof value === 'string' && value.length > 12 && (value.match(/\|/g)?.length ?? 0) >= 3;
+}
+
+function sanitizeForExternal(
+  name: AnalyticsEvent,
+  properties: AnalyticsProperties,
+): AnalyticsProperties {
+  const safe: AnalyticsProperties = {};
+  const dropped: string[] = [];
+
+  for (const [key, value] of Object.entries(properties)) {
+    if (EXTERNAL_FORBIDDEN_KEYS.has(key) || looksLikeFingerprint(value)) {
+      dropped.push(key);
+      continue;
+    }
+    safe[key] = value;
+  }
+
+  // 조용히 지우지 않는다 — 개발 중에 바로 보이게 해서 호출부를 고치게 한다.
+  if (dropped.length > 0 && process.env.NODE_ENV !== 'production') {
+    console.error(
+      `[analytics] "${name}"에서 외부 전송 금지 property를 걸렀다: ${dropped.join(', ')}. ` +
+        '분석 단위 연결이 필요하면 funnel_analysis_id를 쓸 것.',
+    );
+  }
+
+  return safe;
+}
+
 /** 이벤트 1건 기록. local store에 남기고, GA4 전송 조건(§16)을 만족하면 그쪽에도 보낸다. */
 export function trackEvent(name: AnalyticsEvent, properties: AnalyticsProperties = {}): void {
   const store = readStore();
@@ -276,7 +359,7 @@ export function trackEvent(name: AnalyticsEvent, properties: AnalyticsProperties
 
   // §29 — 외부 전송 실패가 Product UX에 영향을 주면 안 된다. console.error도 내지 않는다.
   try {
-    resolveExternalAdapter().track(name, properties);
+    resolveExternalAdapter().track(name, sanitizeForExternal(name, properties));
   } catch {
     // 무시
   }
@@ -320,10 +403,14 @@ const ANALYSIS_DEDUP_PREFIX = 'lym.analysis_fired.';
  * 재발생하지 않는다. 값이 아직 없으면(hydration 이전 등) 조용히 아무 것도 하지 않는다 —
  * 나중에 값이 생겨도 그 시점에 놓친 이벤트를 소급해서 쏘지 않는다.
  *
- * ⚠️ property 이름을 `analysis_id`가 아니라 `funnel_analysis_id`로 보낸다 — 기존
- * `*_result_revisit` 이벤트들은 `analysis_id`를 **declared/experience 기반 deterministic
- * fingerprint**(History의 `analysisId`와 같은 개념) 의미로 이미 쓰고 있다(§20). 같은
- * property 이름에 두 가지 다른 값을 섞으면 로그를 해석할 때 혼동된다.
+ * ⚠️ property 이름은 `funnel_analysis_id`다 — **opaque random UUID**이고 답변 내용을
+ * encode하지 않는다.
+ *
+ * v1.19 Release Gate §1 — 예전에는 `*_result_revisit` 계열이 `analysis_id`라는 이름으로
+ * **declared/experience 기반 deterministic fingerprint**를 함께 보냈고, 그래서 이 주석은
+ * "두 값을 이름으로 구분한다"고 설명하고 있었다. 지금은 그 지문을 **외부로 아예 보내지
+ * 않는다**(위 `sanitizeForExternal` 참고). 내부 지문(History 키·AI 캐시 키)은 그대로
+ * 유지하되, Analytics에 나가는 분석 단위 식별자는 이 값 하나뿐이다.
  */
 export function trackOncePerAnalysis(
   name: AnalyticsEvent,

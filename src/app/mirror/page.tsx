@@ -26,7 +26,7 @@ import { resolveEvidenceRefs } from '@/lib/aiEvidenceResolver';
 import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
 import { createEntryId } from '@/lib/historyRepository';
-import { analysisFingerprint, buildHistoryEntry } from '@/lib/logic/history';
+import { buildHistoryEntry } from '@/lib/logic/history';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { isRevisit, revisitSource } from '@/lib/resultView';
 import { RESULT_ANCHORS, ROUTES } from '@/lib/routes';
@@ -64,6 +64,8 @@ function MirrorView() {
   const { showToast } = useToast();
   const { answers, setCoreVerdict, setCoreCorrection, markComplete, markResultViewed } =
     useSession();
+  /** Release Gate §1 — 외부 Analytics용 opaque 식별자(답변 파생 지문을 대체한다) */
+  const funnelAnalysisId = answers.currentAnalysisMeta?.funnelAnalysisId ?? null;
   const mirror = useMirror();
   const repeated = useRepeatedSignals();
   const crossSourceInsights = useCrossSourceInsights();
@@ -122,11 +124,16 @@ function MirrorView() {
   useEffect(() => {
     // StrictMode 이중 마운트로 중복 발생하지 않게 mount 기준 1회만(§86 패턴과 동일)
     if (!revisit || !mirror.available || lowData || revisitFiredRef.current) return;
+    // ⚠️ `funnelAnalysisId`가 생긴 뒤에 보낸다. React는 자식 effect를 부모보다 먼저
+    // 실행하므로, hydration 직후 커밋에서는 `SessionProvider`의 id 발급보다 이 effect가
+    // 앞설 수 있다. 아래 ref 가드 때문에 한 번 놓치면 영영 안 붙는다(실측 확인).
+    if (!funnelAnalysisId) return;
     revisitFiredRef.current = true;
-    const analysisId = analysisFingerprint(answers.status, answers.declared, answers.experience);
-    trackEvent('mirror_result_revisit', { analysis_id: analysisId, source });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [revisit, source, mirror.available, lowData]);
+    // Release Gate §1 — 예전에는 `analysisFingerprint(...)`(= 답변을 그대로 이어붙인
+    // 문자열)를 `analysis_id`로 보냈다. 외부 Analytics에서 응답 프로필이 복원되므로
+    // opaque한 `funnel_analysis_id`로 바꾼다. 지문 자체는 History/캐시가 계속 쓴다.
+    trackEvent('mirror_result_revisit', { source, funnel_analysis_id: funnelAnalysisId });
+  }, [revisit, source, mirror.available, lowData, funnelAnalysisId]);
 
   useEffect(() => {
     if (!pastObservation || !focusAxis) return;

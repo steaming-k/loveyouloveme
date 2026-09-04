@@ -61,9 +61,20 @@ export const ROUTES = {
    * (`friction_why`/`mirror_why`/`history_change`)만 함께 넘긴다. Paywall이 보여줄
    * Feature 자체(`FEATURE_BY_SOURCE`)는 여전히 `source`만으로 정해진다 — hook은 순수
    * Analytics 구분용이다.
+   *
+   * v1.19 §29 — `returnTo`는 Post-analysis IA(v1.18 Bottom Navigation)를 왕복에서 지키기
+   * 위한 값이다. Revisit 모드(`?view=revisit&source=home`)로 결과를 다시 보던 사용자가
+   * Premium을 닫고 돌아왔을 때, 예전에는 `?view=revisit`이 사라져서 **하단 메뉴가 통째로
+   * 없어지고** 최초 Funnel 화면으로 떨어졌다(실측 확인). 여기서는 `RevisitSource`
+   * (`home`/`history`/`share`/`direct`) **하나만** 넘긴다 — 임의 URL을 되돌림 대상으로
+   * 받지 않기 위해서다. Paywall이 이 값으로 `revisitHref()`를 다시 만든다.
    */
-  premium: (source: string, hook?: string) =>
-    hook ? `/premium?source=${source}&hook=${hook}` : `/premium?source=${source}`,
+  premium: (source: string, hook?: string, returnTo?: string) => {
+    const params = new URLSearchParams({ source });
+    if (hook) params.set('hook', hook);
+    if (returnTo) params.set('returnTo', returnTo);
+    return `/premium?${params.toString()}`;
+  },
   premiumBase: '/premium',
   /** 개발·UT용 상세 미리보기. NEXT_PUBLIC_PREMIUM_PREVIEW=true일 때만 열린다 */
   premiumPreview: (feature: string) => `/premium-preview/${feature}`,

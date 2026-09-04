@@ -7,12 +7,14 @@ import { NoticeBox, SectionLabel } from '@/components/common/primitives';
 import { AiNarrativeNotice, AiSourceLabel } from '@/components/ai/AiModeNotice';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { DeepInsightCard } from '@/components/premium/DeepInsightCard';
+import { DeepReportValueCheck } from '@/components/premium/DeepReportValueCheck';
 import { PremiumDetailView } from '@/components/premium/PremiumDetailView';
 import { DeepReportUtFlow } from '@/components/ut/DeepReportUtFlow';
 import type { EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
 import { trackEvent } from '@/lib/analytics';
 import { UT_MODE } from '@/lib/env';
-import { hasCompletedDeepReportUt } from '@/lib/deepReportUtStore';
+import { hasCompletedDeepReport, markDeepReportCompleted } from '@/lib/deepReportUtStore';
+import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { axisLabel } from '@/services/premiumService';
 import type { AiFailureReason, AiMode, AiNarrativeStatus, RelationshipDeepReport } from '@/types';
 
@@ -31,12 +33,20 @@ export function RelationshipDeepReportView({
   report,
   resolverContext,
   analysisId,
+  funnelAnalysisId,
   accessMode = 'preview',
   aiNarrative,
 }: {
   report: RelationshipDeepReport;
   resolverContext: EvidenceResolverContext;
   analysisId: string;
+  /**
+   * v1.19 §3 — Premium Funnel(entry_view → … → purchase_intent)이 쓰는 것과 같은 키.
+   * Hook에서 시작한 Funnel과 이 리포트의 열람/완독/사후 평가를 GA4에서 이어 붙이려면
+   * 두 구간이 같은 값을 갖고 있어야 한다. 위 analysisId는 declared/experience 기반
+   * deterministic fingerprint라 의미가 다르므로 대체하지 않고 나란히 보낸다.
+   */
+  funnelAnalysisId?: string | null;
   /** v1.10 §72 — 실제 Payment로 오해되지 않도록 어느 경로로 이 화면에 왔는지 남긴다 */
   accessMode?: 'preview' | 'beta_ut';
   /**
@@ -57,20 +67,47 @@ export function RelationshipDeepReportView({
   const [completed, setCompleted] = useState(false);
   const scrollDepthSent = useRef<{ 50: boolean; 100: boolean }>({ 50: false, 100: false });
   const rootRef = useRef<HTMLDivElement>(null);
+  /** v1.19 §10 — 사후 평가에 보여줄 가격. Paywall과 같은 세션 고정 값을 쓴다 */
+  const [price] = useState(() => resolvePrice(resolvePriceVariant()));
+  const attribution: Record<string, string> = funnelAnalysisId
+    ? { funnel_analysis_id: funnelAnalysisId }
+    : {};
 
   useEffect(() => {
-    setCompleted(hasCompletedDeepReportUt(analysisId));
+    // v1.19 §13 — UT 5문항 완료(`completedAt`)가 아니라 **리포트 완독**을 복원한다.
+    // Production에는 UT 5문항이 없어서 예전 조건으로는 새로고침마다 완독이 초기화됐고,
+    // 그러면 `deep_report_complete`가 중복 발생해 Completion Rate가 부풀었다.
+    setCompleted(hasCompletedDeepReport(analysisId));
   }, [analysisId]);
 
+  /**
+   * Release Gate §3 — `deep_report_view`의 의미를 좁힌다.
+   *   "사용자가 **유효한 Deep Report 콘텐츠를 볼 수 있는 상태**에서 리포트가 렌더됐다"
+   *
+   * 이전에는 이 effect가 아래 `if (!report.available) return`보다 **위**에 있어서, 연결할
+   * 신호가 부족해 안내 문구만 보여주는 경우에도 view가 1건 발생했다. 그러면 Completion
+   * Rate(`deep_report_complete / deep_report_view`)의 분모에 **완독할 콘텐츠가 애초에 없던
+   * 세션**이 섞여서 완독률이 실제보다 낮게 나온다. 분모와 분자가 같은 eligible population을
+   * 쓰도록 available일 때만 보낸다.
+   *
+   * 새 이벤트(예: deep_report_unavailable)는 만들지 않는다 — 그 상태는 이미 Paywall 쪽
+   * `premiumFeatureState`의 unavailable 분기(가격·CTA 미노출)로 관측할 수 있고, 이벤트를
+   * 늘리는 것보다 기존 Funnel을 깨끗하게 두는 편이 낫다.
+   *
+   * ⚠️ Release Gate §1 — `analysis_id`(deterministic fingerprint)를 더 이상 보내지 않는다.
+   * 분석 단위 연결은 opaque한 `funnel_analysis_id`(attribution)가 맡는다.
+   */
   useEffect(() => {
+    if (!report.available) return;
     if (viewSent.current) return;
     viewSent.current = true;
     trackEvent('deep_report_view', {
-      analysis_id: analysisId,
       access_mode: accessMode,
       insight_count: report.crossSourceInsights.length + report.relationshipSelf.length,
+      ...attribution,
     });
-  }, [report.crossSourceInsights.length, report.relationshipSelf.length, analysisId, accessMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [report.available, report.crossSourceInsights.length, report.relationshipSelf.length, accessMode, funnelAnalysisId]);
 
   // §49 — 50/100 두 단계만. 이 화면의 스크롤 조상(ScreenLayout의 overflow-y-auto body)을 찾는다.
   useEffect(() => {
@@ -91,16 +128,17 @@ export function RelationshipDeepReportView({
       const percent = ((scrollTop + clientHeight) / scrollHeight) * 100;
       if (percent >= 100 && !scrollDepthSent.current[100]) {
         scrollDepthSent.current[100] = true;
-        trackEvent('deep_report_scroll', { analysis_id: analysisId, depth: 100 });
+        trackEvent('deep_report_scroll', { ...attribution, depth: 100 });
       } else if (percent >= 50 && !scrollDepthSent.current[50]) {
         scrollDepthSent.current[50] = true;
-        trackEvent('deep_report_scroll', { analysis_id: analysisId, depth: 50 });
+        trackEvent('deep_report_scroll', { ...attribution, depth: 50 });
       }
     };
 
     scrollParent.addEventListener('scroll', handleScroll, { passive: true });
     return () => scrollParent?.removeEventListener('scroll', handleScroll);
-  }, [analysisId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [funnelAnalysisId]);
 
   if (!report.available) {
     return (
@@ -111,7 +149,11 @@ export function RelationshipDeepReportView({
   }
 
   const handleReportComplete = () => {
-    trackEvent('deep_report_complete', { analysis_id: analysisId, access_mode: accessMode });
+    // 이미 완독으로 기록된 분석이면 이벤트를 다시 쏘지 않는다(§13/§14 C).
+    if (!hasCompletedDeepReport(analysisId)) {
+      trackEvent('deep_report_complete', { access_mode: accessMode, ...attribution });
+      markDeepReportCompleted(analysisId);
+    }
     setCompleted(true);
     if (UT_MODE) setUtOpen(true);
   };
@@ -154,7 +196,12 @@ export function RelationshipDeepReportView({
           <SectionLabel>나의 관계 안에서</SectionLabel>
           <ul className="flex flex-col gap-2.5">
             {report.relationshipSelf.map((card) => (
-              <DeepInsightCard key={card.insight.id} card={card} resolverContext={resolverContext} analysisId={analysisId} />
+              <DeepInsightCard
+                key={card.insight.id}
+                card={card}
+                resolverContext={resolverContext}
+                funnelAnalysisId={funnelAnalysisId}
+              />
             ))}
           </ul>
         </section>
@@ -166,7 +213,12 @@ export function RelationshipDeepReportView({
           <SectionLabel>따로 있던 걸 연결해보면</SectionLabel>
           <ul className="flex flex-col gap-2.5">
             {report.crossSourceInsights.map((card) => (
-              <DeepInsightCard key={card.insight.id} card={card} resolverContext={resolverContext} analysisId={analysisId} />
+              <DeepInsightCard
+                key={card.insight.id}
+                card={card}
+                resolverContext={resolverContext}
+                funnelAnalysisId={funnelAnalysisId}
+              />
             ))}
           </ul>
 
@@ -310,12 +362,26 @@ export function RelationshipDeepReportView({
         {completed ? '확인 완료' : '다 봤어'}
       </Button>
 
+      {/*
+        v1.19 §12 — 평가는 **리포트를 다 본 뒤에만** 나타난다. 진입하자마자 설문을 띄우지
+        않는다. 완독 CTA가 이미 이 IA의 자연스러운 완료 행동이라, 새 완료 조건(마지막 섹션
+        viewport 진입 등)을 따로 만들지 않고 그 신호를 그대로 재사용한다.
+        UT_MODE와 무관하게 보인다(§25) — Production 사용자에게도 필요한 질문이다.
+      */}
+      {completed ? (
+        <DeepReportValueCheck
+          analysisId={analysisId}
+          price={price}
+          properties={{ access_mode: accessMode, ...attribution }}
+        />
+      ) : null}
+
       {UT_MODE ? (
         <DeepReportUtFlow
           open={utOpen}
           onClose={() => setUtOpen(false)}
           analysisId={analysisId}
-          properties={{ access_mode: accessMode }}
+          properties={{ access_mode: accessMode, ...attribution }}
         />
       ) : null}
     </div>

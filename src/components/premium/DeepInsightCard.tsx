@@ -30,12 +30,19 @@ const TYPE_LABEL: Record<string, string> = {
 export function DeepInsightCard({
   card,
   resolverContext,
-  analysisId,
+  funnelAnalysisId,
 }: {
   card: DeepReportInsightCard;
   resolverContext: EvidenceResolverContext;
-  /** v1.10 §25 — Deep Value Funnel을 다른 이벤트와 조인할 수 있게 함께 보낸다 */
-  analysisId?: string;
+  /**
+   * Release Gate §1 — 외부 Analytics용 **opaque** 식별자.
+   *
+   * 이전에는 `analysisId`(= `analysisFingerprint`, declared/experience 답변을 그대로
+   * 이어붙인 문자열)를 `analysis_id`로 보냈다. 외부 Analytics에서 응답 프로필이 복원되므로
+   * 제거하고, 답변 내용을 encode하지 않는 이 값으로 바꿨다. 이 컴포넌트는 로컬 저장을 하지
+   * 않으므로 내부 지문 자체가 아예 필요 없다 — prop도 남기지 않는다.
+   */
+  funnelAnalysisId?: string | null;
 }) {
   const { insight, narrative } = card;
   const { answers, setDeepInsightFeedback } = useSession();
@@ -53,7 +60,7 @@ export function DeepInsightCard({
     setEvidenceOpen(next);
     if (next) {
       trackEvent('deep_insight_evidence_expand', {
-        analysis_id: analysisId,
+        ...(funnelAnalysisId ? { funnel_analysis_id: funnelAnalysisId } : {}),
         insight: insight.id,
         type: insight.type,
         axis: insight.axis,
@@ -70,7 +77,10 @@ export function DeepInsightCard({
   const submitCorrection = () => {
     const text = correctionDraft.trim();
     setDeepInsightFeedback(insight.id, 'no', text || undefined);
-    trackEvent('deep_insight_correction_submit', { analysis_id: analysisId, insight: insight.id });
+    trackEvent('deep_insight_correction_submit', {
+      ...(funnelAnalysisId ? { funnel_analysis_id: funnelAnalysisId } : {}),
+      insight: insight.id,
+    });
     setCorrectionOpen(false);
   };
 

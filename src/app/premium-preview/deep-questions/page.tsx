@@ -13,7 +13,6 @@ import { selectDeepQuestions, type DeepQuestionTemplate } from '@/data/deepQuest
 import { PREMIUM_PREVIEW } from '@/lib/env';
 import { cn } from '@/lib/cn';
 import { trackEvent } from '@/lib/analytics';
-import { analysisFingerprint } from '@/lib/logic/history';
 import { ROUTES } from '@/lib/routes';
 import { useCrossSourceInsights } from '@/hooks/useAiNarrative';
 import { useSession } from '@/state/SessionProvider';
@@ -44,11 +43,9 @@ function DeepQuestionsView() {
     ? `${ROUTES.premiumPreview('relationship_deep_report')}?mode=ut`
     : ROUTES.premiumPreview('relationship_deep_report');
   const { answers, addDeepAnswer } = useSession();
+  /** Release Gate §1 — 외부 Analytics용 opaque 식별자 */
+  const funnelAnalysisId = answers.currentAnalysisMeta?.funnelAnalysisId ?? null;
   const insights = useCrossSourceInsights();
-  const analysisId = useMemo(
-    () => analysisFingerprint(answers.status, answers.declared, answers.experience),
-    [answers.status, answers.declared, answers.experience],
-  );
 
   // 우선순위 Top 1~2 Insight의 축 — 같은 축이 여러 Insight에 걸쳐 반복돼도 질문은 축당 한 번만 뽑는다.
   const focusInsights = useMemo(() => {
@@ -71,8 +68,13 @@ function DeepQuestionsView() {
   useEffect(() => {
     if (startSent.current || questions.length === 0) return;
     startSent.current = true;
-    trackEvent('deep_question_start', { analysis_id: analysisId, count: questions.length, mode: isBetaUt ? 'beta_ut' : 'preview' });
-  }, [questions.length, analysisId, isBetaUt]);
+    // Release Gate §1 — analysis_id(답변 파생 지문) 대신 opaque funnel_analysis_id.
+    trackEvent('deep_question_start', {
+      count: questions.length,
+      mode: isBetaUt ? 'beta_ut' : 'preview',
+      ...(funnelAnalysisId ? { funnel_analysis_id: funnelAnalysisId } : {}),
+    });
+  }, [questions.length, isBetaUt, funnelAnalysisId]);
 
   if (!PREMIUM_PREVIEW) {
     return (

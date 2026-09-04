@@ -29,7 +29,6 @@ import { BRAND, COMPATIBILITY_COPY, LOVY_LINES, PRIVACY, STATE_COPY } from '@/da
 import { PREMIUM_HOOK_COPY } from '@/data/premium';
 import { useAnchorScroll } from '@/hooks/useAnchorScroll';
 import { narrativeIsShowable } from '@/lib/aiEvidenceResolver';
-import { compatibilityNarrativeFingerprint } from '@/lib/aiFingerprint';
 import { trackEvent, trackOnce, trackOncePerAnalysis } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
 import { lensAvailability } from '@/lib/logic/birth';
@@ -176,11 +175,16 @@ function CompatibilityView() {
   useEffect(() => {
     // StrictMode 이중 마운트로 중복 발생하지 않게 mount 기준 1회만(§86 패턴과 동일)
     if (!revisit || result.score === null || revisitFiredRef.current) return;
+    // ⚠️ `funnelAnalysisId`가 생긴 뒤에 보낸다. React는 자식 effect를 부모보다 먼저
+    // 실행하므로, hydration 직후 커밋에서는 `SessionProvider`의 id 발급보다 이 effect가
+    // 앞설 수 있다. 아래 ref 가드 때문에 한 번 놓치면 영영 안 붙는다(실측 확인).
+    if (!funnelAnalysisId) return;
     revisitFiredRef.current = true;
-    const analysisId = compatibilityNarrativeFingerprint(answers.declared, answers.target, result);
-    trackEvent('compatibility_result_revisit', { analysis_id: analysisId, source });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [revisit, source, result.score]);
+    // Release Gate §1 — 예전에는 `compatibilityNarrativeFingerprint(...)`를 보냈다.
+    // FNV-1a 해시라 평문은 아니지만, 입력 공간(5축 × 소수 값 + score)이 작아서 전수 대조로
+    // 되돌릴 수 있는 **답변 파생 지문**이다. 외부 Analytics에는 opaque한 값만 남긴다.
+    trackEvent('compatibility_result_revisit', { source, funnel_analysis_id: funnelAnalysisId });
+  }, [revisit, source, result.score, funnelAnalysisId]);
 
   useEffect(() => {
     if (mbtiQuestionCount === 0) return;

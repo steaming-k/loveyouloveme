@@ -24,6 +24,7 @@ import {
   resolvePrice,
   resolvePriceVariant,
 } from '@/lib/premiumVariant';
+import { revisitHref, type RevisitSource } from '@/lib/resultView';
 import { ROUTES } from '@/lib/routes';
 import { useHistoryReport, useMbtiLens, useMirror } from '@/hooks/useAnalysis';
 import { useCrossSourceInsights } from '@/hooks/useAiNarrative';
@@ -88,11 +89,33 @@ function PremiumView() {
 
   const source = (params.get('source') ?? 'compatibility') as PremiumSource;
   const featureId = FEATURE_BY_SOURCE[source] ?? 'compatibility_detail';
-  const backHref = BACK_BY_SOURCE[source] ?? ROUTES.compatibility;
+  /**
+   * v1.19 §29 — Post-analysis IA 회귀 방지. Revisit으로 결과를 다시 보던 사용자가 Premium을
+   * 닫으면 예전에는 `?view=revisit`이 빠진 맨 Route로 돌아가서 **v1.18 Bottom Navigation이
+   * 사라지고** 최초 Funnel 화면(Sticky CTA만 있는)으로 떨어졌다 — 실측으로 확인한 회귀다.
+   * `returnTo`가 유효한 `RevisitSource`일 때만 Revisit URL을 복원한다. 임의 URL은 받지
+   * 않는다 — 값 하나를 화이트리스트로 검사하고 경로는 여기서 직접 만든다.
+   */
+  const rawReturnTo = params.get('returnTo');
+  const returnTo: RevisitSource | null =
+    rawReturnTo === 'home' || rawReturnTo === 'history' || rawReturnTo === 'share' || rawReturnTo === 'direct'
+      ? rawReturnTo
+      : null;
+  const baseBackHref = BACK_BY_SOURCE[source] ?? ROUTES.compatibility;
+  const backHref = returnTo ? revisitHref(baseBackHref, returnTo) : baseBackHref;
   // v1.15 §8 — 어느 Contextual Hook에서 들어왔는지. 순수 Analytics 구분용이라 없어도
   // Paywall이 보여줄 Feature 자체(FEATURE_BY_SOURCE)에는 영향을 주지 않는다.
   const hookVariant = params.get('hook') ?? undefined;
   const [wtpChoice, setWtpChoice] = useState<'yes' | 'maybe' | 'no' | null>(null);
+  /**
+   * v1.19 §3 — Hook Attribution 키. `PremiumEntryRow`와 **같은 세션 값**을 직접 읽는다
+   * (URL로 넘기지 않는다) — entry_view → entry_click → paywall_view → purchase_intent가
+   * 전부 같은 값을 갖게 되고, 주소창을 편집해도 attribution이 조작되지 않는다.
+   */
+  const funnelAnalysisId = answers.currentAnalysisMeta?.funnelAnalysisId ?? null;
+  const attribution: Record<string, string> = funnelAnalysisId
+    ? { funnel_analysis_id: funnelAnalysisId }
+    : {};
 
   const [variant] = useState(() => resolvePriceVariant());
   const [today] = useState(() => new Date());
@@ -163,8 +186,9 @@ function PremiumView() {
       price,
       variant,
       ...(hookVariant ? { hook_variant: hookVariant } : {}),
+      ...(funnelAnalysisId ? { funnel_analysis_id: funnelAnalysisId } : {}),
     });
-  }, [featureId, source, price, variant, feature.status, hookVariant]);
+  }, [featureId, source, price, variant, feature.status, hookVariant, funnelAnalysisId]);
 
   if (!PREMIUM_FAKE_DOOR) return null;
 
@@ -194,6 +218,7 @@ function PremiumView() {
       price,
       variant,
       ...(hookVariant ? { hook_variant: hookVariant } : {}),
+      ...attribution,
     });
     recordPremiumIntent({
       feature: featureId,
@@ -209,6 +234,7 @@ function PremiumView() {
       feature: featureId,
       source,
       ...(hookVariant ? { hook_variant: hookVariant } : {}),
+      ...attribution,
     });
     setSheetOpen(true);
   };
@@ -237,6 +263,7 @@ function PremiumView() {
                   source,
                   step: 'paywall',
                   ...(hookVariant ? { hook_variant: hookVariant } : {}),
+      ...attribution,
                 });
                 router.replace(backHref);
               }}
@@ -254,7 +281,47 @@ function PremiumView() {
             {copy.paywallLovy}
           </LovyMessage>
 
-          {/* §37 Premium Preview — 전체를 스포일링하지 않고 3개만 살짝 보여준다 */}
+          {/*
+            v1.19 §7 — '무료랑 뭐가 다른가'에 5초 안에 답하게 하는 한 줄짜리 대비.
+            아래 freeRecap/additions 목록을 대체하지 않는다 — 그 목록은 '무엇이 들어있나'를,
+            이 두 줄은 '왜 다른가'를 말한다. 비교표를 새로 만들지 않는다(§7).
+          */}
+          {isDeepReport && (
+            <section className="flex flex-col gap-2">
+              <SectionLabel>{DEEP_REPORT_COPY.contrastLabel}</SectionLabel>
+              <dl className="flex flex-col divide-y divide-line-soft rounded-card border border-line bg-surface">
+                {[DEEP_REPORT_COPY.contrastFree, DEEP_REPORT_COPY.contrastPremium].map(
+                  (row, index) => (
+                    <div key={row.tag} className="flex items-baseline gap-3 px-4 py-3">
+                      <dt
+                        className={cn(
+                          'w-[74px] flex-none text-[10.5px] font-semibold tracking-[0.04em]',
+                          index === 0 ? 'text-ink-muted' : 'text-brand-pressed',
+                        )}
+                      >
+                        {row.tag}
+                      </dt>
+                      <dd
+                        className={cn(
+                          'min-w-0 text-[12.5px] keep-all leading-relaxed',
+                          index === 0 ? 'text-ink-sub' : 'font-medium text-ink',
+                        )}
+                      >
+                        {row.text}
+                      </dd>
+                    </div>
+                  ),
+                )}
+              </dl>
+            </section>
+          )}
+
+          {/*
+            §37 Premium Preview — 전체를 스포일링하지 않고 3개만 살짝 보여준다.
+            v1.19 §8 — 이 3개는 **현재 사용자의 Cross-source Insight**에서 나온 문장이라
+            이미 개인화돼 있다(`ruleSummary`는 판정된 축 라벨을 담는다). 문장을 중간에서
+            자르지 않고 완결된 채로 보여주고, 잠긴 것은 아래 목차로 정직하게 알린다.
+          */}
           {isDeepReport && previewSummaries.length > 0 && (
             <section className="flex flex-col gap-2">
               <SectionLabel>{DEEP_REPORT_COPY.previewLabel}</SectionLabel>
@@ -265,6 +332,16 @@ function PremiumView() {
                     className="rounded-card border border-line bg-surface p-3.5 text-[12.5px] keep-all leading-relaxed text-ink-sub"
                   >
                     {summary}
+                  </li>
+                ))}
+              </ul>
+              <ul className="flex flex-col gap-1.5 rounded-card border border-dashed border-line-strong bg-sunken p-4">
+                {DEEP_REPORT_COPY.previewLockedItems.map((item) => (
+                  <li key={item} className="flex gap-2 text-[12px] keep-all text-ink-muted">
+                    <span className="flex-none" aria-hidden>
+                      🔒
+                    </span>
+                    {item}
                   </li>
                 ))}
               </ul>
@@ -318,9 +395,21 @@ function PremiumView() {
             </span>
           </section>
 
-          <NoticeBox>
-            무료로 본 결과는 그대로 볼 수 있어. 상세는 같은 데이터를 더 깊게 보는 거야.
-          </NoticeBox>
+          {/*
+            v1.19 §6 — '내 데이터가 실제로 들어가는가?'에 답한다. 새 데이터를 더 받지 않고,
+            **이미 답한 것**을 연결한다는 사실을 개수로 말한다. 개수는 이 세션에서 실제로
+            계산된 값이라 사용자마다 다르다 — 마케팅 문구가 아니라 사실이다.
+          */}
+          {isDeepReport ? (
+            <NoticeBox>
+              지금 네 답변에서 연결된 신호가 {crossSourceInsights.length}개 나왔어. 새로 물어보는
+              건 없고, 무료로 본 결과도 그대로 볼 수 있어.
+            </NoticeBox>
+          ) : (
+            <NoticeBox>
+              무료로 본 결과는 그대로 볼 수 있어. 상세는 같은 데이터를 더 깊게 보는 거야.
+            </NoticeBox>
+          )}
 
           {/*
             v1.15 §10 — Premium 가격/가치 검증 UT. 질문을 많이 추가하지 않는다(2개 이내).
@@ -331,7 +420,7 @@ function PremiumView() {
           <UtRatingCard
             question="이 리포트에서 무료 결과와 다른 가치를 느꼈어?"
             event="ut_premium_value_diff_rate"
-            properties={{ feature: featureId, source, price }}
+            properties={{ feature: featureId, source, price, ...attribution }}
             lowLabel="전혀 못 느꼈어"
             highLabel="확실히 다르게 느꼈어"
           />
@@ -339,6 +428,7 @@ function PremiumView() {
             featureId={featureId}
             source={source}
             price={price}
+            attribution={attribution}
             choice={wtpChoice}
             onSelect={setWtpChoice}
           />
@@ -354,6 +444,7 @@ function PremiumView() {
             source,
             step: 'fake_door',
             ...(hookVariant ? { hook_variant: hookVariant } : {}),
+      ...attribution,
           });
           setSheetOpen(false);
         }}
@@ -373,7 +464,7 @@ function PremiumView() {
           ) : (
             <Button
               onClick={() => {
-                trackEvent('premium_notify_intent', { feature: featureId, source });
+                trackEvent('premium_notify_intent', { feature: featureId, source, ...attribution });
                 markNotifyIntent(featureId);
                 setNotified(true);
                 showToast('관심 표시를 기록했어');
@@ -395,6 +486,7 @@ function PremiumView() {
                 source,
                 step: 'fake_door',
                 ...(hookVariant ? { hook_variant: hookVariant } : {}),
+      ...attribution,
               });
               setSheetOpen(false);
               router.replace(backHref);
@@ -417,12 +509,15 @@ function PremiumWtpQuestion({
   featureId,
   source,
   price,
+  attribution,
   choice,
   onSelect,
 }: {
   featureId: PremiumFeatureId;
   source: PremiumSource;
   price: number;
+  /** v1.19 §3 — `funnel_analysis_id`. 없으면 빈 객체라 property가 붙지 않는다 */
+  attribution: Record<string, string>;
   choice: 'yes' | 'maybe' | 'no' | null;
   onSelect: (value: 'yes' | 'maybe' | 'no') => void;
 }) {
@@ -450,7 +545,13 @@ function PremiumWtpQuestion({
             aria-pressed={choice === option.value}
             disabled={choice !== null}
             onClick={() => {
-              trackEvent('ut_premium_price_wtp', { feature: featureId, source, price, choice: option.value });
+              trackEvent('ut_premium_price_wtp', {
+                feature: featureId,
+                source,
+                price,
+                choice: option.value,
+                ...attribution,
+              });
               onSelect(option.value);
             }}
             className={cn(

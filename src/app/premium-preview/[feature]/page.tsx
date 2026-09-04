@@ -254,6 +254,7 @@ function PremiumPreviewView() {
             report={report}
             resolverContext={resolverContext}
             analysisId={analysisId}
+            funnelAnalysisId={answers.currentAnalysisMeta?.funnelAnalysisId ?? null}
             accessMode={accessMode}
             aiNarrative={{
               status: deepNarrative.status,

@@ -1171,6 +1171,24 @@ export interface DeepReportUtResponse {
   wtp?: 'yes' | 'maybe' | 'no';
   /** 최대 500자. Analytics로는 원문을 보내지 않고 로컬에만 남긴다(§36) */
   missingValue?: string;
+  /**
+   * v1.19 §10 Q1 — '무료 결과보다 더 깊게 이해하는 데 도움이 됐어?' 1~5.
+   * 위 `newInsight`(UT_MODE 전용, '새로 알게 된 게 있었나')와 다른 질문이다 — 이건
+   * **무료 대비 추가 가치**를 묻고 Production에서도 수집된다(§25).
+   */
+  valueRating?: number;
+  /**
+   * v1.19 §10 Q2 / §11 — 리포트를 **다 본 뒤**의 지불 의향.
+   * 위 `wtp`(UT_MODE 5문항의 '다시 볼 의향')와도, Paywall의 `premium_purchase_intent`
+   * (보기 **전** 기대)와도 섞지 않는다. 셋 다 실제 결제가 아니라 '의향'이다.
+   */
+  wtpAfterView?: 'yes' | 'maybe' | 'no';
+  /**
+   * v1.19 §13 — 사용자가 '다 봤어'를 누른 시각. 아래 `completedAt`(UT 5문항 완료)과 다르다 —
+   * Production에는 UT 5문항이 없으므로 Completion Rate(§14 C)의 분자를 이 필드로 따로 잡는다.
+   * 이 값이 있으면 `deep_report_complete`를 다시 발생시키지 않는다(새로고침 중복 방지).
+   */
+  reportCompletedAt?: string;
   completedAt?: string;
 }
 

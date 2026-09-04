@@ -18,6 +18,10 @@ import type { DeepReportUtResponse } from '@/types';
  *
  * ⚠️ 이 점수는 분석 로직에 전혀 쓰이지 않는다. `SessionAnswers`가 아니라 별도 저장소
  * (`lym.ut.deep.v1`)에 `analysisId` 기준으로만 쌓인다.
+ *
+ * ⚠️ Release Gate §1 — `analysisId`는 **로컬 저장소 키로만** 쓴다. 외부 Analytics로는
+ * 보내지 않는다(그 문자열이 declared/experience 답변을 그대로 담고 있다). 분석 단위
+ * 연결은 호출부가 `properties`에 담아주는 opaque `funnel_analysis_id`가 맡는다.
  */
 
 const SCALE = [1, 2, 3, 4, 5] as const;
@@ -35,7 +39,10 @@ export function DeepReportUtFlow({
   open: boolean;
   onClose: () => void;
   analysisId: string;
-  /** analysis_id 외에 함께 보낼 공통 property(§25) — 자유서술·AI 문장은 넣지 않는다 */
+  /**
+   * 함께 보낼 공통 property(§25) — 자유서술·AI 문장은 넣지 않는다.
+   * 호출부(`RelationshipDeepReportView`)가 opaque한 `funnel_analysis_id`를 여기에 담아준다.
+   */
   properties?: Record<string, string | number | boolean>;
 }) {
   const [step, setStep] = useState(1);
@@ -57,13 +64,13 @@ export function DeepReportUtFlow({
     value: number,
   ) => {
     saveDeepReportUtAnswer(analysisId, { [field]: value });
-    trackEvent(event, { ...properties, analysis_id: analysisId, score: value });
+    trackEvent(event, { ...properties, score: value });
     advance();
   };
 
   const answerWtp = (value: WtpChoice) => {
     saveDeepReportUtAnswer(analysisId, { wtp: value });
-    trackEvent('ut_deep_report_wtp', { ...properties, analysis_id: analysisId, choice: value });
+    trackEvent('ut_deep_report_wtp', { ...properties, choice: value });
     advance();
   };
 
@@ -74,14 +81,12 @@ export function DeepReportUtFlow({
       // 원문은 analytics로 보내지 않는다 — 로컬 저장소에만 남긴다(§16/§36).
       trackEvent('ut_deep_report_missing_value', {
         ...properties,
-        analysis_id: analysisId,
         has_text: true,
         char_length: text.length,
       });
     } else {
       trackEvent('ut_deep_report_missing_value', {
         ...properties,
-        analysis_id: analysisId,
         has_text: false,
         char_length: 0,
       });

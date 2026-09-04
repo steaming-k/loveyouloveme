@@ -274,8 +274,55 @@ Primary KPI = relationship_mirror_entry_click / compatibility_result_view
 **GA4 — v1.12부터 실제로 연결 가능합니다.** `NEXT_PUBLIC_GA_MEASUREMENT_ID`가 있고,
 production 빌드이고, 사용자가 `/privacy`의 Consent Gate에서 동의했을 때만
 `next/script`로 gtag.js가 로드됩니다. 세 조건 중 하나라도 빠지면 로컬 store에만
-남고 외부로는 나가지 않습니다 — **아직 실제 Measurement ID로 수신을 확인하지는
-않았습니다(NOT VERIFIED).**
+남고 외부로는 나가지 않습니다.
+
+**Analytics 식별자 경계 (v1.19 Release Gate).** 두 종류의 식별자를 **절대 섞지 않습니다.**
+
+| | `analysisId` (내부) | `funnel_analysis_id` (외부) |
+|---|---|---|
+| 값 | 답변을 이어붙인/해시한 지문 — `solo_exp` `2` `now` `5` … 를 `\|`로 연결한 문자열 | opaque random UUID |
+| 만드는 곳 | `analysisFingerprint()` · `compatibilityNarrativeFingerprint()` | `crypto.randomUUID()` |
+| 쓰는 곳 | History 키 · AI 캐시 키 · UT 응답 로컬 저장 키 | **Analytics 전용** |
+| GA4 전송 | ❌ **안 합니다** | ✅ 이것만 보냅니다 |
+
+v1.19 게이트 이전에는 `deep_report_view` 등이 `ep.analysis_id=solo_exp|2|now|5|a2|h3|…`를
+GA4로 보내고 있었습니다. 문자열 자체가 관계 상태·연락 중요도·갈등 스타일·개인 시간·애정
+표현·가장 힘들었던 순간 같은 **응답 프로필 전체를 복원**할 수 있어 전부 제거했습니다(11개
+이벤트). 재발은 `src/lib/analytics.ts`의 `sanitizeForExternal()`이 막습니다 — 외부로 나가는
+payload에서 금지 키와 지문 모양 값을 걸러내고, 개발 중에는 `console.error`로 알립니다.
+로컬 store에는 원본이 그대로 남습니다(기기 밖으로 나가지 않고 UT 회수·디버깅에 필요).
+
+**v1.19 — 실제 전송을 실측했습니다(부분 VERIFIED).** production 빌드(`npm run build && npm run start`)에서
+Consent를 `granted`로 두고 Premium Funnel을 실제로 밟았을 때, 브라우저가
+`https://www.google-analytics.com/g/collect?v=2&tid=G-BP36BVESJ0`으로 **HTTP POST를 보내고
+GA4가 `204`로 응답하는 것**을 확인했습니다. POST 본문에 이벤트명과 parameter가 실려 있습니다:
+
+```
+en=premium_entry_click&ep.source=compatibility&epn.price=1900
+  &ep.hook_variant=friction_why&ep.funnel_analysis_id=0b7318a3-…
+en=premium_paywall_view&…
+en=deep_report_value_rating&epn.score=5&ep.funnel_analysis_id=…
+en=deep_report_wtp_after_view&epn.price=1900&ep.choice=maybe&…
+```
+
+확인된 이벤트: `premium_entry_view` · `premium_entry_click` · `premium_paywall_view` ·
+`premium_purchase_intent` · `premium_fake_door_reveal` · `premium_dismiss` ·
+`deep_report_complete` · `deep_report_value_rating` · `deep_report_wtp_after_view`.
+
+> ⚠️ **여기까지가 확인한 사실입니다.** 확인한 것은 "브라우저가 올바른 payload를 GA4로 보냈고
+> GA4 수집 엔드포인트가 204로 받았다"이고, **GA4 Realtime / DebugView 대시보드에 실제로
+> 표시되는 것까지는 확인하지 않았습니다** — 그 화면은 계정 소유자만 볼 수 있습니다.
+> 대시보드 확인은 남은 항목입니다.
+>
+> ⚠️ 위 실측은 `localhost`에서 **실제 Measurement ID로** 이뤄졌으므로, 그 테스트 이벤트가
+> 실 GA4 속성에 들어가 있습니다. GA4 Admin → Data Streams → Configure tag settings →
+> **Define internal traffic**에 localhost를 등록하고 `internal` 트래픽을 제외하면 이후
+> 개발 트래픽이 리포트를 오염시키지 않습니다.
+>
+> ⚠️ Event parameter로 **보내는 것**과 GA4 리포트에서 **바로 분석할 수 있는 것**은 다릅니다.
+> `hook_variant` · `source` · `price` · `choice` · `score`는 GA4 Admin에서 **Custom
+> Dimension으로 등록해야** 보고서에 나옵니다. `funnel_analysis_id`는 고카디널리티라
+> 등록하지 않는 쪽을 권장합니다(`docs/기능명세서.md` §6.8.10-L).
 
 > 개발 모드에서는 React StrictMode가 effect를 두 번 실행하므로 화면 노출 계열 이벤트가 2로 보일 수 있습니다. 프로덕션 빌드에서는 1회만 발생합니다.
 
@@ -315,6 +362,6 @@ semantic HTML · 실제 `button`/`input[type=radio]`/`checkbox` 사용 · 모든
 - **Supabase 미연동.** 세션은 `localStorage`에만 저장됩니다. `docs/supabase-info.md`의 자격 증명은 아직 쓰지 않습니다. 붙일 때는 `services/aiService.ts`와 `state/SessionProvider.tsx` 두 경계만 건드리면 됩니다.
 - **실제 AI Provider end-to-end는 2026-09-04(v1.17)에 실제 Key로 1회 6/6 PASS를 확인했습니다.** 상시 CI 검증은 아니라 "이 실행 기준"입니다 — API Key 없이도 스키마/안전 검증(`test:ai`)은 항상 실측합니다.
 - **사주 명식 계산 엔진 미연결.** 절입 시각·진태양시 등 정밀 계산이 필요해 `NEXT_PUBLIC_SAJU_ENGINE_READY=false`로 정직하게 "준비 중" 상태를 보여줍니다.
-- **GA4는 코드상 연결 가능하지만 실제 수신은 미검증.** Measurement ID를 넣고 Consent까지 동의해도, 실제 GA4 대시보드에 이벤트가 도착하는 것을 확인한 적은 없습니다.
+- **GA4는 실제 전송까지 실측했고, 대시보드 수신은 미확인.** v1.19에서 production 빌드 + Consent granted 상태로 `google-analytics.com/g/collect`에 올바른 payload가 POST되고 GA4가 `204`로 응답하는 것을 확인했습니다. 다만 **GA4 Realtime/DebugView 화면에 뜨는 것까지는 확인하지 않았습니다**(계정 소유자만 볼 수 있음). 또한 `hook_variant`/`source`/`price`/`choice`/`score`는 GA4 Admin에서 Custom Dimension 등록을 해야 리포트에 나옵니다.
 - **Rate Limit은 여전히 인스턴스 메모리 기반.** `RateLimitStore` 인터페이스로 경계는 분리했지만(v1.12), 연결할 공유 저장소(Redis 등) credential이 없어 `SharedRateLimitStore`는 구현하지 않았습니다 — 서버리스 다중 인스턴스에서 정확하지 않습니다(distributed rate limiting NOT VERIFIED).
 - 실제 사용자 매칭 · 실제 결제(PG)는 포함하지 않습니다.
