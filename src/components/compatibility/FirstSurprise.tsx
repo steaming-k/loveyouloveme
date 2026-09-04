@@ -54,6 +54,18 @@ export function FirstSurprise({
 
       <p className="text-[13.5px] keep-all leading-relaxed text-ink">{surprise.body}</p>
 
+      {/*
+        YOUR SIGNAL (v1.22 §18) — 러비의 관찰 바로 아래에 **이 사용자의 실제 근거**를 붙인다.
+        새 카드를 만들지 않고 이 블록 안의 한 줄로 둔다(§20 카드 수 증가 금지).
+        근거로 쓸 축이 없으면 렌더하지 않는다 — 빈 라벨만 남기지 않는다.
+      */}
+      {surprise.signal ? (
+        <div className="flex flex-col gap-1 border-t border-mint pt-3">
+          <p className="text-[10px] font-semibold tracking-[0.16em] text-mint-ink">YOUR SIGNAL</p>
+          <p className="text-[12.5px] keep-all leading-relaxed text-ink">{surprise.signal}</p>
+        </div>
+      ) : null}
+
       <a
         href={ctaHref}
         onClick={() => trackEvent('result_anchor_navigation', { section: ctaSection })}

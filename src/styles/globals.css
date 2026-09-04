@@ -35,8 +35,12 @@
   --color-friction-tint: #fbeaf3;
   --color-friction-text: #b85c90;
 
-  /* Neutral */
-  --color-canvas: #fafaf7;
+  /* Neutral
+     v1.22 §13 — **페이지 배경**은 순백이다. 예전 값(#fafaf7)의 아이보리 톤을 걷어냈다.
+     ⚠️ Surface 계층(카드 · Note · 러비 말풍선 · Evidence block)의 tonal distinction은
+     그대로 유지한다: canvas-warm(파선 카드 · AI Narrative) · sunken(NoticeBox · press
+     상태) · chip. '모든 표면을 흰색으로'가 아니라 '기본 배경만 흰색으로'다. */
+  --color-canvas: #ffffff;
   --color-canvas-warm: #fcfbf8;
   --color-surface: #ffffff;
   --color-sunken: #f6f5f1;

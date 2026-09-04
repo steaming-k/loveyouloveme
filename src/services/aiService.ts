@@ -1,6 +1,5 @@
 import { buildCompatibility, buildConversationQuestions } from '@/lib/logic/compatibility';
 import { buildMbtiLens, buildMbtiQuestions } from '@/lib/logic/mbtiLens';
-import { buildObservedTraits } from '@/lib/logic/observed';
 import { buildMirrorReport } from '@/lib/logic/mirror';
 import { buildHomeHighlights, buildRelationshipProfile } from '@/lib/logic/profile';
 import { callAiTask } from '@/services/ai/aiClient';
@@ -324,7 +323,6 @@ export async function generateHomeHighlights(input: {
 /* -------------------------------------------------------------------------- */
 
 export const aiSelectors = {
-  observedTraits: buildObservedTraits,
   compatibility: buildCompatibility,
   conversationQuestions: buildConversationQuestions,
   mbtiLens: buildMbtiLens,

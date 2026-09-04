@@ -1,6 +1,6 @@
 import { SAMPLE_PHOTOS } from '@/data/samplePhotos';
 import { createEmptyBirthProfile } from '@/lib/logic/birth';
-import { buildDemoObservedResult } from '@/services/ai/fallback';
+import { buildSampleObservedResult } from '@/services/ai/fallback';
 import type { SessionAnswers, TargetProfile } from '@/types';
 
 /**
@@ -79,10 +79,9 @@ export function createSampleAnswers(): SessionAnswers {
      * 세션에서 그 칩이 비어 보인다 — 아래 `observations`(ob1~ob4)와 짝이 맞는 데모 분석
      * 결과를 함께 채워둔다.
      */
-    observedAnalysis: buildDemoObservedResult({
+    observedAnalysis: buildSampleObservedResult({
       photoCount: 6,
       inputFingerprint: 'sample',
-      mode: 'demo',
     }),
     observations: {
       ob1: { verdict: 'ok' },

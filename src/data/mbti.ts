@@ -82,7 +82,7 @@ export const MBTI_AXES: readonly MbtiAxisDefinition[] = [
     },
     different:
       '갈등 상황에서 한쪽은 감정적 맥락을, 다른 쪽은 해결 논리를 먼저 볼 수 있어.',
-    question: '서운한 일이 있을 때 공감부터 받는 것과 해결 방법을 찾는 것 중 뭐가 더 필요한 편이야?',
+    question: '서운한 일이 있을 때, 어떤 반응을 받으면 마음이 조금 풀리는 편이야?',
   },
   {
     key: 'lifestyle',

@@ -197,6 +197,28 @@ AI는 동기화율·Mirror 판정(MATCH/GAP/CHANGE)·History 판정(STABLE/SHIFT
 필수) / `mock`(개발 전용, 검증 단계는 그대로 통과시키되 결과 `meta.mode`가 `'mock'`이라
 real인 척하지 않는다). `.env.example` 참고.
 
+> ⚠️ **v1.22 — demo 모드는 사진 관찰을 만들지 않습니다.** 예전에는 `AI_MODE≠real`일 때
+> 고정 관찰 목록(`ob1~ob4`: "영화관·상영 시간표가 담긴 사진이 반복적으로 관찰됐어" 등)을
+> 돌려줬습니다. 그래서 Provider가 붙지 않은 배포에서 **음식 사진만 올린 사용자에게도 영화
+> 관찰이 자기 결과로 보였습니다.** 이제 사진 내용을 읽지 못하면 trait을 **0개** 반환하고,
+> 화면이 지금 상태(`demo` / `provider_failed`)를 사실대로 말합니다.
+>
+> 고정 문장은 `buildSampleObservedResult()` 한 곳에만 남아 있습니다. 그 함수는
+> `createSampleAnswers()`(샘플 세션)만 타며, **사진을 업로드한 사용자의 결과 경로와는
+> 완전히 분리돼 있습니다.** 진입점은 dev 전용 PrototypePanel과, S06 `/profile/intro`의
+> '샘플 답변으로 결과부터 볼게'(Production 노출 · 사용자가 직접 선택) 두 곳입니다.
+>
+> **배포 환경 체크리스트** — 실제 사진 분석을 쓰려면 서버에 아래 3개가 있어야 합니다.
+> 없으면 앱은 정상 동작하지만 사진 관찰은 비어 있습니다.
+> ⚠️ 실제 Key 값은 이 저장소에 적지 않습니다 — `.env.local`(gitignore)이나 배포 플랫폼의
+> 환경변수 설정에만 넣습니다.
+>
+> | 변수 | 값 | 범위 |
+> |---|---|---|
+> | `AI_MODE` | `real` | 서버 전용 (`NEXT_PUBLIC_` 금지) |
+> | `AI_API_KEY` | Provider Key | 서버 전용 |
+> | `NEXT_PUBLIC_AI_MODE` | `real` | 첫 호출 이전 배지 힌트용 |
+
 **Observed(사진) 파이프라인** — 사진을 한 번에 전체 보내지 않고 **1장씩** Vision
 Provider에 보내 관찰만 받고, "몇 장에서 반복됐는지"는 애플리케이션 코드가 집계합니다
 (`lib/logic/observedSignals.ts`) — Provider가 반복 여부를 스스로 주장하지 못하게 하기

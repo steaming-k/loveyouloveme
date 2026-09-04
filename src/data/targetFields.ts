@@ -47,11 +47,19 @@ export const TARGET_FIELDS: readonly TargetField[] = [
   },
 ];
 
+/**
+ * '이 사람과 나는' 선택지. 순서 = 관계가 가까운 쪽 → 맥락만 있는 쪽 → 모름.
+ *
+ * ⚠️ 이 값은 계산에 쓰지 않는다(`TargetRelation` 주석 참고). 새 옵션을 추가해도
+ * 동기화율·Mirror·History 판정 로직에 분기를 만들지 않는다.
+ */
 export const TARGET_RELATION_OPTIONS: readonly { value: TargetRelation; label: string }[] = [
   { value: 'crush', label: '알아가는 중' },
+  { value: 'talking', label: '썸 타는 중' },
   { value: 'friend', label: '친구' },
   { value: 'work', label: '같이 일하는 사람' },
   { value: 'intro', label: '소개로 만남' },
+  { value: 'unsure', label: '잘 모름' },
 ];
 
 /** 동기화율을 계산하기 위한 최소 비교 항목 수. 미달이면 확신 낮음 화면(E3)으로 간다. */

@@ -15,7 +15,9 @@ import { PrototypePanel } from './PrototypePanel';
  */
 export function AppShell({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-[100dvh] justify-center bg-canvas lg:items-center lg:gap-9 lg:bg-[#F0EEE9] lg:px-8 lg:py-8">
+    /* lg 배경(#F1F1F1)은 페이지가 아니라 데스크톱에서 폰 프레임 뒤에 깔리는 벽면이다.
+       프레임 경계를 남기기 위해 흰색으로 만들지 않되, 베이지(#F0EEE9)는 걷어냈다(§13). */
+    <div className="flex min-h-[100dvh] justify-center bg-canvas lg:items-center lg:gap-9 lg:bg-[#F1F1F1] lg:px-8 lg:py-8">
       <div className="w-full max-w-[430px] lg:w-auto lg:max-w-none lg:flex-none lg:rounded-[52px] lg:bg-[#1A1A1A] lg:p-3 lg:shadow-[0_8px_24px_rgba(0,0,0,0.14)]">
         {/* 화면이 짧은 데스크톱에서도 프레임 전체가 보이도록 높이를 줄인다.
             relative는 BottomSheet/ConfirmModal의 absolute inset-0가 데스크톱에서

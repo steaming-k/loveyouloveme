@@ -145,7 +145,7 @@ export const DECLARED_QUESTIONS: Record<DeclaredStep, DeclaredStepConfig> = {
     ],
     personalityLens: {
       eyebrow: 'PERSONALITY LENS · 선택',
-      title: '평소 알고 있는 MBTI가 있어?',
+      title: '네 MBTI를 안다면 알려줘',
       caption:
         'MBTI는 관계를 판단하는 기준은 아니지만, 서로 다른 성향을 이야기해보는 참고 정보로 사용할게.',
       skipLabel: '잘 모르겠어',

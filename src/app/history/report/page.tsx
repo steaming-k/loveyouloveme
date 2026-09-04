@@ -9,7 +9,7 @@ import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
-import { PageHeading, SectionLabel, Tag } from '@/components/common/primitives';
+import { Lines, PageHeading, SectionLabel, Tag } from '@/components/common/primitives';
 import { HistoryChangeRow } from '@/components/history/HistoryChangeRow';
 import { RepeatedSignalNotice } from '@/components/history/PastObservationNote';
 import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
@@ -105,7 +105,11 @@ function HistoryReportView() {
           <Lovy pose="mug" size={112} decorative />
           <h2 className="text-section keep-all">아직 비교할 기록이 부족해.</h2>
           <p className="text-sub keep-all leading-relaxed text-ink-sub">
-            {entries.length === 1 ? HISTORY_COPY.reportSingle : '아직 저장된 관찰이 없어.'}
+            {entries.length === 1 ? (
+              <Lines lines={HISTORY_COPY.reportSingle} />
+            ) : (
+              '아직 저장된 관찰이 없어.'
+            )}
           </p>
         </div>
       </ScreenLayout>
@@ -247,7 +251,7 @@ function HistoryReportView() {
         />
 
         <LovyMessage pose="calendar" size={66}>
-          {LOVY_LINES.historyReport}
+          <Lines lines={LOVY_LINES.historyReport} />
         </LovyMessage>
       </div>
     </ScreenLayout>

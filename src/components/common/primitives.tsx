@@ -66,6 +66,28 @@ export function PageHeading({
   );
 }
 
+/**
+ * 승인된 줄바꿈을 그대로 지키는 텍스트 (v1.22 §15 · §16)
+ *
+ * 한국어 문장은 자동 줄바꿈 위치가 화면 폭마다 달라진다. 기획에서 "이 두 문장은 각각
+ * 한 줄"이라고 정한 카피는 CSS 흐름에 맡기지 않고 각 줄을 `block`으로 그린다 —
+ * 그래서 375px과 1280px에서 같은 구조로 읽힌다.
+ *
+ * ⚠️ 줄 사이에 `<br>`를 넣지 않는다. 스크린리더가 한 문단을 억지로 끊어 읽지 않도록
+ * 문장 단위 `span`(block)으로만 나눈다.
+ */
+export function Lines({ lines, className }: { lines: readonly string[]; className?: string }) {
+  return (
+    <span className={cn('keep-all', className)}>
+      {lines.map((line, index) => (
+        <span key={`${index}-${line}`} className="block">
+          {line}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 export function SectionLabel({
   children,
   className,

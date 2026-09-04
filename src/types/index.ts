@@ -327,7 +327,18 @@ export interface RelationshipExperience {
 
 /* -------------------------------------------------------- Target Person (S19) */
 
-export type TargetRelation = 'crush' | 'friend' | 'work' | 'intro';
+/**
+ * 상대와의 관계 맥락 (S19).
+ *
+ * ⚠️ **계산 근거가 아니다.** 동기화율·4축 similarity·comparedCount·Mirror·History 판정에
+ * 이 값이 들어가는 곳은 없다. 화면 맥락과 History 기록(`targetRelation`)에만 남는다 —
+ * 그래서 옵션을 늘려도 점수가 바뀌지 않는다.
+ *
+ * v1.22 §5 — `talking`(썸 타는 중) · `unsure`(잘 모름)를 추가했다.
+ *   `unsure` = '이 사람과 나의 **관계 이름**을 모르겠다'는 뜻이다. 상대의 관계 행동을
+ *   모른다는 뜻이 아니다 — 그건 4축의 `x`(모름)가 따로 담당하고, 그것만 점수에서 빠진다.
+ */
+export type TargetRelation = 'crush' | 'talking' | 'friend' | 'work' | 'intro' | 'unsure';
 
 /** l / m / h, x = 잘 모르겠어요 (점수에 반영하지 않음) */
 export type TargetLevel = 'l' | 'm' | 'h' | 'x';

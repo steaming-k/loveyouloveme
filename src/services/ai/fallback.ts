@@ -1,5 +1,4 @@
 import { OBSERVED_TRAITS } from '@/data/observations';
-import { PHOTO_MIN_COUNT } from '@/data/samplePhotos';
 import { ANALYSIS_VERSION, PROMPT_VERSIONS } from './promptVersions';
 import type {
   AiAnalysisMeta,
@@ -50,11 +49,19 @@ export function evidenceCoverageLevel(
 }
 
 /**
- * Demo 관찰 결과.
+ * Demo / Fallback 관찰 결과 — **관찰을 만들어내지 않는다** (v1.22 §1 · §2)
  *
- * 실제 이미지를 분석하지 않는다 — 사진 수만 보고 고정 관찰을 돌려준다. 그래서
- * 이미지 단위 evidence를 **만들어내지 않고**(§84: 임의 evidence 생성 금지),
- * 원래 문장형 근거를 `evidenceText`로 유지한다.
+ * ⚠️ v1.21까지 이 함수는 `OBSERVED_TRAITS`(ob1~ob4)를 그대로 돌려줬다. 그래서 Provider가
+ * 붙지 않은 배포에서 사용자가 **음식 사진만** 올려도 "영화관·상영 시간표가 담긴 사진이
+ * 반복적으로 관찰됐어"가 현재 관찰인 것처럼 나왔다. DEMO 배지를 붙였다고 해도, 실제 사진과
+ * 무관한 문장을 사용자 관찰로 보여준 것 자체가 제품 신뢰 문제다.
+ *
+ * 이제는 사진 내용을 읽지 못한 상태에서 **어떤 trait도 만들지 않는다.** 화면은
+ * `observedState`(`demo` / `provider_failed`)를 보고 지금 상태를 사실대로 말한다 —
+ * 원래 그 문구("실제 사진 내용을 분석하지 않았어. 그래서 관찰 결과도 만들지 않았어.")가
+ * 이미 화면에 있었고, 코드만 그 약속을 어기고 있었다.
+ *
+ * 실제 사진 분석 결과를 보려면 서버에 `AI_MODE=real` + `AI_API_KEY`가 있어야 한다.
  */
 export function buildDemoObservedResult(input: {
   photoCount: number;
@@ -63,36 +70,18 @@ export function buildDemoObservedResult(input: {
 }): ObservedProfileResult {
   const { photoCount, inputFingerprint, mode } = input;
 
-  const source =
-    photoCount < PHOTO_MIN_COUNT
-      ? []
-      : photoCount >= 5
-        ? OBSERVED_TRAITS
-        : OBSERVED_TRAITS.filter((trait) => trait.confidence !== 'low');
-
-  const traits: AiObservedTrait[] = source.map((trait) => ({
-    id: trait.id,
-    // Demo 데이터에는 category가 없었다 — 표시용으로 lifestyle로 둔다.
-    category: 'lifestyle',
-    label: trait.text,
-    observation: trait.text,
-    evidence: [],
-    evidenceText: trait.evidence,
-    confidence: trait.confidence,
-  }));
-
   const limitations =
     mode === 'fallback'
-      ? ['사진 분석을 완료하지 못해서 규칙 기반 결과로 대체했어. 사진 내용을 읽은 결과가 아니야.']
-      : ['이 결과는 규칙 기반 데모야. 실제 사진 내용을 분석하지 않았어.'];
+      ? ['사진 분석을 완료하지 못했어. 사진 내용을 읽지 못했으니 관찰도 만들지 않았어.']
+      : ['실제 사진 내용을 분석하지 않았어. 그래서 관찰 결과도 만들지 않았어.'];
 
   return {
     version: ANALYSIS_VERSION,
-    traits,
+    traits: [],
     limitations,
     evidenceCoverage: {
       imageCount: photoCount,
-      // Demo는 이미지를 실제로 읽지 않았으므로 usable을 0으로 둔다 — 과장하지 않는다.
+      // 이미지를 실제로 읽지 않았으므로 usable은 0이다 — 과장하지 않는다.
       usableImageCount: 0,
       level: 'low',
     },
@@ -102,6 +91,56 @@ export function buildDemoObservedResult(input: {
       mode,
       promptVersion: PROMPT_VERSIONS.observed,
       inputFingerprint,
+    }),
+  };
+}
+
+/**
+ * **샘플 세션** 전용 관찰 결과 (v1.22)
+ *
+ * `createSampleAnswers()`만 이 함수를 쓴다. 그 함수의 진입점은 두 곳이다:
+ *   1. 데스크톱 `PrototypePanel` '샘플 답변 채우기' — dev 전용(`NODE_ENV=production`에서 미렌더)
+ *   2. **S06 `/profile/intro`의 '샘플 답변으로 결과부터 볼게'** — 일반 사용자에게도 보이며,
+ *      게이팅이 없다(v1.0부터의 sample tour 기능).
+ *
+ * ⚠️ 즉 이 고정 문장은 **Production에서도 2번을 통해 도달할 수 있다.** 다만 사용자가 그
+ * 버튼을 직접 눌러 '샘플로 보겠다'고 선택한 경우뿐이고, 결과 mode는 `demo`이며 화면에
+ * `DEMO AI` 배지와 아래 limitation이 함께 붙는다.
+ *
+ * **사용자가 자기 사진을 올린 경로에는 절대 섞이지 않는다** — 그 경로는
+ * `buildDemoObservedResult`를 타고, 거기서는 아무 관찰도 만들지 않는다. v1.22가 고친
+ * 문제(음식 사진에 영화 관찰)는 그 경로였다.
+ */
+export function buildSampleObservedResult(input: {
+  photoCount: number;
+  inputFingerprint: string;
+}): ObservedProfileResult {
+  const traits: AiObservedTrait[] = OBSERVED_TRAITS.map((trait) => ({
+    id: trait.id,
+    // 샘플 데이터에는 category가 없다 — 표시용으로 lifestyle로 둔다.
+    category: 'lifestyle',
+    label: trait.text,
+    observation: trait.text,
+    // 이미지 단위 evidence를 만들어내지 않는다(§84) — 문장형 근거만 유지한다.
+    evidence: [],
+    evidenceText: trait.evidence,
+    confidence: trait.confidence,
+  }));
+
+  return {
+    version: ANALYSIS_VERSION,
+    traits,
+    limitations: ['이건 화면 확인용 샘플 세션이야. 실제 사진 내용을 분석한 결과가 아니야.'],
+    evidenceCoverage: {
+      imageCount: input.photoCount,
+      usableImageCount: 0,
+      level: 'low',
+    },
+    observedState: 'demo',
+    meta: buildMeta({
+      mode: 'demo',
+      promptVersion: PROMPT_VERSIONS.observed,
+      inputFingerprint: input.inputFingerprint,
     }),
   };
 }

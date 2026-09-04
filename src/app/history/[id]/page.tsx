@@ -9,7 +9,7 @@ import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { useToast } from '@/components/common/ToastProvider';
-import { PageHeading, SectionLabel, Tag } from '@/components/common/primitives';
+import { Lines, PageHeading, SectionLabel, Tag } from '@/components/common/primitives';
 import { HistoryChangeRow } from '@/components/history/HistoryChangeRow';
 import { Lovy } from '@/components/lovy/Lovy';
 import { MIRROR_AXES } from '@/data/axes';
@@ -119,7 +119,7 @@ function HistoryEntryView() {
           {/* ⑦ 현재 기준과 비교 — 최신 기록이면 비교 대상이 없다 */}
           {isLatest ? (
             <p className="rounded-chip bg-sunken px-3.5 py-3 text-meta keep-all leading-relaxed text-ink-sub">
-              이건 가장 최근 관찰이야. 다음 관찰이 쌓이면 이 기록과도 비교할 수 있어.
+              <Lines lines={HISTORY_COPY.entryLatest} />
             </p>
           ) : meaningful.length > 0 ? (
             <section className="flex flex-col gap-2.5">

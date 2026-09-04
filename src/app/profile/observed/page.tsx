@@ -18,6 +18,7 @@ import { LOVY_LINES, PRIVACY } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { observedEvidenceLabel } from '@/lib/logic/observed';
 import { resolveReturnDestination, withReturnTo } from '@/lib/returnTo';
+import { photoFingerprint } from '@/services/ai/imagePrep';
 import { ROUTES } from '@/lib/routes';
 import { isObservedReviewComplete } from '@/lib/validation';
 import { useSession } from '@/state/SessionProvider';
@@ -35,6 +36,7 @@ function emptyStateCopy(
   state: ObservedAnalysisState | null,
   mode: AiMode,
   photosGone: boolean,
+  photosChanged: boolean,
 ): { title: string; body: string } {
   if (state === null) {
     return {
@@ -53,6 +55,18 @@ function emptyStateCopy(
     return {
       title: '지금은 볼 수 있는 사진이 없어.',
       body: '이전 관찰 기록은 남겨뒀어. 사진을 다시 고르면 새로 관찰할 수 있어.',
+    };
+  }
+
+  /**
+   * v1.22 §2-F — 저장된 분석의 근거 사진 조합이 **지금 사진과 다르다.** 예전 결과를 현재
+   * 관찰인 것처럼 보여주지 않는다. 새로고침으로 업로드 사진이 세션에서 빠졌거나(§복원),
+   * 사진을 바꿨는데 재분석 없이 이 화면으로 되돌아온 경우다.
+   */
+  if (photosChanged) {
+    return {
+      title: '사진이 바뀌어서 이 관찰은 더 못 써.',
+      body: '지금 사진으로 다시 관찰해야 해. 예전 결과를 현재 관찰인 것처럼 보여주진 않을게.',
     };
   }
 
@@ -174,11 +188,32 @@ function ObservedResultView() {
   const photosGone = answers.photos.length === 0;
 
   /**
+   * v1.22 §2 — 저장된 분석의 입력 지문이 **지금 사진 조합**과 같은지 확인한다.
+   *
+   * 지문은 사진 id와 순서를 모두 반영하므로(photoFingerprint), 한 장만 바꿔도 값이 달라진다.
+   * 값이 다르면 이 결과는 지금 사진의 관찰이 아니다 — 화면에 현재 관찰인 것처럼 띄우지 않고
+   * 재분석을 안내한다. 'legacy'/'sample' 지문은 각각 v1.5 이전 세션 복원과 dev 샘플 세션이라
+   * 사진 조합과 대조할 대상이 아니므로 예외로 둔다.
+   */
+  const analysisFingerprint = analysis?.meta.inputFingerprint ?? null;
+  const photosChanged =
+    !photosGone &&
+    analysisFingerprint !== null &&
+    analysisFingerprint !== 'legacy' &&
+    analysisFingerprint !== 'sample' &&
+    analysisFingerprint !== photoFingerprint(answers.photos);
+
+  /**
    * §62 — Trait 0개는 **실패가 아니다.** '근거를 못 찾았다'는 정상 상태이고,
    * 사진 분석이 약하다고 Core Funnel을 막지 않는다(§63) — 질문으로 계속할 길을 함께 준다.
    */
-  if (traits.length === 0 || photosGone) {
-    const empty = emptyStateCopy(analysis === null ? null : observedState, mode, photosGone);
+  if (traits.length === 0 || photosGone || photosChanged) {
+    const empty = emptyStateCopy(
+      analysis === null ? null : observedState,
+      mode,
+      photosGone,
+      photosChanged,
+    );
 
     return (
       <ScreenLayout
@@ -204,7 +239,7 @@ function ObservedResultView() {
           <h2 className="text-section keep-all">{empty.title}</h2>
           <p className="text-sub keep-all leading-relaxed text-ink-sub">{empty.body}</p>
           {/* photosGone일 때는 예전 근거의 limitations를 지금 상태처럼 보여주지 않는다 */}
-          {!photosGone && analysis && analysis.limitations.length > 0 ? (
+          {!photosGone && !photosChanged && analysis && analysis.limitations.length > 0 ? (
             <ul className="flex flex-col gap-1.5 pt-1">
               {analysis.limitations.map((item) => (
                 <li key={item} className="text-meta keep-all leading-relaxed text-ink-faint">
@@ -366,8 +401,7 @@ function ObservedResultView() {
           ) : null}
           {mode === 'fallback' ? (
             <NoticeBox>
-              사진 분석에 실패해서 일부 결과를 간단한 규칙 기반으로 보여주고 있어. 사진 내용을
-              읽은 결과가 아니야.
+              사진 분석을 완료하지 못했어. 사진 내용을 읽지 못했으니 관찰도 만들지 않았어.
             </NoticeBox>
           ) : null}
         </div>

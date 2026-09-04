@@ -8,7 +8,7 @@ import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
-import { PageHeading, SectionLabel, Tag } from '@/components/common/primitives';
+import { Lines, PageHeading, SectionLabel, Tag } from '@/components/common/primitives';
 import { HistoryChangeRow } from '@/components/history/HistoryChangeRow';
 import { RepeatedSignalNotice } from '@/components/history/PastObservationNote';
 import { Lovy } from '@/components/lovy/Lovy';
@@ -117,8 +117,16 @@ function HistoryView() {
         {/* ② 의미 있는 변화 — 기록 1개면 가짜 변화를 만들지 않는다 */}
         <section className="flex flex-col gap-2.5">
           <SectionLabel>변화 요약</SectionLabel>
+          {/*
+            §15-② — 기록이 1개일 때의 문장은 승인된 줄바꿈을 그대로 지킨다. 텍스트 내용은
+            `buildHistoryReport`의 summary와 동일하고(같은 문장), 판정 로직은 건드리지 않았다.
+          */}
           <p className="px-1 text-caption keep-all leading-relaxed text-ink-sub">
-            {report.summary}
+            {!report.comparable && report.entryCount === 1 ? (
+              <Lines lines={HISTORY_COPY.reportSingle} />
+            ) : (
+              report.summary
+            )}
           </p>
 
           {report.comparable ? (
@@ -176,7 +184,7 @@ function HistoryView() {
         </section>
 
         <LovyMessage pose="calendar" size={60}>
-          {LOVY_LINES.historyReport}
+          <Lines lines={LOVY_LINES.historyReport} />
         </LovyMessage>
       </div>
     </ScreenLayout>

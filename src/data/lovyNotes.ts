@@ -1,4 +1,4 @@
-import type { CompatibilityResult, TargetAxisKey } from '@/types';
+import type { CompatibilityDimension, CompatibilityResult, TargetAxisKey } from '@/types';
 
 /**
  * 러비 관찰 노트 (v1.20)
@@ -68,7 +68,7 @@ export const LOVY_OBSERVATION_NOTES: readonly LovyObservationNote[] = [
     id: 'align-alone',
     trigger: 'compatibility_alignment',
     axis: 'alone',
-    text: '혼자 있는 시간에 대한 기대는 비슷해 보여. 근데 혼자 있고 싶은 이유까지 같은지는 나도 모르겠어.',
+    text: '혼자 있는 시간에 대한 기대는 비슷해 보여. 근데 혼자 있고 싶은 이유까지 같은지는 더 알아봐야겠어.',
   },
   {
     id: 'align-contact',
@@ -151,22 +151,62 @@ export interface LovySurprise {
   hook: string;
   /** 이어지는 설명 — 여전히 러비 화법이되 차분하게 */
   body: string;
+  /**
+   * YOUR SIGNAL — 위 관찰이 **이 사용자의 어떤 답에서 나왔는지** (v1.22 §18)
+   *
+   * 무료 결과가 '일반적인 감성 문구'로 읽히지 않게 하는 한 줄이다. 러비의 생각 옆에
+   * 지금 결과의 실제 근거를 붙여서, 사용자가 "내 답을 실제로 읽고 말하는구나"를 확인할 수
+   * 있게 한다. 값은 전부 이미 계산된 `CompatibilityResult`에서 파생된다 — 새 계산도,
+   * 새 AI 호출도, 랜덤도 없다(같은 결과면 언제나 같은 문장).
+   *
+   * 근거로 쓸 축이 없으면(비교 가능한 축이 하나도 없는 경우) null이다 — 없는 근거를
+   * 만들어내지 않는다.
+   */
+  signal: string | null;
+}
+
+/**
+ * 무료 결과의 YOUR SIGNAL 한 줄.
+ *
+ * 판정 문구는 이미 화면이 쓰고 있는 `tone`을 그대로 따른다 — 여기서 새로 판정하지 않는다.
+ * 심리학적 사실처럼 단정하지 않고, '무엇을 답했는가'만 말한다.
+ */
+function signalLineOf(dimension: CompatibilityDimension | undefined): string | null {
+  if (!dimension || dimension.alignment === null) return null;
+
+  const answers = `나: ${dimension.minePhrase} · 상대: ${dimension.theirsPhrase}`;
+
+  if (dimension.tone === 'watch') {
+    return `${dimension.label}에서는 두 사람의 답이 서로 다르게 나왔어. (${answers})`;
+  }
+  if (dimension.tone === 'good') {
+    return `${dimension.label}에 대해서는 둘이 비슷하게 답했어. (${answers})`;
+  }
+  return `${dimension.label}은 아주 다르지도, 아주 비슷하지도 않게 나왔어. (${answers})`;
 }
 
 export function selectFirstSurprise(result: CompatibilityResult): LovySurprise | null {
   if (result.score === null) return null;
+
+  /** 근거로 쓸 축 — 화면에서 이미 첫 신호로 보여주는 축과 같은 우선순위다 */
+  const sourceAxis =
+    result.frictionSignals[0] ??
+    result.goodSignals[0] ??
+    result.dimensions.find((dimension) => dimension.alignment !== null);
 
   if (result.frictionSignals.length > 0) {
     return {
       variant: 'gap',
       hook: '잠깐. 숫자만 보면 놓치는 게 하나 있어.',
       body: '같은 유형이거나 비슷한 성향이어도, 실제 관계에서는 연락·갈등·개인 시간처럼 서로 다르게 받아들이는 순간이 생기더라. 그래서 나는 두 사람을 숫자 하나로 설명하지 않고 축을 하나씩 따로 봐.',
+      signal: signalLineOf(sourceAxis),
     };
   }
 
   return {
     variant: 'alignment',
-    hook: '잠깐. 잘 맞는다고 나와도 확인은 필요해.',
+    hook: '궁합 점수가 높아도 확인은 필요해.',
     body: '지금 입력에서는 크게 어긋나는 축이 안 보여. 근데 비슷하게 답했다고 같은 뜻으로 답한 건 아닐 수 있어서, 나는 축을 하나씩 따로 봐.',
+    signal: signalLineOf(sourceAxis),
   };
 }

@@ -45,6 +45,7 @@ import {
 import { selectCompatibilityNote, selectFirstSurprise } from '@/data/lovyNotes';
 import { PREMIUM_HOOK_COPY } from '@/data/premium';
 import { useAnchorScroll } from '@/hooks/useAnchorScroll';
+import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { narrativeIsShowable } from '@/lib/aiEvidenceResolver';
 import { trackEvent, trackOnce, trackOncePerAnalysis } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
@@ -166,6 +167,21 @@ function CompatibilityView() {
 
   const funnelAnalysisId = answers.currentAnalysisMeta?.funnelAnalysisId ?? null;
 
+  /**
+   * v1.22 §12 — Lens 상세·MBTI 상세를 보고 Back으로 돌아왔을 때 읽던 위치로 되돌린다.
+   *
+   * 키가 `funnelAnalysisId`라서 **새 상대는 새 키**다. 그리고 궁합 관찰 화면
+   * (`/compatibility/analyzing`)이 진입할 때마다 이 키의 저장값을 지우므로, 같은 상대를
+   * 다시 분석해도 이전 스크롤 위치를 물려받지 않는다.
+   *
+   * hash로 들어온 경우(Legacy Redirect `/compatibility/good` → `#good`, Lenses 화면의
+   * `backHref`)에는 복원하지 않고 기존 `useAnchorScroll`의 앵커 이동을 그대로 살린다.
+   */
+  useScrollRestore(
+    funnelAnalysisId ? `compat:${funnelAnalysisId}` : null,
+    result.score !== null,
+  );
+
   useEffect(() => {
     if (result.score === null) return;
     // Primary KPI 분모 — 세션당 한 번만. Revisit 여부와 무관하게 기존 정책 그대로(§12).
@@ -234,6 +250,15 @@ function CompatibilityView() {
   */
   const firstSurprise = selectFirstSurprise(result);
   const observationNote = selectCompatibilityNote(result);
+  /**
+   * v1.22 §20 — 러비 노트 블록. 정의를 한 곳에 두고 friction 섹션의 두 갈래(차이가 있을 때 /
+   * 없을 때) 모두에서 **신호 목록 직후**에 놓는다. 예전에는 '더 보기' 버튼 아래에 붙어서
+   * 섹션이 끝난 뒤 남은 꼬리처럼 읽혔다. 새 카드를 만들지 않고 순서만 바꿨다.
+   */
+  const lovyNoteBlock = observationNote ? (
+    <LovyNote className="mt-3">{observationNote.text}</LovyNote>
+  ) : null;
+
   /** FIRST SURPRISE CTA가 향하는 곳 — 실제로 화면에 존재하는 첫 신호 섹션 */
   const signalAnchor = topGood
     ? RESULT_ANCHORS.compatibilityGood
@@ -456,6 +481,9 @@ function CompatibilityView() {
                     ))
                   : null}
               </ul>
+
+              {lovyNoteBlock}
+
               {restFriction.length > 0 ? (
                 <button
                   type="button"
@@ -472,19 +500,15 @@ function CompatibilityView() {
               ) : null}
             </>
           ) : (
-            <p className="px-1 text-caption keep-all leading-relaxed text-ink-sub">
-              지금 입력으로는 큰 차이를 못 찾았어. 차이가 없다는 결론은 아니야 — 아직 내가
-              못 본 것일 수도 있어.
-            </p>
+            <>
+              <p className="px-1 text-caption keep-all leading-relaxed text-ink-sub">
+                지금 입력으로는 큰 차이를 못 찾았어. 차이가 없다는 결론은 아니야 — 아직 내가
+                못 본 것일 수도 있어.
+              </p>
+              {lovyNoteBlock}
+            </>
           )}
 
-          {/*
-            §13 — 무료에서도 러비의 짧은 관찰을 준다. 단 '사랑은 어렵다' 같은 일반 감성
-            문구가 아니라 **현재 결과와 연결된 생각**만 쓴다: 차이가 있으면 그 축의 노트,
-            차이가 없으면 alignment 노트, 관측 정보가 부족하면(score===null) 아예 만들지
-            않는다. 심리학적 사실처럼 말하지 않고 러비의 질문으로 남긴다.
-          */}
-          {observationNote ? <LovyNote className="mt-1">{observationNote.text}</LovyNote> : null}
         </ReportSection>
 
         {/*

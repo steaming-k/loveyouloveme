@@ -20,7 +20,8 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
-  themeColor: '#FAFAF7',
+  // §13 — 브라우저 UI(주소창)도 페이지 배경과 같은 순백으로 맞춘다
+  themeColor: '#FFFFFF',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

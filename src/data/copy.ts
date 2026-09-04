@@ -51,10 +51,11 @@ export const ONBOARDING_CTA = ['다음', '다음', '나부터 관찰하기'] as 
 
    분석 화면을 '스피너 + 결과 예고'가 아니라 러비의 **관찰 과정**으로 설명한다.
      OBSERVE → COLLECT → CONNECT → REPORT
-   ⚠️ 이건 **UX layer**다. 실제 파이프라인을 4개 호출로 쪼개지 않았고, 보여주기 위한
-   인위적인 지연도 넣지 않았다 — 단계 총 시간은 v1.19 로딩 시퀀스와 **정확히 같다**
-   (`OBSERVATION_STAGE_MS × 단계 수 + 500ms`). 실제 결과가 더 늦게 오면 마지막 단계에서
+   ⚠️ 이건 **UX layer**다. 실제 파이프라인을 4개 호출로 쪼개지 않았다 — 총 시간은
+   `OBSERVATION_STAGE_MS × 단계 수 + 500ms`다. 실제 결과가 더 늦게 오면 마지막 단계에서
    기다리고(사진 분석), 계산이 즉시 끝나면 이 시간이 그대로 최소 연출 시간이 된다(궁합).
+   v1.22에서 단계 시간만 1100 → 1400ms로 올렸다(§6) — 각 단계 문구를 읽을 수 있게 하기
+   위한 조정이고, 실제 분석을 늦추지는 않는다.
 
    영어 `code`는 작은 technical label로만 쓴다 — 사용자가 읽는 핵심 정보는 항상 한국어
    `text`다. 영어가 메인 콘텐츠가 되면 안 된다.
@@ -96,10 +97,18 @@ export const OBSERVATION_CAVEAT = {
 export const OBSERVATION_READY = '관찰 보고서가 완성됐어.';
 
 /**
- * 한 단계가 머무는 시간(ms). 4단계 = 4.4초 + 마무리 0.5초.
- * v1.19의 `LOADING_LINE_MS`와 **같은 값**이다 — 연출을 위해 늘리지 않았다.
+ * 한 단계가 머무는 시간(ms). 4단계 = 5.6초 + 마무리 0.5초.
+ *
+ * v1.22 — 1100ms에서 1400ms로 올렸다(+27%). 실사용 테스트에서 각 단계 문구가 읽히기 전에
+ * 다음 단계로 넘어가서, 러비가 무슨 관찰을 하고 있는지 인지할 수 없었다. 총 6.1초로
+ * 여전히 '연출을 위한 긴 대기'는 아니다.
+ *
+ * ⚠️ 결과를 늦추기 위한 값이 아니다. 사진 분석은 실제 응답이 더 늦으면 마지막 단계에서
+ * 기다리므로(호출부가 연출 완료 **와** 분석 완료를 둘 다 만족할 때만 이동) 이 값이 실제
+ * 대기 시간을 늘리지 않는다. 궁합은 순수 계산이라 이 값이 그대로 최소 연출 시간이 된다.
+ * prefers-reduced-motion에서는 이 값을 쓰지 않고 4단계를 목록으로 한 번에 보여준다.
  */
-export const OBSERVATION_STAGE_MS = 1100;
+export const OBSERVATION_STAGE_MS = 1400;
 
 /** 프라이버시 안내 — 민감정보를 입력하는 순간에만 필요한 만큼 보여준다 */
 export const PRIVACY = {
@@ -192,7 +201,11 @@ export const LOVY_LINES = {
   coreInsightAsk: '내 관찰이 맞아?',
   coreInsightFooter: '네 확인이 다음 관찰의 기준이 돼. 러비는 계속 배우는 중이야.',
   lens: '이 렌즈들은 내 관찰 기록을 대신하지 않아. 그냥 다른 각도로 보는 거야.',
-  historyReport: '인간의 사랑은 아직도 잘 모르겠어. 근데 너에 대해서는 전보다 조금 알 것 같아.',
+  /** §15-③ 승인된 줄바꿈. LovyMessage가 배열을 받아 두 줄로 그린다 */
+  historyReport: [
+    '인간의 사랑은 아직도 잘 모르겠어.',
+    '근데 너에 대해서는 전보다 조금 알 것 같아.',
+  ],
 } as const;
 
 /** 3 Data Layer 소개 (S06) */
@@ -228,7 +241,7 @@ export const REPORT_COPY = {
   noteLabel: 'LOVY NOTE',
   sections: {
     summary: { code: 'SUMMARY', title: '한눈에 보는 관찰' },
-    why: { code: 'METHOD', title: '왜 이렇게 나왔어' },
+    why: { code: 'METHOD', title: '왜 이 점수일까?' },
     good: { code: 'WHERE IT CONNECTS', title: '잘 맞는 신호' },
     friction: { code: 'DIFFERENCE', title: '확인이 필요한 신호' },
     lenses: { code: 'OTHER LENSES', title: '다른 렌즈로 겹쳐 보면' },
@@ -260,8 +273,17 @@ export const HOME_COPY = {
  */
 export const HISTORY_COPY = {
   badge: 'RELATIONSHIP HISTORY',
-  title: ['러비가', '기억하고 있는 나'],
-  caption: '누구와 몇 번 만났는지는 기록하지 않아. 네 기준이 어떻게 움직였는지만 남겨.',
+  /**
+   * §14 — 한 줄로 표시한다. 예전에는 ['러비가', '기억하고 있는 나']로 강제 2줄이었다.
+   * `PageHeading`은 배열 원소마다 `block` span을 만들므로 원소가 1개면 한 줄이 된다.
+   * 23px `text-title` + `keep-all`로 360px에서도 한 줄에 들어간다(실측 확인).
+   */
+  title: ['러비가 기억하고 있는 나'],
+  /** §15-① 승인된 줄바꿈 — 문장 내용은 그대로 두고 두 줄 구조만 유지한다 */
+  caption: [
+    '누구와 몇 번 만났는지는 기록하지 않아.',
+    '네 기준이 어떻게 움직였는지만 남겨.',
+  ],
 
   empty: {
     title: ['아직 너를', '오래 관찰하진 못했어.'],
@@ -282,11 +304,24 @@ export const HISTORY_COPY = {
   },
 
   reportTitle: ['예전의 너와', '지금의 너'],
-  reportSingle: '아직 비교할 과거 기록이 하나뿐이야. 다음 관찰이 쌓이면 변화를 알려줄게.',
+  /** §15-② 승인된 줄바꿈. 화면은 이 두 줄을 각각 block으로 그린다 */
+  reportSingle: [
+    '아직 비교할 과거 기록이 하나뿐이야.',
+    '다음 관찰이 쌓이면 변화를 알려줄게.',
+  ],
 
   /** §21 반복 신호 — '너는 항상 이래' 같은 표현은 쓰지 않는다 */
   repeatedTitle: '이 신호… 처음 보는 게 아닌데.',
   repeatedCaption: '이 기준은 이전 관찰에서도 비슷한 신호가 있었어.',
+
+  /**
+   * §16 — '이때의 관찰'(F1 상세) 화면. 최신 기록이라 비교 대상이 없을 때의 안내다.
+   * 승인된 줄바꿈이므로 반응형에서 사라지지 않게 `Lines`로 각 줄을 block으로 그린다.
+   */
+  entryLatest: [
+    '이건 가장 최근 관찰이야.',
+    '다음 관찰이 쌓이면 이 기록과도 비교할 수 있어.',
+  ],
 
   pastLabel: 'PAST',
   nowLabel: 'NOW',

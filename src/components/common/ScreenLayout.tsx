@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { cn } from '@/lib/cn';
+import { SCREEN_SCROLL_ATTR } from '@/lib/scrollRestore';
 
 interface ScreenLayoutProps {
   /** 상단 고정 영역 (back · progress · title) */
@@ -38,7 +39,13 @@ export function ScreenLayout({
     <div className="flex h-full min-h-0 flex-col">
       {header ? <div className="flex-none">{header}</div> : null}
 
+      {/*
+        v1.22 §12 — 이 div가 앱의 실제 스크롤 주체다(document가 아니다). `useScrollRestore`가
+        이 표식으로 컨테이너를 찾아 Back 복원 위치를 읽고 쓴다. 표식만 붙이고 레이아웃은
+        그대로 둔다 — 이 컴포넌트는 복원 로직을 알지 못한다.
+      */}
       <div
+        {...{ [SCREEN_SCROLL_ATTR]: '' }}
         className={cn(
           'min-h-0 flex-1',
           centered

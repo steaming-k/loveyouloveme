@@ -11,6 +11,7 @@ import { AXIS_DEFINITIONS } from '@/data/axes';
 import { COMPATIBILITY_OBSERVATION, OBSERVATION_CAVEAT } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { ROUTES } from '@/lib/routes';
+import { clearScrollPosition } from '@/lib/scrollRestore';
 import { calculateCompatibility } from '@/services/aiService';
 import { useSession } from '@/state/SessionProvider';
 
@@ -23,6 +24,20 @@ export default function CompatibilityLoadingPage() {
   const { answers, markComplete } = useSession();
   const [failed, setFailed] = useState(false);
   const resultRef = useRef<{ score: number | null; compared: number } | null>(null);
+
+  const funnelAnalysisId = answers.currentAnalysisMeta?.funnelAnalysisId ?? null;
+
+  /**
+   * v1.22 §12 — **새 분석은 맨 위에서 시작한다.**
+   *
+   * 결과 화면의 스크롤 복원 키는 `funnelAnalysisId`다. 새 상대는 id 자체가 새로 발급되지만,
+   * 같은 상대의 정보를 고쳐서 다시 관찰하면 id가 그대로다. 그때 이전 위치로 복원되면
+   * '새로 분석했는데 중간부터 보이는' 상태가 되므로, 관찰 화면에 들어온 시점에 지운다.
+   */
+  useEffect(() => {
+    if (!funnelAnalysisId) return;
+    clearScrollPosition(`compat:${funnelAnalysisId}`);
+  }, [funnelAnalysisId]);
 
   useEffect(() => {
     let cancelled = false;

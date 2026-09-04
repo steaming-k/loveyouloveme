@@ -1,18 +1,15 @@
-import { OBSERVED_TRAITS } from '@/data/observations';
-import { PHOTO_MIN_COUNT } from '@/data/samplePhotos';
-import type { ObservedTrait, PhotoAsset } from '@/types';
+import type { PhotoAsset } from '@/types';
 
 /**
- * 사진 관찰 초안 만들기 — Prototype Demo Logic
+ * 사진 관찰 관련 표시 유틸.
  *
- * 이미지 픽셀을 분석하지 않는다. 선택한 사진 수만 근거로 삼아
- * 관찰 개수를 조절할 뿐이다. 사진이 적으면 확신 낮은 관찰은 내놓지 않는다.
+ * ⚠️ v1.22 — 예전에는 여기 `buildObservedTraits(photos)`가 있었다. 사진 **개수만** 보고
+ * 고정 관찰 목록(ob1~ob4)을 돌려주는 함수였고, `aiSelectors.observedTraits`로 export만
+ * 돼 있어서 실제로 호출하는 화면은 없었다. 사진 내용과 무관한 관찰을 만들어내는 코드는
+ * 남겨두면 언젠가 다시 붙는다(§2) — 그래서 삭제했다.
+ *
+ * 실제 관찰은 `answers.observedAnalysis.traits`(Vision 결과)만 근거로 삼는다.
  */
-export function buildObservedTraits(photos: PhotoAsset[]): ObservedTrait[] {
-  if (photos.length < PHOTO_MIN_COUNT) return [];
-  if (photos.length >= 5) return [...OBSERVED_TRAITS];
-  return OBSERVED_TRAITS.filter((trait) => trait.confidence !== 'low');
-}
 
 /** '근거: 사진 N장' 배지 문구 */
 export function observedEvidenceLabel(photos: PhotoAsset[]): string {

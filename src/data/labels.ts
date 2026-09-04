@@ -99,9 +99,11 @@ export const STATUS_SUPPORTED: Record<RelationshipStatus, boolean> = {
 
 export const TARGET_RELATION_LABEL: Record<TargetRelation, string> = {
   crush: '알아가는 중',
+  talking: '썸 타는 중',
   friend: '친구',
   work: '같이 일하는 사람',
   intro: '소개로 만남',
+  unsure: '잘 모름',
 };
 
 export const CONFIDENCE_LABEL = {
