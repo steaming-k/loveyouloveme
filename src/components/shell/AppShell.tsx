@@ -21,7 +21,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             relative는 BottomSheet/ConfirmModal의 absolute inset-0가 데스크톱에서
             브라우저 전체가 아니라 이 프레임 안에서만 뜨도록 기준점을 만든다. */}
         <div className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-canvas lg:h-[min(852px,calc(100dvh-88px))] lg:w-[393px] lg:rounded-[41px]">
-          <DeviceTopBar />
           <main className="min-h-0 flex-1">{children}</main>
           <AiDebugPanel />
           <ConsentBanner />
@@ -29,29 +28,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
 
       <PrototypePanel />
-    </div>
-  );
-}
-
-/**
- * 상단 44px 영역.
- * 실기기에서는 노치 safe area 여백으로 쓰이고, 데스크톱 프레임에서만
- * 와이어프레임과 같은 목업 상태바를 보여준다.
- */
-function DeviceTopBar() {
-  return (
-    <div
-      className="h-11 flex-none items-center justify-between px-6 pt-[env(safe-area-inset-top)] lg:hidden"
-      aria-hidden
-    >
-      <div className="hidden text-caption font-semibold tracking-[-0.2px] lg:block">9:41</div>
-      <div className="hidden items-center gap-[5px] lg:flex">
-        <div className="h-[9px] w-[15px] rounded-[1.5px] bg-ink" />
-        <div className="h-[9px] w-[14px] rounded-[1.5px] bg-ink" />
-        <div className="h-[10px] w-[22px] rounded-[2.5px] border border-ink p-[1.5px]">
-          <div className="h-full w-[70%] rounded-[1px] bg-ink" />
-        </div>
-      </div>
     </div>
   );
 }
