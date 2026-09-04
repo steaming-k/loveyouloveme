@@ -119,9 +119,13 @@ src/
 │  │                       Toast, BottomNavigation, ResultSectionNav(v1.11),
 │  │                       ConsentBanner(v1.12), primitives
 │  ├─ ai/                  AiModeNotice, NarrativeViews, AiDebugPanel
-│  ├─ lovy/                Lovy, LovyMessage, LovyLoading
+│  ├─ lovy/                Lovy, LovyMessage, LovyNote(v1.20),
+│  │                       LovyObservation + ObservationField(v1.20)
+│  ├─ report/              ReportShell — Header/Section/EvidenceBlock (v1.20)
 │  ├─ profile/             PhotoGrid, ObservationCard, ProfileLayerStack
-│  ├─ compatibility/       SyncScore, SignalCard, ConversationCard, MbtiLensPanel
+│  ├─ compatibility/       SyncScore, SignalCard, ConversationCard, MbtiLensPanel,
+│  │                       FirstSurprise(v1.20)
+│  ├─ lens/                BirthProfileForm, LensStateBlocks, LensCoreBridge(v1.20)
 │  ├─ mirror/              MirrorComparisonRow, TeaserComparison
 │  ├─ history/             HistoryChangeRow, PastObservationNote
 │  ├─ premium/             PremiumEntryRow, RelationshipDeepReportView, DeepInsightCard

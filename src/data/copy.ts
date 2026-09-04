@@ -46,35 +46,60 @@ export const ONBOARDING_SLIDES = [
 
 export const ONBOARDING_CTA = ['다음', '다음', '나부터 관찰하기'] as const;
 
-/** 로딩 시퀀스 — 일반 스피너 하나로 끝내지 않는다 */
-export interface LoadingLine {
+/* --------------------------------------------------------------------------
+   Lovy Observation Experience (v1.20)
+
+   분석 화면을 '스피너 + 결과 예고'가 아니라 러비의 **관찰 과정**으로 설명한다.
+     OBSERVE → COLLECT → CONNECT → REPORT
+   ⚠️ 이건 **UX layer**다. 실제 파이프라인을 4개 호출로 쪼개지 않았고, 보여주기 위한
+   인위적인 지연도 넣지 않았다 — 단계 총 시간은 v1.19 로딩 시퀀스와 **정확히 같다**
+   (`OBSERVATION_STAGE_MS × 단계 수 + 500ms`). 실제 결과가 더 늦게 오면 마지막 단계에서
+   기다리고(사진 분석), 계산이 즉시 끝나면 이 시간이 그대로 최소 연출 시간이 된다(궁합).
+
+   영어 `code`는 작은 technical label로만 쓴다 — 사용자가 읽는 핵심 정보는 항상 한국어
+   `text`다. 영어가 메인 콘텐츠가 되면 안 된다.
+   -------------------------------------------------------------------------- */
+export type ObservationStageCode = 'OBSERVING' | 'COLLECTING' | 'CONNECTING' | 'WRITING';
+
+export interface ObservationStage {
+  code: ObservationStageCode;
+  /** 사용자가 읽는 한 줄. '지금 무엇을 하는 중인지'만 말한다 — 결과를 미리 말하지 않는다. */
   text: string;
-  /** 'whisper' 관측 로그 / 'main' 핵심 발견 / 'doubt' 불확실성 고백 */
-  tone: 'whisper' | 'main' | 'doubt';
 }
 
 /**
- * ⚠️ v1.10 — 문구를 바꿨다. 예전 줄은 '영화 기록 발견' · '밖에서 보내는 시간이 꽤 많네'처럼
- * **분석이 끝나기도 전에 결과를 말하고 있었다.** 실제 Vision을 붙이면 그 문장들은 사진과
- * 무관한 거짓말이 된다. 이제는 '무엇을 하고 있는지'만 말한다.
- * '생활 패턴'이라는 말도 뺐다(§6) — 사진 몇 장으로 판정할 수 있는 것이 아니다.
+ * ⚠️ v1.10에서 한 번 고친 원칙을 그대로 유지한다. 예전 로딩 문구는 '영화 기록 발견'처럼
+ * **분석이 끝나기도 전에 결과를 말하고 있었다.** 아래 문장들은 전부 '지금 무엇을 하는
+ * 중인지'만 말한다.
  */
-export const OBSERVED_LOADING: readonly LoadingLine[] = [
-  { text: '사진을 한 장씩 살펴보는 중...', tone: 'whisper' },
-  { text: '어떤 장면과 활동이 보이는지 적는 중.', tone: 'whisper' },
-  { text: '여러 장에서 겹치는 게 있는지 맞춰보는 중.', tone: 'main' },
-  { text: '없는 건 없다고 할게.', tone: 'doubt' },
+export const OBSERVED_OBSERVATION: readonly ObservationStage[] = [
+  { code: 'OBSERVING', text: '사진을 한 장씩 살펴보는 중.' },
+  { code: 'COLLECTING', text: '어떤 장면과 활동이 보이는지 적는 중.' },
+  { code: 'CONNECTING', text: '여러 장에서 겹치는 게 있는지 맞춰보는 중.' },
+  { code: 'WRITING', text: '관찰 기록을 정리하는 중.' },
 ];
 
-export const COMPATIBILITY_LOADING: readonly LoadingLine[] = [
-  { text: '두 지구인의 신호 비교 중...', tone: 'whisper' },
-  { text: '공통점 발견.', tone: 'whisper' },
-  { text: '음... 여기서는 조금 다르네.', tone: 'main' },
-  { text: '관측 완료.', tone: 'doubt' },
+export const COMPATIBILITY_OBSERVATION: readonly ObservationStage[] = [
+  { code: 'OBSERVING', text: '두 사람의 관계 신호를 살펴보는 중.' },
+  { code: 'COLLECTING', text: '서로 다르게 나타난 신호를 모으는 중.' },
+  { code: 'CONNECTING', text: '신호들이 어디에서 이어지는지 보는 중.' },
+  { code: 'WRITING', text: '관찰 기록을 정리하는 중.' },
 ];
 
-/** 각 줄이 머무는 시간(ms). 합계 약 4.4초. */
-export const LOADING_LINE_MS = 1100;
+/** 마지막 단계에 조용히 붙는 한 줄. 확신을 부풀리지 않기 위한 고백이다. */
+export const OBSERVATION_CAVEAT = {
+  observed: '없는 건 없다고 할게.',
+  compatibility: '입력에 없는 건 추측하지 않을게.',
+} as const;
+
+/** 모든 단계가 끝났을 때의 상태 문구 */
+export const OBSERVATION_READY = '관찰 보고서가 완성됐어.';
+
+/**
+ * 한 단계가 머무는 시간(ms). 4단계 = 4.4초 + 마무리 0.5초.
+ * v1.19의 `LOADING_LINE_MS`와 **같은 값**이다 — 연출을 위해 늘리지 않았다.
+ */
+export const OBSERVATION_STAGE_MS = 1100;
 
 /** 프라이버시 안내 — 민감정보를 입력하는 순간에만 필요한 만큼 보여준다 */
 export const PRIVACY = {
@@ -185,6 +210,40 @@ export const COMPATIBILITY_COPY = {
   goodCountLabel: '잘 맞는 신호',
   watchCountLabel: '관찰 필요한 신호',
 } as const;
+
+/* --------------------------------------------------------------------------
+   Lovy Observation Report (v1.20)
+
+   결과 화면의 **상위 framing**. 계산도, 섹션 구성도, anchor도 v1.19 그대로다 —
+   '분석 결과 카드 모음'처럼 읽히던 화면을 '러비가 쓴 하나의 관찰 보고서'처럼 읽히게
+   하는 제목·번호·메타데이터만 여기서 관리한다.
+
+   ⚠️ 사용자에게 의미 없는 내부 식별자(analysisId · fingerprint · funnelAnalysisId)는
+   이 메타데이터에 절대 넣지 않는다.
+   -------------------------------------------------------------------------- */
+export const REPORT_COPY = {
+  eyebrow: 'LOVY OBSERVATION REPORT',
+  compatibilityTitle: '이번 관계에서 발견한 신호',
+  /** 러비의 화법(호기심)과 보고서의 화법(차분함)을 구분하는 라벨 */
+  noteLabel: 'LOVY NOTE',
+  sections: {
+    summary: { code: 'SUMMARY', title: '한눈에 보는 관찰' },
+    why: { code: 'METHOD', title: '왜 이렇게 나왔어' },
+    good: { code: 'WHERE IT CONNECTS', title: '잘 맞는 신호' },
+    friction: { code: 'DIFFERENCE', title: '확인이 필요한 신호' },
+    lenses: { code: 'OTHER LENSES', title: '다른 렌즈로 겹쳐 보면' },
+    approach: { code: 'APPROACH', title: '이 사람에게 다가갈 때' },
+    questions: { code: 'NEXT QUESTION', title: '이야기해볼 질문' },
+  },
+  pastLabel: '과거 관찰 · 참고',
+} as const;
+
+/** Lens → Core Bridge (§12) — 렌즈 결과 뒤에서 실제 관계 신호로 돌려보내는 연결 고리 */
+export const LENS_BRIDGE_COPY = {
+  eyebrow: 'LENS → CORE',
+  cta: '실제 관계 신호로 보기',
+} as const;
+
 
 /** 홈 (S29) */
 export const HOME_COPY = {

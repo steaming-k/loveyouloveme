@@ -358,6 +358,63 @@
   animation: lovy-bar 1.6s ease-in-out infinite;
 }
 
+/* --------------------------------------------------------------------------
+   Observation Field (v1.20)
+   관찰 → 수집 → 연결 → 보고서. 상태 변화를 이해시키는 motion만 쓴다.
+   transition만 사용하므로 아래 prefers-reduced-motion 블록 한 곳에서 전부 꺼지고,
+   꺼져도 각 단계의 **최종 상태**는 그대로 보인다(정보가 사라지지 않는다).
+   -------------------------------------------------------------------------- */
+.obs-token {
+  opacity: 0;
+  transition:
+    opacity 380ms var(--ease-observe),
+    fill-opacity 380ms var(--ease-observe);
+}
+.obs-token[data-on='true'] {
+  opacity: 1;
+}
+.obs-token[data-dim='true'] {
+  opacity: 0.5;
+}
+
+.obs-mark {
+  opacity: 0;
+  transition: opacity 300ms var(--ease-observe);
+}
+.obs-mark[data-on='true'] {
+  opacity: 1;
+}
+
+.obs-path {
+  opacity: 0;
+  stroke-dasharray: 130;
+  stroke-dashoffset: 130;
+  transition:
+    opacity 260ms var(--ease-observe),
+    stroke-dashoffset 620ms var(--ease-observe);
+}
+.obs-path[data-on='true'] {
+  opacity: 1;
+  stroke-dashoffset: 0;
+}
+
+.obs-sheet {
+  opacity: 0;
+  transition: opacity 400ms var(--ease-observe);
+}
+.obs-sheet[data-on='true'] {
+  opacity: 1;
+}
+
+.obs-line {
+  opacity: 0;
+  transition: opacity 340ms var(--ease-observe);
+}
+.obs-line[data-on='true'] {
+  opacity: 1;
+}
+
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

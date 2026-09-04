@@ -200,6 +200,15 @@ export const ANALYTICS_EVENTS = [
   'result_reanalysis_start',
   /** @deprecated v1.11 — 위와 동일한 이유로 이번 버전에서는 발생시키지 않는다 */
   'result_reanalysis_complete',
+  // Lovy Observation Experience (v1.20 §11/§16) — **딱 하나만** 늘렸다.
+  // FIRST SURPRISE는 무료 결과에서 "이 서비스는 관계를 다르게 본다"를 이해시키는 지점이라
+  // 기존 이벤트로는 노출 자체를 셀 수 없다. 반면 '이어서 봤는가'는 이미 있는
+  // `result_anchor_navigation`(section 속성)이 그대로 측정하므로 `*_continue`를 만들지
+  // 않았다. 지표: Surprise View Rate = lovy_surprise_view / compatibility_analysis_result_view
+  // ⚠️ property는 opaque variant(gap|alignment)뿐이다. 러비 문구 원문·답변·축 값은 보내지
+  // 않는다(§16 sanitizeForExternal 경계 유지). dedup은 funnel_analysis_id 기준이라
+  // Revisit에서는 재발생하지 않고, 새 상대를 분석하면 다시 한 번 발생한다.
+  'lovy_surprise_view',
   // Analysis-level Funnel (v1.12 §18~§23) — 기존 Session KPI(trackOnce, §17.1)는 그대로
   // 둔 채 별도로 추가한 지표. sessionStorage[event명] 하나로만 dedup하는 기존 방식은
   // 같은 탭에서 두 번째 상대를 분석해도 재발생하지 않는 한계가 있었다 — 이 두 이벤트는

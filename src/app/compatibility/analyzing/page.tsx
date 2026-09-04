@@ -6,15 +6,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/common/Button';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { ErrorStateView } from '@/components/common/StateScreens';
-import { LovyLoading } from '@/components/lovy/LovyLoading';
-import { COMPATIBILITY_LOADING } from '@/data/copy';
+import { LovyObservation } from '@/components/lovy/LovyObservation';
+import { AXIS_DEFINITIONS } from '@/data/axes';
+import { COMPATIBILITY_OBSERVATION, OBSERVATION_CAVEAT } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { ROUTES } from '@/lib/routes';
 import { calculateCompatibility } from '@/services/aiService';
 import { useSession } from '@/state/SessionProvider';
 
 /**
- * S20 궁합 로딩 — 두 지구인의 신호를 비교하는 관측 로그
+ * S20 궁합 관찰 — 두 지구인의 신호를 관찰하고 하나의 기록으로 모으는 과정 (v1.20)
  * ?error=1 로 진입하면 관측 실패(E2) 상태를 확인할 수 있다.
  */
 export default function CompatibilityLoadingPage() {
@@ -86,13 +87,15 @@ export default function CompatibilityLoadingPage() {
   }
 
   return (
-    <LovyLoading
+    <LovyObservation
       pose="observe"
-      size={150}
-      lines={COMPATIBILITY_LOADING}
+      size={78}
+      stages={COMPATIBILITY_OBSERVATION}
+      /* 관찰 필드의 토큰 = 실제로 비교하는 4개 관계 축. 화면에 없는 신호를 그리지 않는다. */
+      tokens={AXIS_DEFINITIONS.map((axis) => axis.label)}
+      caveat={OBSERVATION_CAVEAT.compatibility}
       onComplete={handleComplete}
       footerNote="입력된 정보 기준으로만 비교 중"
-      indicator="align"
     />
   );
 }

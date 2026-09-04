@@ -5,9 +5,9 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/common/Button';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
-import { LovyLoading } from '@/components/lovy/LovyLoading';
+import { LovyObservation } from '@/components/lovy/LovyObservation';
 import { AiFailureView } from '@/components/profile/AiFailureView';
-import { OBSERVED_LOADING } from '@/data/copy';
+import { OBSERVATION_CAVEAT, OBSERVED_OBSERVATION } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { resolveReturnDestination, withReturnTo } from '@/lib/returnTo';
 import { ROUTES } from '@/lib/routes';
@@ -205,13 +205,15 @@ function ObservedLoadingView() {
   }
 
   return (
-    <LovyLoading
+    <LovyObservation
       pose="chart"
-      size={180}
-      lines={OBSERVED_LOADING}
+      size={86}
+      stages={OBSERVED_OBSERVATION}
+      /* 사진에서 실제로 보는 것만 적는다 — 성격·관계를 관찰한다고 말하지 않는다(§6/§14) */
+      tokens={['장면', '활동', '겹치는 신호']}
+      caveat={OBSERVATION_CAVEAT.observed}
       onComplete={handleSequenceComplete}
       footerNote={`선택한 사진 ${answers.photos.length}장만 관찰 중`}
-      indicator="bar"
     />
   );
 }

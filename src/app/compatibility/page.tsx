@@ -17,6 +17,14 @@ import { ResultSectionNav } from '@/components/common/ResultSectionNav';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
+import { LovyNote } from '@/components/lovy/LovyNote';
+import {
+  ReportEvidenceBlock,
+  ReportHeader,
+  ReportSection,
+  ReportSectionEyebrow,
+} from '@/components/report/ReportShell';
+import { FirstSurprise } from '@/components/compatibility/FirstSurprise';
 import { ApproachHintCard } from '@/components/compatibility/ApproachHintCard';
 import { MbtiLensPanel } from '@/components/compatibility/MbtiLensPanel';
 import { SignalCard } from '@/components/compatibility/SignalCard';
@@ -25,12 +33,22 @@ import { SyncScore } from '@/components/compatibility/SyncScore';
 import { PastObservationNote } from '@/components/history/PastObservationNote';
 import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
 import { useToast } from '@/components/common/ToastProvider';
-import { BRAND, COMPATIBILITY_COPY, LOVY_LINES, PRIVACY, STATE_COPY } from '@/data/copy';
+import {
+  BRAND,
+  COMPATIBILITY_COPY,
+  LENS_HUB_COPY,
+  LOVY_LINES,
+  PRIVACY,
+  REPORT_COPY,
+  STATE_COPY,
+} from '@/data/copy';
+import { selectCompatibilityNote, selectFirstSurprise } from '@/data/lovyNotes';
 import { PREMIUM_HOOK_COPY } from '@/data/premium';
 import { useAnchorScroll } from '@/hooks/useAnchorScroll';
 import { narrativeIsShowable } from '@/lib/aiEvidenceResolver';
 import { trackEvent, trackOnce, trackOncePerAnalysis } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
+import { formatEntryDate } from '@/lib/historyFormat';
 import { lensAvailability } from '@/lib/logic/birth';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { isRevisit, revisitHref, revisitSource } from '@/lib/resultView';
@@ -61,6 +79,11 @@ import { useSession } from '@/state/SessionProvider';
  *
  * 구 `/compatibility/why`·`/good`·`/friction`·`/questions`는 이 화면의 section으로
  * 흡수됐고, 해당 Route는 `redirect()`로 여기 anchor(`#why`/`#good`/...)로 보낸다.
+ *
+ * v1.20 — 같은 섹션·같은 anchor·같은 계산을 유지한 채 **상위 framing만** 바꿨다.
+ * '분석 결과 카드 모음'이 아니라 러비가 쓴 **하나의 관찰 보고서**로 읽히게 한다:
+ * Report Header → 01 SUMMARY → FIRST SURPRISE → 02 METHOD → 03/04 신호 → ....
+ * Compatibility Score·4축·tone 판정·Premium·Analytics 정의는 한 줄도 건드리지 않았다.
  */
 export default function CompatibilityPage() {
   // v1.11 — CompatibilityView가 Revisit 판정(§11)을 위해 useSearchParams()를 쓴다.
@@ -205,6 +228,37 @@ function CompatibilityView() {
   const hasFriction = result.frictionSignals.length > 0;
   const mirrorDone = answers.completed.mirror;
 
+  /*
+    v1.20 Report framing — 전부 이미 계산된 `result`에서 **결정론적으로** 파생된다.
+    새 계산도, 새 AI 호출도, 랜덤도 없다. 같은 결과면 언제나 같은 문장·같은 번호다.
+  */
+  const firstSurprise = selectFirstSurprise(result);
+  const observationNote = selectCompatibilityNote(result);
+  /** FIRST SURPRISE CTA가 향하는 곳 — 실제로 화면에 존재하는 첫 신호 섹션 */
+  const signalAnchor = topGood
+    ? RESULT_ANCHORS.compatibilityGood
+    : RESULT_ANCHORS.compatibilityFriction;
+  /** ⚠️ 사용자에게 의미 없는 내부 식별자(analysisId·fingerprint)는 넣지 않는다 */
+  const reportMeta = [
+    `관찰한 신호 ${result.totalCount}개`,
+    `비교한 신호 ${result.comparedCount}개`,
+    `${formatEntryDate(today.toISOString())} 작성`,
+  ];
+  /** 조건부로 빠지는 섹션이 있어도 번호가 건너뛰지 않도록 렌더되는 것만 센다 */
+  const sectionNo = (() => {
+    let n = 0;
+    const take = () => String((n += 1)).padStart(2, '0');
+    return {
+      summary: take(),
+      why: take(),
+      good: topGood ? take() : null,
+      friction: take(),
+      lenses: take(),
+      approach: take(),
+      questions: take(),
+    };
+  })();
+
   return (
     <ScreenLayout
       header={
@@ -243,7 +297,14 @@ function CompatibilityView() {
       nav={revisit ? <BottomNavigation /> : undefined}
       bodyClassName="pt-1.5 pb-4"
     >
-      <div id={RESULT_ANCHORS.compatibilitySummary} className="flex flex-col gap-[18px]">
+      <ReportHeader title={REPORT_COPY.compatibilityTitle} meta={reportMeta} />
+
+      <div id={RESULT_ANCHORS.compatibilitySummary} className="mt-5 flex flex-col gap-[18px]">
+        <ReportSectionEyebrow
+          index={sectionNo.summary}
+          code={REPORT_COPY.sections.summary.code}
+        />
+
         <SyncScore score={result.score} />
 
         <p className="px-1 text-center text-meta text-ink-muted">
@@ -257,9 +318,9 @@ function CompatibilityView() {
           </p>
         ) : null}
 
-        <LovyMessage pose="chart" size={46}>
-          {LOVY_LINES.compatibilityHero}
-        </LovyMessage>
+        {/* 러비 = Mint annotation(personality), 보고서 = Neutral 본문(credibility).
+            같은 화면 안에서 두 화법이 색과 형태로 구분돼야 한다. */}
+        <LovyNote>{LOVY_LINES.compatibilityHero}</LovyNote>
 
         <ResultSectionNav
           event="result_anchor_navigation"
@@ -273,21 +334,44 @@ function CompatibilityView() {
         />
       </div>
 
-      <div className="flex flex-col gap-5 pt-6">
-        <section id={RESULT_ANCHORS.compatibilityWhy} className="flex flex-col gap-2">
-          <SectionLabel>왜 이렇게 나왔어</SectionLabel>
-          <p className="px-1 text-caption keep-all leading-relaxed text-ink-sub">
+      <div className="flex flex-col pt-1">
+        {/*
+          FIRST SURPRISE (§11) — Summary를 이해한 **직후**, 근거를 읽기 전.
+          Premium 광고가 아니다. CTA는 무료 본문(첫 신호 섹션)으로만 내려간다.
+          score===null(E3)은 아래 LowConfidenceView로 빠지므로 여기 오지 않는다 —
+          관측 정보가 부족한 상태에서 사람에 대한 생각을 지어내지 않는다.
+        */}
+        {firstSurprise ? (
+          <div className="pt-5">
+            <FirstSurprise
+              surprise={firstSurprise}
+              ctaHref={`#${signalAnchor}`}
+              ctaSection={signalAnchor}
+              funnelAnalysisId={funnelAnalysisId}
+            />
+          </div>
+        ) : null}
+
+        <ReportSection
+          id={RESULT_ANCHORS.compatibilityWhy}
+          index={sectionNo.why}
+          code={REPORT_COPY.sections.why.code}
+          title={REPORT_COPY.sections.why.title}
+        >
+          <ReportEvidenceBlock>
             비교 가능한 {result.comparedCount}개 신호를 기준으로 계산했어. 항목별 근거는
             아래에서 볼 수 있어.
-          </p>
-        </section>
+          </ReportEvidenceBlock>
+        </ReportSection>
 
         {topGood ? (
-          <section id={RESULT_ANCHORS.compatibilityGood} className="flex flex-col gap-2.5">
-            <SectionLabel className="flex items-center gap-1.5">
-              잘 맞는 신호
-              <AiSourceLabel mode={narrative.mode} />
-            </SectionLabel>
+          <ReportSection
+            id={RESULT_ANCHORS.compatibilityGood}
+            index={sectionNo.good ?? sectionNo.friction}
+            code={REPORT_COPY.sections.good.code}
+            title={REPORT_COPY.sections.good.title}
+            action={<AiSourceLabel mode={narrative.mode} />}
+          >
             <ul className="flex flex-col gap-2.5">
               <SignalCard
                 dimension={topGood}
@@ -331,11 +415,16 @@ function CompatibilityView() {
                 {showAllGood ? '접기' : `${restGood.length}개 더 보기`}
               </button>
             ) : null}
-          </section>
+          </ReportSection>
         ) : null}
 
-        <section id={RESULT_ANCHORS.compatibilityFriction} className="flex flex-col gap-2.5">
-          <SectionLabel>확인이 필요한 신호</SectionLabel>
+        <ReportSection
+          id={RESULT_ANCHORS.compatibilityFriction}
+          index={sectionNo.friction}
+          code={REPORT_COPY.sections.friction.code}
+          title={REPORT_COPY.sections.friction.title}
+          caption={LOVY_LINES.friction}
+        >
           {hasFriction && topFriction ? (
             <>
               <ul className="flex flex-col gap-2.5">
@@ -381,9 +470,6 @@ function CompatibilityView() {
                   {showAllFriction ? '접기' : `${restFriction.length}개 더 보기`}
                 </button>
               ) : null}
-              <LovyMessage pose="question" size={40}>
-                {LOVY_LINES.friction}
-              </LovyMessage>
             </>
           ) : (
             <p className="px-1 text-caption keep-all leading-relaxed text-ink-sub">
@@ -391,7 +477,15 @@ function CompatibilityView() {
               못 본 것일 수도 있어.
             </p>
           )}
-        </section>
+
+          {/*
+            §13 — 무료에서도 러비의 짧은 관찰을 준다. 단 '사랑은 어렵다' 같은 일반 감성
+            문구가 아니라 **현재 결과와 연결된 생각**만 쓴다: 차이가 있으면 그 축의 노트,
+            차이가 없으면 alignment 노트, 관측 정보가 부족하면(score===null) 아예 만들지
+            않는다. 심리학적 사실처럼 말하지 않고 러비의 질문으로 남긴다.
+          */}
+          {observationNote ? <LovyNote className="mt-1">{observationNote.text}</LovyNote> : null}
+        </ReportSection>
 
         {/*
           v1.15 §4 Hook A — Friction 신호를 본 직후, '이 차이가 실제로는 어떻게 나타날까'라는
@@ -400,6 +494,7 @@ function CompatibilityView() {
           Paywall을 만들지 않는다"). Score Hero 바로 아래가 아니라 Friction을 다 본 다음이다.
         */}
         {hasFriction && topFriction ? (
+          <div className="mt-6">
           <PremiumEntryRow
             feature={premiumFeature}
             source="compatibility"
@@ -410,16 +505,24 @@ function CompatibilityView() {
               cta: PREMIUM_HOOK_COPY.friction_why.cta,
             }}
           />
+          </div>
         ) : null}
 
+        {/* 번호를 붙이지 않는 보조 블록 — 모든 것을 같은 크기의 섹션으로 만들지 않는다 */}
         {pastObservation ? (
-          <section className="flex flex-col gap-2.5">
-            <SectionLabel>과거 관찰 · 참고</SectionLabel>
+          <section className="mt-6 flex flex-col gap-2.5">
+            <SectionLabel>{REPORT_COPY.pastLabel}</SectionLabel>
             <PastObservationNote text={pastObservation.text} />
           </section>
         ) : null}
 
-        <section id={RESULT_ANCHORS.compatibilityLenses} className="flex flex-col gap-2.5">
+        <ReportSection
+          id={RESULT_ANCHORS.compatibilityLenses}
+          index={sectionNo.lenses}
+          code={REPORT_COPY.sections.lenses.code}
+          title={REPORT_COPY.sections.lenses.title}
+          caption={LENS_HUB_COPY.caption}
+        >
           {mbtiLens ? (
             <>
               <SectionLabel>MBTI 렌즈 · 참고</SectionLabel>
@@ -455,16 +558,17 @@ function CompatibilityView() {
               →
             </span>
           </button>
-        </section>
+        </ReportSection>
 
         {/* v1.13 — 다가가는 힌트(Approach Hints). 호감도 예측·공략법이 아니다(§2/§46) —
             네가 알려준 취향·관계 방식을 존중해서 다가가는 방법일 뿐이다. */}
-        <section id={RESULT_ANCHORS.compatibilityApproach} className="flex flex-col gap-2.5">
-          <SectionLabel>이 사람에게 다가갈 때</SectionLabel>
-          <p className="px-1 text-caption keep-all leading-relaxed text-ink-sub">
-            네가 알려준 이 사람의 취향과 관계 방식을 기준으로 생각해봤어.
-          </p>
-
+        <ReportSection
+          id={RESULT_ANCHORS.compatibilityApproach}
+          index={sectionNo.approach}
+          code={REPORT_COPY.sections.approach.code}
+          title={REPORT_COPY.sections.approach.title}
+          caption="네가 알려준 이 사람의 취향과 관계 방식을 기준으로 생각해봤어."
+        >
           {approachHints.length > 0 ? (
             <ul className="flex flex-col gap-2.5">
               {approachHints.map((hint) => (
@@ -505,11 +609,14 @@ function CompatibilityView() {
               상대 정보 수정
             </button>
           </div>
-        </section>
+        </ReportSection>
 
-        <section id={RESULT_ANCHORS.compatibilityQuestions} className="flex flex-col gap-2.5">
-          <SectionLabel>이야기해볼 질문</SectionLabel>
-
+        <ReportSection
+          id={RESULT_ANCHORS.compatibilityQuestions}
+          index={sectionNo.questions}
+          code={REPORT_COPY.sections.questions.code}
+          title={REPORT_COPY.sections.questions.title}
+        >
           <div className="flex gap-1.5 rounded-chip bg-sunken p-1" role="tablist">
             <button
               type="button"
@@ -659,14 +766,16 @@ function CompatibilityView() {
               </button>
             </div>
           )}
-        </section>
+        </ReportSection>
 
-        <AiNarrativeNotice
-          task="compatibility-narrative"
-          status={narrative.status}
-          reason={narrative.reason}
-        />
-        <NoticeBox>{PRIVACY.unknownExcluded}</NoticeBox>
+        <div className="mt-6 flex flex-col gap-2.5">
+          <AiNarrativeNotice
+            task="compatibility-narrative"
+            status={narrative.status}
+            reason={narrative.reason}
+          />
+          <NoticeBox>{PRIVACY.unknownExcluded}</NoticeBox>
+        </div>
       </div>
     </ScreenLayout>
   );

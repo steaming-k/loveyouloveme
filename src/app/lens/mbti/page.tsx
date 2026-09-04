@@ -10,6 +10,7 @@ import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { FillDataRow } from '@/components/common/StateScreens';
 import { NoticeBox, PageHeading, SectionLabel, Tag } from '@/components/common/primitives';
 import { MbtiLensPanel, MbtiSelfPanel } from '@/components/compatibility/MbtiLensPanel';
+import { LensCoreBridge } from '@/components/lens/LensCoreBridge';
 import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { MBTI_LENS_COPY } from '@/data/copy';
@@ -17,7 +18,7 @@ import { trackEvent } from '@/lib/analytics';
 import { buildMbtiSelfLens } from '@/lib/logic/mbtiLens';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { premiumFeatureState } from '@/services/premiumService';
-import { ROUTES } from '@/lib/routes';
+import { RESULT_ANCHORS, ROUTES } from '@/lib/routes';
 import { useMbtiLens } from '@/hooks/useAnalysis';
 import { useSession } from '@/state/SessionProvider';
 
@@ -107,6 +108,15 @@ function MbtiLensView() {
                 <LovyMessage pose="book" size={56}>
                   {MBTI_LENS_COPY.lovyNote}
                 </LovyMessage>
+
+                {/* v1.20 §12 — Lens → Core Bridge. 렌즈를 본 뒤 실제 관계 신호로
+                    돌려보낸다. 아직 궁합 관측 기록이 없으면 갈 곳이 없으므로 붙이지
+                    않는다. MBTI 계산(buildMbtiLens)은 이 블록과 무관하게 그대로다. */}
+                {answers.completed.compatibility ? (
+                  <LensCoreBridge
+                    href={`${ROUTES.compatibility}#${RESULT_ANCHORS.compatibilityGood}`}
+                  />
+                ) : null}
               </>
             ) : (
               // 상대 정보는 항상 Optional — 없다고 내 결과를 막지 않는다
