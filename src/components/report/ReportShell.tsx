@@ -15,16 +15,21 @@ import { cn } from '@/lib/cn';
 export function ReportHeader({
   title,
   meta,
+  eyebrow = REPORT_COPY.eyebrow,
 }: {
   title: string;
   /** 사용자가 이해할 수 있는 값만. 내부 식별자(analysisId·fingerprint)는 넣지 않는다. */
   meta: readonly string[];
+  /**
+   * 보고서 종류 라벨. 기본은 무료 관찰 보고서(`LOVY OBSERVATION REPORT`)다.
+   * Premium Deep Report는 `PRECISION REPORT`를 넘겨서, Paywall 헤더 Tag → Unlock Success →
+   * 이 헤더까지 **같은 문자열이 같은 자리에** 남게 한다(layout continuity).
+   */
+  eyebrow?: string;
 }) {
   return (
     <header className="flex flex-col gap-2 px-1 pt-2">
-      <p className="text-[10px] font-semibold tracking-[0.18em] text-ink-faint">
-        {REPORT_COPY.eyebrow}
-      </p>
+      <p className="text-[10px] font-semibold tracking-[0.18em] text-ink-faint">{eyebrow}</p>
       <h1 className="text-[24px] font-semibold leading-[1.34] tracking-[-0.7px] keep-all">
         {title}
       </h1>

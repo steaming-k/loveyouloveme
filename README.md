@@ -128,7 +128,8 @@ src/
 │  ├─ lens/                BirthProfileForm, LensStateBlocks, LensCoreBridge(v1.20)
 │  ├─ mirror/              MirrorComparisonRow, TeaserComparison
 │  ├─ history/             HistoryChangeRow, PastObservationNote
-│  ├─ premium/             PremiumEntryRow, RelationshipDeepReportView, DeepInsightCard
+│  ├─ premium/             PremiumEntryRow, RelationshipDeepReportView, DeepInsightCard,
+│  │                       PremiumUnlockSuccess(v1.21)
 │  ├─ ut/                  UtRatingCard, UtSummaryCard, DeepReportUtFlow
 │  └─ shell/               AppShell, PrototypePanel(prod 숨김, v1.12), MotionProvider,
 │                           GaScriptLoader(v1.12)

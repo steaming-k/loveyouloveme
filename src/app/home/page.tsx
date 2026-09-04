@@ -13,6 +13,7 @@ import { BRAND, HOME_COPY } from '@/data/copy';
 import { clearAiCache } from '@/services/ai/aiClient';
 import { clearDeepReportUt } from '@/lib/deepReportUtStore';
 import { UT_MODE } from '@/lib/env';
+import { clearPreviewUnlocks } from '@/lib/premiumAccess';
 import { clearPremiumIntents } from '@/lib/premiumIntentStore';
 import { revisitHref } from '@/lib/resultView';
 import { ROUTES } from '@/lib/routes';
@@ -346,6 +347,7 @@ export default function HomePage() {
           // 남겨둘 이유가 없다(v1.10 §57/§58). deepAnswers/deepInsightFeedback은
           // SessionAnswers 안에 있어서 deleteAllData()가 이미 지운다.
           clearPremiumIntents();
+          clearPreviewUnlocks();
           clearDeepReportUt();
           clearAiCache();
           if (alsoDeleteHistory) clearHistory();
@@ -387,6 +389,7 @@ export default function HomePage() {
           clearHistory();
           clearDeepReportUt();
           clearPremiumIntents();
+          clearPreviewUnlocks();
           clearAiCache();
           setUtResetOpen(false);
           showToast('다음 참가자를 위해 초기화했어');

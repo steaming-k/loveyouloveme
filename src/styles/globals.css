@@ -119,6 +119,14 @@
 
   /* Motion — 기본 300~600ms, 과한 연출 금지 */
   --ease-observe: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  /* Duration 3단계. JS 쪽 대응 값은 src/lib/motion.ts `MOTION`에 같은 숫자로 있다.
+     fast   = press 피드백 · 즉각 반응
+     normal = 화면 안 상태 전환(Paywall → Success → Report)
+     slow   = 큰 표면(Report Header · Section) 등장 */
+  --motion-fast: 150ms;
+  --motion-normal: 300ms;
+  --motion-slow: 400ms;
 }
 
 /* --------------------------------------------------------------------------
@@ -414,6 +422,121 @@
   opacity: 1;
 }
 
+
+/* --------------------------------------------------------------------------
+   Premium Unlock — Paywall → Success → Report (vNext)
+
+   Motion Hierarchy:
+     LEVEL 1  화면 전환(아래 stage-* / unlock-*)      — 가장 명확한 motion
+     LEVEL 2  Report section 등장(.report-reveal)      — 작은 stagger
+     LEVEL 3  metadata · divider                       — motion 없음
+
+   전부 CSS animation이라 아래 prefers-reduced-motion 블록 한 곳에서 꺼지고, 꺼져도
+   최종 상태(opacity 1 · translate 0)가 그대로 남는다 — 정보가 사라지지 않는다.
+   -------------------------------------------------------------------------- */
+
+/** CTA press — scale 1 → 0.97 → 1. 전역 Button을 바꾸지 않고 필요한 곳에만 붙인다. */
+.press-scale {
+  transition: transform var(--motion-fast) var(--ease-observe);
+}
+.press-scale:active {
+  transform: scale(0.97);
+}
+
+@keyframes stage-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes unlock-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes unlock-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes check-draw {
+  from {
+    stroke-dashoffset: var(--check-length, 40);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/** Paywall 표면이 물러난다 */
+.stage-exit {
+  animation: stage-exit 200ms var(--ease-observe) both;
+}
+
+/** Success 표면이 같은 자리에 들어온다 */
+.unlock-enter {
+  animation: unlock-enter 260ms var(--ease-observe) both;
+}
+
+/** Success 표면이 위로 물러나며 Report에 자리를 넘긴다 */
+.unlock-exit {
+  animation: unlock-exit var(--motion-normal) var(--ease-observe) both;
+}
+
+/** 작은 check stroke. confetti·폭죽·금색 효과를 쓰지 않는다. */
+.check-ring {
+  --check-length: 132;
+  stroke-dasharray: 132;
+  animation: check-draw 320ms var(--ease-observe) both;
+}
+.check-mark {
+  --check-length: 28;
+  stroke-dasharray: 28;
+  animation: check-draw 220ms var(--ease-observe) 140ms both;
+}
+
+/**
+ * Report 등장 — 전체를 한꺼번에 띄우지 않고 위에서부터 짧게 stagger한다.
+ * ⚠️ 콘텐츠를 늦게 만들거나 늦게 가져오는 것이 아니다. 렌더된 것을 보여주는 순서만 조절한다.
+ */
+.report-reveal > * {
+  animation: reveal-up var(--motion-slow) var(--ease-observe) both;
+}
+.report-reveal > *:nth-child(1) {
+  animation-delay: 0ms;
+}
+.report-reveal > *:nth-child(2) {
+  animation-delay: 70ms;
+}
+.report-reveal > *:nth-child(3) {
+  animation-delay: 140ms;
+}
+.report-reveal > *:nth-child(4) {
+  animation-delay: 210ms;
+}
+.report-reveal > *:nth-child(5) {
+  animation-delay: 280ms;
+}
+.report-reveal > *:nth-child(n + 6) {
+  animation-delay: 340ms;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,

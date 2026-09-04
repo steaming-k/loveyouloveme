@@ -12,11 +12,21 @@ import { NoticeBox, PageHeading, SectionLabel, Tag } from '@/components/common/p
 import { useToast } from '@/components/common/ToastProvider';
 import { Lovy } from '@/components/lovy/Lovy';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
+import { PremiumUnlockSuccess } from '@/components/premium/PremiumUnlockSuccess';
+import { RelationshipDeepReportView } from '@/components/premium/RelationshipDeepReportView';
+import { ReportHeader } from '@/components/report/ReportShell';
 import { DEEP_REPORT_COPY, PREMIUM_COPY, PREMIUM_FEATURES } from '@/data/premium';
-import { PREMIUM_FAKE_DOOR, UT_MODE } from '@/lib/env';
+import { PREMIUM_FAKE_DOOR, PREMIUM_PREVIEW, UT_MODE } from '@/lib/env';
 import { UtRatingCard } from '@/components/ut/UtRatingCard';
 import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
+import { formatEntryDate } from '@/lib/historyFormat';
+import { MOTION, prefersReducedMotion } from '@/lib/motion';
+import {
+  grantPreviewUnlock,
+  hasPreviewUnlock,
+  type PremiumAccessMode,
+} from '@/lib/premiumAccess';
 import { hasNotifyIntent, markNotifyIntent, recordPremiumIntent } from '@/lib/premiumIntentStore';
 import {
   formatPrice,
@@ -27,7 +37,7 @@ import {
 import { revisitHref, type RevisitSource } from '@/lib/resultView';
 import { ROUTES } from '@/lib/routes';
 import { useHistoryReport, useMbtiLens, useMirror } from '@/hooks/useAnalysis';
-import { useCrossSourceInsights } from '@/hooks/useAiNarrative';
+import { useDeepReport } from '@/hooks/useDeepReport';
 import { lensAvailability } from '@/lib/logic/birth';
 import { premiumFeatureState } from '@/services/premiumService';
 import { useSession } from '@/state/SessionProvider';
@@ -41,7 +51,35 @@ import type { PremiumFeatureId, PremiumSource } from '@/types';
  * '준비 중'임을 알린다(§2/§13).
  *
  * Flag가 꺼져 있으면 이 화면에 머무르지 않고 결과 화면으로 되돌려보낸다(§36/§37).
+ *
+ * ── vNext: Paywall → Success → Deep Report 를 **한 Route 안의 stage**로 연결한다 ──
+ *
+ * 새 Route를 만들지 않았다. Route를 갈면 스크롤·헤더·푸터가 전부 리마운트돼서 "같은 공간에서
+ * 이어진다"는 느낌(§5/§6 layout continuity)이 깨지기 때문이다. 대신 이 화면이
+ * `paywall → leaving → success → revealing → report` 다섯 stage를 갖는다.
+ *
+ * ⚠️ **Fake Door 경계(§12).** 위 stage는 `NEXT_PUBLIC_PREMIUM_PREVIEW=true`이고
+ * flagship Deep Report일 때만 열린다. 그 밖의 모든 경우(= Production 사용자)는 v1.19와
+ * **완전히 같은** 동작을 본다 — 의향만 기록하고 곧바로 '준비 중' BottomSheet가 뜬다.
+ * Preview에서도 '결제가 완료됐어'라고 말하지 않는다(`UNLOCK_COPY.preview`).
+ *
+ * 실제 PG가 붙으면 성공 callback에서 `unlockMode = 'payment'`로 같은 stage를 재사용하면
+ * 된다 — 이번 작업에서 PG SDK·결제 서버·webhook·주문 DB는 만들지 않았다(§13).
  */
+
+/**
+ * stage 전환 시간. 전부 **presentation layer 전용**이다 — 실제 처리를 늦추지 않는다(§4).
+ *   leaving   Paywall 표면이 물러난다
+ *   success   Unlock 확인(등장 260ms + 인지 300ms)
+ *   revealing Success → Report 전환. 여기가 요청받은 "약 0.3초"다
+ */
+const PAYWALL_EXIT_MS = 200;
+const SUCCESS_HOLD_MS = 560;
+const SUCCESS_EXIT_MS = MOTION.normal;
+/** prefers-reduced-motion — 전환을 없애고 상태 변화만 짧게 인지시킨다(§11) */
+const REDUCED_HOLD_MS = 500;
+
+type UnlockStage = 'paywall' | 'leaving' | 'success' | 'revealing' | 'report';
 export default function PremiumPage() {
   return (
     <HydrationGate>
@@ -125,14 +163,32 @@ function PremiumView() {
   const isDeepReport = featureId === 'relationship_deep_report';
   const copy = isDeepReport ? DEEP_REPORT_COPY : PREMIUM_COPY;
 
+  /* ── vNext Unlock stage ──────────────────────────────────────────────────
+     `?mode=ut`이면 UT 참여자 체험이다 — `/premium-preview/[feature]?mode=ut`와 같은 규칙을
+     쓴다. 새 Flag/Route 트리를 만들지 않고 기존 PREMIUM_PREVIEW 게이트에 쿼리만 얹는다. */
+  const isBetaUt = params.get('mode') === 'ut';
+  const [stage, setStage] = useState<UnlockStage>('paywall');
+  const [unlockMode, setUnlockMode] = useState<PremiumAccessMode | null>(null);
+  const [reducedMotion, setReducedMotion] = useState(false);
+
+  useEffect(() => {
+    // 렌더 분기가 아니라 클라이언트 전용 effect에서만 읽는다(hydration 안전).
+    setReducedMotion(prefersReducedMotion());
+  }, []);
+
+  /**
+   * Deep Report 조립. `enabled`는 **AI Narrative 요청만** 켠다 — Paywall에 머무는 동안에는
+   * 호출하지 않고(결제/Unlock 이전에 유료 AI를 태우지 않는다), Unlock을 누른 순간부터
+   * 전환 애니메이션이 흐르는 동안 미리 받아온다. 규칙 기반 리포트는 항상 준비돼 있다.
+   */
+  const deep = useDeepReport(isDeepReport && stage !== 'paywall');
+  const crossSourceInsights = deep.insights;
+
   // 상세를 만들 근거가 있는지 판정하기 위해 현재 분석 상태를 읽는다(계산은 하지 않는다).
   const mirror = useMirror();
   const historyReport = useHistoryReport();
   const mbtiLens = useMbtiLens();
   const birth = lensAvailability(answers.birthProfile, answers.target.birthProfile, today);
-  // Cross-source Insight가 없으면 Deep Report Paywall 자체를 띄우지 않는다(§40).
-  const crossSourceInsights = useCrossSourceInsights();
-
   const price = resolvePrice(variant);
   const feature = useMemo(
     () =>
@@ -153,6 +209,13 @@ function PremiumView() {
       crossSourceInsights.length,
     ],
   );
+
+  /**
+   * §12 Fake Door 경계 — 이 세 조건이 모두 참일 때만 Unlock stage가 열린다.
+   * Production(`PREMIUM_PREVIEW=false`)에서는 항상 false라 기존 Fake Door 그대로다.
+   */
+  const canPreviewUnlock =
+    PREMIUM_PREVIEW && isDeepReport && feature.status === 'fake-door';
 
   const definition = PREMIUM_FEATURES[featureId];
   // §37 — Paywall 전에 살짝 보여줄 3개 요약. 전체 근거·해석은 잠긴 채로 둔다.
@@ -189,6 +252,56 @@ function PremiumView() {
       ...(funnelAnalysisId ? { funnel_analysis_id: funnelAnalysisId } : {}),
     });
   }, [featureId, source, price, variant, feature.status, hookVariant, funnelAnalysisId]);
+
+  /**
+   * Preview Unlock이 열려 있는 분석이면(같은 탭에서 새로고침·뒤로가기) Paywall을 다시
+   * 보여주지 않고 리포트로 복원한다. 실제 구매 기록이 아니라 **탭 한정 Preview 상태**다
+   * (`lib/premiumAccess.ts`) — 탭을 닫거나 새 상대를 분석하면 사라진다.
+   */
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current || !canPreviewUnlock) return;
+    if (!hasPreviewUnlock(featureId, funnelAnalysisId)) return;
+    restoredRef.current = true;
+    setUnlockMode(isBetaUt ? 'beta_ut' : 'preview');
+    setStage('report');
+  }, [canPreviewUnlock, featureId, funnelAnalysisId, isBetaUt]);
+
+  /** stage 타이머. 여기서 하는 일은 화면 전환뿐이다 — 어떤 처리도 지연시키지 않는다. */
+  useEffect(() => {
+    if (stage === 'paywall' || stage === 'report') return;
+
+    const next: UnlockStage =
+      stage === 'leaving' ? 'success' : stage === 'success' ? 'revealing' : 'report';
+    const ms =
+      stage === 'leaving'
+        ? reducedMotion
+          ? 0
+          : PAYWALL_EXIT_MS
+        : stage === 'success'
+          ? reducedMotion
+            ? REDUCED_HOLD_MS
+            : SUCCESS_HOLD_MS
+          : reducedMotion
+            ? 0
+            : SUCCESS_EXIT_MS;
+
+    const timer = setTimeout(() => setStage(next), ms);
+    return () => clearTimeout(timer);
+  }, [stage, reducedMotion]);
+
+  /**
+   * 새 이벤트를 만들지 않는다(§14). 리포트가 실제로 렌더되는 시점에 기존
+   * `premium_preview_view`를 그대로 쓴다 — `/premium-preview/[feature]`가 보내던 것과
+   * 같은 의미(= Preview 상세를 봤다)이고 property도 같다. `payment_success` 같은 실제
+   * 결제 이벤트는 만들지 않는다 — 실제 결제가 아니기 때문이다.
+   */
+  const previewViewSent = useRef(false);
+  useEffect(() => {
+    if (stage !== 'report' || previewViewSent.current) return;
+    previewViewSent.current = true;
+    trackEvent('premium_preview_view', { feature: featureId });
+  }, [stage, featureId]);
 
   if (!PREMIUM_FAKE_DOOR) return null;
 
@@ -229,7 +342,18 @@ function PremiumView() {
       notifyIntent: false,
     });
 
-    // ② 즉시 '준비 중' 공개 — 결제 화면으로 가지 않는다
+    // ②-a Preview/UT — '결제 완료 → 리포트 공개' 경험을 검증하는 통로(§12).
+    //     Fake Door를 '열었다'고 기록하지 않는다 — 준비 중 안내를 보여주지 않았으므로
+    //     `premium_fake_door_reveal`의 의미(= 사용자에게 미출시임을 알림)에 맞지 않는다.
+    //     이 분기는 PREMIUM_PREVIEW가 켜진 개발·UT 환경에서만 실행된다.
+    if (canPreviewUnlock) {
+      grantPreviewUnlock(featureId, funnelAnalysisId);
+      setUnlockMode(isBetaUt ? 'beta_ut' : 'preview');
+      setStage(reducedMotion ? 'success' : 'leaving');
+      return;
+    }
+
+    // ②-b 즉시 '준비 중' 공개 — 결제 화면으로 가지 않는다 (v1.19와 동일)
     trackEvent('premium_fake_door_reveal', {
       feature: featureId,
       source,
@@ -238,6 +362,12 @@ function PremiumView() {
     });
     setSheetOpen(true);
   };
+
+  const showSuccess = stage === 'success' || stage === 'revealing';
+  const showReport = stage === 'report';
+  /** 카드로 실제 보여줄 Insight 개수 — 가짜 숫자를 만들지 않는다(§7) */
+  const connectedSignalCount =
+    deep.report.crossSourceInsights.length + deep.report.relationshipSelf.length;
 
   return (
     <>
@@ -249,8 +379,31 @@ function PremiumView() {
           />
         }
         footer={
+          /*
+            Success 이후에는 Paywall CTA를 남기지 않는다 — 이미 열린 리포트 아래에 '열기'
+            버튼이 남아 있으면 두 번 결제하는 것처럼 보인다. Success와 Report가 같은 footer를
+            쓰므로 그 두 stage 사이에는 하단 layout shift가 없다(§16).
+          */
+          showSuccess || showReport ? (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                trackEvent('premium_dismiss', {
+                  feature: featureId,
+                  source,
+                  step: 'report',
+                  ...(hookVariant ? { hook_variant: hookVariant } : {}),
+                  ...attribution,
+                });
+                router.replace(backHref);
+              }}
+            >
+              결과로 돌아가기
+            </Button>
+          ) : (
           <div className="flex flex-col gap-2">
-            <Button onClick={handlePurchaseIntent}>
+            {/* §5 — CTA press는 scale 1 → 0.97 → 1(150ms). 전역 Button을 바꾸지 않는다 */}
+            <Button className="press-scale" onClick={handlePurchaseIntent}>
               {copy.purchaseCta}
               <span className="sr-only"> — {priceForScreenReader(price)}, 상세 분석 1회</span>
             </Button>
@@ -271,10 +424,51 @@ function PremiumView() {
               {copy.dismissCta}
             </Button>
           </div>
+          )
         }
         bodyClassName="pt-1.5 pb-4"
       >
-        <div className="flex flex-col gap-5">
+        {/*
+          §6 Shared Visual Continuity — 세 stage가 같은 Route·같은 ScreenLayout·같은 헤더를
+          쓴다. `PRECISION REPORT` 라벨이 헤더 Tag → Unlock Success eyebrow → Report Header
+          eyebrow 로 같은 자리에 남아, 새 transition 라이브러리 없이도 '같은 것이 열린다'는
+          연속성이 생긴다.
+        */}
+        {showReport ? (
+          <RelationshipDeepReportView
+            report={deep.report}
+            resolverContext={deep.resolverContext}
+            analysisId={deep.analysisId}
+            funnelAnalysisId={funnelAnalysisId}
+            accessMode={unlockMode ?? 'preview'}
+            reveal={!reducedMotion}
+            header={
+              <ReportHeader
+                eyebrow={DEEP_REPORT_COPY.entryLabel}
+                title={`신호 ${connectedSignalCount}개를 연결한 관찰 기록`}
+                meta={[
+                  `연결한 신호 ${connectedSignalCount}개`,
+                  `${formatEntryDate(today.toISOString())} 작성`,
+                ]}
+              />
+            }
+            aiNarrative={{
+              status: deep.narrative.status,
+              reason: deep.narrative.reason,
+              mode: deep.narrative.mode,
+              retry: deep.narrative.retry,
+            }}
+          />
+        ) : showSuccess ? (
+          <PremiumUnlockSuccess
+            mode={unlockMode ?? 'preview'}
+            price={price}
+            connectedSignalCount={connectedSignalCount}
+            animate={!reducedMotion}
+            leaving={stage === 'revealing'}
+          />
+        ) : (
+        <div className={cn('flex flex-col gap-5', stage === 'leaving' && 'stage-exit')}>
           <PageHeading lines={copy.paywallTitle} caption={definition.description} />
 
           <LovyMessage pose="chart" size={52}>
@@ -346,7 +540,10 @@ function PremiumView() {
                 ))}
               </ul>
               <p className="px-1 text-meta keep-all text-ink-muted">
-                {DEEP_REPORT_COPY.previewLocked}
+                {/* §7 — 실제 계산값만 쓴다. 남은 게 없으면 개수를 말하지 않는다. */}
+                {crossSourceInsights.length > previewSummaries.length
+                  ? `아직 연결해서 보여주지 않은 신호 ${crossSourceInsights.length - previewSummaries.length}개 · ${DEEP_REPORT_COPY.previewLocked}`
+                  : DEEP_REPORT_COPY.previewLocked}
               </p>
             </section>
           )}
@@ -433,6 +630,7 @@ function PremiumView() {
             onSelect={setWtpChoice}
           />
         </div>
+        )}
       </ScreenLayout>
 
       {/* Fake Door reveal — 결제가 진행되지 않았다는 사실을 먼저 말한다 */}

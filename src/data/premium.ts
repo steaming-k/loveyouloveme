@@ -217,6 +217,42 @@ export const DEEP_REPORT_COPY = {
 } as const;
 
 /**
+ * Premium Unlock — 결제/미리보기 확정 직후의 짧은 상태 화면 (vNext)
+ *
+ * ⚠️ **가장 중요한 규칙: 실제 결제가 아닌데 결제됐다고 말하지 않는다.**
+ * `payment`는 실제 PG 성공 callback이 붙었을 때만 쓰는 문구이고, 지금 도달 가능한 경로는
+ * `preview`뿐이다(`NEXT_PUBLIC_PREMIUM_PREVIEW`). 문구를 한 곳에 두고 mode로만 갈라서,
+ * 나중에 PG를 붙일 때 화면이 아니라 mode 하나만 바뀌게 한다.
+ *
+ * 톤: '결제 성공!' · '축하합니다!' · 'Premium unlocked!' 같은 일반 SaaS/쇼핑몰 문구를 쓰지
+ * 않는다. 이 제품의 유료 경험은 luxury unlock이 아니라 **더 깊은 관찰 자료에 접근**이다.
+ */
+export const UNLOCK_COPY = {
+  payment: {
+    status: '결제가 완료됐어',
+    /** 가격은 호출부가 실제 세션 값으로 붙인다 — 여기에 숫자를 하드코딩하지 않는다 */
+    noteSuffix: '정밀 관찰 리포트 1회',
+  },
+  preview: {
+    status: '미리보기로 리포트를 열었어',
+    noteSuffix: '실제 결제는 아니야 · 정밀 관찰 리포트',
+  },
+  betaUt: {
+    status: '테스트용으로 리포트를 열었어',
+    noteSuffix: '실제 결제는 아니야 · 정밀 관찰 리포트',
+  },
+
+  /** 러비 한 줄. 관찰자 화법 그대로 — 축하하지 않고, 다음에 할 일을 말한다. */
+  lovy: '좋아. 이제 모아둔 신호들을 조금 더 깊게 연결해볼게.',
+
+  /** 자물쇠가 열리는 연출 대신 '추가 관찰이 끝났다'로 말한다(§7) */
+  progressLabel: '추가 관찰 완료',
+
+  /** 스크린리더용 — 화면이 바뀌는 중이라는 사실을 텍스트로도 알린다 */
+  liveStatus: '관찰 보고서를 여는 중',
+} as const;
+
+/**
  * v1.15 §4 — Contextual Premium Hook.
  *
  * '결과 화면 하단에 Premium Entry 하나'가 아니라, 궁금증이 생기는 순간마다(최대 3곳)

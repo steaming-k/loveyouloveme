@@ -9,6 +9,7 @@ import {
 } from '@/data/copy';
 import type { LovyPose } from '@/data/lovy';
 import { cn } from '@/lib/cn';
+import { prefersReducedMotion } from '@/lib/motion';
 import { Lovy } from './Lovy';
 import { ObservationField } from './ObservationField';
 
@@ -53,12 +54,7 @@ export function LovyObservation({
   const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
-    const reduced =
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    if (reduced) {
+    if (prefersReducedMotion()) {
       setShowAll(true);
       setStage(stages.length);
       const timer = setTimeout(onComplete, 1200);

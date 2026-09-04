@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { Button } from '@/components/common/Button';
 import { NoticeBox, SectionLabel } from '@/components/common/primitives';
@@ -12,6 +12,7 @@ import { PremiumDetailView } from '@/components/premium/PremiumDetailView';
 import { DeepReportUtFlow } from '@/components/ut/DeepReportUtFlow';
 import type { EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
 import { trackEvent } from '@/lib/analytics';
+import { cn } from '@/lib/cn';
 import { UT_MODE } from '@/lib/env';
 import { hasCompletedDeepReport, markDeepReportCompleted } from '@/lib/deepReportUtStore';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
@@ -35,6 +36,8 @@ export function RelationshipDeepReportView({
   analysisId,
   funnelAnalysisId,
   accessMode = 'preview',
+  header,
+  reveal = false,
   aiNarrative,
 }: {
   report: RelationshipDeepReport;
@@ -47,8 +50,23 @@ export function RelationshipDeepReportView({
    * deterministic fingerprint라 의미가 다르므로 대체하지 않고 나란히 보낸다.
    */
   funnelAnalysisId?: string | null;
-  /** v1.10 §72 — 실제 Payment로 오해되지 않도록 어느 경로로 이 화면에 왔는지 남긴다 */
-  accessMode?: 'preview' | 'beta_ut';
+  /**
+   * v1.10 §72 — 실제 Payment로 오해되지 않도록 어느 경로로 이 화면에 왔는지 남긴다.
+   * vNext — `payment`를 추가했다. **아직 도달 경로가 없다**(PG 미연결) — 실제 결제가
+   * 붙었을 때 `access_mode`로 preview/UT와 구분하기 위한 자리다(`lib/premiumAccess.ts`).
+   */
+  accessMode?: 'payment' | 'preview' | 'beta_ut';
+  /**
+   * vNext — 리포트 맨 위에 놓을 Report Header 슬롯. Unlock 직후의 `/premium`에서
+   * v1.20 `ReportShell`의 `ReportHeader`를 넘겨, 무료 관찰 보고서와 같은 디자인 언어로
+   * '러비가 만든 산출물'처럼 읽히게 한다. 넘기지 않으면 기존 동작 그대로다.
+   */
+  header?: ReactNode;
+  /**
+   * vNext — 섹션을 위에서부터 짧게 stagger해서 등장시킨다(`.report-reveal`).
+   * ⚠️ 콘텐츠를 늦게 만들거나 늦게 가져오지 않는다 — 렌더 순서만 조절한다.
+   */
+  reveal?: boolean;
   /**
    * v1.17 — Cross-source Insight Narrative 생성 상태. 무료 화면(S22/S27/S28/F2)의
    * `AiNarrativeNotice`/`AiSourceLabel`와 같은 컴포넌트를 재사용한다 — 대가를 지불한
@@ -142,9 +160,12 @@ export function RelationshipDeepReportView({
 
   if (!report.available) {
     return (
-      <NoticeBox>
-        {report.limitations[0] ?? '아직 연결해서 볼 수 있는 신호가 부족해.'}
-      </NoticeBox>
+      <div className="flex flex-col gap-4">
+        {header}
+        <NoticeBox>
+          {report.limitations[0] ?? '아직 연결해서 볼 수 있는 신호가 부족해.'}
+        </NoticeBox>
+      </div>
     );
   }
 
@@ -159,7 +180,9 @@ export function RelationshipDeepReportView({
   };
 
   return (
-    <div ref={rootRef} className="flex flex-col gap-6">
+    <div ref={rootRef} className={cn('flex flex-col gap-6', reveal && 'report-reveal')}>
+      {header}
+
       {/* 01 Overview */}
       <section className="flex flex-col gap-2">
         <h2 className="text-section keep-all font-semibold">{report.overview.headline}</h2>

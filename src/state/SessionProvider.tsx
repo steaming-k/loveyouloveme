@@ -16,6 +16,7 @@ import { PHOTO_MAX_COUNT, SAMPLE_PHOTOS, DEMO_PHOTO_IDS } from '@/data/samplePho
 import { TARGET_INTEREST_MAX, TARGET_CUSTOM_INTEREST_MAX_LENGTH } from '@/data/targetPreferences';
 import { clearSessionDedup, trackEvent } from '@/lib/analytics';
 import { createEmptyBirthProfile } from '@/lib/logic/birth';
+import { clearPreviewUnlocks } from '@/lib/premiumAccess';
 import { clearPremiumIntents } from '@/lib/premiumIntentStore';
 import { buildDemoObservedResult } from '@/services/ai/fallback';
 import type {
@@ -655,6 +656,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
    */
   const resetTargetContext = useCallback(() => {
     clearPremiumIntents();
+    // vNext — Preview Unlock도 분석 단위 상태다. 새 상대로 넘어가면 함께 비운다.
+    clearPreviewUnlocks();
     setAnswers((prev) => ({
       ...prev,
       // v1.13 §38 — target.preferences(좋아하는 것)는 TargetProfile 안에 있어서
