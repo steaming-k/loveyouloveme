@@ -43,7 +43,7 @@ export function ScreenLayout({
       </div>
 
       {footer ? (
-        <div className="flex-none px-gutter pb-safe pt-3">{footer}</div>
+        <div className="flex-none px-gutter pb-safe pb-4 pt-3">{footer}</div>
       ) : (
         <div className="h-safe flex-none" aria-hidden />
       )}

@@ -21,7 +21,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             relative는 BottomSheet/ConfirmModal의 absolute inset-0가 데스크톱에서
             브라우저 전체가 아니라 이 프레임 안에서만 뜨도록 기준점을 만든다. */}
         <div className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-canvas lg:h-[min(852px,calc(100dvh-88px))] lg:w-[393px] lg:rounded-[41px]">
-          <main className="min-h-0 flex-1">{children}</main>
+          <main className="min-h-0 flex-1 pt-11">{children}</main>
           <AiDebugPanel />
           <ConsentBanner />
         </div>
