@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
 
+import { BottomNavigation } from '@/components/common/BottomNavigation';
 import { BottomSheet } from '@/components/common/BottomSheet';
 import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
@@ -144,6 +145,7 @@ function ProfileResultView() {
             </div>
           )
         }
+        nav={revisit ? <BottomNavigation /> : undefined}
         bodyClassName="pt-1 pb-4"
       >
         <div className="flex flex-col gap-4">

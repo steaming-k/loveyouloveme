@@ -197,8 +197,9 @@ Provider에 보내 관찰만 받고, "몇 장에서 반복됐는지"는 애플�
 (`lib/logic/observedSignals.ts`) — Provider가 반복 여부를 스스로 주장하지 못하게 하기
 위해서입니다. 상세는 기능명세서 §6.9.5.
 
-⚠️ **실제 Provider end-to-end는 아직 검증되지 않았습니다** (API Key 없음). 자세한 구분은
-기능명세서 §12.1·§8.5.
+2026-09-04(v1.17)에 실제 `AI_API_KEY`로 `npm run test:ai:e2e`를 1회 실행해 6/6 PASS를
+확인했습니다 — **"이 실행 기준"** VERIFIED이고, 상시 CI로 매 배포마다 검증하는 것은 아닙니다.
+자세한 구분은 기능명세서 §12.1·§8.5·§14.1.
 
 **AI 검증 회귀 테스트**: `npm run dev` 후 `npm run test:ai` (Provider Key 불필요, 스키마/안전 검증만).
 **Real Provider E2E**: `npm run test:ai:e2e` — 진짜 `/api/ai/*` Route를 왕복한다. Key가 없으면
@@ -312,7 +313,7 @@ semantic HTML · 실제 `button`/`input[type=radio]`/`checkbox` 사용 · 모든
 ## 현재 범위 밖 (의도적 제외)
 
 - **Supabase 미연동.** 세션은 `localStorage`에만 저장됩니다. `docs/supabase-info.md`의 자격 증명은 아직 쓰지 않습니다. 붙일 때는 `services/aiService.ts`와 `state/SessionProvider.tsx` 두 경계만 건드리면 됩니다.
-- **실제 AI Provider end-to-end 미검증.** API Key가 없어 스키마/안전 검증은 로컬 스텁으로 실측했지만, 실제 Provider 응답으로 왕복한 적은 없습니다.
+- **실제 AI Provider end-to-end는 2026-09-04(v1.17)에 실제 Key로 1회 6/6 PASS를 확인했습니다.** 상시 CI 검증은 아니라 "이 실행 기준"입니다 — API Key 없이도 스키마/안전 검증(`test:ai`)은 항상 실측합니다.
 - **사주 명식 계산 엔진 미연결.** 절입 시각·진태양시 등 정밀 계산이 필요해 `NEXT_PUBLIC_SAJU_ENGINE_READY=false`로 정직하게 "준비 중" 상태를 보여줍니다.
 - **GA4는 코드상 연결 가능하지만 실제 수신은 미검증.** Measurement ID를 넣고 Consent까지 동의해도, 실제 GA4 대시보드에 이벤트가 도착하는 것을 확인한 적은 없습니다.
 - **Rate Limit은 여전히 인스턴스 메모리 기반.** `RateLimitStore` 인터페이스로 경계는 분리했지만(v1.12), 연결할 공유 저장소(Redis 등) credential이 없어 `SharedRateLimitStore`는 구현하지 않았습니다 — 서버리스 다중 인스턴스에서 정확하지 않습니다(distributed rate limiting NOT VERIFIED).

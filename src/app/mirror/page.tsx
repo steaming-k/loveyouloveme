@@ -5,6 +5,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AiNarrativeNotice, useNarrativeViewEvent } from '@/components/ai/AiModeNotice';
 import { CoreInsightNarrativeView, MirrorAxisNarrative } from '@/components/ai/NarrativeViews';
+import { BottomNavigation } from '@/components/common/BottomNavigation';
 import { BottomSheet } from '@/components/common/BottomSheet';
 import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
@@ -244,6 +245,7 @@ function MirrorView() {
           />
         }
         footer={<Button onClick={handleSave}>내 관찰 기록에 저장</Button>}
+        nav={revisit ? <BottomNavigation /> : undefined}
         bodyClassName="pt-1.5 pb-4"
       >
         <div className="flex flex-col gap-[18px]">

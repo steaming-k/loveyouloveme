@@ -9,6 +9,7 @@ import {
   useNarrativeViewEvent,
 } from '@/components/ai/AiModeNotice';
 import { CompatibilityAxisNarrative } from '@/components/ai/NarrativeViews';
+import { BottomNavigation } from '@/components/common/BottomNavigation';
 import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
 import { NoticeBox, SectionLabel } from '@/components/common/primitives';
@@ -30,6 +31,7 @@ import { useAnchorScroll } from '@/hooks/useAnchorScroll';
 import { narrativeIsShowable } from '@/lib/aiEvidenceResolver';
 import { compatibilityNarrativeFingerprint } from '@/lib/aiFingerprint';
 import { trackEvent, trackOnce, trackOncePerAnalysis } from '@/lib/analytics';
+import { cn } from '@/lib/cn';
 import { lensAvailability } from '@/lib/logic/birth';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { isRevisit, revisitHref, revisitSource } from '@/lib/resultView';
@@ -112,6 +114,7 @@ function CompatibilityView() {
   const [showAllGood, setShowAllGood] = useState(false);
   const [showAllFriction, setShowAllFriction] = useState(false);
   const [showMoreQuestions, setShowMoreQuestions] = useState(false);
+  const [questionTab, setQuestionTab] = useState<'recommended' | 'saved'>('recommended');
 
   const evidenceContext = useEvidenceContext();
   /** dimensionKey → 화면에 이미 쓰고 있는 축 라벨('개인 시간' 등). 같은 문장이 mock에서
@@ -127,6 +130,9 @@ function CompatibilityView() {
         }))
     : [];
   const mbtiQuestionCount = questions.filter((question) => question.fromMbti).length;
+  const savedQuestionsList = questions.filter((question) =>
+    answers.savedQuestions.includes(question.id),
+  );
 
   const [variant] = useState(() => resolvePriceVariant());
   const crossSourceInsights = useCrossSourceInsights();
@@ -230,6 +236,7 @@ function CompatibilityView() {
           )}
         </div>
       }
+      nav={revisit ? <BottomNavigation /> : undefined}
       bodyClassName="pt-1.5 pb-4"
     >
       <div id={RESULT_ANCHORS.compatibilitySummary} className="flex flex-col gap-[18px]">
@@ -498,72 +505,156 @@ function CompatibilityView() {
 
         <section id={RESULT_ANCHORS.compatibilityQuestions} className="flex flex-col gap-2.5">
           <SectionLabel>이야기해볼 질문</SectionLabel>
-          <ul className="flex flex-col gap-2.5">
-            {(showMoreQuestions ? questions : questions.slice(0, 3)).map((question) => (
-              <ConversationCard
-                key={question.id}
-                question={question}
-                saved={answers.savedQuestions.includes(question.id)}
-                onToggleSave={() => {
-                  const saved = toggleSavedQuestion(question.id);
-                  if (saved) trackEvent('conversation_question_save', { question: question.id });
-                  showToast(saved ? '질문을 저장했어' : '저장을 해제했어');
-                }}
-                onShare={async () => {
-                  trackEvent('conversation_question_share', { question: question.id });
-                  const outcome = await share({
-                    title: `${BRAND.name} · 이야기해볼 질문`,
-                    text: question.text,
-                  });
-                  showToast(
-                    outcome === 'copied'
-                      ? '질문을 클립보드에 복사했어'
-                      : outcome === 'shared'
-                        ? '공유했어'
-                        : outcome === 'cancelled'
-                          ? '공유를 취소했어'
-                          : '이 브라우저에서는 공유를 지원하지 않아',
-                    outcome === 'unsupported' ? 'warning' : 'default',
-                  );
-                }}
-              />
-            ))}
-          </ul>
 
-          {questions.length > 3 && !showMoreQuestions ? (
+          <div className="flex gap-1.5 rounded-chip bg-sunken p-1" role="tablist">
             <button
               type="button"
-              onClick={() => {
-                setShowMoreQuestions(true);
-                trackEvent('result_section_expand', { section: 'questions' });
-              }}
-              className="flex min-h-11 items-center justify-center text-meta font-medium text-brand-pressed"
+              role="tab"
+              aria-selected={questionTab === 'recommended'}
+              onClick={() => setQuestionTab('recommended')}
+              className={cn(
+                'min-h-9 flex-1 rounded-[9px] text-caption font-medium transition-colors duration-200',
+                questionTab === 'recommended'
+                  ? 'bg-surface font-semibold text-ink shadow-[0_1px_2px_rgba(0,0,0,0.06)]'
+                  : 'text-ink-muted',
+              )}
             >
-              질문 더 보기
+              추천 질문
             </button>
-          ) : null}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={questionTab === 'saved'}
+              onClick={() => {
+                setQuestionTab('saved');
+                trackEvent('saved_question_view', { count: savedQuestionsList.length });
+              }}
+              className={cn(
+                'min-h-9 flex-1 rounded-[9px] text-caption font-medium transition-colors duration-200',
+                questionTab === 'saved'
+                  ? 'bg-surface font-semibold text-ink shadow-[0_1px_2px_rgba(0,0,0,0.06)]'
+                  : 'text-ink-muted',
+              )}
+            >
+              저장한 질문{savedQuestionsList.length > 0 ? ` ${savedQuestionsList.length}` : ''}
+            </button>
+          </div>
 
-          {aiQuestions.length > 0 ? (
-            <section className="flex flex-col gap-2.5">
-              <SectionLabel className="flex items-center gap-1.5">
-                러비가 덧붙인 질문
-                <AiSourceLabel mode={narrative.mode} />
-              </SectionLabel>
-              <ul className="flex flex-col gap-2">
-                {aiQuestions.map((item) => (
-                  <li
-                    key={item.key}
-                    className="flex flex-col gap-1 rounded-row border border-line bg-surface px-4 py-3.5"
-                  >
-                    <span className="text-[10.5px] font-semibold tracking-[0.04em] text-brand-pressed">
-                      {item.label}
-                    </span>
-                    <span className="text-caption keep-all leading-relaxed">{item.text}</span>
-                  </li>
+          {questionTab === 'recommended' ? (
+            <>
+              <ul className="flex flex-col gap-2.5">
+                {(showMoreQuestions ? questions : questions.slice(0, 3)).map((question) => (
+                  <ConversationCard
+                    key={question.id}
+                    question={question}
+                    saved={answers.savedQuestions.includes(question.id)}
+                    onToggleSave={() => {
+                      const saved = toggleSavedQuestion(question.id);
+                      if (saved) trackEvent('conversation_question_save', { question: question.id });
+                      showToast(saved ? '질문을 저장했어' : '저장을 해제했어');
+                    }}
+                    onShare={async () => {
+                      trackEvent('conversation_question_share', { question: question.id });
+                      const outcome = await share({
+                        title: `${BRAND.name} · 이야기해볼 질문`,
+                        text: question.text,
+                      });
+                      showToast(
+                        outcome === 'copied'
+                          ? '질문을 클립보드에 복사했어'
+                          : outcome === 'shared'
+                            ? '공유했어'
+                            : outcome === 'cancelled'
+                              ? '공유를 취소했어'
+                              : '이 브라우저에서는 공유를 지원하지 않아',
+                        outcome === 'unsupported' ? 'warning' : 'default',
+                      );
+                    }}
+                  />
                 ))}
               </ul>
-            </section>
-          ) : null}
+
+              {questions.length > 3 && !showMoreQuestions ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMoreQuestions(true);
+                    trackEvent('result_section_expand', { section: 'questions' });
+                  }}
+                  className="flex min-h-11 items-center justify-center text-meta font-medium text-brand-pressed"
+                >
+                  질문 더 보기
+                </button>
+              ) : null}
+
+              {aiQuestions.length > 0 ? (
+                <section className="flex flex-col gap-2.5">
+                  <SectionLabel className="flex items-center gap-1.5">
+                    러비가 덧붙인 질문
+                    <AiSourceLabel mode={narrative.mode} />
+                  </SectionLabel>
+                  <ul className="flex flex-col gap-2">
+                    {aiQuestions.map((item) => (
+                      <li
+                        key={item.key}
+                        className="flex flex-col gap-1 rounded-row border border-line bg-surface px-4 py-3.5"
+                      >
+                        <span className="text-[10.5px] font-semibold tracking-[0.04em] text-brand-pressed">
+                          {item.label}
+                        </span>
+                        <span className="text-caption keep-all leading-relaxed">{item.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+            </>
+          ) : savedQuestionsList.length > 0 ? (
+            <ul className="flex flex-col gap-2.5">
+              {savedQuestionsList.map((question) => (
+                <ConversationCard
+                  key={question.id}
+                  question={question}
+                  saved
+                  onToggleSave={() => {
+                    toggleSavedQuestion(question.id);
+                    showToast('저장을 해제했어');
+                  }}
+                  onShare={async () => {
+                    trackEvent('conversation_question_share', { question: question.id });
+                    const outcome = await share({
+                      title: `${BRAND.name} · 이야기해볼 질문`,
+                      text: question.text,
+                    });
+                    showToast(
+                      outcome === 'copied'
+                        ? '질문을 클립보드에 복사했어'
+                        : outcome === 'shared'
+                          ? '공유했어'
+                          : outcome === 'cancelled'
+                            ? '공유를 취소했어'
+                            : '이 브라우저에서는 공유를 지원하지 않아',
+                      outcome === 'unsupported' ? 'warning' : 'default',
+                    );
+                  }}
+                />
+              ))}
+            </ul>
+          ) : (
+            <div className="flex flex-col gap-2.5 rounded-card border border-dashed border-line-strong bg-canvas-warm p-4 text-center">
+              <p className="text-caption keep-all leading-relaxed text-ink-sub">
+                아직 저장한 질문이 없어. 궁합 결과에서 이야기해볼 질문을 저장해두면 여기에서
+                다시 볼 수 있어.
+              </p>
+              <button
+                type="button"
+                onClick={() => setQuestionTab('recommended')}
+                className="flex min-h-11 items-center justify-center text-meta font-medium text-brand-pressed"
+              >
+                질문 보러 가기
+              </button>
+            </div>
+          )}
         </section>
 
         <AiNarrativeNotice

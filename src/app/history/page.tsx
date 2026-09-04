@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
+import { BottomNavigation } from '@/components/common/BottomNavigation';
 import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
@@ -51,6 +52,7 @@ function HistoryView() {
       <ScreenLayout
         header={<ScreenHeader backHref={ROUTES.home} title="관찰 기록" />}
         footer={<Button onClick={() => router.push(ROUTES.profileIntro)}>{HISTORY_COPY.empty.cta}</Button>}
+        nav={<BottomNavigation />}
       >
         <div className="flex h-full flex-col items-center justify-center gap-4 px-3.5 pb-10 text-center">
           <Lovy pose="calendar" size={120} decorative />
@@ -89,6 +91,7 @@ function HistoryView() {
           </Button>
         )
       }
+      nav={<BottomNavigation />}
       bodyClassName="pt-1.5 pb-4"
     >
       <div className="flex flex-col gap-5">

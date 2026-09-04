@@ -1,15 +1,3 @@
-/**
- * Demo AI 정직성 플래그 (표시용 힌트).
- *
- * ⚠️ v1.6부터 **실제 동작 모드는 서버가 결정한다**(`AI_MODE`, server-only). 이 클라이언트 값은
- * 첫 호출 이전에 배지를 어떻게 그릴지 정하는 힌트일 뿐이고, 분석 결과의 진짜 모드는 응답의
- * `meta.mode`(real | demo | fallback | legacy-demo)를 따른다.
- *
- * 서버가 real이어도 이 값이 true로 남아 있으면 배지가 어긋나므로,
- * real 배포에서는 `NEXT_PUBLIC_AI_MODE=real`을 함께 설정한다.
- */
-export const IS_DEMO_AI = process.env.NEXT_PUBLIC_DEMO_AI !== 'false';
-
 /** 클라이언트가 참고하는 모드 힌트. 실제 판단은 서버·응답 meta가 한다 */
 export const AI_MODE_HINT: 'demo' | 'real' =
   process.env.NEXT_PUBLIC_AI_MODE === 'real' ? 'real' : 'demo';

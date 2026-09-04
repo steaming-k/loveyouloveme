@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, House, UserRound } from 'lucide-react';
+import { Activity, History, House, UserRound } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 
 import { cn } from '@/lib/cn';
@@ -10,18 +10,42 @@ import { useToast } from './ToastProvider';
 import { useSession } from '@/state/SessionProvider';
 
 /**
- * MVP는 3탭. 매칭·커뮤니티·Relationship History는 Main Navigation에 넣지 않는다.
+ * Post-analysis IA. 매칭·커뮤니티는 Main Navigation에 넣지 않는다.
  * 아직 기록이 없는 탭은 죽은 버튼으로 두지 않고, 왜 못 들어가는지 알려준다.
  *
  * v1.11 §23 — '나' 탭은 Mirror가 아니라 Relationship Profile(내 관계 프로필)로 향한다.
  * Profile Result가 이미 '현재의 나' 허브 역할(현재 프로필 + 수정 + Mirror 다시 보기 링크)을
  * 하므로, Mirror로 바로 보내는 것보다 여기로 보내는 쪽이 '나'라는 탭 이름과 더 맞는다.
- * Bottom Nav 구조(3탭)·`isReady` 게이팅은 그대로 두고 target 한 줄만 바꾼다.
+ *
+ * '관찰기록' 탭은 History(§27)가 이미 기록 0개 Empty State를 안내하므로 '나'/'분석'과
+ * 달리 완료 게이팅 없이 항상 열어둔다 — 기록이 없다는 사실도 History 화면이 직접 말해준다.
+ *
+ * 활성 표시(§4): '분석' 탭은 이 Nav가 실제로 렌더되는 두 라우트(/compatibility·/mirror)
+ * 모두에서 켜진다 — 둘 다 같은 Analysis Mental Model에 속한다.
  */
 const TABS = [
-  { key: 'home', label: '홈', href: ROUTES.home, Icon: House },
-  { key: 'me', label: '나', href: revisitHref(ROUTES.profileResult, 'direct'), Icon: UserRound },
-  { key: 'analysis', label: '분석', href: ROUTES.compatibility, Icon: Activity },
+  { key: 'home', label: '홈', href: ROUTES.home, Icon: House, activeMatch: [ROUTES.home] },
+  {
+    key: 'me',
+    label: '나',
+    href: revisitHref(ROUTES.profileResult, 'direct'),
+    Icon: UserRound,
+    activeMatch: [ROUTES.profileResult],
+  },
+  {
+    key: 'analysis',
+    label: '분석',
+    href: ROUTES.compatibility,
+    Icon: Activity,
+    activeMatch: [ROUTES.compatibility, ROUTES.mirror],
+  },
+  {
+    key: 'history',
+    label: '관찰기록',
+    href: ROUTES.history,
+    Icon: History,
+    activeMatch: [ROUTES.history],
+  },
 ] as const;
 
 export function BottomNavigation() {
@@ -31,7 +55,7 @@ export function BottomNavigation() {
   const { showToast } = useToast();
 
   const isReady = (key: (typeof TABS)[number]['key']): boolean => {
-    if (key === 'home') return true;
+    if (key === 'home' || key === 'history') return true;
     if (key === 'me') return answers.completed.profile;
     return answers.completed.compatibility;
   };
@@ -55,9 +79,7 @@ export function BottomNavigation() {
       aria-label="주요 메뉴"
     >
       {TABS.map((tab) => {
-        // v1.11 — 'me' 탭 href에는 `?view=revisit`이 붙어 있어 순수 pathname과 다르다.
-        // 활성 표시는 쿼리 없는 경로만 비교한다.
-        const active = pathname === tab.href.split('?')[0];
+        const active = tab.activeMatch.some((route) => pathname === route);
         const ready = isReady(tab.key);
 
         return (

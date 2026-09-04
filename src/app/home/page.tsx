@@ -120,12 +120,20 @@ export default function HomePage() {
         <div className="flex flex-col gap-4">
           <header className="flex items-center justify-between px-0.5">
             <h1 className="text-[19px] font-bold tracking-[-0.5px]">{BRAND.name}</h1>
-            <span
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-chip text-[11px] font-semibold text-ink-muted"
-              aria-label="내 프로필"
+            <button
+              type="button"
+              onClick={() => {
+                if (!answers.completed.profile) {
+                  showToast('관찰 기록을 먼저 만들어야 볼 수 있어.', 'warning');
+                  return;
+                }
+                router.push(revisitHref(ROUTES.profileResult, 'home'));
+              }}
+              aria-label="내 프로필 보기"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-chip text-[11px] font-semibold text-ink-muted active:bg-sunken"
             >
               나
-            </span>
+            </button>
           </header>
 
           <section className="flex flex-col gap-3 rounded-card border border-line bg-surface px-4 py-[18px]">

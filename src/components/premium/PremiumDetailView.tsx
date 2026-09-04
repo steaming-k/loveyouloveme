@@ -1,7 +1,6 @@
 import { NoticeBox, SectionLabel, Tag } from '@/components/common/primitives';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { PREMIUM_COPY } from '@/data/premium';
-import { IS_DEMO_AI } from '@/lib/env';
 import type { PremiumDetailReport } from '@/types';
 
 /**
@@ -21,7 +20,7 @@ export function PremiumDetailView({ report }: { report: PremiumDetailReport }) {
 
   return (
     <div className="flex flex-col gap-5">
-      {IS_DEMO_AI ? <NoticeBox>{PREMIUM_COPY.demoNotice}</NoticeBox> : null}
+      <NoticeBox>{PREMIUM_COPY.ruleBasedNotice}</NoticeBox>
 
       <section className="flex flex-col gap-2.5">
         <SectionLabel>축별 상세</SectionLabel>

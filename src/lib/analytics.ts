@@ -48,6 +48,8 @@ export const ANALYTICS_EVENTS = [
   'friction_signal_view',
   'conversation_question_save',
   'conversation_question_share',
+  // Post-analysis IA (§11) — 저장한 질문 세그먼트를 실제로 다시 찾는지. 질문 원문은 보내지 않는다.
+  'saved_question_view',
   'relationship_mirror_teaser_view',
   'relationship_mirror_entry_click',
   'relationship_mirror_postpone',

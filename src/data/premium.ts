@@ -149,8 +149,15 @@ export const PREMIUM_COPY = {
 
   unavailableTitle: '이 상세 렌즈는 아직 준비 중이야',
 
-  /** Demo AI일 때 상세도 규칙 기반이라는 사실을 숨기지 않는다(§22) */
-  demoNotice: '상세 분석도 규칙 기반 데모 응답이야. 실제 AI 개인화 결과가 아니야.',
+  /**
+   * v1.18 — `IS_DEMO_AI`(전역 데모 토글)에 매달지 않는다. 이 상세(`buildCompatibilityDetail`/
+   * `buildHistoryDetail`/`buildMbtiDetail`/`buildAstrologyDetail`)는 AI_MODE가 real이어도
+   * AI를 호출하지 않는 100% 규칙 기반 조합이다 — "데모라서 규칙 기반"이 아니라 "원래부터
+   * 규칙 기반"이라 항상 보여준다. 이전엔 `NEXT_PUBLIC_DEMO_AI`가 실제 AI_MODE와 어긋나면
+   * (예: 서버는 real인데 이 플래그만 안 바뀐 경우) "데모 응답이야"라는 문구가 실제로 AI를
+   * 쓴 다른 섹션 옆에서 신뢰를 깎았다.
+   */
+  ruleBasedNotice: '이 상세는 이미 계산된 결과를 규칙으로 조합해서 보여줘. AI가 새로 판단한 내용은 아니야.',
 } as const;
 
 /**
