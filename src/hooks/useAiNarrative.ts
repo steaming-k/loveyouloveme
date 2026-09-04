@@ -10,7 +10,7 @@ import {
 } from '@/lib/aiFingerprint';
 import type { EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
 import { buildCrossSourceInsights } from '@/lib/logic/crossSourceInsights';
-import { getCachedAiResult } from '@/services/ai/aiClient';
+import { clearAiCacheEntry, getCachedAiResult } from '@/services/ai/aiClient';
 import {
   requestCompatibilityNarrative,
   requestDeepReportNarrative,
@@ -53,8 +53,8 @@ import type {
 /** 표시할 항목이 하나도 없으면 'ready'가 아니다 — 빈 카드를 그리지 않는다 */
 type HasItems<T> = (data: T) => boolean;
 
-function idleState<T>(): AiNarrativeState<T> {
-  return { status: 'idle', data: null, reason: null, mode: null };
+function idleState<T>(retry: () => void): AiNarrativeState<T> {
+  return { status: 'idle', data: null, reason: null, mode: null, retry };
 }
 
 function useNarrativeTask<T extends { meta: { mode: AiMode } }>(input: {
@@ -66,7 +66,8 @@ function useNarrativeTask<T extends { meta: { mode: AiMode } }>(input: {
 }): AiNarrativeState<T> {
   const { task, fingerprint, enabled, hasItems, run } = input;
 
-  const [state, settle] = useState<AiNarrativeState<T>>(idleState<T>);
+  const noop = () => {};
+  const [state, settle] = useState<AiNarrativeState<T>>(() => idleState<T>(noop));
 
   /** 이미 요청을 시작한 지문. StrictMode 이중 실행·리렌더·back navigation을 함께 막는다 */
   const requestedRef = useRef<string | null>(null);
@@ -75,6 +76,16 @@ function useNarrativeTask<T extends { meta: { mode: AiMode } }>(input: {
   /** run은 매 렌더 새 함수라 effect 의존성에 넣을 수 없다 — 최신 참조만 들고 있는다 */
   const runRef = useRef(run);
   runRef.current = run;
+  /** 재시도 신호 — 값 자체는 의미 없고 effect를 다시 돌리는 용도뿐이다 */
+  const [retryTick, setRetryTick] = useState(0);
+
+  const retry = () => {
+    if (!fingerprint) return;
+    // 실패로 끝난 캐시/진행 중 요청만 지운다 — 성공 캐시가 있으면 애초에 이 버튼이 안 보인다.
+    clearAiCacheEntry(task, fingerprint);
+    requestedRef.current = null;
+    setRetryTick((tick) => tick + 1);
+  };
 
   useEffect(() => {
     if (!enabled || !fingerprint) return;
@@ -89,6 +100,7 @@ function useNarrativeTask<T extends { meta: { mode: AiMode } }>(input: {
         data: cached,
         reason: null,
         mode: cached.meta.mode,
+        retry,
       });
       return;
     }
@@ -96,14 +108,14 @@ function useNarrativeTask<T extends { meta: { mode: AiMode } }>(input: {
     if (requestedRef.current === fingerprint) return;
     requestedRef.current = fingerprint;
 
-    settle({ status: 'loading', data: null, reason: null, mode: null });
+    settle({ status: 'loading', data: null, reason: null, mode: null, retry });
 
     void runRef.current().then((result) => {
       // §41 — 입력이 바뀐 뒤 늦게 온 응답이 새 결과를 덮지 않게 한다.
       if (activeRef.current !== fingerprint) return;
 
       if (!result.ok) {
-        settle({ status: 'unavailable', data: null, reason: result.reason, mode: null });
+        settle({ status: 'unavailable', data: null, reason: result.reason, mode: null, retry });
         return;
       }
       settle({
@@ -111,9 +123,11 @@ function useNarrativeTask<T extends { meta: { mode: AiMode } }>(input: {
         data: result.data,
         reason: null,
         mode: result.data.meta.mode,
+        retry,
       });
     });
-  }, [enabled, fingerprint, task, hasItems]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, fingerprint, task, hasItems, retryTick]);
 
   return state;
 }

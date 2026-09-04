@@ -86,6 +86,13 @@ export function clearAiCache(): void {
   inFlight.clear();
 }
 
+/** 재시도 전용 — 이 (task, fingerprint) 한 건만 캐시/진행 중 요청에서 지운다. 다른 Task 캐시는 건드리지 않는다 */
+export function clearAiCacheEntry(task: AiTask, fingerprint: string): void {
+  const key = cacheKey(task, fingerprint);
+  cache.delete(key);
+  inFlight.delete(key);
+}
+
 /**
  * AI Task 호출.
  *

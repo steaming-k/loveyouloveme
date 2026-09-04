@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/common/Button';
 import { NoticeBox, SectionLabel } from '@/components/common/primitives';
+import { AiNarrativeNotice, AiSourceLabel } from '@/components/ai/AiModeNotice';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { DeepInsightCard } from '@/components/premium/DeepInsightCard';
 import { PremiumDetailView } from '@/components/premium/PremiumDetailView';
@@ -13,7 +14,7 @@ import { trackEvent } from '@/lib/analytics';
 import { UT_MODE } from '@/lib/env';
 import { hasCompletedDeepReportUt } from '@/lib/deepReportUtStore';
 import { axisLabel } from '@/services/premiumService';
-import type { RelationshipDeepReport } from '@/types';
+import type { AiFailureReason, AiMode, AiNarrativeStatus, RelationshipDeepReport } from '@/types';
 
 /**
  * Relationship Deep Report — "러비의 정밀 관찰 리포트" (v1.9 · §13~§23, v1.10 §11~§25/§48~§49)
@@ -31,12 +32,25 @@ export function RelationshipDeepReportView({
   resolverContext,
   analysisId,
   accessMode = 'preview',
+  aiNarrative,
 }: {
   report: RelationshipDeepReport;
   resolverContext: EvidenceResolverContext;
   analysisId: string;
   /** v1.10 §72 — 실제 Payment로 오해되지 않도록 어느 경로로 이 화면에 왔는지 남긴다 */
   accessMode?: 'preview' | 'beta_ut';
+  /**
+   * v1.17 — Cross-source Insight Narrative 생성 상태. 무료 화면(S22/S27/S28/F2)의
+   * `AiNarrativeNotice`/`AiSourceLabel`와 같은 컴포넌트를 재사용한다 — 대가를 지불한
+   * 화면이라 실패 시에는(§10) `retry`로 재시도 버튼까지 보여준다는 점만 다르다.
+   * 넘기지 않으면(개발용 Preview 등) 배지·안내를 그리지 않는다 — 기존 동작 그대로다.
+   */
+  aiNarrative?: {
+    status: AiNarrativeStatus;
+    reason: AiFailureReason | null;
+    mode: AiMode | null;
+    retry: () => void;
+  };
 }) {
   const viewSent = useRef(false);
   const [utOpen, setUtOpen] = useState(false);
@@ -111,6 +125,28 @@ export function RelationshipDeepReportView({
           {report.overview.subcopy}
         </p>
       </section>
+
+      {/*
+        v1.17 — AI 상태 배지/실패 안내는 §02/§03 어느 한쪽에 종속시키지 않는다.
+        `deepNarrative`는 relationshipSelf·crossSourceInsights 카드 전부에 공통으로 적용되는데,
+        표본에 따라 모든 Insight가 §02(Relationship Self)로만 분류돼 §03이 통째로 숨는
+        경우가 있다(Target을 가로지르는 연결이 하나도 없을 때) — 그 상태에서 실패 배지를
+        §03 안에만 두면 실패해도 화면에 **아무 표시도 없이** 조용히 규칙 요약만 보여주게
+        된다. Insight 카드가 하나라도 있으면(§02 또는 §03) 항상 여기서 보여준다.
+      */}
+      {aiNarrative && (report.relationshipSelf.length > 0 || report.crossSourceInsights.length > 0) ? (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-end gap-2">
+            <AiSourceLabel mode={aiNarrative.mode} />
+          </div>
+          <AiNarrativeNotice
+            task="deep-report-narrative"
+            status={aiNarrative.status}
+            reason={aiNarrative.reason}
+            onRetry={aiNarrative.retry}
+          />
+        </div>
+      ) : null}
 
       {/* 02 Relationship Self */}
       {report.relationshipSelf.length > 0 ? (

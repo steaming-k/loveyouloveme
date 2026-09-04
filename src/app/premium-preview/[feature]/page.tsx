@@ -8,6 +8,7 @@ import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { NoticeBox, PageHeading, Tag } from '@/components/common/primitives';
+import { useNarrativeViewEvent } from '@/components/ai/AiModeNotice';
 import { PremiumDetailView } from '@/components/premium/PremiumDetailView';
 import { RelationshipDeepReportView } from '@/components/premium/RelationshipDeepReportView';
 import { Lovy } from '@/components/lovy/Lovy';
@@ -103,6 +104,15 @@ function PremiumPreviewView() {
   const crossSourceInsights = useCrossSourceInsights();
   const resolverContext = useEvidenceContext();
   const deepNarrative = useDeepReportNarrative(crossSourceInsights, featureId === 'relationship_deep_report');
+
+  // v1.17 §10 — 무료 화면(S22/S27/F2)과 같은 방식으로 '실제로 보였다'를 1회 기록한다.
+  useNarrativeViewEvent({
+    task: 'deep-report-narrative',
+    source: 'deep_report',
+    status: deepNarrative.status,
+    mode: deepNarrative.mode,
+    itemCount: deepNarrative.data?.narratives.length ?? 0,
+  });
 
   useEffect(() => {
     if (PREMIUM_PREVIEW && featureId) trackEvent('premium_preview_view', { feature: featureId });
@@ -245,6 +255,12 @@ function PremiumPreviewView() {
             resolverContext={resolverContext}
             analysisId={analysisId}
             accessMode={accessMode}
+            aiNarrative={{
+              status: deepNarrative.status,
+              reason: deepNarrative.reason,
+              mode: deepNarrative.mode,
+              retry: deepNarrative.retry,
+            }}
           />
         ) : (
           <PremiumDetailView report={report} />

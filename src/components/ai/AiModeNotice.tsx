@@ -46,10 +46,18 @@ export function AiNarrativeNotice({
   task,
   status,
   reason,
+  onRetry,
 }: {
   task: AiTask;
   status: AiNarrativeStatus;
   reason: AiFailureReason | null;
+  /**
+   * v1.17 — Premium(₩1,900)처럼 사용자가 AI 설명 자체에 대가를 지불한 화면에서만 넘긴다.
+   * 무료 화면(S22/S27/S28/F2)은 넘기지 않는다 — Core Result가 이미 보이고 있어 재시도를
+   * 조를 이유가 없다(§15). 재시도 가능한 이유만 버튼을 보여준다 — POLICY_BLOCK처럼
+   * 다시 불러도 같은 결과가 나올 사유는 버튼을 숨긴다.
+   */
+  onRetry?: () => void;
 }) {
   const firedRef = useRef(false);
 
@@ -62,7 +70,22 @@ export function AiNarrativeNotice({
 
   if (status !== 'unavailable' || !reason) return null;
 
-  return <NoticeBox>{FALLBACK_COPY[reason] ?? FALLBACK_COPY.SERVER_ERROR}</NoticeBox>;
+  const retryable = onRetry && reason !== 'POLICY_BLOCK' && reason !== 'NO_USABLE_IMAGE';
+
+  return (
+    <NoticeBox>
+      <span>{FALLBACK_COPY[reason] ?? FALLBACK_COPY.SERVER_ERROR}</span>
+      {retryable ? (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="ml-2 font-semibold text-brand-pressed underline underline-offset-2"
+        >
+          다시 시도
+        </button>
+      ) : null}
+    </NoticeBox>
+  );
 }
 
 /**

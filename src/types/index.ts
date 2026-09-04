@@ -1038,6 +1038,8 @@ export interface AiNarrativeState<T> {
   /** 'unavailable'일 때만 값이 있다 */
   reason: AiFailureReason | null;
   mode: AiMode | null;
+  /** 캐시된 실패를 지우고 같은 지문으로 다시 요청한다. Core Result는 이미 보이고 있으므로 재시도는 enhancement 재시도일 뿐이다 */
+  retry: () => void;
 }
 
 /* ==================== Cross-source Insight Engine (v1.9) ==================== */
