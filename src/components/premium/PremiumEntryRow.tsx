@@ -102,7 +102,7 @@ export function PremiumEntryRow({
           });
           router.push(ROUTES.premium(entrySource, hook?.variant));
         }}
-        className="flex w-full items-center justify-between gap-3 rounded-row border border-line bg-surface px-4 py-3.5 text-left active:bg-sunken"
+        className="flex w-full flex-col gap-3 rounded-row border border-line bg-surface px-4 py-3.5 text-left active:bg-sunken"
       >
         <span className="flex min-w-0 flex-col gap-1">
           <span className="text-[13px] font-medium">{hook?.title ?? feature.title}</span>
@@ -110,7 +110,7 @@ export function PremiumEntryRow({
             {hook?.description ?? feature.description}
           </span>
         </span>
-        <span className="flex flex-none flex-col items-end gap-1">
+        <span className="flex flex-col gap-1">
           <span className="text-[12px] font-semibold tnum text-brand-pressed">
             {formatPrice(price)}
             <span className="sr-only"> ({priceForScreenReader(price)})</span>

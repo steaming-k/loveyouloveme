@@ -1,15 +1,11 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
 
 import { Lovy } from '@/components/lovy/Lovy';
 import { BRAND } from '@/data/copy';
 import { ROUTES } from '@/lib/routes';
 import { useSession } from '@/state/SessionProvider';
-
-/** S01 스플래시 — 화면을 탭하면 관찰이 시작된다. 자동 진입도 함께 걸어둔다. */
-const AUTO_ADVANCE_MS = 2600;
 
 export default function SplashPage() {
   const router = useRouter();
@@ -17,11 +13,6 @@ export default function SplashPage() {
 
   // 이미 관찰 기록이 있는 사용자는 홈으로 보낸다.
   const destination = hydrated && answers.completed.profile ? ROUTES.home : ROUTES.onboarding;
-
-  useEffect(() => {
-    const timer = setTimeout(() => router.push(destination), AUTO_ADVANCE_MS);
-    return () => clearTimeout(timer);
-  }, [router, destination]);
 
   return (
     <div className="flex h-full flex-col">

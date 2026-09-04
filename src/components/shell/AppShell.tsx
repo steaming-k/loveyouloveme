@@ -41,7 +41,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 function DeviceTopBar() {
   return (
     <div
-      className="h-11 flex-none items-center justify-between px-6 pt-[env(safe-area-inset-top)] lg:flex"
+      className="h-11 flex-none items-center justify-between px-6 pt-[env(safe-area-inset-top)] lg:hidden"
       aria-hidden
     >
       <div className="hidden text-caption font-semibold tracking-[-0.2px] lg:block">9:41</div>
