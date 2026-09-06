@@ -9,10 +9,13 @@ import {
   PAST_FACTOR_LABEL,
   SELF_GAP_LABEL,
 } from '@/data/labels';
-import { withObjectParticle } from '@/lib/korean';
+import { formatEntryDate } from '@/lib/historyFormat';
+import { withObjectParticle, withTopicParticle } from '@/lib/korean';
 import type {
+  CompatibilityResult,
   DeepAnalysisAnswer,
   EvidenceRef,
+  MbtiLensReport,
   RelationshipHistoryEntry,
   SessionAnswers,
   TargetAxisKey,
@@ -43,7 +46,11 @@ export type EvidenceSourceLabel =
   | '사용자 수정'
   | '과거 관찰'
   | '상대에 대해 입력한 내용'
-  | '정밀 관찰 추가 답변';
+  | '정밀 관찰 추가 답변'
+  /** v1.26 — 이미 계산된 동기화율 축 판정 */
+  | '동기화율 비교'
+  /** v1.26 — MBTI 성향 렌즈 */
+  | '성향 렌즈';
 
 export interface ResolvedEvidence {
   key: string;
@@ -57,6 +64,10 @@ export interface EvidenceResolverContext {
   historyEntries?: readonly RelationshipHistoryEntry[];
   /** v1.9 — Premium Adaptive Deep Question 답변. 없으면 target/deep_followup ref는 해석되지 않는다 */
   deepAnswers?: readonly DeepAnalysisAnswer[];
+  /** v1.26 — 이미 계산된 동기화율 결과. 없으면 compatibility ref는 해석되지 않는다 */
+  compatibility?: CompatibilityResult;
+  /** v1.26 — 이미 계산된 MBTI 렌즈. 없으면 mbti_lens ref는 해석되지 않는다 */
+  mbtiLens?: MbtiLensReport | null;
 }
 
 const MIRROR_AXIS_LABEL = new Map(MIRROR_AXES.map((axis) => [axis.key as string, axis.label]));
@@ -70,6 +81,18 @@ const MIRROR_AXIS_LABEL = new Map(MIRROR_AXES.map((axis) => [axis.key as string,
  */
 function quoted(label: string): string {
   return `'${label}'${withObjectParticle(label).slice(label.length)}`;
+}
+
+/**
+ * 서술격 조사 이야/야. `withObjectParticle` 계열과 달리 받침 유무로 '이야'와 '야'를 고른다.
+ * ('뜸한 편' → '이야' · '자주' → '야')
+ */
+function copula(word: string): string {
+  const last = word.trim().at(-1);
+  if (!last) return '야';
+  const code = last.charCodeAt(0);
+  if (code < 0xac00 || code > 0xd7a3) return '야';
+  return (code - 0xac00) % 28 !== 0 ? '이야' : '야';
 }
 
 /* --------------------------------------------------------- declared */
@@ -178,10 +201,18 @@ function resolveHistory(
   if (!snapshot) return null;
 
   const axisLabel = MIRROR_AXIS_LABEL.get(axis) ?? axis;
+  /**
+   * v1.26 History 실측에서 고쳤다 — 문장에 **어느 기록인지가 없었다.**
+   *
+   * 반복 신호 연결은 "이전 관찰에서도 반복해서 나온 축"이라고 말하면서 근거로 기록 2건을
+   * 건다. 그런데 두 줄의 텍스트가 완전히 같아서(둘 다 "이전 기록에서도 …") 사용자에게는
+   * 중복 버그처럼 보이고, **'2번'을 확인할 방법이 없었다.** 기록 날짜를 붙여 각 근거가
+   * 서로 다른 관찰이라는 사실이 화면에서 확인되게 한다.
+   */
   return {
     key: `history:${entryId}:${axis}`,
     sourceLabel: '과거 관찰',
-    text: `이전 기록에서도 ${axisLabel} 축에 ${snapshot.relationshipSignal}`,
+    text: `${formatEntryDate(entry.createdAt)} 기록에서도 ${axisLabel} 축에 ${snapshot.relationshipSignal}`,
   };
 }
 
@@ -193,7 +224,13 @@ function resolveTarget(field: string, answers: SessionAnswers): string | null {
   if (!def) return null;
   const level = answers.target[field as TargetAxisKey];
   if (level === 'x') return null;
-  return `네가 입력한 상대 정보로는 ${def.label} ${quoted(def.theirsPhrase[level])}이야`;
+  /**
+   * v1.26 Audit — 예전에는 `quoted()`(목적격 을/를)를 쓰고 뒤에 `이야`를 붙여서
+   * **"연락 방식 '뜸한 편'을이야"** 가 화면에 나왔다(Deep Report 근거 목록에서 실측).
+   * 목적격이 아니라 서술이므로 축 라벨에 주제격(은/는)을, 값에는 서술격(이야/야)을 붙인다.
+   */
+  const phrase = def.theirsPhrase[level];
+  return `네가 입력한 상대 정보로는 ${withTopicParticle(def.label)} '${phrase}'${copula(phrase)}`;
 }
 
 /* ------------------------------------------------------- deep_followup */
@@ -268,6 +305,34 @@ export function resolveEvidenceRef(
     }
     case 'deep_followup':
       return resolveDeepFollowup(ref.questionId, context.deepAnswers ?? []);
+    /**
+     * v1.26 — 동기화율/성향 렌즈 근거.
+     *
+     * ⚠️ 여기서 **다시 계산하지 않는다.** context에 담겨 온 이미 계산된 결과의
+     * 저장 label만 문장으로 옮긴다. 값이 없으면 null이라 근거 목록에서 조용히 빠진다.
+     */
+    case 'compatibility': {
+      const dimension = context.compatibility?.dimensions.find(
+        (item) => item.key === ref.field,
+      );
+      if (!dimension || dimension.alignment === null) return null;
+      return {
+        key: `compatibility:${ref.field}`,
+        sourceLabel: '동기화율 비교',
+        text: `${dimension.label} — 나: ${dimension.minePhrase} · 상대: ${dimension.theirsPhrase}`,
+      };
+    }
+    case 'mbti_lens': {
+      const axis = context.mbtiLens?.axes.find((item) => item.key === ref.field);
+      if (!axis) return null;
+      return {
+        key: `mbti_lens:${ref.field}`,
+        sourceLabel: '성향 렌즈',
+        text: axis.same
+          ? `${axis.label} — 둘 다 ${axis.mineLetter}`
+          : `${axis.label} — ${axis.mineLetter} × ${axis.theirsLetter}`,
+      };
+    }
     default:
       return null;
   }

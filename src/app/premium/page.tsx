@@ -40,6 +40,7 @@ import { useHistoryReport, useMbtiLens, useMirror } from '@/hooks/useAnalysis';
 import { useDeepReport } from '@/hooks/useDeepReport';
 import { lensAvailability } from '@/lib/logic/birth';
 import { premiumFeatureState } from '@/services/premiumService';
+import { hasDeepConnection } from '@/services/premiumConnections';
 import { useSession } from '@/state/SessionProvider';
 import type { PremiumFeatureId, PremiumSource } from '@/types';
 
@@ -197,7 +198,7 @@ function PremiumView() {
         historyComparable: historyReport.comparable,
         mbtiAvailable: Boolean(mbtiLens),
         astrologyAvailable: birth.couple,
-        deepReportAvailable: crossSourceInsights.length > 0,
+        deepReportAvailable: hasDeepConnection(crossSourceInsights),
       }),
     [
       featureId,
@@ -206,7 +207,7 @@ function PremiumView() {
       historyReport.comparable,
       mbtiLens,
       birth.couple,
-      crossSourceInsights.length,
+      crossSourceInsights,
     ],
   );
 
@@ -218,9 +219,20 @@ function PremiumView() {
     PREMIUM_PREVIEW && isDeepReport && feature.status === 'fake-door';
 
   const definition = PREMIUM_FEATURES[featureId];
-  // §37 — Paywall 전에 살짝 보여줄 3개 요약. 전체 근거·해석은 잠긴 채로 둔다.
+  /**
+   * §37 · §39 — Paywall 전에 살짝 보여줄 3개 요약. 전체 근거·해석은 잠긴 채로 둔다.
+   *
+   * v1.26 P3-3 — **연결만 예고한다.** 예전에는 `crossSourceInsights` 앞 3개를 그대로
+   * 썼는데, 그중에는 source가 하나뿐인 단일 관찰도 섞였다(실측: "개인 시간은 중요하다고
+   * 말했지만…"). Preview는 실제 리포트에서 나오는 **형태**를 예고해야 하고, 리포트가 파는
+   * 것은 연결이다. 남는 게 없으면 빈 배열이고 그때는 Preview 블록 자체가 렌더되지 않는다.
+   */
+  const connectionInsights = useMemo(
+    () => crossSourceInsights.filter((insight) => new Set(insight.sources).size >= 2),
+    [crossSourceInsights],
+  );
   const previewSummaries = isDeepReport
-    ? crossSourceInsights.slice(0, 3).map((insight) => insight.ruleSummary)
+    ? connectionInsights.slice(0, 3).map((insight) => insight.ruleSummary)
     : [];
 
   // Flag OFF — Paywall에 머무르지 않는다.
@@ -367,7 +379,10 @@ function PremiumView() {
   const showReport = stage === 'report';
   /** 카드로 실제 보여줄 Insight 개수 — 가짜 숫자를 만들지 않는다(§7) */
   const connectedSignalCount =
-    deep.report.crossSourceInsights.length + deep.report.relationshipSelf.length;
+    // v1.26 — 새 구조에서 다시 센다: 연결 + 단일 관찰 전부. 이벤트 의미는 그대로다(§45).
+    (deep.report.corePattern ? 1 : 0) +
+    deep.report.connections.length +
+    deep.report.singleSourceNotes.length;
 
   return (
     <>
@@ -437,7 +452,6 @@ function PremiumView() {
         {showReport ? (
           <RelationshipDeepReportView
             report={deep.report}
-            resolverContext={deep.resolverContext}
             analysisId={deep.analysisId}
             funnelAnalysisId={funnelAnalysisId}
             accessMode={unlockMode ?? 'preview'}
@@ -541,8 +555,8 @@ function PremiumView() {
               </ul>
               <p className="px-1 text-meta keep-all text-ink-muted">
                 {/* §7 — 실제 계산값만 쓴다. 남은 게 없으면 개수를 말하지 않는다. */}
-                {crossSourceInsights.length > previewSummaries.length
-                  ? `아직 연결해서 보여주지 않은 신호 ${crossSourceInsights.length - previewSummaries.length}개 · ${DEEP_REPORT_COPY.previewLocked}`
+                {connectionInsights.length > previewSummaries.length
+                  ? `아직 연결해서 보여주지 않은 연결 ${connectionInsights.length - previewSummaries.length}개 · ${DEEP_REPORT_COPY.previewLocked}`
                   : DEEP_REPORT_COPY.previewLocked}
               </p>
             </section>
@@ -599,7 +613,7 @@ function PremiumView() {
           */}
           {isDeepReport ? (
             <NoticeBox>
-              지금 네 답변에서 연결된 신호가 {crossSourceInsights.length}개 나왔어. 새로 물어보는
+              지금 네 답변에서 찾은 연결이 {connectionInsights.length}개야. 새로 물어보는
               건 없고, 무료로 본 결과도 그대로 볼 수 있어.
             </NoticeBox>
           ) : (

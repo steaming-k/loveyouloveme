@@ -27,6 +27,7 @@ export function PremiumEntryRow({
   feature,
   source,
   hook,
+  headingLevel = 'h2',
 }: {
   feature: PremiumFeature;
   /**
@@ -43,6 +44,13 @@ export function PremiumEntryRow({
    * — 이 컴포넌트가 하나뿐이라는 사실도, `unavailable` 처리·Fake Door 가드도 그대로 재사용된다.
    */
   hook?: { variant: string; title: string; description: string; cta: string };
+  /**
+   * v1.26 P3-3 (v1.23 Remaining Risk 해결) — 이 행은 5개 화면에서 공용으로 쓰이는데
+   * `SectionLabel`이 항상 `h2`였다. 이미 `h2` 섹션 **안에** 들어가는 화면에서는 계층이
+   * 평평해진다(H1 → H2 → H2). 호출부가 자기 문맥에 맞는 level을 넘길 수 있게 하고,
+   * 기본값은 기존 동작(`h2`)을 그대로 둔다 — 5개 화면 중 아무것도 조용히 바뀌지 않는다.
+   */
+  headingLevel?: 'h2' | 'h3';
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -109,7 +117,7 @@ export function PremiumEntryRow({
   if (feature.status === 'unavailable') {
     return (
       <section className="flex flex-col gap-2">
-        <SectionLabel>{copy.entryLabel}</SectionLabel>
+        <SectionLabel as={headingLevel}>{copy.entryLabel}</SectionLabel>
         <div className="rounded-row border border-dashed border-line-strong bg-sunken px-4 py-3.5">
           <p className="text-[12.5px] font-medium">{copy.unavailableTitle}</p>
           {feature.unavailableReason ? (
@@ -124,7 +132,7 @@ export function PremiumEntryRow({
 
   return (
     <section className="flex flex-col gap-2">
-      <SectionLabel>{copy.entryLabel}</SectionLabel>
+      <SectionLabel as={headingLevel}>{copy.entryLabel}</SectionLabel>
       <button
         type="button"
         onClick={() => {
@@ -146,12 +154,21 @@ export function PremiumEntryRow({
             {hook?.description ?? feature.description}
           </span>
         </span>
-        <span className="flex flex-col gap-1">
-          <span className="text-[12px] font-semibold tnum text-brand-pressed">
+        {/*
+          v1.26 P3-3 (v1.23 Remaining Risk 해결) — **Value → Price 순서.**
+          예전에는 가격이 CTA보다 먼저 오고 `text-brand-pressed` + `font-semibold`로 더
+          강했다. 그래서 이 행에서 가장 먼저 눈에 들어오는 것이 "무엇을 얻는가"가 아니라
+          "얼마인가"였다. 순서를 뒤집고 가격을 중립 톤 metadata로 낮춘다 —
+          **색상 시스템은 바꾸지 않는다**(brand 토큰을 CTA로 옮긴 것뿐이고 가격은 그대로 노출).
+        */}
+        <span className="flex flex-col gap-0.5">
+          <span className="text-[12px] font-semibold text-brand-pressed">
+            {hook?.cta ?? copy.entryCta} →
+          </span>
+          <span className="text-[11px] tnum text-ink-muted">
             {formatPrice(price)}
             <span className="sr-only"> ({priceForScreenReader(price)})</span>
           </span>
-          <span className="text-[11px] text-ink-muted">{hook?.cta ?? copy.entryCta} →</span>
         </span>
       </button>
     </section>

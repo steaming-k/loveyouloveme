@@ -20,6 +20,7 @@ import { PREMIUM_HOOK_COPY } from '@/data/premium';
 import { trackEvent } from '@/lib/analytics';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { premiumFeatureState } from '@/services/premiumService';
+import { hasDeepConnection } from '@/services/premiumConnections';
 import { formatEntryDate } from '@/lib/historyFormat';
 import { ROUTES } from '@/lib/routes';
 import { useCrossSourceInsights, useHistoryNarrative } from '@/hooks/useAiNarrative';
@@ -233,7 +234,7 @@ function HistoryReportView() {
         <PremiumEntryRow
           feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
             historyComparable: report.comparable,
-            deepReportAvailable: crossSourceInsights.length > 0,
+            deepReportAvailable: hasDeepConnection(crossSourceInsights),
           })}
           source="history"
           hook={{

@@ -40,7 +40,7 @@ export function PremiumDetailView({ report }: { report: PremiumDetailReport }) {
                   {section.mine ? (
                     <div className="flex gap-2.5">
                       <dt className="w-[34px] flex-none text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
-                        나
+                        {section.mineLabel ?? '나'}
                       </dt>
                       <dd className="min-w-0 text-[12.5px] keep-all">{section.mine}</dd>
                     </div>
@@ -48,7 +48,7 @@ export function PremiumDetailView({ report }: { report: PremiumDetailReport }) {
                   {section.theirs ? (
                     <div className="flex gap-2.5">
                       <dt className="w-[34px] flex-none text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
-                        상대
+                        {section.theirsLabel ?? '상대'}
                       </dt>
                       <dd className="min-w-0 text-[12.5px] keep-all">{section.theirs}</dd>
                     </div>

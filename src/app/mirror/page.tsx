@@ -32,6 +32,7 @@ import { isRevisit, revisitSource } from '@/lib/resultView';
 import { RESULT_ANCHORS, ROUTES } from '@/lib/routes';
 import { isLowData } from '@/lib/validation';
 import { premiumFeatureState } from '@/services/premiumService';
+import { hasDeepConnection } from '@/services/premiumConnections';
 import { useCrossSourceInsights, useEvidenceContext, useRelationshipNarrative } from '@/hooks/useAiNarrative';
 import { useMirror, usePastObservation, useRelationshipProfile, useRepeatedSignals } from '@/hooks/useAnalysis';
 import { useHistory } from '@/state/HistoryProvider';
@@ -330,7 +331,7 @@ function MirrorView() {
             <PremiumEntryRow
               feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
                 mirrorAvailable: mirror.available,
-                deepReportAvailable: crossSourceInsights.length > 0,
+                deepReportAvailable: hasDeepConnection(crossSourceInsights),
               })}
               source="mirror"
               hook={{

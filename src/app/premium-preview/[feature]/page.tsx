@@ -157,15 +157,6 @@ function PremiumPreviewView() {
           narratives: deepNarrative.data?.narratives ?? [],
           resolverContext,
           compatibility,
-          compatibilityQuestions: questions,
-          compatibilityPastObservations: frictionPast
-            ? [
-                {
-                  label: compatibility.frictionSignals[0]?.label ?? '관찰 필요 신호',
-                  text: frictionPast.text,
-                },
-              ]
-            : [],
           historyReport,
           repeatedSignals: repeated,
           target: answers.target,
@@ -252,7 +243,6 @@ function PremiumPreviewView() {
         {'overview' in report ? (
           <RelationshipDeepReportView
             report={report}
-            resolverContext={resolverContext}
             analysisId={analysisId}
             funnelAnalysisId={answers.currentAnalysisMeta?.funnelAnalysisId ?? null}
             accessMode={accessMode}

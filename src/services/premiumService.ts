@@ -1,21 +1,25 @@
-import { AXIS_DEFINITIONS, MIRROR_AXES } from '@/data/axes';
+import { MIRROR_AXES } from '@/data/axes';
 import { PREMIUM_FEATURES } from '@/data/premium';
 import { HISTORY_STATE_LABEL } from '@/data/copy';
 import { PREMIUM_FAKE_DOOR, SAJU_ENGINE_READY } from '@/lib/env';
-import { resolveEvidenceRefs, type EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
+import type { EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
 import { buildApproachHints } from '@/lib/logic/approachHints';
+import {
+  buildActions,
+  buildConnectionQuestions,
+  buildConnections,
+  hasDeepConnection,
+  selectCorePattern,
+  selectDeepObservation,
+} from '@/services/premiumConnections';
 import type {
   AstrologyCompatibilityResult,
   CompatibilityResult,
   ConversationQuestion,
   CrossSourceInsight,
-  CrossSourceEvidenceSource,
   DeepApproachInsight,
-  DeepConversationQuestion,
-  DeepFinalObservation,
+  DeepCorePattern,
   DeepNarrative,
-  DeepReportInsightCard,
-  DeepSituation,
   HistoryReport,
   MbtiLensReport,
   MirrorReport,
@@ -235,8 +239,11 @@ export function buildHistoryDetail(input: {
     .filter((change) => change.state !== 'INSUFFICIENT')
     .map((change) => ({
       label: change.label,
+      // v1.26 — 이 두 칸은 '나/상대'가 아니라 **과거/현재**다(실측에서 잘못된 라벨 확인).
       mine: change.previousText ?? undefined,
+      mineLabel: '이전 기록',
       theirs: change.currentText ?? undefined,
+      theirsLabel: '최근 기록',
       evidence: change.note,
       badge: HISTORY_STATE_LABEL[change.state],
     }));
@@ -351,115 +358,55 @@ export function axisLabel(key: string): string {
 
 /* ------------------------------------------- Relationship Deep Report (v1.9) */
 
-/**
- * §15 Relationship Self vs §16 Cross-source Insights를 나누는 기준.
- * Target·History가 섞이지 않은 것(=Declared↔Relationship(+Observed) 안쪽 비교)은
- * '내 안에서의 일관성' 섹션으로, Target·History가 섞인 것은 '연결해야만 보이는 신호'
- * 섹션으로 보낸다. 새 판정을 만드는 게 아니라 **이미 만들어진 Insight를 분류**할 뿐이다.
+/*
+ * v1.26 P3-3에서 제거한 헬퍼 4개 (dead code로 남기지 않는다)
+ *
+ *   isRelationshipSelfInsight / cardFor
+ *     Insight를 **source 조합**으로 갈라 두 섹션에 나눠 담던 기준. 사용자에게
+ *     의미 있는 구분이 아니었다 — 이제 **연결 여부**(source 2개 이상)로 가른다.
+ *
+ *   situationFor
+ *     v1.23부터 남아 있던 Remaining Risk의 실체. 무료 `SignalCard`가 이미 보여주는
+ *     `AXIS_DEFINITIONS.scene.watch` / `evidence.watch`를 **글자 그대로** 다시
+ *     출력하고 있었다. 유료에서 같은 문장을 다시 파는 것이라 섹션째로 없앴다.
+ *     "언제 드러나는가"는 연결의 AI 맥락 문장과 NOTICE 액션이 대신한다.
+ *
+ *   conversationQuestionsFor
+ *     무료 질문 텍스트를 그대로 옮겼다. Premium 질문은 이제
+ *     `buildConnectionQuestions`가 **연결 자체를 검증하는 질문**으로 새로 만든다.
  */
-const RELATIONSHIP_SELF_SOURCES = new Set<CrossSourceEvidenceSource>([
-  'declared',
-  'relationship',
-  'observed',
-  'adaptive',
-  'user_correction',
-]);
-
-function isRelationshipSelfInsight(insight: CrossSourceInsight): boolean {
-  return insight.sources.every((source) => RELATIONSHIP_SELF_SOURCES.has(source));
-}
-
-function cardFor(
-  insight: CrossSourceInsight,
-  narratives: readonly DeepNarrative[],
-): DeepReportInsightCard {
-  return { insight, narrative: narratives.find((item) => item.insightId === insight.id) ?? null };
-}
-
 /**
- * §19 Relationship Situations. AI 없이 만든다 — 이미 있는 축별 상황 문장(`AXIS_DEFINITIONS`)을
- * GAP/CONTRADICTION Insight에만 붙인다. MATCH·CHANGE·REPEATED_SIGNAL은 '상황'이 아니라
- * '관찰'이라 여기서 다루지 않는다.
+ * v1.26 P3-3 §16 — 첫 viewport에서 ₩1,900의 값이 즉시 보여야 한다.
+ * 예전 headline은 '연결을 몇 가지 찾았어'로 **개수를 말하지 않았다** — 그래서 무료 결과
+ * 요약과 구분되지 않았다. 이제 실제로 이은 정보 종류 수와 연결 수를 그대로 말한다.
+ * 값은 전부 이미 만들어진 연결에서 파생된다 — 새 계산 없음.
  */
-function situationFor(insight: CrossSourceInsight): DeepSituation | null {
-  if (!insight.axis) return null;
-  if (insight.type !== 'GAP' && insight.type !== 'CONTRADICTION') return null;
-
-  const def = AXIS_DEFINITIONS.find((item) => item.key === insight.axis);
-  if (!def) return null;
-
-  return {
-    id: `situation_${insight.id}`,
-    axis: insight.axis,
-    /**
-     * v1.19 Release Gate §4 — `watch`(차이) 문장을 고정으로 쓴다.
-     *
-     * 이 함수는 위 가드에서 이미 **GAP/CONTRADICTION Insight만** 통과시킨다 — 즉 여기 오는
-     * 축은 정의상 '차이'다. 그런데 예전 `AXIS_DEFINITIONS`는 축당 문장이 하나뿐이었고
-     * alone/affection의 그 한 문장은 **잘 맞을 때** 기준으로 쓰여 있었다. 그래서 개인 시간
-     * GAP인데 "각자 시간을 보내는 걸 거절로 받아들일 가능성이 비교적 낮아 보여"가 붙는,
-     * 판정과 정반대인 상황 설명이 나갔다.
-     */
-    situation: def.scene.watch,
-    myReaction: '말한 기준보다 실제 반응이 더 컸던 지점이라, 이 상황에서 평소보다 크게 반응할 수도 있어.',
-    theirPossibleReaction: '상대는 이 부분을 너와 다르게 느낄 수도 있어.',
-    misunderstanding: def.evidence.watch,
-    question: `${def.label}에서 서로 실제로 어떻게 느끼는지 확인해볼 수 있어.`,
-  };
-}
-
-function conversationQuestionsFor(
-  questions: readonly ConversationQuestion[],
-  insights: readonly CrossSourceInsight[],
-): DeepConversationQuestion[] {
-  return questions.map((question) => {
-    const related = insights.find(
-      (insight) => insight.axis === question.id || insight.sources.includes('target'),
-    );
-    return {
-      question,
-      why: related
-        ? related.ruleSummary
-        : '동기화율 비교에서 차이가 보였던 부분이라 대화로 직접 확인해보면 좋아.',
-    };
-  });
-}
-
 function overviewFor(
   insights: readonly CrossSourceInsight[],
   narratives: readonly DeepNarrative[],
+  core: DeepCorePattern | null,
 ): RelationshipDeepReportOverview {
   const top = insights.slice(0, 3);
 
   return {
-    headline:
-      insights.length > 0
-        ? '따로 보면 몰랐을 연결을 몇 가지 찾았어'
-        : '아직 연결해서 볼 수 있는 신호가 부족해',
-    subcopy:
-      insights.length > 0
-        ? '네가 따로 입력했던 것들을 겹쳐서 봤을 때만 보이는 지점이야. 판정이 아니라 관찰이야.'
-        : '관계 경험이나 상대 정보가 더 쌓이면 연결해서 볼 수 있는 게 늘어나.',
+    headline: core
+      ? `따로 답한 정보 ${core.connectedSourceCount}종을 이어서 ${core.connectionCount}개 연결을 찾았어`
+      : '아직 연결해서 볼 수 있는 신호가 부족해',
+    subcopy: core
+      ? '하나씩 볼 때는 안 보이던 지점이야. 무료에서 본 결과를 더 길게 쓴 게 아니라, 서로 이어서 본 거야.'
+      : '관계 경험이나 상대 정보가 더 쌓이면 연결해서 볼 수 있는 게 늘어나.',
     topSummaries: top.map(
       (insight) => narratives.find((item) => item.insightId === insight.id)?.headline ?? insight.ruleSummary,
     ),
   };
 }
 
-function finalObservationFor(
-  insights: readonly CrossSourceInsight[],
-  resolverContext: EvidenceResolverContext,
-): DeepFinalObservation | null {
-  const top = insights[0];
-  if (!top) return null;
-
-  return {
-    strongestSignalSummary: top.ruleSummary,
-    evidence: resolveEvidenceRefs(top.evidenceRefs, resolverContext).map((item) => item.text),
-    unknown: '상대가 실제로 어떻게 느꼈는지는 대화로 직접 확인해야 알 수 있어.',
-    nextTip: '다음에 비슷한 상황이 오면, 오늘 본 이 연결을 먼저 떠올려봐.',
-  };
-}
+/*
+ * v1.26 P3-3에서 제거: `finalObservationFor`
+ *   `insights[0].ruleSummary`를 그대로 리포트 맨 아래에 다시 적었다. 그 문장은 이미
+ *   맨 위 CORE PATTERN이 보여주고 있었고, 근거 목록까지 중복이었다(실측 확인).
+ *   마무리는 `selectDeepObservation`(러비의 깊은 관찰 + 철학 질문)이 맡는다.
+ */
 
 /**
  * v1.15 §5 — Approach Hints × Premium. 무료 힌트(`buildApproachHints`)는 다시 계산하거나
@@ -534,8 +481,6 @@ export function buildRelationshipDeepReport(input: {
   narratives: readonly DeepNarrative[];
   resolverContext: EvidenceResolverContext;
   compatibility: CompatibilityResult;
-  compatibilityQuestions: readonly ConversationQuestion[];
-  compatibilityPastObservations: readonly { label: string; text: string }[];
   historyReport: HistoryReport;
   repeatedSignals: readonly RepeatedRelationshipSignal[];
   target: TargetProfile;
@@ -545,41 +490,41 @@ export function buildRelationshipDeepReport(input: {
     narratives,
     resolverContext,
     compatibility,
-    compatibilityQuestions,
-    compatibilityPastObservations,
     historyReport,
     repeatedSignals,
     target,
   } = input;
 
-  const cards = insights.map((insight) => cardFor(insight, narratives));
-  const relationshipSelf = cards.filter((card) => isRelationshipSelfInsight(card.insight));
-  const crossSourceInsights = cards.filter((card) => !isRelationshipSelfInsight(card.insight));
-
-  const situations = insights
-    .map(situationFor)
-    .filter((item): item is DeepSituation => item !== null);
-
-  const compatibilityDeepDive = buildCompatibilityDetail({
-    result: compatibility,
-    questions: compatibilityQuestions,
-    pastObservations: compatibilityPastObservations,
-  });
+  /**
+   * v1.26 P3-3 — **연결(Connection)이 이 리포트의 1급 시민이다.**
+   *
+   * 예전 구조는 Insight를 'relationshipSelf'와 'crossSourceInsights'로 **source 조합**
+   * 기준으로 갈랐는데, 그건 사용자에게 의미 있는 구분이 아니었다. 이제는
+   * **연결 여부**로 가른다 — source 2개 이상이면 연결, 1개면 단일 관찰이다(§17).
+   */
+  const allConnections = buildConnections({ insights, narratives, resolverContext });
+  const corePattern = selectCorePattern(allConnections);
+  const connections = allConnections.filter(
+    (connection) =>
+      connection.sourceCount >= 2 && connection.id !== corePattern?.connection.id,
+  );
+  const singleSourceNotes = allConnections.filter((connection) => connection.sourceCount < 2);
 
   const historyDeep = historyReport.comparable
     ? buildHistoryDetail({ report: historyReport, repeated: repeatedSignals })
     : null;
 
   return {
-    available: insights.length > 0,
-    overview: overviewFor(insights, narratives),
-    relationshipSelf,
-    crossSourceInsights,
-    compatibilityDeepDive,
-    situations,
-    conversationQuestions: conversationQuestionsFor(compatibilityQuestions, insights),
+    // v1.26 Availability Audit — 연결이 하나도 없으면 팔지 않는다(`hasDeepConnection`).
+    available: hasDeepConnection(insights),
+    overview: overviewFor(insights, narratives, corePattern),
+    corePattern,
+    connections,
+    singleSourceNotes,
+    actions: buildActions(corePattern),
+    connectionQuestions: buildConnectionQuestions(allConnections),
+    lovyObservation: selectDeepObservation(corePattern, insights),
     historyDeep,
-    finalObservation: finalObservationFor(insights, resolverContext),
     approachInsight: approachInsightFor(target, compatibility),
     limitations: deepReportLimitations({ historyReport, compatibility }),
   };

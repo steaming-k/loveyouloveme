@@ -58,6 +58,7 @@ import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { isRevisit, revisitHref, revisitSource } from '@/lib/resultView';
 import { RESULT_ANCHORS, ROUTES } from '@/lib/routes';
 import { premiumFeatureState } from '@/services/premiumService';
+import { hasDeepConnection } from '@/services/premiumConnections';
 import {
   useCompatibilityNarrative,
   useCrossSourceInsights,
@@ -163,7 +164,7 @@ function CompatibilityView() {
   const [variant] = useState(() => resolvePriceVariant());
   const crossSourceInsights = useCrossSourceInsights();
   const premiumFeature = premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
-    deepReportAvailable: crossSourceInsights.length > 0,
+    deepReportAvailable: hasDeepConnection(crossSourceInsights),
   });
 
   useAnchorScroll(result.score !== null);
@@ -576,7 +577,8 @@ function CompatibilityView() {
             hook={{
               variant: 'friction_why',
               title: PREMIUM_HOOK_COPY.friction_why.title,
-              description: `같은 ${topFriction.label}에서도 너와 상대가 서로 다르게 받아들일 수 있는 순간이 있어.`,
+              // v1.26 — 이 축이 다른 관찰과 이어지는지를 약속한다(제거된 상황 섹션 대신).
+              description: `${topFriction.label}에서 보이는 이 차이가, 네가 따로 답했던 관계 경험·과거 관찰과 같은 축을 가리키는지 이어서 볼 수 있어.`,
               cta: PREMIUM_HOOK_COPY.friction_why.cta,
             }}
           />

@@ -2,6 +2,8 @@ import { withTopicParticle } from '@/lib/korean';
 import { HARDEST_TO_AXIS } from './mirror';
 import { toTargetValues } from './values';
 import type {
+  CompatibilityDimension,
+  CompatibilityResult,
   CrossSourceInsight,
   CrossSourceInsightType,
   DeclaredPreference,
@@ -10,6 +12,8 @@ import type {
   HistoryAxisChange,
   InsightStrength,
   MirrorAxisKey,
+  MbtiAxisBridge,
+  MbtiBridgeReport,
   MirrorInsight,
   MirrorReport,
   ObservedSignalCategory,
@@ -271,9 +275,17 @@ function fromRelationshipVsTarget(input: {
 /**
  * History Engine의 SHIFT/NEW를 CHANGE로 재표현한다.
  *
- * ⚠️ '지금'과 '과거'를 실제로 이어야 한다 — history ref 하나만으로는 "과거에 이랬다"만
- * 말하는 것이라 §26(A)의 "근거 2개 이상" 기준을 채우지 못한다. 그래서 지금 시점의 declared
- * 값(= declaredDelta.now가 곧 지금 이 축에 답한 값)을 두 번째 evidenceRef로 함께 건다.
+ * ⚠️ v1.26 History 실측에서 **근거를 고쳤다.**
+ *
+ * 예전에는 두 번째 ref로 `{ source: 'declared' }`(= 지금 세션의 답)를 걸었다. 그런데
+ * `buildHistoryReport`는 **저장된 마지막 두 기록**(entries[n-2] vs entries[n-1])을
+ * 비교하므로, 현재 분석이 아직 저장되지 않은 상태에서는 note와 근거가 서로 다른 시점을
+ * 가리킨다. 실측에서 note는 "(2/5 → 3/5)"인데 근거는 "연락 중요도를 5점 중 5로 답했어"
+ * (현재값)로 나와 **화면 위에서 모순**이 됐다.
+ *
+ * 지금은 비교에 실제로 참여한 **두 기록**을 근거로 건다. 그래서 source는 `history`
+ * 하나뿐이고(기록 내부 비교이므로 cross-source가 아니다), 연결 섹션이 아니라
+ * '아직 다른 자료와 이어지지 않은 관찰'로 내려간다 — 그게 사실에 맞는 위계다.
  */
 function fromHistoryChange(change: HistoryAxisChange): CrossSourceInsight | null {
   if (change.state !== 'SHIFT' && change.state !== 'NEW') return null;
@@ -282,10 +294,10 @@ function fromHistoryChange(change: HistoryAxisChange): CrossSourceInsight | null
     id: insightId('history_change', change.axis),
     type: 'CHANGE',
     axis: change.axis,
-    sources: ['history', 'declared'],
+    sources: ['history'],
     evidenceRefs: [
+      { source: 'history', entryId: 'previous', axis: change.axis },
       { source: 'history', entryId: 'latest', axis: change.axis },
-      { source: 'declared', field: change.axis },
     ],
     strength: change.state === 'SHIFT' ? 'medium' : 'weak',
     confidenceReason: `history:${change.state}`,
@@ -313,6 +325,186 @@ function fromRepeatedSignal(signal: RepeatedRelationshipSignal): CrossSourceInsi
         : `이전 관찰 ${signal.occurrences}번에서도 ${signal.label} 관련 신호가 있었어.`,
     eligibleForNarrative: true,
     relatedHistoryIds: signal.entryIds,
+  };
+}
+
+/* ------------------------- ④ Compatibility ↔ Relationship / Mirror / History */
+
+/**
+ * **v1.26 P3-3에서 새로 만든 조합. 이 파일에서 가장 중요한 추가다.**
+ *
+ * Audit에서 발견한 것: v1.25까지 이 Engine은 `CompatibilityResult`를 **입력으로 받지도
+ * 않았다.** 그래서 사용자가 무료 결과에서 방금 읽은 '차이가 보이는 신호'가 Premium의 어떤
+ * 연결에도 등장하지 않았고, Premium은 Mirror·History·Target만 이어 붙였다 — 정작 사용자가
+ * 걱정하는 축과 이어지지 않은 것이다.
+ *
+ * 여기서 만드는 연결은 이것뿐이다:
+ *   "지금 상대와 차이가 보이는 이 축이, 네 관계 경험(또는 과거 관찰)에서도 같은 축을
+ *    가리키고 있다."
+ *
+ * ⚠️ 두 판정은 **서로 독립적으로** 계산됐다. `buildCompatibility`는 관계 경험을 읽지 않고,
+ * `buildMirrorReport`는 상대 정보를 읽지 않는다. 그래서 같은 축을 가리키는 것이 우연이
+ * 아닌 정보가 된다 — 하지만 **인과는 아니다**. 문장은 항상 '같은 축을 가리킨다'까지만
+ * 말하고 '과거 경험 때문에 지금 민감하다'로 넘어가지 않는다.
+ *
+ * ⚠️ 새 점수·새 판정을 만들지 않는다. `dimension.tone`(이미 계산됨)과
+ * `MirrorInsight.state`(이미 계산됨), `HistoryAxisChange.state`(이미 계산됨)만 읽는다.
+ */
+const COMPATIBILITY_LINKABLE_AXES: readonly TargetAxisKey[] = [
+  'contact',
+  'conflict',
+  'alone',
+  'affection',
+];
+
+function fromCompatibilityLink(input: {
+  dimension: CompatibilityDimension;
+  mirror: MirrorReport;
+  historyChanges: readonly HistoryAxisChange[];
+  repeatedSignals: readonly RepeatedRelationshipSignal[];
+  latestHistoryEntryId: string | null;
+}): CrossSourceInsight | null {
+  const { dimension, mirror, historyChanges, repeatedSignals, latestHistoryEntryId } = input;
+
+  // 비교 자체가 없었던 축('모름')은 연결하지 않는다 — 없는 판정을 이어 붙이지 않는다.
+  if (dimension.alignment === null || dimension.tone === 'unknown') return null;
+  // 뚜렷하지 않은 축(neutral)은 연결의 재료로 쓰지 않는다. 억지 개수 채우기 금지.
+  if (dimension.tone === 'neutral') return null;
+  if (!COMPATIBILITY_LINKABLE_AXES.includes(dimension.key)) return null;
+
+  const axis = dimension.key as MirrorAxisKey;
+
+  /** 같은 축에서 Mirror가 이미 판정한 것 (관계 경험 근거가 있는 것만) */
+  const mirrorInsight = mirror.available
+    ? mirror.insights.find(
+        (item) =>
+          item.key === axis && item.state !== 'UNKNOWN' && item.evidenceStrength !== 'absent',
+      )
+    : undefined;
+
+  /** 같은 축에서 History가 이미 판정한 변화 */
+  const historyChange = historyChanges.find(
+    (change) => change.axis === axis && (change.state === 'SHIFT' || change.state === 'NEW'),
+  );
+  const repeated = repeatedSignals.find((signal) => signal.axis === axis);
+
+  // 연결할 상대가 하나도 없으면 만들지 않는다 — single-source는 Premium의 재료가 아니다.
+  if (!mirrorInsight && !historyChange && !repeated) return null;
+
+  const evidenceRefs: EvidenceRef[] = [{ source: 'compatibility', field: dimension.key }];
+  const sources: CrossSourceInsight['sources'] = ['compatibility'];
+
+  if (mirrorInsight) {
+    const relationshipRef = relationshipRefFor(mirrorInsight);
+    if (relationshipRef) {
+      evidenceRefs.push({ source: 'declared', field: axis }, relationshipRef);
+      sources.push('declared', 'relationship');
+    }
+  }
+  if (repeated && latestHistoryEntryId) {
+    /**
+     * ⚠️ v1.26 실측에서 고쳤다 — 예전에는 `entryIds[0]` **하나만** 근거로 걸었다.
+     * 그런데 이 연결의 문장은 "이전 관찰에서도 **반복해서** 나온 축"이라고 말한다.
+     * 2회 이상을 주장하면서 근거를 1건만 보여주면 사용자가 확인할 수 없다.
+     * 반복 판정에 실제로 쓰인 기록 전부를 근거로 건다.
+     */
+    for (const entryId of repeated.entryIds) {
+      evidenceRefs.push({ source: 'history', entryId, axis });
+    }
+    sources.push('history');
+  } else if (historyChange && latestHistoryEntryId) {
+    evidenceRefs.push({ source: 'history', entryId: latestHistoryEntryId, axis });
+    sources.push('history');
+  }
+
+  // compatibility 하나만 남았다면 연결이 아니다.
+  if (sources.length < 2) return null;
+
+  const differs = dimension.tone === 'watch';
+  const hasHardest = mirrorInsight?.evidenceStrength === 'hardest';
+
+  /**
+   * 문장은 **연결의 사실**까지만 말한다. '왜'는 AI Narrative가 맥락을 붙이고,
+   * 그것도 인과가 아니라 '같은 방향으로 보인다'까지다.
+   */
+  const ruleSummary = ((): string => {
+    const parts: string[] = [];
+    if (mirrorInsight) parts.push('네 관계 경험에서 신호가 있었던 축');
+    if (repeated) parts.push('이전 관찰에서도 반복해서 나온 축');
+    else if (historyChange) parts.push('저장된 관찰과 비교해 달라진 축');
+
+    const other = parts.join('이고, ');
+    return differs
+      ? `지금 상대와 ${dimension.label}에서 차이가 보이는데, 이 축은 ${other}이야. 서로 다른 관찰이 같은 축을 가리키고 있어.`
+      : `지금 상대와 ${dimension.label}에 대한 기대는 비슷한데, 이 축은 ${other}이야. 비슷하게 답한 축이라도 네게는 계속 신호가 있던 자리야.`;
+  })();
+
+  return {
+    id: insightId('compat_link', axis),
+    // 차이가 보이는 축이 다른 관찰과 겹치면 GAP, 비슷한 축이면 MATCH로 둔다.
+    // ⚠️ 새 판정이 아니다 — 이미 계산된 tone을 Cross-source 타입 어휘로 옮긴 것뿐이다.
+    type: differs ? 'GAP' : 'MATCH',
+    axis,
+    sources,
+    evidenceRefs,
+    strength: strengthOf(sources.length, hasHardest),
+    confidenceReason: `compat:${dimension.tone}${mirrorInsight ? '+mirror' : ''}${repeated ? '+repeated' : historyChange ? '+history' : ''}`,
+    ruleSummary,
+    eligibleForNarrative: true,
+    ...(repeated ? { relatedHistoryIds: repeated.entryIds } : {}),
+  };
+}
+
+/* ------------------------------------------- ⑤ MBTI Lens ↔ Relationship Signal */
+
+/**
+ * v1.26 P3-3 — 무료 MBTI가 v1.25에서 깊어졌으므로 **Premium에서 4축 설명을 다시
+ * 출력하지 않는다.** Premium이 쓰는 것은 v1.24 Bridge가 이미 만든 판정 하나다:
+ * '성향 렌즈와 실제 관계 답변이 다른 방향을 가리키는 축'.
+ *
+ * 그리고 그 축을 **관계 경험과 한 번 더 겹쳐본다** — 그래야 무료 Bridge의 반복이 아니라
+ * Cross-source가 된다. 겹칠 것이 없으면 만들지 않는다.
+ */
+function fromMbtiBridge(input: {
+  bridge: MbtiBridgeReport;
+  mirror: MirrorReport;
+}): CrossSourceInsight | null {
+  const { bridge, mirror } = input;
+  if (!bridge.available) return null;
+
+  // 무료에서 이미 '같은 방향'이라고 본 축은 Premium에서 다시 말할 가치가 없다.
+  const differing: MbtiAxisBridge | undefined = bridge.axisBridges.find(
+    (item) => item.state === 'differs',
+  );
+  if (!differing) return null;
+
+  const axis = differing.signalAxisKey as MirrorAxisKey;
+  const mirrorInsight = mirror.available
+    ? mirror.insights.find(
+        (item) =>
+          item.key === axis && item.state !== 'UNKNOWN' && item.evidenceStrength !== 'absent',
+      )
+    : undefined;
+  const relationshipRef = mirrorInsight ? relationshipRefFor(mirrorInsight) : null;
+
+  // 관계 경험과 겹치지 않으면 무료 Bridge와 같은 이야기다 — Premium에 넣지 않는다.
+  if (!relationshipRef) return null;
+
+  return {
+    id: insightId('mbti_link', axis),
+    type: 'GAP',
+    axis,
+    sources: ['mbti_lens', 'compatibility', 'relationship'],
+    evidenceRefs: [
+      { source: 'mbti_lens', field: differing.mbtiAxisKey },
+      { source: 'compatibility', field: differing.signalAxisKey },
+      relationshipRef,
+    ],
+    strength: strengthOf(3, mirrorInsight?.evidenceStrength === 'hardest'),
+    confidenceReason: 'mbti_bridge:differs+relationship',
+    ruleSummary:
+      `성향 렌즈와 실제 답변이 다른 방향을 가리킨 ${differing.signalAxisLabel}은, 네 관계 경험에서도 신호가 있던 축이야. 성향으로 설명되지 않는 자리에 네 경험이 놓여 있어.`,
+    eligibleForNarrative: true,
   };
 }
 
@@ -352,8 +544,20 @@ export interface CrossSourceInsightInput {
   repeatedSignals: readonly RepeatedRelationshipSignal[];
   /** History가 있으면 마지막 Entry id — evidenceRef 표시용 */
   latestHistoryEntry: RelationshipHistoryEntry | null;
+  /**
+   * v1.26 — 변화 비교에 실제로 참여한 **이전** 기록. `buildHistoryReport`가 비교하는
+   * 두 기록(entries[n-2] vs entries[n-1])을 근거로 그대로 보여주기 위해 필요하다.
+   */
+  previousHistoryEntry?: RelationshipHistoryEntry | null;
   /** v1.9 §11 — 이 Insight에서 나온 Deep Question에 답했으면 새 근거로 덧붙인다(§40) */
   deepAnswers?: readonly DeepAnalysisAnswer[];
+  /**
+   * v1.26 P3-3 — 이미 계산된 동기화율 결과. **읽기만** 한다.
+   * 없으면(또는 score가 null이면) ④ 조합을 만들지 않는다.
+   */
+  compatibility?: CompatibilityResult;
+  /** v1.26 P3-3 — 이미 계산된 MBTI Bridge(v1.24). 없으면 ⑤ 조합을 만들지 않는다 */
+  mbtiBridge?: MbtiBridgeReport | null;
 }
 
 /**
@@ -403,12 +607,40 @@ export function buildCrossSourceInsights(input: CrossSourceInsightInput): CrossS
   const { experience, target, mirror, validated, historyChanges, repeatedSignals } = input;
 
   const insights: CrossSourceInsight[] = [];
+  /** ①에서 축 중복을 판단하려면 ④보다 먼저 필요하다 */
+  const compatibilityInput = input.compatibility;
 
-  // ① Declared ↔ Relationship (+ Observed 보강) — 관계 경험이 없으면 Mirror 자체가 비어 있다.
+  /**
+   * ① Declared ↔ Relationship (+ Observed 보강) — 관계 경험이 없으면 Mirror 자체가 비어 있다.
+   *
+   * ⚠️ v1.26 — ④가 같은 축에서 연결을 만들면 여기서는 만들지 않는다. ④는 ①의 두 근거
+   * (declared + relationship)를 **그대로 포함하고** 동기화율까지 한 겹 더 이은 것이라,
+   * 둘을 함께 내보내면 같은 축 이야기가 리포트에 두 번 나온다(실측 확인 —
+   * "연락 방식에서 차이가 보이는데…"와 "연락에 대해 네가 말한 기준과…"가 나란히 나왔다).
+   * 단 CONTRADICTION은 ④가 담지 못하는 판정(사진 보강)이라 예외로 남긴다.
+   */
+  const supersededAxes = new Set<MirrorAxisKey>();
+  if (compatibilityInput && compatibilityInput.score !== null && mirror.available) {
+    for (const dimension of compatibilityInput.dimensions) {
+      const built = fromCompatibilityLink({
+        dimension,
+        mirror,
+        historyChanges,
+        repeatedSignals,
+        latestHistoryEntryId: input.latestHistoryEntry?.id ?? null,
+      });
+      if (built && built.sources.includes('relationship')) {
+        supersededAxes.add(dimension.key as MirrorAxisKey);
+      }
+    }
+  }
+
   if (mirror.available) {
     for (const insight of mirror.insights) {
       const built = fromMirrorInsight(insight, { experience, validated });
-      if (built) insights.push(built);
+      if (!built) continue;
+      if (built.type !== 'CONTRADICTION' && supersededAxes.has(insight.key)) continue;
+      insights.push(built);
     }
   }
 
@@ -421,17 +653,42 @@ export function buildCrossSourceInsights(input: CrossSourceInsightInput): CrossS
     const built = fromHistoryChange(change);
     if (built) {
       // latest entry id를 실제 값으로 채운다 (fromHistoryChange는 placeholder를 쓴다)
+      // placeholder(previous/latest)를 실제 기록 id로 채운다. 하나라도 없으면 그 ref는
+      // resolver에서 조용히 빠지므로 없는 근거를 만들지 않는다.
       const latestId = input.latestHistoryEntry?.id;
-      if (latestId) {
-        built.evidenceRefs = built.evidenceRefs.map((ref) =>
-          ref.source === 'history' ? { ...ref, entryId: latestId } : ref,
-        );
-      }
+      const previousId = input.previousHistoryEntry?.id;
+      built.evidenceRefs = built.evidenceRefs.map((ref) => {
+        if (ref.source !== 'history') return ref;
+        if (ref.entryId === 'previous') return previousId ? { ...ref, entryId: previousId } : ref;
+        if (ref.entryId === 'latest') return latestId ? { ...ref, entryId: latestId } : ref;
+        return ref;
+      });
       insights.push(built);
     }
   }
   for (const signal of repeatedSignals) {
     insights.push(fromRepeatedSignal(signal));
+  }
+
+  // ④ Compatibility ↔ Relationship / Mirror / History (v1.26)
+  //    동기화율을 계산할 수 없는 상태(score === null)에서는 연결하지 않는다.
+  if (compatibilityInput && compatibilityInput.score !== null) {
+    for (const dimension of compatibilityInput.dimensions) {
+      const built = fromCompatibilityLink({
+        dimension,
+        mirror,
+        historyChanges,
+        repeatedSignals,
+        latestHistoryEntryId: input.latestHistoryEntry?.id ?? null,
+      });
+      if (built) insights.push(built);
+    }
+  }
+
+  // ⑤ MBTI Lens ↔ Relationship Signal (v1.26)
+  if (input.mbtiBridge) {
+    const built = fromMbtiBridge({ bridge: input.mbtiBridge, mirror });
+    if (built) insights.push(built);
   }
 
   const withDeepAnswers = attachDeepAnswers(insights, input.deepAnswers ?? []);

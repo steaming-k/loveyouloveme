@@ -627,8 +627,17 @@ export interface CompatibilityResult {
   confidence: Confidence;
 }
 
-/** 관계 신호 기반 질문은 축 key를, MBTI 기반 보조 질문은 `mbti_` 접두사를 쓴다 */
-export type ConversationQuestionId = TargetAxisKey | `mbti_${MbtiAxisKey}`;
+/**
+ * 관계 신호 기반 질문은 축 key를, MBTI 기반 보조 질문은 `mbti_` 접두사를 쓴다.
+ *
+ * v1.26 P3-3 — Premium 연결 질문은 `conn_` 접두사를 쓴다. **무료 질문 id와 겹치면 안
+ * 된다** — `savedQuestions`가 id로만 참조하므로, 겹치면 무료 질문을 저장했는지 유료 질문을
+ * 저장했는지 구분할 수 없고 한쪽이 다른 쪽을 조용히 덮어쓴다.
+ */
+export type ConversationQuestionId =
+  | TargetAxisKey
+  | `mbti_${MbtiAxisKey}`
+  | `conn_${MirrorAxisKey}`;
 
 export interface ConversationQuestion {
   id: ConversationQuestionId;
@@ -946,7 +955,14 @@ export type EvidenceRef =
   /** v1.9 — 상대에 대해 사용자가 입력한 값(Target Person) */
   | { source: 'target'; field: string }
   /** v1.9 — Premium Adaptive Deep Question 답변(§11) */
-  | { source: 'deep_followup'; questionId: string };
+  | { source: 'deep_followup'; questionId: string }
+  /**
+   * v1.26 — 이미 계산된 동기화율 축 판정. `field`는 `TargetAxisKey`다.
+   * resolver가 '나: … · 상대: …' 형태의 **저장된 answer label**로만 풀어낸다.
+   */
+  | { source: 'compatibility'; field: string }
+  /** v1.26 — MBTI 성향 렌즈의 한 축. `field`는 `MbtiAxisKey`다 */
+  | { source: 'mbti_lens'; field: string };
 
 /* --------------------------------------------- Observed Me (사진 분석) */
 
@@ -1229,7 +1245,22 @@ export type CrossSourceEvidenceSource =
   | 'history'
   | 'adaptive'
   | 'deep_followup'
-  | 'user_correction';
+  | 'user_correction'
+  /**
+   * v1.26 P3-3 — **이미 계산된 동기화율 판정**(`CompatibilityDimension.tone`).
+   *
+   * v1.25까지 Cross-source Engine은 Compatibility를 입력으로 받지도 않았다. 그래서 사용자가
+   * 무료에서 방금 읽은 '차이가 보이는 신호'가 Premium의 어떤 연결에도 등장하지 않았고,
+   * Premium은 Mirror·History·Target만 이어 붙였다 — 정작 사용자가 걱정하는 축과 이어지지
+   * 않은 것이다. 이 source가 그 빈 자리를 채운다.
+   */
+  | 'compatibility'
+  /**
+   * v1.26 P3-3 — MBTI 성향 렌즈. 무료(v1.24 Bridge)에서 이미 축 단위로 비교했으므로
+   * Premium에서는 **4축 설명을 다시 출력하지 않고** 'DIFFERS로 나온 축이 관계 신호·과거
+   * 경험과 같은 축을 가리키는가'만 연결에 쓴다.
+   */
+  | 'mbti_lens';
 
 export type InsightStrength = 'strong' | 'medium' | 'weak';
 
@@ -1407,6 +1438,72 @@ export interface DeepApproachInsight {
   text: string;
 }
 
+/* ------------------------- Premium Connection Architecture (v1.26 · P3-3) */
+
+/**
+ * 하나의 **연결**. Premium이 파는 것은 이것 하나다.
+ *
+ * ⚠️ 무료와의 차이는 분량이 아니라 층수다:
+ *   FREE     한 Signal을 깊게 이해한다 (무엇이 보이는가)
+ *   PREMIUM  서로 다른 Signal 사이의 연결을 이해한다 (왜 함께 나타나는가)
+ *
+ * ⚠️ **인과가 아니라 연관이다.** `interpretation`은 늘 '같은 축을 가리킨다' /
+ * '같은 방향으로 보인다'까지만 말하고, 'A 때문에 B'로 넘어가지 않는다.
+ * 그래서 모든 연결은 `limitation`을 하나 갖는다 — 없으면 만들지 않는다.
+ */
+export interface DeepConnection {
+  id: string;
+  axis: MirrorAxisKey | null;
+  /** 이 연결이 몇 종의 source를 이었는지. 1이면 연결이 아니라 단일 관찰이다 */
+  sourceCount: number;
+  /** 화면에 작은 metadata로만 보여주는 출처 라벨들. badge 남발 금지 */
+  sourceLabels: string[];
+  /** 규칙이 만든 연결 요약. AI가 이 문장을 바꾸지 못한다 */
+  ruleSummary: string;
+  /**
+   * AI가 붙인 맥락 설명. 없으면(실패·미연결) `ruleSummary`만으로 완결된다 —
+   * **AI가 없어도 리포트가 사라지지 않는다.**
+   */
+  narrativeText: string | null;
+  /** 이 연결이 말할 수 없는 것. 항상 존재한다 */
+  limitation: string;
+  /** 근거 — 저장된 label/summary 기반. 자유서술 원문을 그대로 노출하지 않는다 */
+  evidence: { sourceLabel: string; text: string }[];
+}
+
+/**
+ * 첫 viewport에서 ₩1,900의 값을 즉시 체감시키는 블록.
+ * '무료 결과 다시 보기'처럼 보이면 실패이므로, **연결된 정보 종류 수**와
+ * **가장 중요한 연결 하나**를 먼저 보여준다.
+ */
+export interface DeepCorePattern {
+  connection: DeepConnection;
+  /** 이 리포트가 이은 서로 다른 정보 종류 수 */
+  connectedSourceCount: number;
+  /** source가 2개 이상인 연결 수 */
+  connectionCount: number;
+}
+
+/** 처방이 아니다 — 확인해볼 것만 준다(§33) */
+export type DeepActionKind = 'TRY' | 'CHECK' | 'NOTICE';
+
+export interface DeepAction {
+  kind: DeepActionKind;
+  text: string;
+}
+
+/**
+ * 러비의 깊은 관찰 + 관계 철학 질문 하나.
+ * 무료 Observation보다 한 단계 깊지만, **실제 연결 데이터에서만** 나온다 —
+ * 뜬금없는 명언을 붙이지 않는다.
+ */
+export interface DeepLovyObservation {
+  /** 연결을 보고 러비가 떠올린 관찰 */
+  observation: string;
+  /** 그 관찰에서 이어지는 관계 철학 질문 */
+  question: string;
+}
+
 /**
  * Premium의 핵심 상품. **새 점수를 만들지 않는다** — Compatibility/Mirror/History는
  * 이미 계산된 결과를 그대로 조합한다(§17 compatibilityDeepDive, §21 historyDeep이
@@ -1415,22 +1512,44 @@ export interface DeepApproachInsight {
 export interface RelationshipDeepReport {
   available: boolean;
   overview: RelationshipDeepReportOverview;
-  /** §15 Relationship Self — Observed/Declared/Relationship을 연결한 카드들 */
-  relationshipSelf: DeepReportInsightCard[];
-  /** §16 Cross-source Insights — Premium의 핵심. 우선순위대로 정렬됨(§6) */
-  crossSourceInsights: DeepReportInsightCard[];
-  /** §17 — 기존 buildCompatibilityDetail() 결과를 그대로 재사용 */
-  compatibilityDeepDive: PremiumDetailReport;
-  /** §19 — 관련 Insight가 있는 것만 존재 */
-  situations: DeepSituation[];
-  /** §20 — 기존 대화 질문 재사용 + Deep 질문 추가 */
-  conversationQuestions: DeepConversationQuestion[];
+  /*
+   * v1.26 P3-3에서 제거한 필드 5개
+   *   relationshipSelf / crossSourceInsights → corePattern · connections · singleSourceNotes
+   *   compatibilityDeepDive → 삭제. 무료 evidence/scene을 그대로 다시 보여주고 있었다
+   *     (`buildCompatibilityDetail`은 standalone `compatibility_detail` 상세에서 계속 쓴다)
+   *   situations → 삭제. 무료 `scene.watch`를 글자 그대로 재출력했다
+   *   conversationQuestions → connectionQuestions (무료 질문 반복 대신 연결 검증 질문)
+   */
   /** §21 — 기존 buildHistoryDetail() 재사용. History Entry < 2면 null(섹션 숨김) */
   historyDeep: PremiumDetailReport | null;
-  /** §23 Lovy Final Observation. Insight가 하나도 없으면 null */
-  finalObservation: DeepFinalObservation | null;
+  /*
+   * v1.26 P3-3에서 제거: finalObservation
+   *   맨 위 corePattern의 문장을 리포트 맨 아래에 다시 적고 있었다.
+   *   마무리는 lovyObservation이 맡는다.
+   */
   /** v1.15 §5 — Target Preference를 사용자 자신의 축과 연결한 Premium 전용 통찰. 없으면 null */
   approachInsight: DeepApproachInsight | null;
+  /**
+   * v1.26 P3-3 — 첫 viewport용. 연결이 하나도 없으면 null이고, 그때는 리포트가
+   * 억지로 만들어지지 않는다(`available: false`).
+   */
+  corePattern: DeepCorePattern | null;
+  /** v1.26 — source 2개 이상인 나머지 연결. corePattern은 제외 */
+  connections: DeepConnection[];
+  /**
+   * v1.26 — source가 1개뿐인 관찰. 연결이 아니므로 **연결 섹션과 섞지 않고**
+   * 더 낮은 위계로 따로 둔다(cross-source 우선 §17).
+   */
+  singleSourceNotes: DeepConnection[];
+  /** v1.26 §33 — TRY / CHECK / NOTICE. 처방이 아니다 */
+  actions: DeepAction[];
+  /**
+   * v1.26 §32 — Premium 전용 질문. **무료 질문을 반복하지 않는다** —
+   * cross-source 연결을 상대에게 검증하는 질문이다.
+   */
+  connectionQuestions: DeepConversationQuestion[];
+  /** v1.26 §25/§26 — 러비의 깊은 관찰 + 철학 질문. 연결이 없으면 null */
+  lovyObservation: DeepLovyObservation | null;
   /** 이 리포트가 못 하는 것 — 항상 사용자에게 보여준다 */
   limitations: string[];
 }
@@ -1520,12 +1639,25 @@ export type PremiumPriceVariant = 'A' | 'B';
  * 상세 결과는 **이미 계산된 값**을 더 풍부하게 보여주는 것이다.
  * 새 점수·새 추론을 만들지 않으므로, 여기에는 기존 결과에서 파생한 표현만 담는다.
  */
+/**
+ * v1.26 History 실측에서 발견 — `mine`/`theirs`를 화면이 **나 / 상대**로 고정 렌더하는데,
+ * `buildHistoryDetail`은 그 두 칸에 `previousText`/`currentText`(과거/현재)를 담고 있었다.
+ * 그래서 History 상세가 "나: 개인 시간이 꾸준히 중요했음 · 상대: 개인 시간이 꾸준히
+ * 중요했음"처럼 **사실이 아닌 라벨**로 나갔다(실측 확인).
+ *
+ * 두 칸의 의미를 호출부가 정할 수 있게 라벨을 옵션으로 뺀다. 넘기지 않으면 기존
+ * 동작(나/상대)이라 다른 상세 4종(궁합·Mirror·MBTI·Astrology)은 그대로다.
+ */
 export interface PremiumDetailSection {
   /** 축 라벨 등 소제목 */
   label: string;
-  /** 나 / 상대 대조 (있을 때만) */
+  /** 두 값 대조 (있을 때만) */
   mine?: string;
   theirs?: string;
+  /** 왼쪽 칸의 라벨. 넘기지 않으면 '나' */
+  mineLabel?: string;
+  /** 오른쪽 칸의 라벨. 넘기지 않으면 '상대' */
+  theirsLabel?: string;
   /** 이 판정을 본 근거 */
   evidence?: string;
   /** 실제 관계에서 나타날 수 있는 상황 */

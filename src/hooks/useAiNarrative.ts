@@ -23,6 +23,8 @@ import { useSession } from '@/state/SessionProvider';
 import {
   useCompatibility,
   useHistoryReport,
+  useMbtiBridge,
+  useMbtiLens,
   useMirror,
   useRepeatedSignals,
 } from '@/hooks/useAnalysis';
@@ -161,10 +163,24 @@ export function useEvidenceContext(): EvidenceResolverContext {
   const { answers } = useSession();
   const { entries } = useHistory();
   const validated = useValidatedObservations();
+  /**
+   * v1.26 P3-3 — 새 근거 source(`compatibility` · `mbti_lens`)를 resolver가 풀 수 있게
+   * 이미 계산된 결과를 함께 넘긴다. **여기서 다시 계산하지 않는다** — 두 훅 모두
+   * 기존 selector를 그대로 부르는 순수 파생값이다.
+   */
+  const compatibility = useCompatibility();
+  const mbtiLens = useMbtiLens();
 
   return useMemo(
-    () => ({ answers, validated, historyEntries: entries, deepAnswers: answers.deepAnswers }),
-    [answers, validated, entries],
+    () => ({
+      answers,
+      validated,
+      historyEntries: entries,
+      deepAnswers: answers.deepAnswers,
+      compatibility,
+      mbtiLens,
+    }),
+    [answers, validated, entries, compatibility, mbtiLens],
   );
 }
 
@@ -174,11 +190,17 @@ export function useEvidenceContext(): EvidenceResolverContext {
  */
 export function useCrossSourceInsights(): CrossSourceInsight[] {
   const { answers } = useSession();
-  const { latest } = useHistory();
+  const { latest, previous } = useHistory();
   const mirror = useMirror();
   const validated = useValidatedObservations();
   const report = useHistoryReport();
   const repeatedSignals = useRepeatedSignals();
+  /**
+   * v1.26 P3-3 — ④ Compatibility 연결과 ⑤ MBTI Bridge 연결의 입력.
+   * 둘 다 이미 계산이 끝난 결과이고, Engine은 이 값을 **읽기만** 한다.
+   */
+  const compatibility = useCompatibility();
+  const mbtiBridge = useMbtiBridge();
 
   return useMemo(
     () =>
@@ -191,7 +213,10 @@ export function useCrossSourceInsights(): CrossSourceInsight[] {
         historyChanges: report.changes,
         repeatedSignals,
         latestHistoryEntry: latest,
+        previousHistoryEntry: previous,
         deepAnswers: answers.deepAnswers,
+        compatibility,
+        mbtiBridge,
       }),
     [
       answers.declared,
@@ -202,7 +227,10 @@ export function useCrossSourceInsights(): CrossSourceInsight[] {
       report.changes,
       repeatedSignals,
       latest,
+      previous,
       answers.deepAnswers,
+      compatibility,
+      mbtiBridge,
     ],
   );
 }
