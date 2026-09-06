@@ -160,6 +160,8 @@ export function buildConnections(input: {
        */
       limitation: limitationFor(uniqueSources),
       evidence: resolveEvidenceRefs(insight.evidenceRefs, resolverContext).map((item) => ({
+        // React key로 쓸 canonical 식별자 — 문장을 key로 쓰지 않는다
+        key: item.key,
         sourceLabel: item.sourceLabel,
         text: item.text,
       })),

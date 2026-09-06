@@ -173,7 +173,7 @@ export function DeepConnectionCard({
           {evidenceOpen ? (
             <ul className="flex flex-col gap-2 rounded-[10px] bg-sunken px-3.5 py-3">
               {connection.evidence.map((item) => (
-                <li key={item.text} className="flex flex-col gap-0.5">
+                <li key={item.key} className="flex flex-col gap-0.5">
                   <span className="text-[10px] font-semibold tracking-[0.06em] text-ink-faint">
                     {item.sourceLabel}
                   </span>

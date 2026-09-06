@@ -1468,7 +1468,21 @@ export interface DeepConnection {
   /** 이 연결이 말할 수 없는 것. 항상 존재한다 */
   limitation: string;
   /** 근거 — 저장된 label/summary 기반. 자유서술 원문을 그대로 노출하지 않는다 */
-  evidence: { sourceLabel: string; text: string }[];
+  /**
+   * ⚠️ v1.30 — `key`를 함께 들고 다닌다.
+   *
+   * 예전에는 `{ sourceLabel, text }`만 남겨서 `resolveEvidenceRefs`가 만든 canonical
+   * 식별자를 버렸다. 그래서 화면이 React key로 쓸 수 있는 게 **문장뿐**이었고,
+   * 서로 다른 근거 두 개가 같은 문장으로 풀리면 duplicate key 경고가 났다.
+   *
+   * 실제로 그런 조합이 있다 — `declared:contact`와 `declared:contactImportance`는
+   * key가 달라 dedup에서 살아남지만 **문장은 완전히 같다.** 같은 날 저장된 History
+   * 기록 두 건도 날짜 접두어까지 같아진다.
+   *
+   * key는 `source:id:axis` 형태라 stable·unique하고 **자유서술을 담지 않는다**
+   * (React key에 사용자 원문·생년월일·MBTI·사진 내용을 넣지 않는다).
+   */
+  evidence: { key: string; sourceLabel: string; text: string }[];
 }
 
 /**
