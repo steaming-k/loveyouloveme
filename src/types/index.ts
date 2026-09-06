@@ -1585,6 +1585,12 @@ export type PremiumSource =
   | 'compatibility'
   | 'mirror'
   | 'history'
+  /**
+   * v1.29 P4 — First Contact Report에서 들어온 진입. 같은 flagship
+   * `relationship_deep_report`로 모이지만, **어디서 지불 의향이 생겼는지**는
+   * 구분해서 봐야 한다 — Solo는 별도 secondary funnel이다(§53).
+   */
+  | 'first_contact'
   | 'mbti'
   | 'astrology'
   | 'saju'
@@ -1761,4 +1767,95 @@ export interface SessionAnswers {
     compatibility: boolean;
     mirror: boolean;
   };
+}
+
+/* ==================== Solo / First Contact (v1.29 · P4) ==================== */
+
+/**
+ * 상대 정보량에 따른 리포트 분기 (§32~§34).
+ *
+ * `no_target`과 `unknown_target`을 **하나로 묶지 않는다.** 전자는 "지금 특정 상대가
+ * 없다"이고 후자는 "사람은 있는데 아직 모른다"라서, 같은 문장을 쓰면 둘 중 하나에는
+ * 반드시 거짓말이 된다. 후자에게는 상대를 추론해 주는 대신 **알아갈 질문**을 준다.
+ */
+export type SoloMode = 'no_target' | 'unknown_target' | 'couple';
+
+/** First Contact가 다루는 축 — Mirror 4축 + 취미 */
+export type SelfSignalKey = MirrorAxisKey;
+
+/**
+ * 내가 답한 기준 하나.
+ *
+ * ⚠️ 점수가 아니다. `emphasis`는 **문장을 고르는 순서**에만 쓰고 화면에 숫자로
+ * 노출하지 않는다 — '연애 준비도' 같은 지표를 만들지 않기 위해서다(§29).
+ */
+export interface SelfSignal {
+  key: SelfSignalKey;
+  label: string;
+  /** 사용자가 실제로 고른 값을 그대로 옮긴 문장 */
+  valueText: string;
+  /** 관계를 시작할 때 이 기준이 어떻게 드러나는지 — 관찰이지 진단이 아니다 */
+  approachText: string;
+  /** 중앙(보통)에서 얼마나 떨어졌는가. 0~2. 정렬 전용 */
+  emphasis: 0 | 1 | 2;
+}
+
+/**
+ * **내 답변 안에서 함께 나타난 두 신호** (§23-03)
+ *
+ * COUPLE에서 파는 것이 '나와 상대 사이의 차이'라면, SOLO에서 파는 것은
+ * '나 안에서 함께 나타나는 기준'이다. 둘 다 사용자가 직접 답한 것이고,
+ * 그 둘이 같이 있다는 사실만 말한다 — **왜 그런지는 말하지 않는다.**
+ */
+export interface SelfSignalPair {
+  id: string;
+  axes: [SelfSignalKey, SelfSignalKey];
+  labels: [string, string];
+  /** 두 답이 함께 나타났다는 관찰 */
+  observation: string;
+  /** 이 관찰이 말할 수 없는 것. Premium의 limitation과 같은 규칙 */
+  limitation: string;
+  /** 화면에 그대로 보여줄 근거 두 줄(사용자가 고른 값) */
+  evidence: [string, string];
+}
+
+/**
+ * 실제로 해볼 수 있는 것 (§30 · §31).
+ *
+ * ⚠️ **연애 성공 공식이 아니다.** 반드시 `signal → why → action` 세 칸을 갖는다 —
+ * 일반 연애 팁 목록과 구조로 구분된다. 근거 없는 행동은 만들지 않는다.
+ */
+export interface FirstContactAction {
+  kind: 'TRY' | 'ASK' | 'NOTICE';
+  /** 이 행동의 출처가 된 내 답변 */
+  signal: string;
+  /** 그 답이 관계 시작 시점에 무엇으로 보이는지 */
+  why: string;
+  /** 해볼 것 */
+  action: string;
+}
+
+/** 러비의 관찰 — 질문이지 진단이 아니다(§27) */
+export interface FirstContactObservation {
+  body: string;
+  question: string;
+}
+
+export interface FirstContactReport {
+  /** 내 기준이 충분히 모이지 않으면 false. 억지로 만들지 않는다 */
+  available: boolean;
+  mode: SoloMode;
+  /** 연애 경험 기록이 없는 사용자인가 — 카피 분기에만 쓴다(§28) */
+  noExperience: boolean;
+  /** 첫 5초에 읽는 한 문장 (§24) */
+  headline: string;
+  signals: SelfSignal[];
+  pairs: SelfSignalPair[];
+  observation: FirstContactObservation | null;
+  /**
+   * `unknown_target`일 때만 채운다 — 상대를 추론하는 대신
+   * **알아보기 위해 물어볼 것**을 준다(§32).
+   */
+  gettingToKnow: string[];
+  actions: FirstContactAction[];
 }

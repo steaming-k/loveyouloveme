@@ -1,3 +1,4 @@
+import { MIRROR_AXES } from '@/data/axes';
 import { withTopicParticle } from '@/lib/korean';
 import { HARDEST_TO_AXIS } from './mirror';
 import { toTargetValues } from './values';
@@ -561,6 +562,65 @@ export interface CrossSourceInsightInput {
 }
 
 /**
+ * ⑥ Declared ↔ Observed — **상대가 없어도 이어지는 유일한 조합** (v1.29 P4 §39)
+ *
+ * P4 Audit에서 드러난 문제: `hasDeepConnection`은 **서로 다른 source 2종 이상**을
+ * 요구하는데, Solo 사용자가 만들 수 있는 조합이 하나도 없었다.
+ *
+ *   ① declared+relationship  관계 경험이 없으면 Mirror 자체가 비어 있다
+ *   ② relationship+target    둘 다 필요하다
+ *   ④ compatibility+…        동기화율을 계산할 수 없다
+ *   ⑤ mbti_lens+compatibility+relationship  같은 이유로 불가
+ *
+ * 그래서 `solo_none` 사용자에게 Premium은 **구조적으로 영구히 unavailable**이었다.
+ * 카피로 가릴 문제가 아니라 연결이 실제로 없던 것이다.
+ *
+ * 이 조합은 두 source가 진짜로 독립적이다 — `declared`는 사용자가 답한 기준이고,
+ * `observed`는 사진에서 **반복해서** 나타난 활동이다(`strength !== single`).
+ * 서로를 참조하지 않고 만들어진 두 관찰이 같은 축을 가리키는 것이 정보값이다.
+ *
+ * ⚠️ **사진으로 성격을 판단하지 않는다**(§36). `ruleSummary`는 "같은 축을 가리킨다"까지고,
+ * `limitationFor`의 `observed` 분기가 "사진으로 성격을 판단하지는 않아"를 항상 붙인다.
+ * 사용자가 확인·수정한 관찰만 쓴다(`findCorroboratingObservedTrait`가 이미 그렇게 한다).
+ */
+function fromDeclaredVsObserved(input: {
+  axis: MirrorAxisKey;
+  label: string;
+  validated: readonly ValidatedObservation[];
+}): CrossSourceInsight | null {
+  const { axis, label, validated } = input;
+
+  const corroborating = findCorroboratingObservedTrait(axis, validated);
+  if (!corroborating) return null;
+
+  const signal = corroborating.original.signal;
+  const repeated = signal !== undefined && signal.strength !== 'single';
+
+  return {
+    id: insightId('selfobserved', axis),
+    type: 'MATCH',
+    axis,
+    sources: ['declared', 'observed'],
+    evidenceRefs: [
+      { source: 'declared', field: axis },
+      { source: 'observed', traitId: corroborating.original.id },
+    ],
+    /**
+     * ⚠️ `strong`을 주지 않는다. 사진 관찰은 보조 근거이고, 두 관찰이 같은 축을
+     * 가리킨다는 것만 확인됐다 — 강도를 올리면 사진이 판정 근거처럼 읽힌다.
+     *
+     * 그리고 **사진 한 장짜리 관찰과 반복 관찰을 같은 강도로 세지 않는다**(§5 · §36).
+     * `findCorroboratingObservedTrait`는 두 경로를 갖는데, 카테고리 경로는 반복
+     * (`strength !== single`)을 요구하지만 키워드 경로는 그렇지 않다. 그래서 여기서
+     * 한 번 더 구분한다 — 반복이 확인되지 않은 근거로 연결의 강도를 올리지 않는다.
+     */
+    strength: repeated ? 'medium' : 'weak',
+    confidenceReason: repeated ? 'self:declared+observed:repeated' : 'self:declared+observed:single',
+    ruleSummary: `${label}에 대해 네가 답한 기준과, 사진 기록에서 반복해서 보인 활동이 같은 축을 가리키고 있어.`,
+    eligibleForNarrative: true,
+  };
+}
+/**
  * 답변된 Deep Question을 관련 Insight의 근거로 덧붙인다. id가 이제 결정론적이라
  * `answer.insightId`가 항상 같은 논리적 Insight를 가리킨다는 게 전제다(§40 —
  * User Correction/Deep Answer는 "관련된 Insight만" 갱신해야 하고 전체를 다시 만들지 않는다).
@@ -688,6 +748,23 @@ export function buildCrossSourceInsights(input: CrossSourceInsightInput): CrossS
   // ⑤ MBTI Lens ↔ Relationship Signal (v1.26)
   if (input.mbtiBridge) {
     const built = fromMbtiBridge({ bridge: input.mbtiBridge, mirror });
+    if (built) insights.push(built);
+  }
+
+  /**
+   * ⑥ Declared ↔ Observed (v1.29 P4)
+   *
+   * ⚠️ **이미 다른 조합이 덮은 축에는 만들지 않는다.** ①의 CONTRADICTION 승격이
+   * 이미 같은 observed 근거를 쓰고 있어서(`findCorroboratingObservedTrait`), 둘을 함께
+   * 내보내면 같은 사진 관찰이 리포트에 두 번 나온다. 커플 사용자의 리포트를 바꾸지
+   * 않는 것이 이 게이트의 목적이다 — ⑥은 **비어 있던 자리만** 채운다.
+   */
+  const coveredAxes = new Set(
+    insights.map((insight) => insight.axis).filter((axis): axis is MirrorAxisKey => Boolean(axis)),
+  );
+  for (const axis of MIRROR_AXES) {
+    if (coveredAxes.has(axis.key)) continue;
+    const built = fromDeclaredVsObserved({ axis: axis.key, label: axis.label, validated });
     if (built) insights.push(built);
   }
 

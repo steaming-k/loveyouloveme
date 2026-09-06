@@ -1,6 +1,7 @@
 import { buildCompatibility, buildConversationQuestions } from '@/lib/logic/compatibility';
 import { buildMbtiBridge } from '@/lib/logic/mbtiBridge';
 import { buildMbtiLens, buildMbtiQuestions } from '@/lib/logic/mbtiLens';
+import { buildFirstContactReport } from '@/lib/logic/firstContact';
 import { buildMbtiPattern } from '@/lib/logic/mbtiPattern';
 import { buildMirrorReport } from '@/lib/logic/mirror';
 import { buildHomeHighlights, buildRelationshipProfile } from '@/lib/logic/profile';
@@ -343,6 +344,11 @@ export const aiSelectors = {
   /** v1.25 P3-2 — MBTI 데이터만으로 만드는 조합 패턴. 관계 답변을 읽지 않는다 */
   mbtiPattern: buildMbtiPattern,
   mirror: buildMirrorReport,
+  /**
+   * v1.29 P4 — 상대 없이 나를 관찰한다. `CompatibilityResult`도 `MirrorReport`도
+   * 읽지 않아서, 상대 정보나 관계 경험이 없어도 이 리포트는 온전하다.
+   */
+  firstContact: buildFirstContactReport,
   profile: buildRelationshipProfile,
   homeHighlights: buildHomeHighlights,
 };

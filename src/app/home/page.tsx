@@ -16,6 +16,7 @@ import { UT_MODE } from '@/lib/env';
 import { clearPreviewUnlocks } from '@/lib/premiumAccess';
 import { clearPremiumIntents } from '@/lib/premiumIntentStore';
 import { revisitHref } from '@/lib/resultView';
+import { soloModeOf } from '@/lib/logic/soloMode';
 import { ROUTES } from '@/lib/routes';
 import { downloadUtExport } from '@/lib/utExport';
 import {
@@ -38,6 +39,14 @@ export default function HomePage() {
   const mirror = useMirror();
   const compatibility = useCompatibility();
   const highlights = useHomeHighlights();
+  /**
+   * Solo 입구를 보여줄지 (v1.29 P4 §45).
+   *
+   * 조건 두 개다. **상대를 비교할 수 없고**(`soloModeOf`), **내 기준은 있다**
+   * (`completed.profile`). 둘 중 하나만 봐서는 안 된다 — 기준이 없으면 리포트가
+   * 만들어지지 않고, 상대가 있으면 궁합 결과와 겹친다.
+   */
+  const soloEntryVisible = answers.completed.profile && soloModeOf(answers) !== 'couple';
   const { entries, latest, clearAll: clearHistory } = useHistory();
   const report = useHistoryReport();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -177,6 +186,40 @@ export default function HomePage() {
               ))}
             </ul>
           </section>
+
+          {/*
+            v1.29 P4 §45 — Solo 재진입점.
+
+            Home은 최근 궁합·Mirror를 중심으로 만들어져 있어서, 그 두 개가 없는
+            사용자에게는 빈 화면처럼 보였다(P4 Audit). 상대가 없어도 다시 올 이유가
+            있어야 하므로 여기 First Contact Report 입구를 둔다.
+
+            ⚠️ 새 탭을 만들지 않는다(§46) — Home 안의 행 하나다. 그리고 커플 사용자에게는
+            보이지 않는다: 최근 궁합이 있는 사용자에게 Solo 리포트를 권하면 방금 본 결과와
+            무엇이 다른지 알 수 없다.
+          */}
+          {soloEntryVisible ? (
+            <section className="flex flex-col gap-2.5">
+              <SectionLabel>내 관계 관찰</SectionLabel>
+              <button
+                type="button"
+                onClick={() => router.push(ROUTES.firstContact)}
+                className="flex w-full items-center justify-between gap-3 rounded-row border border-line bg-surface p-[15px] text-left active:bg-sunken"
+              >
+                <span className="flex min-w-0 flex-col gap-1">
+                  <span className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
+                    FIRST CONTACT REPORT
+                  </span>
+                  <span className="text-[12.5px] keep-all leading-relaxed text-ink-sub">
+                    상대가 없어도 네가 관계를 어떻게 생각하는지는 관찰할 수 있어.
+                  </span>
+                </span>
+                <span className="flex-none rounded-[6px] bg-brand-tint px-2 py-1.5 text-label font-semibold text-brand-pressed">
+                  보기
+                </span>
+              </button>
+            </section>
+          ) : null}
 
           {/* v1.11 §22/§45 — Current Result Revisit. History(과거 스냅샷)와 분리한다 */}
           {compatibilityPreview || mirrorPreview ? (

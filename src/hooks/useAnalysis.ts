@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 
 import { buildApproachHints } from '@/lib/logic/approachHints';
+import { soloModeOf } from '@/lib/logic/soloMode';
 import {
   analysisFingerprint,
   buildHistoryReport,
@@ -16,6 +17,7 @@ import type {
   ApproachHint,
   CompatibilityResult,
   ConversationQuestion,
+  FirstContactReport,
   HistoryReport,
   MbtiBridgeReport,
   MbtiLensReport,
@@ -24,6 +26,7 @@ import type {
   MirrorReport,
   RelationshipProfile,
   RepeatedRelationshipSignal,
+  SoloMode,
 } from '@/types';
 
 /**
@@ -105,6 +108,37 @@ export function useConversationQuestions(): ConversationQuestion[] {
     ],
     [result, mbtiLens],
   );
+}
+
+/**
+ * Solo 분기 — 지금 이 사용자를 어떤 리포트로 보낼지 (v1.29 P4 §32~§34)
+ *
+ * 새 점수가 아니다. 이미 있는 `targetKnownCount`/`TARGET_MIN_KNOWN`만 읽는다.
+ */
+export function useSoloMode(): SoloMode {
+  const { answers } = useSession();
+  return useMemo(() => soloModeOf(answers), [answers]);
+}
+
+/**
+ * First Contact Report (v1.29 P4)
+ *
+ * ⚠️ `couple`(상대를 비교할 만큼 아는 상태)에서는 만들지 않는다 — Solo 리포트가
+ * 궁합 결과를 대체하지 않는다. 두 리포트가 같은 화면을 두고 다투면 사용자는
+ * 자기가 무엇을 본 것인지 모른다.
+ */
+export function useFirstContact(): FirstContactReport | null {
+  const { answers } = useSession();
+  const mode = useSoloMode();
+  return useMemo(() => {
+    if (mode === 'couple') return null;
+    return aiSelectors.firstContact({
+      declared: answers.declared,
+      experience: answers.experience,
+      target: answers.target,
+      mode,
+    });
+  }, [answers.declared, answers.experience, answers.target, mode]);
 }
 
 export function useMirror(): MirrorReport {

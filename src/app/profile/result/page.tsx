@@ -44,6 +44,13 @@ function ProfileResultView() {
   const searchParams = useSearchParams();
   const { showToast } = useToast();
   const { answers, markComplete } = useSession();
+  /**
+   * 지금 특정 상대가 없다고 **사용자가 직접 답한** 상태인가 (v1.29 P4).
+   *
+   * ⚠️ `soloModeOf`를 쓰지 않는다. 그 함수는 target 입력량을 보는데 이 화면은 target
+   * 입력 **전**이라 모든 사용자가 `no_target`으로 읽힌다 — 그러면 커플 퍼널이 끊긴다.
+   */
+  const soloStatus = answers.status === 'solo_none' || answers.status === 'solo_exp';
   const profile = useRelationshipProfile();
 
   const [feedback, setFeedback] = useState<'ok' | 'no' | null>(null);
@@ -132,16 +139,42 @@ function ProfileResultView() {
             </div>
           ) : (
             <div className="flex flex-col gap-0.5">
-              <Button
-                onClick={() => {
-                  router.push(ROUTES.target);
-                }}
-              >
-                이제 상대를 관찰하기
-              </Button>
-              <Button variant="text" onClick={() => setEditOpen(true)}>
-                관찰 기록 수정하기
-              </Button>
+              {/*
+                v1.29 P4 — **Solo에게 '상대를 관찰하기'만 주지 않는다.**
+
+                v1.28까지 이 자리의 유일한 다음 걸음은 `/target`이었다. 그래서 지금
+                특정 상대가 없다고 답한 사용자도 상대 입력 화면으로 갔고, 입력할 게 없어
+                동기화율 `?`를 보고 끝났다(P4 Audit 실측).
+
+                ⚠️ 분기는 `soloModeOf`가 아니라 **`answers.status`**로 한다. 이 시점에는
+                target이 아직 비어 있어서 모든 사용자가 `no_target`으로 읽히기 때문이다 —
+                여기서 `soloModeOf`를 쓰면 커플 퍼널이 통째로 끊긴다.
+
+                상대 입력을 없애지는 않는다. 솔로라고 답했어도 그 사이에 누가 생길 수 있다.
+              */}
+              {soloStatus ? (
+                <>
+                  <Button onClick={() => router.push(ROUTES.firstContact)}>
+                    내 관계 관찰 보기
+                  </Button>
+                  <Button variant="text" onClick={() => router.push(ROUTES.target)}>
+                    관심 가는 사람이 있어
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    onClick={() => {
+                      router.push(ROUTES.target);
+                    }}
+                  >
+                    이제 상대를 관찰하기
+                  </Button>
+                  <Button variant="text" onClick={() => setEditOpen(true)}>
+                    관찰 기록 수정하기
+                  </Button>
+                </>
+              )}
             </div>
           )
         }

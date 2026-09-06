@@ -224,6 +224,17 @@ export const ANALYTICS_EVENTS = [
   // `funnelAnalysisId`(상대가 바뀔 때마다 새로 발급되는 랜덤 UUID) 기준으로 dedup한다
   // (`trackOncePerAnalysis`). Primary KPI 정의 자체는 바꾸지 않는다(§19) — 이건 별도의
   // Analysis Funnel Conversion 지표다.
+  // First Contact / Solo (v1.29 P4 §52) — **두 개만** 늘렸다.
+  // Solo는 기존 Compatibility Funnel과 다른 경로라 `compatibility_result_view`로는
+  // 노출 자체를 셀 수 없다. 반면 섹션 이동은 이미 `result_anchor_navigation`이,
+  // Premium 진입은 `premium_entry_click`이 담당하므로 새로 만들지 않았다.
+  //
+  // ⚠️ Primary KPI(Compatibility)를 오염시키지 않는다(§53) — 별도 secondary funnel이다.
+  // ⚠️ property는 categorical count/state뿐이다: mode(no_target|unknown_target) /
+  //    signal_count / pair_count / action_count / has_mbti / kind.
+  //    raw answer·headline 원문·축 값은 보내지 않는다(§54).
+  'solo_report_view',
+  'solo_action_view',
   'compatibility_analysis_result_view',
   'relationship_mirror_analysis_entry',
   // v1.12 §9~§11 AI latency/failure metrics — 새 이벤트를 추가하지 않는다. v1.6부터 있던

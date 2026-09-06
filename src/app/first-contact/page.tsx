@@ -1,0 +1,321 @@
+'use client';
+
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+
+import { Button } from '@/components/common/Button';
+import { BottomNavigation } from '@/components/common/BottomNavigation';
+import { ScreenHeader } from '@/components/common/ScreenHeader';
+import { ScreenLayout } from '@/components/common/ScreenLayout';
+import { NoticeBox, SectionLabel } from '@/components/common/primitives';
+import { LovyNote } from '@/components/lovy/LovyNote';
+import { ReportHeader, ReportSection } from '@/components/report/ReportShell';
+import { FirstContactActionCard } from '@/components/solo/FirstContactActionCard';
+import { SelfPairCard, SelfSignalCard } from '@/components/solo/SelfSignalCard';
+import { NO_EXPERIENCE_FRAME, UNKNOWN_TARGET_FRAME } from '@/data/firstContact';
+import { useFirstContact, useSoloMode } from '@/hooks/useAnalysis';
+import { trackEvent, trackOnce } from '@/lib/analytics';
+import { ROUTES } from '@/lib/routes';
+import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
+import { SOLO_PREMIUM_HOOK } from '@/data/premium';
+import { useCrossSourceInsights } from '@/hooks/useAiNarrative';
+import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
+import { hasDeepConnection } from '@/services/premiumConnections';
+import { premiumFeatureState } from '@/services/premiumService';
+import { useSession } from '@/state/SessionProvider';
+
+/**
+ * First Contact Report — 상대 없이 나를 관찰한 보고서 (v1.29 · P4)
+ *
+ * **이 화면이 P4의 답이다.** 기존 리포트는 전부 '두 사람'을 전제로 해서, 상대가 없고
+ * 경험도 없는 사용자는 동기화율 `?`와 "Mirror를 만들 수 없어"를 지나 홈으로 돌아갔다
+ * (P4 Audit 실측). 비교할 것이 없다는 말이 관찰할 것이 없다는 말은 아니다.
+ *
+ *   COUPLE   나와 상대 **사이의** 차이
+ *   SOLO     나 안에서 **함께 나타나는** 기준
+ *
+ * ⚠️ 섹션 수를 억지로 맞추지 않는다(§23). 데이터가 지원하지 않는 섹션은 아예 없다 —
+ * 그래서 `index`는 실제로 렌더되는 것만 세어 붙인다.
+ *
+ * ⚠️ Visual Direction — Dating app onboarding처럼 만들지 않는다(§49).
+ * 하트·커플 실루엣·pink gradient·match animation 없음. 기존 editorial 관찰 보고서 그대로.
+ */
+export default function FirstContactPage() {
+  const router = useRouter();
+  const { answers } = useSession();
+  const mode = useSoloMode();
+  const report = useFirstContact();
+
+  const hasMbti = Boolean(answers.mbti);
+
+  /**
+   * Solo Premium (§39 ~ §41)
+   *
+   * ⚠️ **상대가 없다는 이유만으로 unavailable이 되지는 않는다**(§41). 하지만
+   * **source가 1개뿐이면 열지 않는다** — 판정은 커플과 똑같이 `hasDeepConnection`
+   * (서로 다른 source 2종 이상 + 근거 2개 이상)이 한다. 새 기준을 만들지 않았다.
+   *
+   * Solo에서 그 조건을 만족시키는 것은 생성기 ⑥(`declared × observed`)이다.
+   * 사진이 없으면 여기도 열리지 않는다 — 그게 정직한 결과다.
+   */
+  const [priceVariant] = useState(() => resolvePriceVariant());
+  const crossSourceInsights = useCrossSourceInsights();
+  const premiumFeature = premiumFeatureState('relationship_deep_report', resolvePrice(priceVariant), {
+    deepReportAvailable: hasDeepConnection(crossSourceInsights),
+    solo: true,
+  });
+
+  /**
+   * 상대를 비교할 만큼 아는 사용자가 이 Route로 들어오면 궁합 결과로 보낸다.
+   *
+   * 그냥 두면 `useFirstContact`가 null을 주고 화면은 "아직 관찰할 기준이
+   * 모여있지 않아"를 보여준다 — **거짓이다.** 그 사용자는 기준도 상대 정보도 있다.
+   * Solo 리포트가 궁합 결과를 대체하지 않는다는 원칙과 같은 이유다.
+   */
+  useEffect(() => {
+    if (mode === 'couple') router.replace(ROUTES.compatibility);
+  }, [mode, router]);
+
+  useEffect(() => {
+    if (!report?.available) return;
+    /**
+     * §52 — 새 Funnel이므로 노출은 세야 한다. 다만 **Primary KPI(Compatibility)를
+     * 오염시키지 않는다**(§53) — 별도 secondary funnel이다.
+     *
+     * ⚠️ property는 categorical count/state뿐이다. headline 원문·답변 값은 보내지 않는다(§54).
+     */
+    trackOnce('solo_report_view', {
+      mode: report.mode,
+      signal_count: report.signals.length,
+      pair_count: report.pairs.length,
+      action_count: report.actions.length,
+      no_experience: report.noExperience,
+      has_mbti: hasMbti,
+    });
+  }, [report, hasMbti]);
+
+  useEffect(() => {
+    if (!report?.available || report.actions.length === 0) return;
+    /**
+     * 행동 제안이 **실제로 노출됐을 때** 1회. 클릭 이벤트를 따로 만들지 않는다 —
+     * 여기서 알고 싶은 것은 '이 사용자에게 근거 있는 행동이 만들어졌는가'이고,
+     * 그건 노출로 답이 된다. 클릭까지 재려면 이벤트가 두 배가 되고 §52를 어긴다.
+     *
+     * ⚠️ 행동 문구 원문은 보내지 않는다 — 종류(TRY|ASK|NOTICE)와 개수뿐이다(§54).
+     */
+    trackEvent('solo_action_view', {
+      mode: report.mode,
+      action_count: report.actions.length,
+      kinds: [...new Set(report.actions.map((action) => action.kind))].sort().join('|'),
+    });
+  }, [report]);
+
+  /**
+   * 재료가 모자라면 리포트를 만들지 않는다. **빈 섹션을 늘어놓는 것보다
+   * 무엇을 채우면 되는지 말하는 게 낫다** — E1과 같은 원칙이다.
+   */
+  // 위 effect가 이동시키는 동안 잘못된 빈 화면을 깜빡이지 않게 한다
+  if (mode === 'couple') return null;
+
+  if (!report || !report.available) {
+    return (
+      <ScreenLayout
+        /* 아래 ReportHeader가 h1을 그린다 — title을 넘기면 H2가 먼저 나온다(§58) */
+        header={<ScreenHeader backHref={ROUTES.home} />}
+        footer={
+          <Button onClick={() => router.push(ROUTES.declared(1))}>내 기준 채우기</Button>
+        }
+        bodyClassName="pt-2 pb-4"
+      >
+        <div className="flex flex-col gap-3.5">
+          <ReportHeader title="아직 관찰할 기준이 모여있지 않아" meta={['내 기준 3개 이상 필요']} />
+          <NoticeBox>
+            관계에서 무엇이 중요한지 답한 항목이 아직 적어. 세 개만 채우면 지금 네 기준으로
+            관찰을 만들 수 있어.
+          </NoticeBox>
+        </div>
+      </ScreenLayout>
+    );
+  }
+
+  /** 실제로 렌더되는 섹션만 센다 — 조건부로 빠진 섹션 때문에 번호가 건너뛰면 보고서로 안 읽힌다 */
+  let sectionIndex = 0;
+  const nextIndex = () => String((sectionIndex += 1)).padStart(2, '0');
+
+  return (
+    <ScreenLayout
+      /*
+        ⚠️ §58 — **`title`을 넘기지 않는다.** `ScreenHeader`의 title은 `<h2>`로 그려져서,
+        아래 `ReportHeader`의 `<h1>`보다 **먼저** 나오면 heading 순서가 H2 → H1이 된다
+        (실측으로 확인했다). `/compatibility`·`/mirror`의 리포트 본문도 같은 이유로
+        title을 넘기지 않는다. 이 화면은 **빈 상태에서도** `ReportHeader`(h1)를 쓰므로
+        거기서도 넘기지 않는다.
+      */
+      header={<ScreenHeader backHref={ROUTES.home} />}
+      nav={<BottomNavigation />}
+      bodyClassName="pt-1 pb-4"
+    >
+      <div className="flex flex-col">
+        <ReportHeader
+          title="상대가 없어도 관찰할 수 있는 것"
+          eyebrow="LOVY FIRST CONTACT REPORT"
+          meta={[
+            `내 기준 ${report.signals.length}개`,
+            ...(report.pairs.length > 0 ? [`함께 나타난 신호 ${report.pairs.length}개`] : []),
+          ]}
+        />
+
+        {/*
+          경험 없음 · 상대 정보 부족을 **정직하게 먼저 말한다**(§28 · §32).
+          단 '데이터가 부족해'로 끝내지 않고, 그래서 무엇을 중심으로 보는지까지 말한다.
+        */}
+        {report.noExperience || report.mode === 'unknown_target' ? (
+          <div className="mt-3.5 flex flex-col gap-2">
+            {report.noExperience ? <NoticeBox>{NO_EXPERIENCE_FRAME}</NoticeBox> : null}
+            {report.mode === 'unknown_target' ? <NoticeBox>{UNKNOWN_TARGET_FRAME}</NoticeBox> : null}
+          </div>
+        ) : null}
+
+        {/*
+          §24 — 첫 5초에 읽는 한 문장. 사용자가 고른 값을 다시 말해주는 것이 전부다.
+          새 해석도 새 점수도 없다.
+        */}
+        <p className="mt-4 px-1 text-[17px] font-semibold leading-[1.5] tracking-[-0.4px] keep-all">
+          {report.headline}
+        </p>
+
+        {/* 01 — 내가 답한 기준. SUBJECT A ↓ SIGNAL 01/02/03 구조(§50) */}
+        <ReportSection
+          index={nextIndex()}
+          code="WHAT YOU VALUE"
+          title="내가 중요하게 답한 것"
+          caption="관계에서 무엇이 중요한지 네가 직접 고른 값이야. 여기에 해석을 섞지 않았어."
+        >
+          <div className="flex flex-col">
+            {report.signals.map((signal, index) => (
+              <SelfSignalCard key={signal.key} signal={signal} index={index + 1} />
+            ))}
+          </div>
+        </ReportSection>
+
+        {/* 02 — 함께 나타난 두 신호. SOLO의 핵심 정보값 */}
+        {report.pairs.length > 0 ? (
+          <ReportSection
+            index={nextIndex()}
+            code="WHAT TO NOTICE"
+            title="네 답변 안에서 함께 나타난 것"
+            caption="따로 답한 두 항목이 같은 자리를 가리키고 있어. 왜 그런지는 이 답만으로 알 수 없어."
+          >
+            {report.pairs.map((pair) => (
+              <SelfPairCard key={pair.id} pair={pair} />
+            ))}
+          </ReportSection>
+        ) : null}
+
+        {/* 03 — 러비의 관찰. 진단이 아니라 질문으로 끝난다(§27) */}
+        {report.observation ? (
+          <ReportSection index={nextIndex()} code="LOVY OBSERVATION" title="러비가 궁금한 것">
+            <LovyNote>{report.observation.body}</LovyNote>
+            <p className="px-1 text-[13.5px] font-medium keep-all leading-relaxed">
+              {report.observation.question}
+            </p>
+          </ReportSection>
+        ) : null}
+
+        {/* 04 — 특정 상대는 있지만 아는 게 적을 때. 상대를 추론하지 않고 물어볼 것만 준다(§32) */}
+        {report.gettingToKnow.length > 0 ? (
+          <ReportSection
+            index={nextIndex()}
+            code="GETTING TO KNOW"
+            title="알아보기 위해 물어볼 것"
+            caption="그 사람이 어떤 사람인지 우리가 추측해서 채우지 않아. 대신 확인해볼 것을 둘게."
+          >
+            <ul className="flex flex-col">
+              {report.gettingToKnow.map((text) => (
+                <li
+                  key={text}
+                  className="border-t border-line-soft py-3 text-[13px] keep-all leading-relaxed first:border-t-0 first:pt-0"
+                >
+                  {text}
+                </li>
+              ))}
+            </ul>
+          </ReportSection>
+        ) : null}
+
+        {/* 05 — 해볼 수 있는 것. 연애 성공 공식이 아니다(§30) */}
+        {report.actions.length > 0 ? (
+          <ReportSection
+            index={nextIndex()}
+            code="FIRST CONTACT"
+            title="관계를 시작할 때 해볼 수 있는 것"
+            caption="네가 답한 기준에서 나온 것만 뒀어. 이렇게 하면 된다는 뜻은 아니야."
+          >
+            {report.actions.map((action) => (
+              <FirstContactActionCard key={`${action.kind}-${action.action}`} action={action} />
+            ))}
+          </ReportSection>
+        ) : null}
+
+        {/* 06 — 보조 렌즈. 상대가 없으므로 궁합 문구를 절대 내지 않는다(§35) */}
+        {hasMbti ? (
+          <ReportSection
+            index={nextIndex()}
+            code="OTHER LENSES"
+            title="다른 렌즈로 나를 보면"
+            caption="MBTI는 나를 설명하는 하나의 렌즈일 뿐이고, 위 관찰과 다르게 보일 수도 있어."
+          >
+            <button
+              type="button"
+              onClick={() => router.push(ROUTES.lensMbti)}
+              className="flex min-h-11 items-center justify-between rounded-row border border-line bg-surface px-4 py-3.5 text-left"
+            >
+              <span className="flex flex-col gap-0.5">
+                <span className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
+                  MBTI LENS
+                </span>
+                <span className="text-[13.5px] font-medium keep-all">
+                  이 렌즈에서 나는 어떻게 설명되는지 보기
+                </span>
+              </span>
+              <span aria-hidden className="text-ink-faint">
+                →
+              </span>
+            </button>
+          </ReportSection>
+        ) : null}
+
+        {/*
+          Premium 진입 (§39 ~ §41).
+
+          ⚠️ `unavailable`이면 `PremiumEntryRow`가 **가격도 CTA도 붙이지 않는다** —
+          돈을 내면 나올 것처럼 보이지 않게 하는 기존 동작을 그대로 쓴다.
+          그래서 여기서 조건부로 감추지 않고 컴포넌트에 맡긴다.
+
+          ⚠️ Hook 문구는 Solo 전용이다. 궁합·상대 해석을 약속하지 않는다 —
+          이 사용자에게는 그게 만들어지지 않는다.
+        */}
+        <div className="mt-8">
+          <PremiumEntryRow
+            feature={premiumFeature}
+            source="first_contact"
+            hook={SOLO_PREMIUM_HOOK}
+          />
+        </div>
+
+        <div className="mt-8 flex flex-col gap-2.5">
+          <SectionLabel>이 관찰에 대해</SectionLabel>
+          {/*
+            ⚠️ §29 · §48 — 여기서 '연애 준비도'나 '왜 솔로인지'를 말하지 않는다.
+            이 리포트는 사용자가 직접 답한 것을 다시 보여준 것이고, 그게 전부다.
+          */}
+          <p className="px-1 text-[12px] keep-all leading-relaxed text-ink-muted">
+            이건 네가 입력한 답을 정리한 관찰이야. 관계를 잘하는지 못하는지를 판정하지 않고,
+            앞으로 어떻게 될지도 말하지 않아. 기준은 시간이 지나면 달라질 수 있어 —
+            그때 다시 관찰하면 무엇이 달라졌는지 볼 수 있어.
+          </p>
+        </div>
+      </div>
+    </ScreenLayout>
+  );
+}

@@ -963,8 +963,14 @@ function LowConfidenceView() {
       footer={
         <div className="flex flex-col gap-0.5">
           <Button onClick={() => router.push(ROUTES.target)}>아는 것만 더 알려주기</Button>
-          <Button variant="text" onClick={() => router.push(ROUTES.mirrorTeaser)}>
-            그래도 내 분석은 볼래
+          {/*
+            v1.29 P4 — 예전에는 `/mirror/teaser`로 보냈다. 그런데 연애 경험이 없는
+            사용자는 Mirror가 통째로 비어서(`experience.skipped` → `available: false`)
+            "비교하긴 어려워"만 보고 홈으로 밀려났다 — **탈출구가 막힌 길이었다.**
+            First Contact Report는 내 기준만으로 만들어지므로 이 사용자에게도 남는다.
+          */}
+          <Button variant="text" onClick={() => router.push(ROUTES.firstContact)}>
+            내 기준부터 관찰하기
           </Button>
         </div>
       }

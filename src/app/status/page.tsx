@@ -41,7 +41,8 @@ export default function StatusPage() {
       supported: STATUS_SUPPORTED[answers.status],
     });
     if (!STATUS_SUPPORTED[answers.status]) {
-      showToast('이 상태에 맞는 분석은 아직 준비 중이야. 우선 지금 흐름으로 안내할게.');
+      // ⚠️ 지원하지 않는 상태를 고른 사용자에게도 '너에게는 줄 게 없다'로 들리지 않게 말한다.
+      showToast('이 상태에 딱 맞는 분석은 아직 준비 중이야. 우선 지금 흐름으로 관찰해볼게.');
     }
     router.push(ROUTES.profileIntro);
   };
@@ -60,7 +61,7 @@ export default function StatusPage() {
       <div className="flex flex-col gap-[18px]">
         <PageHeading
           lines={['지금 너의 관계 상태는 어때?']}
-          caption="지금은 '연애 경험 있음'과 '관심 가는 사람 있음' 상태에 맞춰져 있어. 다른 상태는 준비 중이야."
+          caption="솔로도, 관심 가는 사람이 있는 경우도 볼 수 있어. 연애 중·기혼 상태에 맞는 분석은 준비 중이야."
         />
 
         <div className="flex flex-col gap-2.5" role="radiogroup" aria-label="관계 상태">

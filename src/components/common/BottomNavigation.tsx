@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 
 import { cn } from '@/lib/cn';
 import { revisitHref } from '@/lib/resultView';
+import { soloModeOf } from '@/lib/logic/soloMode';
 import { ROUTES } from '@/lib/routes';
 import { useToast } from './ToastProvider';
 import { useSession } from '@/state/SessionProvider';
@@ -35,9 +36,15 @@ const TABS = [
   {
     key: 'analysis',
     label: '분석',
+    /**
+     * v1.29 P4 §46 — **새 탭을 만들지 않는다.** First Contact Report도 같은 Analysis
+     * Mental Model이라 이 탭이 함께 담당한다. 실제 목적지는 상대 정보량에 따라
+     * `handlePress`에서 갈린다 — 상대를 비교할 수 없는 사용자를 `?`가 뜨는
+     * `/compatibility`로 보내지 않는다.
+     */
     href: ROUTES.compatibility,
     Icon: Activity,
-    activeMatch: [ROUTES.compatibility, ROUTES.mirror],
+    activeMatch: [ROUTES.compatibility, ROUTES.mirror, ROUTES.firstContact],
   },
   {
     key: 'history',
@@ -54,23 +61,37 @@ export function BottomNavigation() {
   const { answers } = useSession();
   const { showToast } = useToast();
 
+  /**
+   * v1.29 P4 — Solo 사용자의 '분석' 탭.
+   *
+   * v1.28까지 이 탭은 `completed.compatibility` 하나로만 열렸고, 열리면 무조건
+   * `/compatibility`로 갔다. 상대를 비교할 수 없는 사용자에게는 **열려도 `?`뿐이고,
+   * 안 열리면 "상대를 먼저 알려줘"라는 잠긴 문구뿐**이었다 — 둘 다 막힌 길이다.
+   *
+   * 이제 상대 정보가 모자라면 First Contact Report로 보낸다. 그러면 이 탭의 조건도
+   * 달라진다 — Solo 리포트는 상대가 아니라 **내 기준**만 필요하므로
+   * `completed.profile`이 기준이다.
+   */
+  const solo = soloModeOf(answers) !== 'couple';
+  const analysisHref = solo ? ROUTES.firstContact : ROUTES.compatibility;
+
   const isReady = (key: (typeof TABS)[number]['key']): boolean => {
     if (key === 'home' || key === 'history') return true;
     if (key === 'me') return answers.completed.profile;
-    return answers.completed.compatibility;
+    return solo ? answers.completed.profile : answers.completed.compatibility;
   };
 
   const handlePress = (tab: (typeof TABS)[number]) => {
     if (!isReady(tab.key)) {
       showToast(
-        tab.key === 'me'
+        tab.key === 'me' || solo
           ? '관찰 기록을 먼저 만들어야 볼 수 있어.'
           : '아직 궁합 관측 기록이 없어. 상대를 먼저 알려줘.',
         'warning',
       );
       return;
     }
-    router.push(tab.href);
+    router.push(tab.key === 'analysis' ? analysisHref : tab.href);
   };
 
   return (

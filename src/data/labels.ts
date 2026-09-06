@@ -84,12 +84,21 @@ export const STATUS_LABEL: Record<RelationshipStatus, string> = {
 };
 
 /**
- * v1은 '솔로 · 연애 경험 있음'과 '관심 가는 사람이 있음' 두 상태에 맞춰져 있다.
- * 나머지 상태를 선택해도 같은 흐름으로 안내하지만, '상태에 따라 질문이 달라진다'고
- * 말해놓고 실제로는 그대로인 거짓 약속을 하지 않기 위해 이렇게 명시한다.
+ * 그 상태에 **실제로 맞는 리포트가 있는가.**
+ *
+ * '상태에 따라 질문이 달라진다'고 말해놓고 실제로는 그대로인 거짓 약속을 하지 않기 위해
+ * 명시한다. 그래서 이 값이 false면 상태 화면이 '준비 중'이라고 정직하게 말한다.
+ *
+ * v1.29 P4 — `solo_none`을 true로 올렸다. **약속이 실제로 지켜지게 됐기 때문이다.**
+ * v1.28까지는 연애 경험이 없는 사용자에게 문 앞에서 '준비 중'이라고 말하고도 같은
+ * 퍼널로 밀어넣었고, 그 사용자는 동기화율 `?`와 "Mirror를 만들 수 없어"를 지나
+ * 홈으로 돌아갔다(P4 Audit 실측). 이제 First Contact Report가 그 자리를 받는다.
+ *
+ * ⚠️ `dating`/`married`/`ended`는 여전히 false다. 이 세 상태에 맞는 리포트는 아직 없고,
+ * **없는 것을 있다고 말하지 않는다.**
  */
 export const STATUS_SUPPORTED: Record<RelationshipStatus, boolean> = {
-  solo_none: false,
+  solo_none: true,
   solo_exp: true,
   crush: true,
   dating: false,

@@ -29,6 +29,14 @@ export const ROUTES = {
   frictionSignal: '/compatibility/friction',
   /** @deprecated v1.11 — `/compatibility#questions`로 합쳐졌다. Legacy Redirect 전용 */
   questions: '/compatibility/questions',
+  /**
+   * v1.29 P4 — First Contact Report.
+   *
+   * 상대가 없거나 아직 거의 모르는 사용자를 위한 리포트다. **새 탭을 만들지 않는다**
+   * (§46) — Bottom Navigation의 '분석' 탭이 이 Route도 함께 담당한다. 같은
+   * Analysis Mental Model이고, 실제로 `/compatibility`가 `?`만 보여주던 자리를 대신한다.
+   */
+  firstContact: '/first-contact',
   mirrorTeaser: '/mirror/teaser',
   /** v1.11 — S27~S28(Map+Core Insight)을 합친 Canonical Route */
   mirror: '/mirror',

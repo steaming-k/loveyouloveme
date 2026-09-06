@@ -103,6 +103,12 @@ const FEATURE_BY_SOURCE: Record<string, PremiumFeatureId> = {
   compatibility: 'relationship_deep_report',
   mirror: 'relationship_deep_report',
   history: 'relationship_deep_report',
+  /**
+   * v1.29 P4 — Solo도 같은 flagship을 산다. **다른 상품을 새로 만들지 않는다** —
+   * Premium이 파는 것은 여전히 '따로 있던 관찰이 이어진다는 사실'이고, Solo에서는
+   * 그게 `내 기준 ↔ 사진 관찰`(생성기 ⑥)이다.
+   */
+  first_contact: 'relationship_deep_report',
   mbti: 'mbti_detail',
   astrology: 'astrology_detail',
   // 직접 URL로 들어오면 unavailable 안내로 이어진다 — 사주 상세는 팔 수 있는 상태가 아니다.
@@ -115,6 +121,7 @@ const BACK_BY_SOURCE: Record<string, string> = {
   compatibility: ROUTES.compatibility,
   mirror: ROUTES.mirror,
   history: ROUTES.historyReport,
+  first_contact: ROUTES.firstContact,
   mbti: ROUTES.lensMbti,
   astrology: ROUTES.lensAstrology,
   saju: ROUTES.lensSaju,

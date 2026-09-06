@@ -293,6 +293,23 @@ export const UNLOCK_COPY = {
  * 그 값이 v1.19 Hook Attribution의 `hook_variant`라서, 바꾸면 GA4에서 이전 데이터와
  * 이어지지 않는다. 바뀐 것은 사용자에게 보이는 문장뿐이다.
  */
+/**
+ * Solo Premium Hook (v1.29 P4 §39 · §40)
+ *
+ * ⚠️ 기존 `PREMIUM_HOOK_COPY`의 key를 건드리지 않는다 — v1.19부터 hook_variant로
+ * Attribution을 재고 있어서 key가 바뀌면 지표가 끊긴다. 그래서 별도 상수로 둔다.
+ *
+ * ⚠️ **없는 것을 약속하지 않는다.** Solo Premium이 실제로 주는 것은 `내가 답한 기준`과
+ * `사진에서 반복해 보인 활동`이 같은 축을 가리키는지다(생성기 ⑥). 궁합·상대 해석을
+ * 약속하지 않는다 — 그건 이 사용자에게 만들어지지 않는다.
+ */
+export const SOLO_PREMIUM_HOOK = {
+  variant: 'solo_self_link',
+  title: '내 기준끼리는 어떻게 이어질까',
+  description:
+    '무료에서는 네 기준을 하나씩 봤어. 여기서는 네가 답한 기준과 사진에서 반복해서 보인 활동이 같은 축을 가리키는지 이어서 볼 수 있어.',
+  cta: '이어서 보기',
+} as const;
 export const PREMIUM_HOOK_COPY = {
   /** A. Compatibility — Friction Signal 다음 */
   friction_why: {

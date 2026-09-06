@@ -61,6 +61,15 @@ export function premiumFeatureState(
     astrologyAvailable?: boolean;
     /** v1.9 — Cross-source Insight가 하나도 없으면 Deep Report도 Paywall을 띄우지 않는다 */
     deepReportAvailable?: boolean;
+    /**
+     * v1.29 P4 — 지금 특정 상대가 없는 사용자인가.
+     *
+     * unavailable **판정**은 바꾸지 않는다(§41: source 1종이면 열지 않는다).
+     * 바꾸는 것은 **안내 문구**다. 기존 문구는 "관계 경험이나 상대 정보를 더 채우면"인데,
+     * 상대가 없는 사용자에게 그건 갈 수 없는 길을 알려주는 것이다 — 실측에서 확인했다.
+     * Solo가 실제로 이 리포트를 열 수 있는 경로는 사진 관찰(생성기 ⑥)이다.
+     */
+    solo?: boolean;
   } = {},
 ): PremiumFeature {
   const def = PREMIUM_FEATURES[id];
@@ -98,7 +107,12 @@ export function premiumFeatureState(
     return unavailable('두 사람 출생정보가 모두 있어야 상세를 볼 수 있어.');
   }
   if (id === 'relationship_deep_report' && context.deepReportAvailable === false) {
-    return unavailable('아직 서로 연결해서 볼 수 있는 신호가 부족해. 관계 경험이나 상대 정보를 더 채우면 볼 수 있어.');
+    // ⚠️ 갈 수 없는 길을 알려주지 않는다 — 상대가 없는 사용자에게 '상대 정보'를 요구하지 않는다.
+    return unavailable(
+      context.solo
+        ? '아직 서로 연결해서 볼 수 있는 신호가 부족해. 사진을 올려서 관찰을 확인해두면 네가 답한 기준과 이어서 볼 수 있어.'
+        : '아직 서로 연결해서 볼 수 있는 신호가 부족해. 관계 경험이나 상대 정보를 더 채우면 볼 수 있어.',
+    );
   }
 
   return base;
