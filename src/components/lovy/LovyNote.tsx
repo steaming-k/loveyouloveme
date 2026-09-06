@@ -17,14 +17,21 @@ import { cn } from '@/lib/cn';
 export function LovyNote({
   children,
   className,
+  label,
 }: {
   children: ReactNode;
   className?: string;
+  /**
+   * 라벨 문구. 기본은 `LOVY NOTE`(짧은 혼잣말)이고, 무료에서 보장하는 심리·철학
+   * Observation(§6)에는 `LOVY OBSERVATION`을 넘겨 **의도된 제품 요소**로 읽히게 한다 —
+   * 섹션 끝에 남은 각주처럼 보이지 않게 하는 최소 장치다.
+   */
+  label?: string;
 }) {
   return (
     <aside className={cn('flex flex-col gap-1 border-l-2 border-mint pl-3.5', className)}>
       <p className="text-[10px] font-semibold tracking-[0.16em] text-mint-ink">
-        {REPORT_COPY.noteLabel}
+        {label ?? REPORT_COPY.noteLabel}
       </p>
       <p className="text-[13px] keep-all leading-relaxed text-[#555]">{children}</p>
     </aside>

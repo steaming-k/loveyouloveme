@@ -91,14 +91,21 @@ export function Lines({ lines, className }: { lines: readonly string[]; classNam
 export function SectionLabel({
   children,
   className,
+  as: Tag = 'h2',
 }: {
   children: ReactNode;
   className?: string;
+  /**
+   * heading level (v1.23 §32). 기본은 `h2`(섹션 라벨)다.
+   * 이미 `h2`인 섹션 **안의** 서브블록 라벨에는 `h3`를 넘겨 계층이 평평해지지 않게 한다 —
+   * 예: `04 NOW WHAT`(h2) 안의 '이 사람에게 다가갈 때' / '이야기해볼 질문'.
+   */
+  as?: 'h2' | 'h3';
 }) {
   return (
-    <h2 className={cn('px-1 text-meta font-semibold tracking-[0.04em] text-ink-muted', className)}>
+    <Tag className={cn('px-1 text-meta font-semibold tracking-[0.04em] text-ink-muted', className)}>
       {children}
-    </h2>
+    </Tag>
   );
 }
 

@@ -245,6 +245,13 @@ export const REPORT_COPY = {
     good: { code: 'WHERE IT CONNECTS', title: '잘 맞는 신호' },
     friction: { code: 'DIFFERENCE', title: '확인이 필요한 신호' },
     lenses: { code: 'OTHER LENSES', title: '다른 렌즈로 겹쳐 보면' },
+    /**
+     * v1.23 §10 — `approach`와 `questions`를 하나의 섹션으로 묶는다.
+     * 둘은 같은 Mental Model('그래서 지금 뭘 해볼까?')이었는데 별개 기능처럼 보였고,
+     * 375px에서 합쳐 1,492px(전체의 35%)를 차지했다. 아래 두 항목은 섹션 안의
+     * 서브블록 라벨로 계속 쓴다 — anchor id도 그대로다.
+     */
+    nowWhat: { code: 'NOW WHAT', title: '그래서 뭘 해볼까' },
     approach: { code: 'APPROACH', title: '이 사람에게 다가갈 때' },
     questions: { code: 'NEXT QUESTION', title: '이야기해볼 질문' },
   },

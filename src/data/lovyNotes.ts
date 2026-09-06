@@ -133,6 +133,48 @@ export function lensBridgeNote(): LovyObservationNote {
   return findNote('lens_bridge') as LovyObservationNote;
 }
 
+/* -------------------------------------------------------- 핵심 한 문장 (P2 §4) */
+
+/**
+ * LEVEL 1 — 첫 5초에 읽히는 **결과 요약 한 문장** (v1.23 §3 · §4)
+ *
+ * 이전에는 점수 아래에 결과를 요약하는 문장이 아예 없었다. 대신
+ *   "연애 성공확률이 아니야" · "비교 가능한 N개 신호 기준" · "숫자는 그냥 요약이야"
+ * 세 개의 **면책 문장**만 있었다. 그래서 사용자가 '그래서 우리 관계는 어떤데?'의 답에
+ * 도달하려면 1.5화면을 스크롤해야 했다(실측 903px).
+ *
+ * ⚠️ **새 계산도, 새 AI 호출도, 랜덤도 없다.** 이미 계산이 끝난 `CompatibilityResult`의
+ * `goodSignals`/`frictionSignals`(= 규칙이 판정한 tone 결과)의 **라벨만** 읽어 문장을
+ * 만든다. 같은 결과면 언제나 같은 문장이다.
+ *
+ * 우선순위(§4):
+ *   1. friction이 있으면 그 축을 말한다 — 사용자가 먼저 알아야 할 것은 차이다
+ *      (good도 있으면 '비슷한 축 + 다른 축'을 한 문장에 담는다)
+ *   2. friction이 없으면 가장 잘 맞는 축
+ *   3. 둘 다 없으면(모두 neutral) 판정을 만들지 않는다
+ *   4. `score === null`(E3)이면 null — 이 화면은 `LowConfidenceView`로 빠진다
+ */
+export function selectResultHeadline(result: CompatibilityResult): string | null {
+  if (result.score === null) return null;
+
+  const friction = result.frictionSignals[0];
+  const good = result.goodSignals[0];
+
+  if (friction && good) {
+    return `${good.label}에 대한 기대는 비슷해 보이는데, ${friction.label}에서는 차이가 보여.`;
+  }
+  if (friction) {
+    return `${friction.label}에서 두 사람의 답이 서로 다르게 나왔어.`;
+  }
+  if (good) {
+    // 잘 맞는 축이 여러 개면 상위 2개까지만 — 4개를 나열하면 문장이 목록이 된다.
+    const labels = result.goodSignals.slice(0, 2).map((signal) => signal.label);
+    return `${labels.join(' · ')}에 대한 기대가 비슷해 보여.`;
+  }
+  // 모든 축이 neutral — '잘 맞는다'도 '어긋난다'도 아니다. 없는 판정을 만들지 않는다.
+  return '아주 다르지도, 아주 비슷하지도 않은 신호들이야.';
+}
+
 /* ------------------------------------------------------------ FIRST SURPRISE */
 
 /**
@@ -143,6 +185,15 @@ export function lensBridgeNote(): LovyObservationNote {
  *
  * ⚠️ Premium 광고가 아니다. 가격·CTA·잠금 표현을 넣지 않는다.
  * ⚠️ '하나의 렌즈로 설명하지 않는다'는 문장을 그대로 반복하지 않는다 — 러비의 관찰로 말한다.
+ *
+ * v1.23 §5 · §8 — body를 **방법론 설명에서 러비의 의문으로** 줄였다.
+ * 예전 body는 "연락·갈등·개인 시간처럼 서로 다르게 받아들이는 순간이 생기더라. 그래서
+ * 나는 두 사람을 숫자 하나로 설명하지 않고 축을 하나씩 따로 봐."였는데,
+ *   ① 바로 위 **핵심 한 문장**(§4)이 이미 어느 축이 비슷하고 어느 축이 다른지 말했고
+ *   ② '축을 하나씩 본다'는 우리 **방법론**이지 이 사용자에 대한 이야기가 아니다.
+ * 사용자가 느껴야 하는 것은 '이 서비스는 점수를 주고 끝나는 게 아니네'이고, 그 역할은
+ * 아래 `signal`(YOUR SIGNAL)이 실제 답변을 인용해서 한다. body는 그 사이를 잇는
+ * 한두 문장이면 충분하다.
  */
 export interface LovySurprise {
   /** Analytics에 보내는 opaque variant. 문구 원문은 절대 보내지 않는다. */
@@ -198,7 +249,7 @@ export function selectFirstSurprise(result: CompatibilityResult): LovySurprise |
     return {
       variant: 'gap',
       hook: '잠깐. 숫자만 보면 놓치는 게 하나 있어.',
-      body: '같은 유형이거나 비슷한 성향이어도, 실제 관계에서는 연락·갈등·개인 시간처럼 서로 다르게 받아들이는 순간이 생기더라. 그래서 나는 두 사람을 숫자 하나로 설명하지 않고 축을 하나씩 따로 봐.',
+      body: '점수는 둘이 얼마나 가까운지만 말해줘. 같은 걸 원한다고 답했어도 그 말의 뜻까지 같은지는 아직 모르잖아.',
       signal: signalLineOf(sourceAxis),
     };
   }
@@ -206,7 +257,7 @@ export function selectFirstSurprise(result: CompatibilityResult): LovySurprise |
   return {
     variant: 'alignment',
     hook: '궁합 점수가 높아도 확인은 필요해.',
-    body: '지금 입력에서는 크게 어긋나는 축이 안 보여. 근데 비슷하게 답했다고 같은 뜻으로 답한 건 아닐 수 있어서, 나는 축을 하나씩 따로 봐.',
+    body: '크게 어긋나는 축은 안 보여. 근데 비슷하게 답했다고 같은 뜻으로 답한 건 아닐 수도 있잖아.',
     signal: signalLineOf(sourceAxis),
   };
 }

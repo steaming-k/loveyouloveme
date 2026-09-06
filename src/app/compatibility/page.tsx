@@ -26,7 +26,6 @@ import {
 } from '@/components/report/ReportShell';
 import { FirstSurprise } from '@/components/compatibility/FirstSurprise';
 import { ApproachHintCard } from '@/components/compatibility/ApproachHintCard';
-import { MbtiLensPanel } from '@/components/compatibility/MbtiLensPanel';
 import { SignalCard } from '@/components/compatibility/SignalCard';
 import { ConversationCard } from '@/components/compatibility/ConversationCard';
 import { SyncScore } from '@/components/compatibility/SyncScore';
@@ -42,7 +41,11 @@ import {
   REPORT_COPY,
   STATE_COPY,
 } from '@/data/copy';
-import { selectCompatibilityNote, selectFirstSurprise } from '@/data/lovyNotes';
+import {
+  selectCompatibilityNote,
+  selectFirstSurprise,
+  selectResultHeadline,
+} from '@/data/lovyNotes';
 import { PREMIUM_HOOK_COPY } from '@/data/premium';
 import { useAnchorScroll } from '@/hooks/useAnchorScroll';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
@@ -251,12 +254,21 @@ function CompatibilityView() {
   const firstSurprise = selectFirstSurprise(result);
   const observationNote = selectCompatibilityNote(result);
   /**
-   * v1.22 §20 — 러비 노트 블록. 정의를 한 곳에 두고 friction 섹션의 두 갈래(차이가 있을 때 /
-   * 없을 때) 모두에서 **신호 목록 직후**에 놓는다. 예전에는 '더 보기' 버튼 아래에 붙어서
-   * 섹션이 끝난 뒤 남은 꼬리처럼 읽혔다. 새 카드를 만들지 않고 순서만 바꿨다.
+   * v1.23 §3 · §4 — LEVEL 1의 **결과 요약 한 문장.** 점수 바로 아래에 온다.
+   * `selectResultHeadline`은 이미 계산된 tone 판정의 라벨만 읽는다(새 계산 0).
    */
-  const lovyNoteBlock = observationNote ? (
-    <LovyNote className="mt-3">{observationNote.text}</LovyNote>
+  const resultHeadline = selectResultHeadline(result);
+  /**
+   * v1.22 §20 → v1.23 §6 — 무료에서 보장하는 **심리·철학 Observation** 한 개.
+   * friction 섹션의 두 갈래(차이가 있을 때 / 없을 때) 모두에서 신호 목록 직후에 놓고,
+   * 라벨을 `LOVY OBSERVATION`으로 바꿔 섹션 끝에 남은 각주가 아니라 **의도된 제품
+   * 요소**로 읽히게 한다. 문장은 `data/lovyNotes.ts`에 axis × trigger로 등록된 것을
+   * 결정론적으로 고른 값이고, 근거가 없으면(`score === null`) 아예 만들지 않는다.
+   */
+  const lovyObservationBlock = observationNote ? (
+    <LovyNote className="mt-3" label="LOVY OBSERVATION">
+      {observationNote.text}
+    </LovyNote>
   ) : null;
 
   /** FIRST SURPRISE CTA가 향하는 곳 — 실제로 화면에 존재하는 첫 신호 섹션 */
@@ -269,18 +281,29 @@ function CompatibilityView() {
     `비교한 신호 ${result.comparedCount}개`,
     `${formatEntryDate(today.toISOString())} 작성`,
   ];
-  /** 조건부로 빠지는 섹션이 있어도 번호가 건너뛰지 않도록 렌더되는 것만 센다 */
+/**
+   * 조건부로 빠지는 섹션이 있어도 번호가 건너뛰지 않도록 렌더되는 것만 센다.
+   *
+   * v1.23 §2 — 4단계 읽기 구조로 재편했다.
+   *   LEVEL 1  01 SUMMARY   (구 `why` 섹션을 여기 근거 줄로 흡수 — §8)
+   *   LEVEL 2  02 GOOD · 03 FRICTION
+   *   LEVEL 3  04 NOW WHAT  (구 `approach` + `questions` 병합 — §10)
+   *   LENSES   05 OTHER LENSES  (Core·Action 뒤로 이동 — §12)
+   *
+   * ⚠️ **anchor id는 7개 전부 그대로 유지한다**(`#summary` `#why` `#good` `#friction`
+   * `#lenses` `#approach` `#questions`) — Legacy Redirect(`/compatibility/why` 등)와
+   * `ResultSectionNav`·Home 카드가 이 id로만 이동하고, `result_anchor_navigation`
+   * 이벤트도 이 값을 그대로 쓴다. 섹션 **번호**만 줄었다.
+   */
   const sectionNo = (() => {
     let n = 0;
     const take = () => String((n += 1)).padStart(2, '0');
     return {
       summary: take(),
-      why: take(),
       good: topGood ? take() : null,
       friction: take(),
+      nowWhat: take(),
       lenses: take(),
-      approach: take(),
-      questions: take(),
     };
   })();
 
@@ -324,7 +347,16 @@ function CompatibilityView() {
     >
       <ReportHeader title={REPORT_COPY.compatibilityTitle} meta={reportMeta} />
 
-      <div id={RESULT_ANCHORS.compatibilitySummary} className="mt-5 flex flex-col gap-[18px]">
+      {/*
+        ══ LEVEL 1 · 첫 5초 (v1.23 §3) ══════════════════════════════════════════
+        '그래서 우리 관계는 어떤데?'의 답이 첫 viewport 안에서 끝나야 한다.
+        예전에는 이 자리에 점수 + **면책 문장 3개**만 있었고("연애 성공확률이 아니야" ·
+        "비교 가능한 N개 신호 기준" · "숫자는 그냥 요약이야"), 결과를 요약하는 문장이
+        아예 없어서 답에 도달하려면 1.5화면을 스크롤해야 했다(실측 903px).
+
+        지금 순서: 점수 → **결과 한 문장** → 면책 → 근거(구 METHOD 흡수) → 러비의 의문 + YOUR SIGNAL
+      */}
+      <div id={RESULT_ANCHORS.compatibilitySummary} className="mt-5 flex flex-col gap-3.5">
         <ReportSectionEyebrow
           index={sectionNo.summary}
           code={REPORT_COPY.sections.summary.code}
@@ -332,42 +364,41 @@ function CompatibilityView() {
 
         <SyncScore score={result.score} />
 
-        <p className="px-1 text-center text-meta text-ink-muted">
-          비교 가능한 {result.comparedCount}개 관계 신호 기준
-        </p>
-
-        {result.unknownLabels.length > 0 ? (
-          <p className="px-1 text-meta text-ink-muted">
-            모름으로 남긴 {result.unknownLabels.length}개 항목은 계산에서 빼뒀어 ·{' '}
-            {result.unknownLabels.join(' · ')}
+        {/* §4 — 결과 요약 한 문장. 이미 계산된 tone 판정에서 결정론적으로 파생된다 */}
+        {resultHeadline ? (
+          <p className="px-1 text-[17px] font-semibold leading-[1.5] tracking-[-0.3px] keep-all">
+            {resultHeadline}
           </p>
         ) : null}
 
-        {/* 러비 = Mint annotation(personality), 보고서 = Neutral 본문(credibility).
-            같은 화면 안에서 두 화법이 색과 형태로 구분돼야 한다. */}
-        <LovyNote>{LOVY_LINES.compatibilityHero}</LovyNote>
-
-        <ResultSectionNav
-          event="result_anchor_navigation"
-          items={[
-            { id: RESULT_ANCHORS.compatibilityWhy, label: '왜 이 점수야' },
-            { id: RESULT_ANCHORS.compatibilityGood, label: '잘 맞는 점' },
-            { id: RESULT_ANCHORS.compatibilityFriction, label: '확인할 점' },
-            { id: RESULT_ANCHORS.compatibilityApproach, label: '다가갈 때' },
-            { id: RESULT_ANCHORS.compatibilityQuestions, label: '질문' },
-          ]}
-        />
+        {/*
+          §8 — 구 `02 METHOD` 섹션을 여기로 흡수했다. 그 섹션은 145px을 쓰면서
+          "비교 가능한 N개 신호를 기준으로 계산했어"만 말했고, 바로 위 SUMMARY의
+          "비교 가능한 N개 관계 신호 기준"과 **같은 문장**이었다. 같은 사실을 두 섹션에
+          나눠 적을 이유가 없다.
+          ⚠️ `#why` anchor는 여기 유지한다 — Legacy Redirect(`/compatibility/why`)와
+          `ResultSectionNav` 칩이 이 id로 이동한다.
+        */}
+        <div id={RESULT_ANCHORS.compatibilityWhy} className="scroll-mt-3">
+          <ReportEvidenceBlock>
+            비교 가능한 {result.comparedCount}개 관계 신호로 계산했어.
+            {result.unknownLabels.length > 0
+              ? ` 모름으로 남긴 ${result.unknownLabels.length}개(${result.unknownLabels.join(' · ')})는 계산에서 빼뒀어.`
+              : ''}{' '}
+            항목별 근거는 아래 신호에서 볼 수 있어.
+          </ReportEvidenceBlock>
+        </div>
       </div>
 
       <div className="flex flex-col pt-1">
         {/*
-          FIRST SURPRISE (§11) — Summary를 이해한 **직후**, 근거를 읽기 전.
+          FIRST SURPRISE (§5) — 점수를 이해한 **직후**, 근거를 읽기 전.
+          구조는 `점수 → 러비의 의문 → 실제 사용자 Signal`이고, 이 순서를 유지한다.
           Premium 광고가 아니다. CTA는 무료 본문(첫 신호 섹션)으로만 내려간다.
-          score===null(E3)은 아래 LowConfidenceView로 빠지므로 여기 오지 않는다 —
-          관측 정보가 부족한 상태에서 사람에 대한 생각을 지어내지 않는다.
+          score===null(E3)은 위에서 LowConfidenceView로 빠지므로 여기 오지 않는다.
         */}
         {firstSurprise ? (
-          <div className="pt-5">
+          <div className="pt-4">
             <FirstSurprise
               surprise={firstSurprise}
               ctaHref={`#${signalAnchor}`}
@@ -377,17 +408,23 @@ function CompatibilityView() {
           </div>
         ) : null}
 
-        <ReportSection
-          id={RESULT_ANCHORS.compatibilityWhy}
-          index={sectionNo.why}
-          code={REPORT_COPY.sections.why.code}
-          title={REPORT_COPY.sections.why.title}
-        >
-          <ReportEvidenceBlock>
-            비교 가능한 {result.comparedCount}개 신호를 기준으로 계산했어. 항목별 근거는
-            아래에서 볼 수 있어.
-          </ReportEvidenceBlock>
-        </ReportSection>
+        {/*
+          §18 — Section Navigator를 FIRST SURPRISE **뒤로** 내렸다. 점수 바로 아래에 두면
+          72px(2줄)을 차지해 LEVEL 1의 결과 묶음을 첫 viewport 밖으로 밀어낸다.
+          라벨은 4단계 Mental Model에 맞춰 다시 썼고, anchor id와 이벤트는 그대로다.
+        */}
+        <div className="pt-5">
+          <ResultSectionNav
+            event="result_anchor_navigation"
+            items={[
+              { id: RESULT_ANCHORS.compatibilityGood, label: '잘 맞는 신호' },
+              { id: RESULT_ANCHORS.compatibilityFriction, label: '확인할 신호' },
+              { id: RESULT_ANCHORS.compatibilityApproach, label: '뭘 해볼까' },
+              { id: RESULT_ANCHORS.compatibilityQuestions, label: '질문' },
+              { id: RESULT_ANCHORS.compatibilityLenses, label: '다른 렌즈' },
+            ]}
+          />
+        </div>
 
         {topGood ? (
           <ReportSection
@@ -409,12 +446,19 @@ function CompatibilityView() {
                   />
                 }
               />
+              {/*
+                §9 — 같은 규격 카드를 여러 개 쌓지 않는다. 대표 신호 1개만 카드로 두고
+                나머지는 `density="compact"`(테두리 없는 divider 행 + 한 단계 낮은
+                typography)로 펼친다. **정보를 빼는 게 아니라 위계를 만드는 것이다** —
+                상황·근거·AI 설명은 그대로 붙어 있다.
+              */}
               {showAllGood
                 ? restGood.map((dimension) => (
                     <SignalCard
                       key={dimension.key}
                       dimension={dimension}
                       variant="good"
+                      density="compact"
                       footer={
                         <CompatibilityAxisNarrative
                           axis={dimension.key}
@@ -470,6 +514,7 @@ function CompatibilityView() {
                         key={dimension.key}
                         dimension={dimension}
                         variant="friction"
+                        density="compact"
                         footer={
                           <CompatibilityAxisNarrative
                             axis={dimension.key}
@@ -482,7 +527,7 @@ function CompatibilityView() {
                   : null}
               </ul>
 
-              {lovyNoteBlock}
+              {lovyObservationBlock}
 
               {restFriction.length > 0 ? (
                 <button
@@ -505,7 +550,7 @@ function CompatibilityView() {
                 지금 입력으로는 큰 차이를 못 찾았어. 차이가 없다는 결론은 아니야 — 아직 내가
                 못 본 것일 수도 있어.
               </p>
-              {lovyNoteBlock}
+              {lovyObservationBlock}
             </>
           )}
 
@@ -540,153 +585,193 @@ function CompatibilityView() {
           </section>
         ) : null}
 
-        <ReportSection
-          id={RESULT_ANCHORS.compatibilityLenses}
-          index={sectionNo.lenses}
-          code={REPORT_COPY.sections.lenses.code}
-          title={REPORT_COPY.sections.lenses.title}
-          caption={LENS_HUB_COPY.caption}
-        >
-          {mbtiLens ? (
-            <>
-              <SectionLabel>MBTI 렌즈 · 참고</SectionLabel>
-              <MbtiLensPanel report={mbtiLens} variant="summary" />
-              <button
-                type="button"
-                onClick={() => router.push(ROUTES.lensMbti)}
-                className="flex min-h-11 items-center justify-between rounded-row border border-line bg-surface px-4 text-sub"
-              >
-                MBTI 관점으로 더 보기
-                <span className="text-ink-faint" aria-hidden>
-                  →
-                </span>
-              </button>
-            </>
-          ) : null}
+        {/*
+          ══ LEVEL 3 · '그래서 뭘 해볼까' (v1.23 §10) ═════════════════════════════
+          구 `06 APPROACH`와 `07 NEXT QUESTION`을 하나의 섹션으로 묶었다. 둘은 같은
+          Mental Model인데 별개 기능처럼 보였고, 375px 실측에서 합쳐 1,492px —
+          전체 4,307px의 35%를 균일 카드 나열로 쓰고 있었다.
 
-          <button
-            type="button"
-            onClick={() => router.push(ROUTES.compatibilityLenses)}
-            className="flex min-h-11 items-center justify-between gap-3 rounded-row border border-dashed border-line-strong bg-canvas-warm px-4 py-3.5 text-left"
-          >
-            <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-[12.5px] font-medium">
-                사주 · 별자리 관점으로 우리 둘 보기
-                {entertainmentReady ? '' : ' (정보 입력 필요)'}
-              </span>
-              <span className="text-[11px] keep-all text-ink-faint">
-                동기화율에는 반영하지 않는 참고 렌즈야
-              </span>
-            </span>
-            <span className="flex-none text-ink-muted" aria-hidden>
-              →
-            </span>
-          </button>
-        </ReportSection>
-
-        {/* v1.13 — 다가가는 힌트(Approach Hints). 호감도 예측·공략법이 아니다(§2/§46) —
-            네가 알려준 취향·관계 방식을 존중해서 다가가는 방법일 뿐이다. */}
+          ⚠️ **계산·저장 로직은 하나도 건드리지 않았다.** `useApproachHints()`·
+          `useConversationQuestions()`·`toggleSavedQuestion`·`savedQuestions` 전부 그대로다.
+          ⚠️ `#approach`·`#questions` anchor를 각 서브블록에 유지한다 — Legacy Redirect
+          (`/compatibility/questions`)와 nav 칩·`approach_hint_question_click`의
+          내부 링크가 이 id로 이동한다.
+        */}
         <ReportSection
-          id={RESULT_ANCHORS.compatibilityApproach}
-          index={sectionNo.approach}
-          code={REPORT_COPY.sections.approach.code}
-          title={REPORT_COPY.sections.approach.title}
+          index={sectionNo.nowWhat}
+          code={REPORT_COPY.sections.nowWhat.code}
+          title={REPORT_COPY.sections.nowWhat.title}
           caption="네가 알려준 이 사람의 취향과 관계 방식을 기준으로 생각해봤어."
         >
-          {approachHints.length > 0 ? (
-            <ul className="flex flex-col gap-2.5">
-              {approachHints.map((hint) => (
-                <ApproachHintCard
-                  key={hint.id}
-                  hint={hint}
-                  target={answers.target}
-                  onExpand={() => trackEvent('approach_hint_expand', { kind: hint.kind })}
-                />
-              ))}
-            </ul>
-          ) : (
-            <div className="flex flex-col gap-2 rounded-card border border-dashed border-line-strong bg-canvas-warm p-4">
-              <p className="text-caption keep-all leading-relaxed text-ink-sub">
-                아직 이 사람이 좋아하는 걸 많이 알진 못하네.
-              </p>
-              <a
-                href={`#${RESULT_ANCHORS.compatibilityQuestions}`}
-                onClick={() => trackEvent('approach_hint_question_click', {})}
-                className="text-[12.5px] font-medium text-brand-pressed"
-              >
-                이야기해볼 질문 보러 가기 →
-              </a>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between px-1">
-            <p className="text-[11px] keep-all text-ink-faint">
-              이건 공략법은 아니야. 실제론 직접 물어보는 게 가장 정확해.
-            </p>
-            {/* v1.13 §36 — 상대 정보는 틀릴 수 있다. resetTargetContext()를 쓰지 않는다 —
-                그건 새 상대용이고, 여기는 지금 값을 그대로 고치는 것이다. */}
-            <button
-              type="button"
-              onClick={() => router.push(ROUTES.target)}
-              className="flex-none text-[11px] font-medium text-brand-pressed"
-            >
-              상대 정보 수정
-            </button>
-          </div>
-        </ReportSection>
-
-        <ReportSection
-          id={RESULT_ANCHORS.compatibilityQuestions}
-          index={sectionNo.questions}
-          code={REPORT_COPY.sections.questions.code}
-          title={REPORT_COPY.sections.questions.title}
-        >
-          <div className="flex gap-1.5 rounded-chip bg-sunken p-1" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={questionTab === 'recommended'}
-              onClick={() => setQuestionTab('recommended')}
-              className={cn(
-                'min-h-9 flex-1 rounded-[9px] text-caption font-medium transition-colors duration-200',
-                questionTab === 'recommended'
-                  ? 'bg-surface font-semibold text-ink shadow-[0_1px_2px_rgba(0,0,0,0.06)]'
-                  : 'text-ink-muted',
-              )}
-            >
-              추천 질문
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={questionTab === 'saved'}
-              onClick={() => {
-                setQuestionTab('saved');
-                trackEvent('saved_question_view', { count: savedQuestionsList.length });
-              }}
-              className={cn(
-                'min-h-9 flex-1 rounded-[9px] text-caption font-medium transition-colors duration-200',
-                questionTab === 'saved'
-                  ? 'bg-surface font-semibold text-ink shadow-[0_1px_2px_rgba(0,0,0,0.06)]'
-                  : 'text-ink-muted',
-              )}
-            >
-              저장한 질문{savedQuestionsList.length > 0 ? ` ${savedQuestionsList.length}` : ''}
-            </button>
-          </div>
-
-          {questionTab === 'recommended' ? (
-            <>
+          {/* 04-a — 행동 */}
+          <div
+            id={RESULT_ANCHORS.compatibilityApproach}
+            className="flex flex-col gap-2.5 scroll-mt-3"
+          >
+            <SectionLabel as="h3">{REPORT_COPY.sections.approach.title}</SectionLabel>
+            {approachHints.length > 0 ? (
               <ul className="flex flex-col gap-2.5">
-                {(showMoreQuestions ? questions : questions.slice(0, 3)).map((question) => (
+                {approachHints.map((hint, index) => (
+                  <ApproachHintCard
+                    key={hint.id}
+                    hint={hint}
+                    target={answers.target}
+                    /* §9 — 첫 힌트만 카드. 나머지는 divider 행으로 위계를 낮춘다 */
+                    density={index === 0 ? 'primary' : 'compact'}
+                    onExpand={() => trackEvent('approach_hint_expand', { kind: hint.kind })}
+                  />
+                ))}
+              </ul>
+            ) : (
+              <div className="flex flex-col gap-2 rounded-card border border-dashed border-line-strong bg-canvas-warm p-4">
+                <p className="text-caption keep-all leading-relaxed text-ink-sub">
+                  아직 이 사람이 좋아하는 걸 많이 알진 못하네.
+                </p>
+                <a
+                  href={`#${RESULT_ANCHORS.compatibilityQuestions}`}
+                  onClick={() => trackEvent('approach_hint_question_click', {})}
+                  className="text-[12.5px] font-medium text-brand-pressed"
+                >
+                  이야기해볼 질문 보러 가기 →
+                </a>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between px-1">
+              <p className="text-[11px] keep-all text-ink-faint">
+                이건 공략법은 아니야. 실제론 직접 물어보는 게 가장 정확해.
+              </p>
+              {/* v1.13 §36 — 상대 정보는 틀릴 수 있다. resetTargetContext()를 쓰지 않는다 —
+                  그건 새 상대용이고, 여기는 지금 값을 그대로 고치는 것이다. */}
+              <button
+                type="button"
+                onClick={() => router.push(ROUTES.target)}
+                className="flex-none text-[11px] font-medium text-brand-pressed"
+              >
+                상대 정보 수정
+              </button>
+            </div>
+          </div>
+
+          {/* 04-b — 대화 */}
+          <div
+            id={RESULT_ANCHORS.compatibilityQuestions}
+            className="mt-7 flex flex-col gap-2.5 scroll-mt-3"
+          >
+            <SectionLabel as="h3">{REPORT_COPY.sections.questions.title}</SectionLabel>
+            <div className="flex gap-1.5 rounded-chip bg-sunken p-1" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={questionTab === 'recommended'}
+                onClick={() => setQuestionTab('recommended')}
+                className={cn(
+                  'min-h-9 flex-1 rounded-[9px] text-caption font-medium transition-colors duration-200',
+                  questionTab === 'recommended'
+                    ? 'bg-surface font-semibold text-ink shadow-[0_1px_2px_rgba(0,0,0,0.06)]'
+                    : 'text-ink-muted',
+                )}
+              >
+                추천 질문
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={questionTab === 'saved'}
+                onClick={() => {
+                  setQuestionTab('saved');
+                  trackEvent('saved_question_view', { count: savedQuestionsList.length });
+                }}
+                className={cn(
+                  'min-h-9 flex-1 rounded-[9px] text-caption font-medium transition-colors duration-200',
+                  questionTab === 'saved'
+                    ? 'bg-surface font-semibold text-ink shadow-[0_1px_2px_rgba(0,0,0,0.06)]'
+                    : 'text-ink-muted',
+                )}
+              >
+                저장한 질문{savedQuestionsList.length > 0 ? ` ${savedQuestionsList.length}` : ''}
+              </button>
+            </div>
+
+            {questionTab === 'recommended' ? (
+              <>
+                <ul className="flex flex-col gap-2.5">
+                  {(showMoreQuestions ? questions : questions.slice(0, 3)).map((question) => (
+                    <ConversationCard
+                      key={question.id}
+                      question={question}
+                      saved={answers.savedQuestions.includes(question.id)}
+                      onToggleSave={() => {
+                        const saved = toggleSavedQuestion(question.id);
+                        if (saved) trackEvent('conversation_question_save', { question: question.id });
+                        showToast(saved ? '질문을 저장했어' : '저장을 해제했어');
+                      }}
+                      onShare={async () => {
+                        trackEvent('conversation_question_share', { question: question.id });
+                        const outcome = await share({
+                          title: `${BRAND.name} · 이야기해볼 질문`,
+                          text: question.text,
+                        });
+                        showToast(
+                          outcome === 'copied'
+                            ? '질문을 클립보드에 복사했어'
+                            : outcome === 'shared'
+                              ? '공유했어'
+                              : outcome === 'cancelled'
+                                ? '공유를 취소했어'
+                                : '이 브라우저에서는 공유를 지원하지 않아',
+                          outcome === 'unsupported' ? 'warning' : 'default',
+                        );
+                      }}
+                    />
+                  ))}
+                </ul>
+
+                {questions.length > 3 && !showMoreQuestions ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMoreQuestions(true);
+                      trackEvent('result_section_expand', { section: 'questions' });
+                    }}
+                    className="flex min-h-11 items-center justify-center text-meta font-medium text-brand-pressed"
+                  >
+                    질문 더 보기
+                  </button>
+                ) : null}
+
+                {aiQuestions.length > 0 ? (
+                  <section className="flex flex-col gap-2.5">
+                    <SectionLabel className="flex items-center gap-1.5">
+                      러비가 덧붙인 질문
+                      <AiSourceLabel mode={narrative.mode} />
+                    </SectionLabel>
+                    <ul className="flex flex-col gap-2">
+                      {aiQuestions.map((item) => (
+                        <li
+                          key={item.key}
+                          className="flex flex-col gap-1 rounded-row border border-line bg-surface px-4 py-3.5"
+                        >
+                          <span className="text-[10.5px] font-semibold tracking-[0.04em] text-brand-pressed">
+                            {item.label}
+                          </span>
+                          <span className="text-caption keep-all leading-relaxed">{item.text}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
+              </>
+            ) : savedQuestionsList.length > 0 ? (
+              <ul className="flex flex-col gap-2.5">
+                {savedQuestionsList.map((question) => (
                   <ConversationCard
                     key={question.id}
                     question={question}
-                    saved={answers.savedQuestions.includes(question.id)}
+                    saved
                     onToggleSave={() => {
-                      const saved = toggleSavedQuestion(question.id);
-                      if (saved) trackEvent('conversation_question_save', { question: question.id });
-                      showToast(saved ? '질문을 저장했어' : '저장을 해제했어');
+                      toggleSavedQuestion(question.id);
+                      showToast('저장을 해제했어');
                     }}
                     onShare={async () => {
                       trackEvent('conversation_question_share', { question: question.id });
@@ -708,88 +793,90 @@ function CompatibilityView() {
                   />
                 ))}
               </ul>
-
-              {questions.length > 3 && !showMoreQuestions ? (
+            ) : (
+              <div className="flex flex-col gap-2.5 rounded-card border border-dashed border-line-strong bg-canvas-warm p-4 text-center">
+                <p className="text-caption keep-all leading-relaxed text-ink-sub">
+                  아직 저장한 질문이 없어. 궁합 결과에서 이야기해볼 질문을 저장해두면 여기에서
+                  다시 볼 수 있어.
+                </p>
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowMoreQuestions(true);
-                    trackEvent('result_section_expand', { section: 'questions' });
-                  }}
+                  onClick={() => setQuestionTab('recommended')}
                   className="flex min-h-11 items-center justify-center text-meta font-medium text-brand-pressed"
                 >
-                  질문 더 보기
+                  질문 보러 가기
                 </button>
-              ) : null}
+              </div>
+            )}
+          </div>
+        </ReportSection>
 
-              {aiQuestions.length > 0 ? (
-                <section className="flex flex-col gap-2.5">
-                  <SectionLabel className="flex items-center gap-1.5">
-                    러비가 덧붙인 질문
-                    <AiSourceLabel mode={narrative.mode} />
-                  </SectionLabel>
-                  <ul className="flex flex-col gap-2">
-                    {aiQuestions.map((item) => (
-                      <li
-                        key={item.key}
-                        className="flex flex-col gap-1 rounded-row border border-line bg-surface px-4 py-3.5"
-                      >
-                        <span className="text-[10.5px] font-semibold tracking-[0.04em] text-brand-pressed">
-                          {item.label}
-                        </span>
-                        <span className="text-caption keep-all leading-relaxed">{item.text}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ) : null}
-            </>
-          ) : savedQuestionsList.length > 0 ? (
-            <ul className="flex flex-col gap-2.5">
-              {savedQuestionsList.map((question) => (
-                <ConversationCard
-                  key={question.id}
-                  question={question}
-                  saved
-                  onToggleSave={() => {
-                    toggleSavedQuestion(question.id);
-                    showToast('저장을 해제했어');
-                  }}
-                  onShare={async () => {
-                    trackEvent('conversation_question_share', { question: question.id });
-                    const outcome = await share({
-                      title: `${BRAND.name} · 이야기해볼 질문`,
-                      text: question.text,
-                    });
-                    showToast(
-                      outcome === 'copied'
-                        ? '질문을 클립보드에 복사했어'
-                        : outcome === 'shared'
-                          ? '공유했어'
-                          : outcome === 'cancelled'
-                            ? '공유를 취소했어'
-                            : '이 브라우저에서는 공유를 지원하지 않아',
-                      outcome === 'unsupported' ? 'warning' : 'default',
-                    );
-                  }}
-                />
-              ))}
-            </ul>
-          ) : (
-            <div className="flex flex-col gap-2.5 rounded-card border border-dashed border-line-strong bg-canvas-warm p-4 text-center">
-              <p className="text-caption keep-all leading-relaxed text-ink-sub">
-                아직 저장한 질문이 없어. 궁합 결과에서 이야기해볼 질문을 저장해두면 여기에서
-                다시 볼 수 있어.
-              </p>
+        <ReportSection
+          id={RESULT_ANCHORS.compatibilityLenses}
+          index={sectionNo.lenses}
+          code={REPORT_COPY.sections.lenses.code}
+          title={REPORT_COPY.sections.lenses.title}
+          caption={LENS_HUB_COPY.caption}
+        >
+          {/*
+            v1.23 §12 · §13 — **editorial index로 바꿨다.**
+            예전에는 이 섹션이 `MbtiLensPanel`(나/상대 2단 카드 + mint 안내박스 + 통계 줄) +
+            큰 행 버튼 2개로 구성돼 **510px**을 썼다. 같은 화면의 Core 신호 섹션(잘 맞는 신호
+            427px)보다 커서, 참고 렌즈가 실제 관계 신호보다 신뢰도 높아 보였다(§12 위반).
+
+            지금은 1px divider 목록이다 — 각 행이 렌즈 이름 · 현재 상태 · 한 줄 요약만 갖고,
+            상세는 원래 상세 화면(`/lens/mbti`, `/compatibility/lenses`)에서 본다.
+            **콘텐츠를 깎아내리는 문구는 쓰지 않는다**(§12) — '재미일 뿐' 같은 표현 없이
+            위계만 낮춘다.
+            ⚠️ `useMbtiLens()` 호출과 `both_mbti_available` 이벤트는 그대로다.
+          */}
+          <ul className="flex flex-col">
+            {mbtiLens ? (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => router.push(ROUTES.lensMbti)}
+                  className="flex w-full min-h-11 items-center gap-3 border-t border-line-soft py-3.5 text-left active:bg-sunken"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <span className="text-sub font-semibold">MBTI</span>
+                      <span className="text-[11px] font-medium tracking-[0.02em] text-brand-pressed">
+                        {mbtiLens.mine} × {mbtiLens.theirs}
+                      </span>
+                    </span>
+                    <span className="mt-0.5 block text-[11.5px] keep-all text-ink-muted">
+                      4개 선호 지표 중 {mbtiLens.sameCount}개가 비슷하고,{' '}
+                      {mbtiLens.differentCount}개는 다르게 나타날 수 있어
+                    </span>
+                  </span>
+                  <span className="flex-none text-ink-faint" aria-hidden>
+                    →
+                  </span>
+                </button>
+              </li>
+            ) : null}
+
+            <li>
               <button
                 type="button"
-                onClick={() => setQuestionTab('recommended')}
-                className="flex min-h-11 items-center justify-center text-meta font-medium text-brand-pressed"
+                onClick={() => router.push(ROUTES.compatibilityLenses)}
+                className="flex w-full min-h-11 items-center gap-3 border-t border-line-soft py-3.5 text-left active:bg-sunken"
               >
-                질문 보러 가기
+                <span className="min-w-0 flex-1">
+                  <span className="text-sub font-semibold">사주 · 별자리</span>
+                  <span className="mt-0.5 block text-[11.5px] keep-all text-ink-muted">
+                    {entertainmentReady
+                      ? '두 사람의 출생정보로 겹쳐볼 수 있어'
+                      : '출생정보를 넣으면 겹쳐볼 수 있어'}
+                  </span>
+                </span>
+                <span className="flex-none text-ink-faint" aria-hidden>
+                  →
+                </span>
               </button>
-            </div>
-          )}
+            </li>
+          </ul>
         </ReportSection>
 
         <div className="mt-6 flex flex-col gap-2.5">
