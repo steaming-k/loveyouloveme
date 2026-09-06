@@ -1,4 +1,9 @@
-import type { CompatibilityDimension, CompatibilityResult, TargetAxisKey } from '@/types';
+import type {
+  CompatibilityDimension,
+  CompatibilityResult,
+  MbtiLensReport,
+  TargetAxisKey,
+} from '@/types';
 
 /**
  * 러비 관찰 노트 (v1.20)
@@ -260,4 +265,55 @@ export function selectFirstSurprise(result: CompatibilityResult): LovySurprise |
     body: '크게 어긋나는 축은 안 보여. 근데 비슷하게 답했다고 같은 뜻으로 답한 건 아닐 수도 있잖아.',
     signal: signalLineOf(sourceAxis),
   };
+}
+
+/* ------------------------------------------- MBTI Lens (v1.24 · P3-1) */
+
+/**
+ * MBTI Lens 첫 화면의 **결과 요약 한 문장** (P3-1 §6)
+ *
+ * ⚠️ 새 계산이 없다. 이미 만들어진 `MbtiLensReport.sameCount`만 읽는다 — 같은 두
+ * 유형이면 언제나 같은 문장이다. 관계의 좋고 나쁨을 판정하는 문장은 만들지 않는다.
+ */
+export function selectMbtiLensHeadline(report: MbtiLensReport): string {
+  switch (report.sameCount) {
+    case 4:
+      return '성향 렌즈에서는 네 축이 모두 같은 쪽이야.';
+    case 3:
+      return '성향 렌즈에서는 비슷한 축이 더 많아.';
+    case 2:
+      return '성향 렌즈에서는 비슷한 축과 다른 축이 반반이야.';
+    case 1:
+      return '성향만 보면 서로 다른 지점이 더 많아.';
+    default:
+      return '성향 렌즈만 보면 네 축이 모두 다른 방향을 가리켜.';
+  }
+}
+
+/**
+ * 4축 비교를 보고 러비가 떠올린 관찰 한 줄 (P3-1 §9)
+ *
+ * 러비는 '정답을 설명하는 전문가'가 아니라 '인간의 감정을 관찰하는 외계인'이다 —
+ * 흥미·질문·혼잣말만 쓰고 유형 해설을 하지 않는다.
+ *
+ * ⚠️ 반드시 **실제 비교 결과**에서만 나온다. 같은 축·다른 축이 무엇인지 읽어서
+ * 문장에 그 축 이름을 넣는다 — 어느 조합에서나 통하는 일반론을 쓰지 않는다.
+ * 랜덤이 없다(같은 조합이면 같은 문장).
+ */
+export function selectMbtiAxisObservation(report: MbtiLensReport): string {
+  const same = report.axes.filter((axis) => axis.same);
+  const different = report.axes.filter((axis) => !axis.same);
+
+  if (different.length === 0) {
+    return '네 축이 다 같은 쪽으로 나왔네. 근데 같은 글자를 받았다고 느끼는 방식까지 같은 걸까?';
+  }
+  if (same.length === 0) {
+    return '네 축이 다 다른 쪽이네. 이렇게 다른데도 인간은 같이 있고 싶어 하는구나.';
+  }
+
+  // 같은 축·다른 축이 섞여 있으면 각각 하나씩만 집어서 짧게 말한다 — 네 축을 다
+  // 나열하면 혼잣말이 아니라 목록이 된다.
+  const sameAxis = same[0]!;
+  const differentAxis = different[0]!;
+  return `${sameAxis.label}은 비슷한 쪽인데 ${differentAxis.label}은 갈리네. 같은 사람 안에서도 이렇게 나뉘는구나.`;
 }

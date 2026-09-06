@@ -63,15 +63,24 @@ export const PREMIUM_FEATURES: Record<PremiumFeatureId, PremiumFeatureDefinition
       '다음 관계에서 확인할 기준',
     ],
   },
+  /**
+   * v1.24 P3-1 — **설명을 고쳤다.** 예전 description은 "4개 선호 축을 실제 관계 신호와
+   * 나란히 놓고 볼 수 있어"였는데, P3-1에서 그건 **무료가 같은 화면에서 이미 하는 일**이
+   * 됐다(03 BUT IN REAL LIFE). 무료로 방금 본 것을 유료로 다시 약속하면 거짓 약속이다.
+   *
+   * Premium 기능 자체는 늘리지 않았다 — `buildMbtiDetail`이 실제로 만드는 것(축별 관찰
+   * 문장 4개 + 선호가 다른 축의 대화 질문)만 그대로 적었다. 가격(₩1,900)·Fake Door 경계도
+   * 그대로다. 여러 source를 연결하는 해석은 여전히 Deep Report의 몫이다.
+   */
   mbti_detail: {
     id: 'mbti_detail',
     source: 'mbti',
     title: 'MBTI 렌즈 상세',
-    description: '4개 선호 축을 실제 관계 신호와 나란히 놓고 볼 수 있어.',
-    freeRecap: ['4축 비교 요약', '비슷/다른 성향 라벨'],
+    description: '네 축의 관찰 문장과 대화 주제를 축마다 펼쳐서 볼 수 있어.',
+    freeRecap: ['4축 비교표', '실제 관계 신호와의 비교'],
     additions: [
-      '4축 상세 설명',
-      '실제 관계 신호와 함께 비교할 질문',
+      '축별 관찰 문장 4개',
+      '선호가 다른 축의 대화 질문',
       '대화 주제 확장',
     ],
   },

@@ -1,4 +1,5 @@
 import { buildCompatibility, buildConversationQuestions } from '@/lib/logic/compatibility';
+import { buildMbtiBridge } from '@/lib/logic/mbtiBridge';
 import { buildMbtiLens, buildMbtiQuestions } from '@/lib/logic/mbtiLens';
 import { buildMirrorReport } from '@/lib/logic/mirror';
 import { buildHomeHighlights, buildRelationshipProfile } from '@/lib/logic/profile';
@@ -327,6 +328,8 @@ export const aiSelectors = {
   conversationQuestions: buildConversationQuestions,
   mbtiLens: buildMbtiLens,
   mbtiQuestions: buildMbtiQuestions,
+  /** v1.24 P3-1 — 이미 계산된 두 결과를 나란히 놓는 presentation 비교. 새 점수가 아니다 */
+  mbtiBridge: buildMbtiBridge,
   mirror: buildMirrorReport,
   profile: buildRelationshipProfile,
   homeHighlights: buildHomeHighlights,

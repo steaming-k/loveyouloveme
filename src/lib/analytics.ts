@@ -70,6 +70,15 @@ export const ANALYTICS_EVENTS = [
   'both_mbti_available',
   'mbti_lens_view',
   'mbti_conversation_question_view',
+  // v1.24 P3-1 — **딱 하나만** 늘렸다. MBTI Lens 도달/이탈은 기존
+  // `mbti_lens_view`/`both_mbti_available`로 이미 측정된다. 하지만 P3-1의 KPI는
+  // '얼마나 많이 봤는가'가 아니라 **'익숙한 MBTI Hook에서 우리만의 해석 방식을 만났는가'**
+  // 이고, Bridge가 실제로 렌더됐는지·어떤 상태였는지는 기존 이벤트로 알 수 없다.
+  // 지표: Bridge View Rate = mbti_relationship_bridge_view / mbti_lens_view
+  //       Surprise Rate    = bridge_state='differs' 비율
+  // ⚠️ property는 opaque 상태값(aligns|differs|unknown)과 source뿐이다. MBTI 원문 조합·
+  //    사용자 답변·자유서술은 절대 보내지 않는다.
+  'mbti_relationship_bridge_view',
   // Entertainment Lens (사주 · Astrology) — Primary KPI에는 넣지 않는다(§38).
   // Supporting: Birth Info Completion Rate · Entertainment Lens View Rate ·
   //             Lens → Conversation Question Save Rate
@@ -308,6 +317,20 @@ const EXTERNAL_FORBIDDEN_KEYS = new Set([
   /** `analysisFingerprint()`/`compatibilityNarrativeFingerprint()` — 답변 파생 지문 */
   'analysis_id',
   'analysisId',
+  /**
+   * v1.24 P3-1 Audit — **MBTI 원문 조합.** `mbti_lens_view`가
+   * `self_mbti`/`target_mbti`를, `self_mbti_select`/`target_mbti_select`가 `mbti`를
+   * 그대로 싣고 있었다. MBTI 유형은 그 자체로 사용자가 자기 자신에 대해 남긴 응답이고,
+   * 두 값이 한 이벤트에 함께 실리면 **두 사람의 유형 쌍**이 외부 Analytics에 남는다.
+   *
+   * 호출부를 고치는 대신(사람이 고친 것은 되돌아온다) analysis_id와 **같은 방식으로**
+   * 경계를 코드에 세운다 — local store에는 그대로 남아 UT 회수·디버깅에 쓰이고,
+   * 외부로 나가는 payload에서만 빠진다. 축 개수(`same_axes`/`different_axes`)와
+   * 보유 여부(`has_self`/`has_target`)는 유형을 복원하지 않으므로 그대로 나간다.
+   */
+  'self_mbti',
+  'target_mbti',
+  'mbti',
   /** 원문 계열 — 실수로 붙는 것을 막는다(§24) */
   'text',
   'note',

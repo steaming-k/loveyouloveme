@@ -448,7 +448,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const setTargetMbti = useCallback((value: MbtiType | null) => {
     setAnswers((prev) => ({ ...prev, target: { ...prev.target, mbti: value } }));
-    trackEvent('target_mbti_select', { mbti: value ?? '' });
+    // v1.24 P3-1 Audit — 유형 원문 대신 '설정했는가'만 남긴다(§35 Analytics Privacy).
+    trackEvent('target_mbti_select', { selected: value !== null });
   }, []);
 
   /**
@@ -547,7 +548,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const setMbti = useCallback((value: MbtiType | null) => {
     setAnswers((prev) => ({ ...prev, mbti: value }));
-    trackEvent('self_mbti_select', { mbti: value ?? '' });
+    // v1.24 P3-1 Audit — 유형 원문 대신 '설정했는가'만 남긴다(§35 Analytics Privacy).
+    trackEvent('self_mbti_select', { selected: value !== null });
   }, []);
 
   const setBirthProfile = useCallback((subject: BirthSubject, patch: Partial<BirthProfile>) => {

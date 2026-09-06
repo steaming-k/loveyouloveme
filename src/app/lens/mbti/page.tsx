@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
@@ -9,27 +9,46 @@ import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { FillDataRow } from '@/components/common/StateScreens';
 import { NoticeBox, PageHeading, SectionLabel, Tag } from '@/components/common/primitives';
-import { MbtiLensPanel, MbtiSelfPanel } from '@/components/compatibility/MbtiLensPanel';
+import { MbtiAxisField, MbtiSelfAxisField } from '@/components/compatibility/MbtiLensPanel';
 import { LensCoreBridge } from '@/components/lens/LensCoreBridge';
+import { MbtiBridgeSection } from '@/components/lens/MbtiBridgeSection';
 import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
+import { LovyNote } from '@/components/lovy/LovyNote';
+import {
+  ReportHeader,
+  ReportSection,
+  ReportSectionEyebrow,
+} from '@/components/report/ReportShell';
 import { MBTI_LENS_COPY } from '@/data/copy';
+import { selectMbtiAxisObservation, selectMbtiLensHeadline } from '@/data/lovyNotes';
 import { trackEvent } from '@/lib/analytics';
 import { buildMbtiSelfLens } from '@/lib/logic/mbtiLens';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { premiumFeatureState } from '@/services/premiumService';
 import { RESULT_ANCHORS, ROUTES } from '@/lib/routes';
-import { useMbtiLens } from '@/hooks/useAnalysis';
+import { useMbtiBridge, useMbtiLens } from '@/hooks/useAnalysis';
 import { useSession } from '@/state/SessionProvider';
+import type { MbtiBridgeReport, MbtiLensReport, MbtiSelfLens } from '@/types';
 
 /**
  * X1-a MBTI Lens — Compatibility Lens **Detail** Screen
  *
- * 이 화면은 더 이상 내 MBTI를 처음 입력하는 곳이 아니다(그건 S13 Declared Me 마지막으로 이동).
- * 여기서는 이미 입력된 두 유형을 4개 선호 축으로 비교해서 '이야기해볼 차이'만 보여주고,
- * 수정이 필요하면 원래 입력 화면(S13 / S19)으로 되돌려보낸다.
+ * v1.24 P3-1 — **'Hook은 익숙하게, 해석은 다르게.'**
  *
- * ⚠️ 이 화면의 어떤 값도 동기화율에 영향을 주지 않는다.
+ * 이 화면은 내 MBTI를 처음 입력하는 곳이 아니다(그건 S13 Declared Me 마지막). 여기서는
+ * 익숙한 조합(INFP × ESTJ)으로 들어오게 한 다음, 읽어 내려갈수록 **실제 관계 답변**과
+ * 나란히 놓여 '성향만으로는 설명되지 않는 지점'이 드러나게 한다:
+ *
+ *   01 MBTI LENS        조합 · 축 요약 · 한 문장       ← 익숙한 Hook (첫 viewport)
+ *   02 4 AXES           네 축 관찰표 + 러비의 관찰
+ *   03 BUT IN REAL LIFE 성향 렌즈 vs 네가 답한 관계 신호 ← 차별점
+ *   LENS → CORE         실제 관계 신호로 돌아가기
+ *
+ * ⚠️ 이 화면의 어떤 값도 동기화율에 영향을 주지 않는다. `buildMbtiLens`와
+ * `buildCompatibility`는 한 줄도 바뀌지 않았고, 새 Route도 만들지 않았다.
+ * ⚠️ Back은 `backHref` 없이 브라우저 히스토리로 돌아간다 — 그래야 `/compatibility`의
+ * `useScrollRestore`가 읽던 위치를 복원한다(v1.22 §12 회귀 금지).
  */
 export default function MbtiLensPage() {
   return (
@@ -43,22 +62,42 @@ function MbtiLensView() {
   const router = useRouter();
   const { answers } = useSession();
   const report = useMbtiLens();
+  const bridge = useMbtiBridge();
   const [variant] = useState(() => resolvePriceVariant());
 
   const selfLens = useMemo(() => buildMbtiSelfLens(answers.mbti), [answers.mbti]);
   const targetLens = useMemo(() => buildMbtiSelfLens(answers.target.mbti), [answers.target.mbti]);
 
+  /** 두 유형이 모두 있어 실제로 '비교'를 보여줄 수 있는 상태 */
+  const couple = Boolean(report && targetLens);
+
+  const viewSent = useRef(false);
   useEffect(() => {
+    // StrictMode 이중 마운트로 두 번 세지 않게 mount 기준 1회만 보낸다.
+    if (viewSent.current) return;
+    viewSent.current = true;
+
+    // v1.24 P3-1 Audit — `self_mbti`/`target_mbti`(유형 원문)를 뺐다. 지표로 쓰는 것은
+    // 보유 여부와 축 개수이지 유형 값이 아니고, 두 값이 한 이벤트에 함께 실리면 두 사람의
+    // 유형 쌍이 그대로 남는다. `analytics.ts`의 금지 키 목록은 방어선으로 남겨둔다.
     trackEvent('mbti_lens_view', {
       mode: report ? 'couple' : selfLens ? 'self' : 'empty',
       has_self: Boolean(answers.mbti),
       has_target: Boolean(answers.target.mbti),
-      self_mbti: answers.mbti ?? undefined,
-      target_mbti: answers.target.mbti ?? undefined,
       same_axes: report?.sameCount,
       different_axes: report?.differentCount,
     });
-  }, [report, selfLens, answers.mbti, answers.target.mbti]);
+
+    // v1.24 P3-1 — Bridge가 실제로 렌더된 경우에만. 위 이벤트와 같은 조건·같은 시점에
+    // 보내므로 Bridge View Rate = 이 이벤트 / mbti_lens_view 로 바로 계산된다.
+    // ⚠️ opaque 상태값만 보낸다 — MBTI 원문·답변·문구는 보내지 않는다.
+    if (bridge?.available) {
+      trackEvent('mbti_relationship_bridge_view', {
+        bridge_state: bridge.surprise?.state ?? 'unknown',
+        source: 'mbti',
+      });
+    }
+  }, [report, selfLens, bridge, answers.mbti, answers.target.mbti]);
 
   return (
     <ScreenLayout
@@ -70,68 +109,18 @@ function MbtiLensView() {
       }
       bodyClassName="pt-1.5 pb-4"
     >
-      <div className="flex flex-col gap-5">
-        <PageHeading lines={MBTI_LENS_COPY.title} caption={MBTI_LENS_COPY.caption} />
+      {/* STATE — 내 MBTI가 없으면 상대 유무와 무관하게 내 입력부터 유도한다(Self First) */}
+      {!selfLens ? (
+        <EmptyLensView hasTarget={Boolean(answers.target.mbti)} />
+      ) : couple && report && bridge ? (
+        <CoupleLensView report={report} bridge={bridge} compatibilityDone={answers.completed.compatibility} />
+      ) : (
+        <SelfOnlyLensView lens={selfLens} />
+      )}
 
-        {/* STATE A — 내 MBTI가 없으면 상대 유무와 무관하게 내 입력부터 유도한다(Self First) */}
-        {!selfLens ? (
-          <section className="flex flex-col gap-3">
-            <LovyMessage pose="question" size={52}>
-              {answers.target.mbti ? MBTI_LENS_COPY.targetOnlyBody : MBTI_LENS_COPY.noSelfBody}
-            </LovyMessage>
-            <Button onClick={() => router.push(ROUTES.declared(4))}>
-              {answers.target.mbti ? MBTI_LENS_COPY.targetOnlyCta : MBTI_LENS_COPY.noSelfCta}
-            </Button>
-          </section>
-        ) : (
-          <>
-            {/* 01 MY LENS — 항상 먼저, 상대 정보와 무관하게 */}
-            <section className="flex flex-col gap-2.5">
-              <SectionLabel>{MBTI_LENS_COPY.selfSectionLabel}</SectionLabel>
-              <MbtiSelfPanel lens={selfLens} label={MBTI_LENS_COPY.selfSectionLabel} />
-            </section>
-
-            {targetLens && report ? (
-              <>
-                {/* 02 TARGET LENS — 상대 정보가 있을 때만 */}
-                <section className="flex flex-col gap-2.5">
-                  <SectionLabel>{MBTI_LENS_COPY.targetSectionLabel}</SectionLabel>
-                  <MbtiSelfPanel lens={targetLens} label={MBTI_LENS_COPY.targetSectionLabel} />
-                </section>
-
-                {/* 03 TOGETHER — 둘 다 있을 때만 */}
-                <section className="flex flex-col gap-2.5">
-                  <SectionLabel>{MBTI_LENS_COPY.togetherSectionLabel}</SectionLabel>
-                  <MbtiLensPanel report={report} variant="full" />
-                </section>
-
-                <LovyMessage pose="book" size={56}>
-                  {MBTI_LENS_COPY.lovyNote}
-                </LovyMessage>
-
-                {/* v1.20 §12 — Lens → Core Bridge. 렌즈를 본 뒤 실제 관계 신호로
-                    돌려보낸다. 아직 궁합 관측 기록이 없으면 갈 곳이 없으므로 붙이지
-                    않는다. MBTI 계산(buildMbtiLens)은 이 블록과 무관하게 그대로다. */}
-                {answers.completed.compatibility ? (
-                  <LensCoreBridge
-                    href={`${ROUTES.compatibility}#${RESULT_ANCHORS.compatibilityGood}`}
-                  />
-                ) : null}
-              </>
-            ) : (
-              // 상대 정보는 항상 Optional — 없다고 내 결과를 막지 않는다
-              <section className="flex flex-col gap-3">
-                <NoticeBox>{MBTI_LENS_COPY.noTargetTitle} {MBTI_LENS_COPY.noTargetBody}</NoticeBox>
-                <Button variant="secondary" onClick={() => router.push(ROUTES.target)}>
-                  {MBTI_LENS_COPY.noTargetCta}
-                </Button>
-              </section>
-            )}
-          </>
-        )}
-
+      <div className="mt-7 flex flex-col gap-5">
         <section className="flex flex-col gap-2">
-          <SectionLabel>입력 수정</SectionLabel>
+          <SectionLabel>{MBTI_LENS_COPY.editSectionLabel}</SectionLabel>
           <FillDataRow
             label={`내 MBTI${answers.mbti ? ` · ${answers.mbti}` : ' · 없음'}`}
             actionLabel="수정"
@@ -154,5 +143,163 @@ function MbtiLensView() {
         <NoticeBox>{MBTI_LENS_COPY.scoreNotice}</NoticeBox>
       </div>
     </ScreenLayout>
+  );
+}
+
+/* -------------------------------------------------------------- 두 유형 모두 있음 */
+
+function CoupleLensView({
+  report,
+  bridge,
+  compatibilityDone,
+}: {
+  report: MbtiLensReport;
+  bridge: MbtiBridgeReport;
+  compatibilityDone: boolean;
+}) {
+  return (
+    <>
+      <ReportHeader
+        eyebrow={MBTI_LENS_COPY.reportEyebrow}
+        title={MBTI_LENS_COPY.reportTitle}
+        meta={[MBTI_LENS_COPY.reportMetaLens, MBTI_LENS_COPY.reportMetaScore]}
+      />
+
+      {/*
+        `report-reveal`은 이미 렌더된 것을 위에서부터 70ms씩 늦춰 보여주기만 한다 —
+        콘텐츠를 늦게 만들지 않는다. prefers-reduced-motion에서는 globals.css의
+        media query 한 곳에서 전부 꺼지고, 꺼져도 모든 정보가 그대로 보인다.
+      */}
+      <div className="report-reveal flex flex-col">
+        {/*
+          ══ 01 · MBTI LENS — 익숙한 Hook (첫 viewport) ═══════════════════════
+          "우리 MBTI 궁합은 어떻게 나오지?"에 대한 답이 여기서 끝나야 한다.
+          단, 큰 숫자·궁합 %·별점을 새로 만들지 않는다 — MBTI를 또 하나의 점수로
+          만들지 않기 위해서다. 조합 자체가 Hook이다.
+        */}
+        <div className="mt-5 flex flex-col gap-3">
+          <ReportSectionEyebrow index="01" code={MBTI_LENS_COPY.sections.lens.code} />
+
+          <div className="flex items-end gap-2.5 px-1">
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
+                {MBTI_LENS_COPY.axesLegendMine}
+              </p>
+              <p className="text-[26px] font-semibold leading-[1.2] tracking-[-0.6px]">
+                {report.mine}
+              </p>
+            </div>
+            <span className="pb-1 text-[15px] text-ink-faint" aria-hidden>
+              ×
+            </span>
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
+                {MBTI_LENS_COPY.axesLegendTheirs}
+              </p>
+              <p className="text-[26px] font-semibold leading-[1.2] tracking-[-0.6px]">
+                {report.theirs}
+              </p>
+            </div>
+          </div>
+
+          <p className="px-1 text-caption text-ink-sub tnum">
+            4개 축 중 {report.sameCount}개 비슷 · {report.differentCount}개 다름
+          </p>
+
+          {/* 이미 계산된 sameCount만 읽어 만든 결정론적 한 문장 */}
+          <p className="px-1 text-[17px] font-semibold leading-[1.5] tracking-[-0.3px] keep-all">
+            {selectMbtiLensHeadline(report)}
+          </p>
+        </div>
+
+        {/* ══ 02 · 4 AXES ═══════════════════════════════════════════════════ */}
+        <ReportSection
+          index="02"
+          code={MBTI_LENS_COPY.sections.axes.code}
+          title={MBTI_LENS_COPY.sections.axes.title}
+        >
+          <MbtiAxisField report={report} />
+
+          {/* 러비는 여기서 '설명하는 전문가'가 아니라 '관찰하는 외계인'이다 */}
+          <LovyNote label="LOVY OBSERVATION">{selectMbtiAxisObservation(report)}</LovyNote>
+        </ReportSection>
+
+        {/* ══ 03 · BUT IN REAL LIFE — 이 화면의 차별점 ══════════════════════ */}
+        <ReportSection
+          index="03"
+          code={MBTI_LENS_COPY.sections.bridge.code}
+          title={MBTI_LENS_COPY.sections.bridge.title}
+          caption={MBTI_LENS_COPY.bridgeCaption}
+        >
+          <MbtiBridgeSection bridge={bridge} />
+        </ReportSection>
+      </div>
+
+      {/*
+        Lens → Core Bridge. 마지막은 'MBTI 더 보기'가 아니라 **실제 관계로 돌아가기**다.
+        아직 궁합 관측 기록이 없으면 갈 곳이 없으므로 붙이지 않는다.
+      */}
+      {compatibilityDone ? (
+        <LensCoreBridge
+          className="mt-7"
+          href={`${ROUTES.compatibility}#${RESULT_ANCHORS.compatibilityGood}`}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ 내 것만 있음 */
+
+/**
+ * 상대 정보는 항상 Optional — 없다고 내 결과를 막지 않는다(Self First).
+ * 비교가 아니므로 축별 같음/다름 판정도, Bridge도 만들지 않는다.
+ */
+function SelfOnlyLensView({ lens }: { lens: MbtiSelfLens }) {
+  const router = useRouter();
+
+  return (
+    <div className="flex flex-col gap-5">
+      <PageHeading lines={MBTI_LENS_COPY.title} caption={MBTI_LENS_COPY.caption} />
+
+      {/* 필드 자체가 '나 · INFP' 머리를 갖고 있으므로 위에 같은 라벨을 또 붙이지 않는다
+          (실측에서 '나 / 나 / INFP'로 두 번 읽혔다). */}
+      <MbtiSelfAxisField lens={lens} label={MBTI_LENS_COPY.selfSectionLabel} />
+
+      <section className="flex flex-col gap-3">
+        <NoticeBox>
+          {MBTI_LENS_COPY.noTargetTitle} {MBTI_LENS_COPY.noTargetBody}
+        </NoticeBox>
+        <Button variant="secondary" onClick={() => router.push(ROUTES.target)}>
+          {MBTI_LENS_COPY.noTargetCta}
+        </Button>
+      </section>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- 내 것이 없음 */
+
+/**
+ * 'MBTI를 모른다'를 실패로 만들지 않는다 — 입력을 강제해 Core Compatibility 접근을
+ * 막지도 않는다. 여기서 나가는 길은 항상 열려 있다(footer의 '렌즈 목록으로').
+ */
+function EmptyLensView({ hasTarget }: { hasTarget: boolean }) {
+  const router = useRouter();
+
+  return (
+    <div className="flex flex-col gap-5">
+      <PageHeading lines={MBTI_LENS_COPY.title} caption={MBTI_LENS_COPY.caption} />
+
+      <section className="flex flex-col gap-3">
+        <LovyMessage pose="question" size={52}>
+          {hasTarget ? MBTI_LENS_COPY.targetOnlyBody : MBTI_LENS_COPY.noSelfBody}
+        </LovyMessage>
+        <Button onClick={() => router.push(ROUTES.declared(4))}>
+          {hasTarget ? MBTI_LENS_COPY.targetOnlyCta : MBTI_LENS_COPY.noSelfCta}
+        </Button>
+        <NoticeBox>{MBTI_LENS_COPY.emptyReassurance}</NoticeBox>
+      </section>
+    </div>
   );
 }

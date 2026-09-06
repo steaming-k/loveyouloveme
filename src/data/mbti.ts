@@ -36,6 +36,17 @@ interface MbtiAxisDefinition {
   index: 0 | 1 | 2 | 3;
   eyebrow: string;
   label: string;
+  /**
+   * 축 양 끝(글자)의 짧은 이름 (v1.24 §7/§8)
+   *
+   * ⚠️ 새로운 주장을 만든 값이 아니다. 아래 `same`/`different` 문장에 이미 쓰여 있던
+   * 표현을 그대로 짧게 줄인 것이다 — 예: `same.I`의 "혼자 있는 시간으로 에너지를
+   * 회복하는" → `I: '혼자 있는 시간으로 회복'`. 데이터가 지원하지 않는 의미
+   * ('내향적인 사람' 같은 유형 단정)를 새로 만들지 않는다.
+   *
+   * 4축 비교표에서 marker 옆 **텍스트 라벨**로 쓴다 — 위치·색만으로 구분하지 않기 위해서다.
+   */
+  poles: Record<string, string>;
   /** 두 사람의 글자가 같을 때 — 글자별 문장 */
   same: Record<string, string>;
   /** 두 사람의 글자가 다를 때 */
@@ -50,6 +61,7 @@ export const MBTI_AXES: readonly MbtiAxisDefinition[] = [
     index: 0,
     eyebrow: 'ENERGY',
     label: '에너지를 회복하는 방식',
+    poles: { I: '혼자 있는 시간으로 회복', E: '함께 활동하며 회복' },
     same: {
       I: '둘 다 혼자 있는 시간으로 에너지를 회복하는 쪽으로 이야기되기도 해.',
       E: '둘 다 함께 활동하면서 에너지를 얻는 쪽으로 이야기되기도 해.',
@@ -63,6 +75,7 @@ export const MBTI_AXES: readonly MbtiAxisDefinition[] = [
     index: 1,
     eyebrow: 'INFORMATION',
     label: '정보를 받아들이는 방식',
+    poles: { S: '눈에 보이는 구체적인 정보', N: '큰 그림과 가능성' },
     same: {
       S: '둘 다 지금 눈에 보이는 구체적인 정보를 먼저 보는 쪽으로 이야기되기도 해.',
       N: '큰 그림과 가능성을 보는 방식은 비슷하게 느껴질 수 있어.',
@@ -76,6 +89,7 @@ export const MBTI_AXES: readonly MbtiAxisDefinition[] = [
     index: 2,
     eyebrow: 'DECISION',
     label: '결정할 때 먼저 보는 기준',
+    poles: { T: '해결 논리를 먼저', F: '감정적 맥락을 먼저' },
     same: {
       T: '둘 다 결정할 때 해결 논리를 먼저 보는 쪽으로 이야기되기도 해.',
       F: '둘 다 결정할 때 감정적 맥락을 먼저 보는 쪽으로 이야기되기도 해.',
@@ -89,6 +103,7 @@ export const MBTI_AXES: readonly MbtiAxisDefinition[] = [
     index: 3,
     eyebrow: 'LIFESTYLE',
     label: '계획과 유연함 사이',
+    poles: { J: '미리 정해진 계획', P: '상황에 맞춘 유연함' },
     same: {
       J: '둘 다 미리 정해진 계획에서 편안함을 느끼는 쪽으로 이야기되기도 해.',
       P: '둘 다 상황에 맞춰 유연하게 움직이는 쪽으로 이야기되기도 해.',

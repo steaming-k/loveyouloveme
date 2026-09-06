@@ -84,6 +84,110 @@ export interface MbtiSelfLens {
   note: string;
 }
 
+/* ------------------------- MBTI × Relationship Signal Bridge (v1.24 · P3-1) */
+
+/**
+ * MBTI 렌즈와 **실제 관계 답변**을 나란히 놓았을 때 두 관점이 같은 방향을 가리키는지.
+ *
+ * ⚠️ 이것은 **궁합 판정이 아니다.** 'ALIGNS = 잘 맞음'도, 'DIFFERS = 안 맞음'도 아니다.
+ * 오직 '성향 렌즈에서 보이는 그림'과 '사용자가 직접 답한 관계 신호'가 같은 방향인지만
+ * 말한다. 그래서 새 점수를 만들지 않고, 이미 계산된 두 결과의 **판정값만** 읽는다.
+ *
+ * UNKNOWN은 실패가 아니다 — 비교할 관계 답변이 없거나 판정이 뚜렷하지 않은 상태이며,
+ * 억지로 연결하는 것보다 UNKNOWN이 낫다.
+ */
+export type MbtiBridgeState = 'aligns' | 'differs' | 'unknown';
+
+/** UNKNOWN이 나온 이유. 문구가 정직하게 갈리도록 상태와 함께 남긴다. */
+export type MbtiBridgeUnknownReason =
+  /** 이 축과 비교할 관계 답변 자체가 없다(한쪽이 '모름') */
+  | 'no-signal'
+  /** 비교는 했지만 비슷하다고도 다르다고도 판정되지 않았다(neutral) */
+  | 'inconclusive';
+
+/**
+ * 한 MBTI 축 ↔ 한 관계 신호 축의 비교. 항상 3개 층으로 읽힌다:
+ *   MBTI LENS → RELATIONSHIP SIGNAL → INTERPRETATION
+ */
+export interface MbtiAxisBridge {
+  mbtiAxisKey: MbtiAxisKey;
+  mbtiEyebrow: string;
+  mbtiLabel: string;
+  /** MBTI LENS 층 — '둘 다 I' / 'I × E' */
+  lensLine: string;
+  /** 두 사람의 이 축 글자가 같은지 */
+  lensSame: boolean;
+  /** 비교 대상이 된 실제 관계 축 */
+  signalAxisKey: TargetAxisKey;
+  signalAxisLabel: string;
+  /** RELATIONSHIP SIGNAL 층 — 이미 계산된 tone 판정을 그대로 읽은 문장 */
+  signalLine: string;
+  /** 실제 저장된 answer label. 자유서술 원문이 아니다 */
+  signalMinePhrase: string;
+  signalTheirsPhrase: string;
+  state: MbtiBridgeState;
+  unknownReason: MbtiBridgeUnknownReason | null;
+  /** INTERPRETATION 층 */
+  interpretation: string;
+}
+
+/** 비교할 관계 답변이 없어 Bridge를 만들지 못한 MBTI 축 */
+export interface MbtiUnmappedAxis {
+  key: MbtiAxisKey;
+  eyebrow: string;
+  label: string;
+}
+
+/**
+ * 축 단위가 아니라 **전체 그림**의 비교.
+ * "MBTI는 세 축이 다른데, 실제 관계 답변에서는 비슷한 축이 더 많았어" 같은 관찰을 만든다.
+ *
+ * ⚠️ 두 개의 이미 계산된 개수를 나란히 읽을 뿐, 둘을 더하거나 평균 내지 않는다.
+ */
+export interface MbtiPatternBridge {
+  mbtiSameCount: number;
+  mbtiDifferentCount: number;
+  /** 관계 신호에서 '비슷'으로 판정된 축 수 = goodSignals.length */
+  signalSimilarCount: number;
+  /** 관계 신호에서 '차이'로 판정된 축 수 = frictionSignals.length */
+  signalDifferentCount: number;
+  signalComparedCount: number;
+  state: MbtiBridgeState;
+  lensLine: string;
+  signalLine: string;
+  interpretation: string;
+}
+
+/** MATCH / DIFFERENCE 화면에 쓰는 가장 강한 관찰 하나 */
+export interface MbtiBridgeSurprise {
+  /** Analytics로 보내는 opaque 상태값. 문구·MBTI 원문은 보내지 않는다 */
+  state: MbtiBridgeState;
+  /**
+   * 이 관찰이 어느 블록에서 나왔는지. 화면은 이 값으로 **근거 블록을 관찰 바로 아래에**
+   * 배치한다 — 같은 근거가 관찰 옆과 상세 블록에 두 번 적히지 않게 하기 위해서다
+   * (실측에서 '둘 다 I / 나: 혼자 있는 시간 5/5 · 상대: 거의 안 챙김'이 두 번 나왔다).
+   */
+  source: 'axis' | 'pattern';
+  /** 러비의 짧은 혼잣말 */
+  hook: string;
+  /** 근거 — 어느 축에서 나왔는지 */
+  evidenceLabel: string;
+  evidenceLensLine: string;
+  evidenceSignalLine: string;
+}
+
+export interface MbtiBridgeReport {
+  /**
+   * 관계 답변이 아직 비교 가능한 수준이 아닐 때 false.
+   * 이때도 MBTI Lens 자체는 그대로 보여주고, Bridge만 정직하게 제한한다.
+   */
+  available: boolean;
+  axisBridges: MbtiAxisBridge[];
+  unmappedAxes: MbtiUnmappedAxis[];
+  pattern: MbtiPatternBridge | null;
+  surprise: MbtiBridgeSurprise | null;
+}
+
 /* ------------------------------------------- Birth Profile (v1.4, 공용) */
 
 /**

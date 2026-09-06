@@ -101,7 +101,7 @@ function CompatibilityLensesView() {
           <SectionLabel>{LENS_HUB_COPY.supportingLabel}</SectionLabel>
           <LensRow
             title="MBTI Lens"
-            caption="두 유형의 선호 차이를 대화 주제로 보기"
+            caption="두 유형의 선호 차이를 실제 관계 답변과 나란히 보기"
             status={
               mbtiLens
                 ? { label: `${mbtiLens.mine} × ${mbtiLens.theirs}`, active: true }

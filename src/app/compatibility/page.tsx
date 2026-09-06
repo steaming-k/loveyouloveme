@@ -204,7 +204,13 @@ function CompatibilityView() {
 
   useEffect(() => {
     if (!mbtiLens) return;
-    trackOnce('both_mbti_available', { self: mbtiLens.mine, target: mbtiLens.theirs });
+    // v1.24 P3-1 Audit — 예전에는 `{ self: 'INFP', target: 'ESTJ' }`로 **두 사람의 유형
+    // 쌍**을 그대로 실어 보냈다. 이 이벤트가 세는 것은 '두 MBTI가 모두 있는가'이므로
+    // 유형 값은 지표에 필요 없다. 개수만 남긴다(§35 Analytics Privacy).
+    trackOnce('both_mbti_available', {
+      same_axes: mbtiLens.sameCount,
+      different_axes: mbtiLens.differentCount,
+    });
   }, [mbtiLens]);
 
   useEffect(() => {
@@ -845,9 +851,11 @@ function CompatibilityView() {
                         {mbtiLens.mine} × {mbtiLens.theirs}
                       </span>
                     </span>
+                    {/* v1.24 P3-1 — 이 렌즈는 이제 네 축 비교에서 끝나지 않고 실제 관계
+                        답변과 나란히 놓는 데까지 간다. 행이 약속하는 내용을 맞춘다(§32). */}
                     <span className="mt-0.5 block text-[11.5px] keep-all text-ink-muted">
-                      4개 선호 지표 중 {mbtiLens.sameCount}개가 비슷하고,{' '}
-                      {mbtiLens.differentCount}개는 다르게 나타날 수 있어
+                      4개 축 중 {mbtiLens.sameCount}개 비슷 · {mbtiLens.differentCount}개 다름 ·
+                      네가 답한 관계 신호와 비교해보기
                     </span>
                   </span>
                   <span className="flex-none text-ink-faint" aria-hidden>

@@ -66,7 +66,7 @@ function LensView() {
       if (!answers.mbti) return '내 정보 입력하기';
       if (!answers.target.mbti)
         return '내 MBTI 보기 · 상대 정보를 추가하면 둘도 비교할 수 있어';
-      return '우리 둘 보기';
+      return '두 유형을 실제 관계 답변과 나란히 보기';
     }
     if (href === ROUTES.lensAstrology) {
       if (!selfBirthReady) return '생년월일 입력하기';

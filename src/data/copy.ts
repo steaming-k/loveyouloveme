@@ -465,17 +465,84 @@ export const LENS_HUB_COPY = {
   entertainmentLabel: 'ENTERTAINMENT · 재미로 보기',
 } as const;
 
-/** X1-a MBTI Lens — Compatibility Lens Detail 화면 */
+/**
+ * X1-a MBTI Lens — Compatibility Lens Detail 화면
+ *
+ * v1.24 P3-1 — **'Hook은 익숙하게, 해석은 다르게.'**
+ * 익숙한 MBTI 조합으로 들어오게 하되, 읽어 내려가면 실제 관계 답변과 나란히 놓여
+ * '성향만으로는 설명되지 않는 지점'이 드러나게 한다.
+ *
+ * ⚠️ 궁합 점수·성공률·천생연분/최악의 궁합 같은 결정론적 표현은 어떤 문구에도 쓰지 않는다.
+ * MBTI 출처와 관계 답변 출처를 문장에서 항상 분리한다
+ * ('성향 렌즈에서는' vs '네가 답한 내용에서는').
+ */
 export const MBTI_LENS_COPY = {
   badge: 'SUPPORTING LENS',
+  /** 관찰 문서 헤더 — 영어를 남발하지 않고 한국어로 읽히게 둔다 */
+  reportEyebrow: '러비 관찰 기록 · 렌즈',
+  reportTitle: '성향 렌즈로 본 두 사람',
+  reportMetaLens: '렌즈 · MBTI',
+  reportMetaScore: '동기화율에는 반영하지 않음',
+  /** Self 전용 / Empty 상태에서 쓰는 기본 제목 */
   title: ['MBTI 렌즈'],
   caption: '두 유형을 관계를 바라보는 하나의 참고 렌즈로 비교해볼게.',
-  lovyNote: '이건 MBTI로 너희 관계를 판정한 건 아니야. 서로 이야기해볼 만한 차이를 하나 더 본 거야.',
+  sections: {
+    lens: { code: 'MBTI LENS', title: '성향 렌즈로 보면' },
+    axes: { code: '4 AXES', title: '네 개의 축을 나란히' },
+    bridge: { code: 'BUT IN REAL LIFE', title: '그런데 실제 관계에서는?' },
+  },
+  /** 4축 비교표 머리 — 색이 아니라 텍스트로 누구 표시인지 말한다 */
+  axesLegendMine: '나',
+  axesLegendTheirs: '상대',
+  axesSame: '비슷',
+  axesDifferent: '다름',
+  axesFootnote:
+    '축마다 어느 쪽에 가까운지를 표시한 거야. 유형 해설이 아니라 두 사람의 위치만 나란히 놓은 표야.',
+
+  /* ---------------------------------------------------- Relationship Bridge */
+  bridgeCaption:
+    '성향 렌즈에서 보이는 그림과, 네가 실제로 답한 관계 신호를 나란히 놓아볼게.',
+  bridgeLensLabel: 'MBTI 렌즈',
+  bridgeSignalLabel: '네가 답한 관계 신호',
+  bridgeInterpretationLabel: '해석',
+  bridgeSurpriseLabel: '가장 눈에 띄는 지점',
+  /**
+   * ⚠️ 이 한 줄이 P3-1에서 가장 중요한 안전장치다.
+   *
+   * 화면에서 `ENERGY ↔ 개인 시간`처럼 두 라벨이 붙어 있으면 '이 둘은 같은 것' 또는
+   * '성향이 개인 시간을 결정한다'로 읽힐 수 있다. MBTI 선호 지표와 관계 답변은
+   * **서로 다른 것을 재는 값**이고, 이 화면은 예측이 아니라 비교만 한다.
+   */
+  bridgeAxisFootnote:
+    '두 줄은 같은 것을 잰 값이 아니야. 성향 렌즈의 축과 네가 직접 답한 관계 질문을 나란히 놓고 본 거라, 한쪽이 다른 쪽을 결정한다는 뜻은 아니야.',
+  /** ALIGNS / DIFFERS / UNKNOWN — '좋음/나쁨'이 아니라 '방향이 같은가'다 */
+  bridgeState: {
+    aligns: '같은 방향',
+    differs: '다르게 나타남',
+    unknown: '아직 비교 못 함',
+  },
+  /** 비교할 관계 답변이 없는 MBTI 축 — 억지 연결 대신 없다고 말한다 */
+  bridgeUnmappedTitle: '아직 비교하지 않은 축',
+  bridgeUnmappedBody:
+    '지금 관계 질문(연락 · 갈등 해결 · 개인 시간 · 애정 표현)에는 이 축들과 직접 비교할 답변이 없어. 비슷해 보인다는 이유로 억지로 이어 붙이지는 않을게.',
+  /** 관계 답변 자체가 부족할 때 — MBTI 결과는 그대로 두고 Bridge만 제한한다 */
+  bridgeLowDataTitle: '아직 나란히 놓을 답변이 부족해.',
+  bridgeLowDataBody:
+    '실제 관계 답변이 조금 더 쌓이면 이 성향과 비교해볼 수 있어. 지금은 성향 렌즈까지만 볼게.',
+
+  /* ------------------------------------------------------------ 공통 안내 */
+  lovyNote:
+    '이건 MBTI로 너희 관계를 판정한 건 아니야. 서로 이야기해볼 만한 차이를 하나 더 본 거야.',
   scoreNotice:
     '동기화율에는 MBTI를 넣지 않아. 점수는 연락·갈등·개인 시간·애정 표현 같은 실제 관계 신호로만 계산해.',
   selfSectionLabel: '나',
   targetSectionLabel: '상대',
   togetherSectionLabel: '함께 보면',
+  editSectionLabel: '입력 수정',
+
+  /* ------------------------------------------------- MBTI가 없을 때 (§22/§23) */
+  /** MBTI를 모르는 걸 '실패'로 만들지 않는다 */
+  emptyReassurance: 'MBTI를 몰라도 괜찮아. 이건 관계를 보는 여러 렌즈 중 하나니까.',
   /** State A — 내 MBTI가 없을 때 */
   noSelfTitle: '아직 네 MBTI가 없어.',
   noSelfBody: '입력하면 바로 네 성향부터 볼 수 있어.',
@@ -485,7 +552,8 @@ export const MBTI_LENS_COPY = {
   noTargetBody: '입력하면 상대의 결과와 둘의 비교도 볼 수 있어.',
   noTargetCta: '상대 MBTI 입력하기',
   /** Edge — 상대만 있고 내 MBTI가 없을 때(§22) */
-  targetOnlyBody: '상대 정보는 남아 있어. 먼저 네 정보를 입력하면 각자의 결과와 둘의 비교를 볼 수 있어.',
+  targetOnlyBody:
+    '상대 정보는 남아 있어. 먼저 네 정보를 입력하면 각자의 결과와 둘의 비교를 볼 수 있어.',
   targetOnlyCta: '내 정보 입력',
 } as const;
 

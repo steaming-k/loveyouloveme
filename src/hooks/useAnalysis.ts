@@ -17,6 +17,7 @@ import type {
   CompatibilityResult,
   ConversationQuestion,
   HistoryReport,
+  MbtiBridgeReport,
   MbtiLensReport,
   MirrorAxisKey,
   MirrorReport,
@@ -62,6 +63,19 @@ export function useMbtiLens(): MbtiLensReport | null {
     () => aiSelectors.mbtiLens(answers.mbti, answers.target.mbti),
     [answers.mbti, answers.target.mbti],
   );
+}
+
+/**
+ * MBTI × Relationship Signal Bridge (v1.24 P3-1)
+ *
+ * 이미 계산된 `CompatibilityResult`와 `MbtiLensReport`를 **읽어서** 두 관점이 같은
+ * 방향인지만 비교한다. 동기화율·MBTI 계산은 이 훅 때문에 다시 실행되지 않고 값도 바뀌지
+ * 않는다 — 두 MBTI가 모두 있을 때만 값이 있다.
+ */
+export function useMbtiBridge(): MbtiBridgeReport | null {
+  const result = useCompatibility();
+  const mbtiLens = useMbtiLens();
+  return useMemo(() => aiSelectors.mbtiBridge(mbtiLens, result), [mbtiLens, result]);
 }
 
 /**

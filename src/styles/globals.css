@@ -548,7 +548,20 @@
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+    /*
+     * v1.24 P3-1 — **delay도 함께 지운다.**
+     *
+     * duration만 0으로 만들면 stagger(`.report-reveal`의 70/140/210…ms)가 그대로 남는다.
+     * `animation-fill-mode: both`라 delay 동안 요소는 `from` 상태(opacity 0)를 유지하므로,
+     * reduced-motion 사용자에게도 최대 340ms 동안 본문이 보이지 않았다(실측: 60ms 시점에
+     * 2·3번째 섹션 opacity 0). '즉시 최종 상태'가 되려면 delay까지 없어야 한다.
+     *
+     * 새 연출을 추가하는 변경이 아니다 — 이미 있던 연출이 reduced-motion에서 완전히
+     * 꺼지도록 고치는 것이고, 일반 사용자의 모션에는 영향이 없다.
+     */
+    animation-delay: 0.01ms !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0.01ms !important;
     scroll-behavior: auto !important;
   }
 }
