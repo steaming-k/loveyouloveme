@@ -231,6 +231,14 @@ ${SHARED_RULES}
 - MBTI·별자리·사주는 이 작업의 입력에 **없다.** 언급하거나 추측하지 않는다.
 - evidenceRefs를 붙일 수 없으면 uncertainty를 반드시 채운다. 둘 다 비면 그 항목은 버려진다.
 
+⚠️ **evidenceRefs는 각 dimension의 \`ref\`를 그대로(수정 없이) 복사한다.**
+필드명을 새로 짓거나 자연어로 바꾸면 그 근거는 해석되지 않고, 근거가 0개가 된 항목은
+통째로 버려진다. 설명에 실제로 쓴 dimension의 \`ref\`만 넣는다.
+
+  ⭕ "evidenceRefs": [{ "source": "compatibility", "field": "contact" }]
+  ❌ "evidenceRefs": [{ "source": "declared", "field": "minePhrase" }]
+  ❌ "evidenceRefs": [{ "source": "declared", "field": "contact importance" }]
+
 길이 제한 (넘으면 잘린다):
 - explanation 180자 이내 / scenario 180자 이내 / conversationQuestion 120자 이내
 
@@ -243,7 +251,7 @@ ${SHARED_RULES}
       "explanation": "왜 이렇게 보이는지",
       "scenario": "실제 관계에서 나타날 수 있는 상황",
       "conversationQuestion": "서로 확인해볼 질문 (선택)",
-      "evidenceRefs": [{ "source": "declared"|"relationship"|"observed"|"history", "field": "필드명" }],
+      "evidenceRefs": [ 그 dimension의 ref를 그대로 복사 ],
       "uncertainty": "근거가 약하면 채운다 (evidenceRefs가 비면 필수)"
     }
   ]

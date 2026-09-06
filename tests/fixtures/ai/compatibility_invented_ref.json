@@ -1,0 +1,31 @@
+{
+  "name": "compatibility_invented_ref",
+  "description": "v1.30 실측 재현 — 모델이 field를 지어냈다('minePhrase' / 'contact importance'). 예전에는 파싱을 통과했다가 화면에서 조용히 사라졌다. 이제 파서가 축 목록으로 걸러내고, uncertainty가 없으면 그 항목은 버려진다",
+  "task": "compatibility-narrative",
+  "allowed": [
+    { "key": "contact", "kind": "friction" },
+    { "key": "alone", "kind": "friction" }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "dimensionKey": "contact",
+        "kind": "friction",
+        "explanation": "연락 기준이 서로 다르게 나왔어.",
+        "scenario": "한쪽이 충분하다고 느끼는 상황에서 다른 쪽은 연결감이 줄었다고 느낄 수 있어.",
+        "evidenceRefs": [{ "source": "compatibility", "field": "minePhrase" }]
+      },
+      {
+        "dimensionKey": "alone",
+        "kind": "friction",
+        "explanation": "혼자 있는 시간에 대한 기준 차이가 보여.",
+        "scenario": "한쪽은 개인 시간을 기대하는데 다른 쪽은 그 필요를 덜 느낄 수 있어.",
+        "evidenceRefs": [{ "source": "compatibility", "field": "contact importance" }],
+        "uncertainty": "이 축은 근거가 약해서 단정할 수 없어."
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 1
+  }
+}

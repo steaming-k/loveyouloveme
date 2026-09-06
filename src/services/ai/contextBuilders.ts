@@ -170,6 +170,28 @@ export interface CompatibilityContext {
     kind: 'good' | 'friction' | 'neutral' | 'unknown';
     minePhrase: string;
     theirsPhrase: string;
+    /**
+     * v1.30 — **모델이 그대로 복사해 돌려줄 근거 식별자.**
+     *
+     * 이게 없던 것이 무료 Compatibility AI 설명이 화면에 하나도 닿지 않던 원인이다.
+     * 프롬프트는 `"field": "필드명"`이라고만 했고 "입력에 있는 필드만 참조하라"고 했다.
+     * 모델은 지시를 충실히 따랐다 — 입력 JSON에 보이는 이름을 썼다. 실측에서 나온 값:
+     *
+     *   minePhrase · theirsPhrase          (dimension 객체의 키를 그대로)
+     *   "personal time" · "contact importance" · "affection expression"  (자연어로 지어냄)
+     *
+     * 그런데 `resolveDeclared`가 아는 field는 `contact|alone|conflict|affection|hobby`
+     * (+ 별칭)뿐이라 **전부 null로 떨어졌고**, 근거 0개가 된 narrative는
+     * `narrativeIsShowable`에서 걸러져 화면에 한 문장도 남지 않았다. API는 200이라
+     * 실패 안내조차 뜨지 않았다 — 조용히 사라졌다.
+     *
+     * Deep Report는 이미 이 문제를 `{ ref, text }`를 주고 "그대로 복사해 돌려줘라"로
+     * 풀고 있었다. 여기서도 **같은 방식**을 쓴다. 그리고 새 어휘를 만들지 않는다 —
+     * `compatibility` source는 v1.26에 이미 있고 `resolveEvidenceRef`가 풀 수 있으며
+     * `useEvidenceContext`가 이미 `compatibility`를 넘기고 있다. 화면용 임시 alias를
+     * resolver에 늘리는 대신, **모델이 받는 어휘를 이미 있는 canonical key로 맞춘다.**
+     */
+    ref: EvidenceRef;
   }>;
   targetRelation: string | null;
 }
@@ -193,6 +215,8 @@ export function buildCompatibilityContext(result: CompatibilityResult): Compatib
             : ('neutral' as const),
         minePhrase: dimension.minePhrase,
         theirsPhrase: dimension.theirsPhrase,
+        // ⚠️ 여기서 새 값을 만들지 않는다 — 이미 계산된 dimension.key를 가리킬 뿐이다.
+        ref: { source: 'compatibility', field: dimension.key },
       })),
     // 상대는 '관계 맥락'만. 이름·출생정보 등은 보내지 않는다.
     targetRelation: null,

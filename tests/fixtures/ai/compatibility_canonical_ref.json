@@ -1,0 +1,31 @@
+{
+  "name": "compatibility_canonical_ref",
+  "description": "v1.30 — context가 준 canonical ref({source:'compatibility', field:<축>})를 그대로 복사한 정상 응답. EVIDENCE_SOURCES에서 'compatibility'가 빠지거나 축 검증이 과해지면 여기서 즉시 깨진다",
+  "task": "compatibility-narrative",
+  "allowed": [
+    { "key": "contact", "kind": "friction" },
+    { "key": "affection", "kind": "good" }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "dimensionKey": "contact",
+        "kind": "friction",
+        "explanation": "연락의 중요성을 다르게 느끼는 두 사람 사이의 차이가 보여.",
+        "scenario": "한쪽은 자주 연락하길 원하지만, 다른 쪽은 연락이 뜸할 수 있어.",
+        "conversationQuestion": "연락 빈도에 대해 어떻게 생각하는지 이야기해볼까?",
+        "evidenceRefs": [{ "source": "compatibility", "field": "contact" }]
+      },
+      {
+        "dimensionKey": "affection",
+        "kind": "good",
+        "explanation": "서로 애정 표현을 자주 하는 편이라는 답이 나란히 있어.",
+        "scenario": "표현이 오가는 방식이 서로에게 익숙할 수 있어.",
+        "evidenceRefs": [{ "source": "compatibility", "field": "affection" }]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 2
+  }
+}

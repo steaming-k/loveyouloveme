@@ -386,7 +386,27 @@ export function parseCompatibilityResponse(
     if (!expectedKind) continue;
 
     const question = str(item.conversationQuestion, 200);
-    const evidenceRefs = parseEvidenceRefs(item.evidenceRefs);
+    /**
+     * v1.30 — **`compatibility` ref의 field는 실제 축이어야 한다.**
+     *
+     * 이 검사가 없어서 무료 AI 설명이 화면에 한 문장도 닿지 않았다. 프롬프트가
+     * `"field": "필드명"` 자유 서술을 허용하니 모델이 매번 이름을 지어냈고
+     * (`minePhrase` · `"contact importance"` 등 실측), 그 ref는 문자열로서는
+     * 멀쩡해서 **파싱을 그대로 통과했다.** 문제는 화면에서야 드러났다 —
+     * resolver가 풀지 못해 근거 0개가 되고 `narrativeIsShowable`이 걸러낸다.
+     * API는 200이라 실패 안내도 뜨지 않았다.
+     *
+     * 프롬프트로만 막으면 다음 모델·다음 버전에서 조용히 재발한다. 그래서
+     * **파서가 아는 축 목록(`allowedMap`)으로 검증**한다 — 여기서 걸러지면
+     * 근거 0개가 되어 `uncertainty`가 없는 항목은 버려지고, 그 사실이
+     * `test:ai`와 응답 개수에 **보이게** 된다.
+     *
+     * ⚠️ `compatibility` source만 본다. 다른 source의 field 어휘는 이 함수가
+     * 알지 못하므로 여기서 판단하지 않는다(모르는 것을 막지 않는다).
+     */
+    const evidenceRefs = parseEvidenceRefs(item.evidenceRefs).filter(
+      (ref) => ref.source !== 'compatibility' || allowedMap.has(ref.field as TargetAxisKey),
+    );
     const uncertainty = str(item.uncertainty, 300);
 
     // §13 — AI 문장은 Evidence 또는 uncertainty 중 하나를 반드시 동반한다.

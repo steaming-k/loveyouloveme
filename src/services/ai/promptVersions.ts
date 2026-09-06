@@ -23,7 +23,12 @@ export const PROMPT_VERSIONS = {
   /** v1.7 — 길이 제한 · 관련성 필터 · userCorrection 표현 규칙 추가 */
   relationship: 'relationship-v2',
   /** v1.7 — 길이 제한 · 상대 마음 읽기 예시 강화 · uncertainty 필수 조건 명시 */
-  compatibility: 'compatibility-v2',
+  /**
+   * v1.30 — context가 dimension마다 canonical `ref`를 주고 모델은 그것을 복사한다.
+   * v2까지는 `"field": "필드명"` 자유 서술이라 모델이 매번 이름을 지어냈고, 그 근거는
+   * resolver가 풀지 못해 **무료 AI 설명이 화면에 한 문장도 닿지 않았다**(실측).
+   */
+  compatibility: 'compatibility-v3-ref',
   /** v1.7 — 길이 제한 · '~수도 있어' 톤 강제 · 반복 신호 확정 금지 */
   history: 'history-v2',
   /**

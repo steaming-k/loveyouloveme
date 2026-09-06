@@ -255,8 +255,17 @@ export function useCompatibilityNarrative(
     [answers.declared, answers.target, result],
   );
 
-  // 비교 가능한 축이 없으면 설명할 것도 없다 — 호출하지 않는다.
-  const hasSignals = result.goodSignals.length > 0 || result.frictionSignals.length > 0;
+  /**
+   * 비교 가능한 축이 없으면 설명할 것도 없다 — 호출하지 않는다.
+   *
+   * v1.30 — `score !== null`을 함께 본다. E3(관측 정보 부족)에서는 화면이
+   * `LowConfidenceView`로 빠져서 **narrative를 그릴 자리가 아예 없는데**, 아는 축이
+   * 하나라도 있으면 `hasSignals`가 참이라 실제 Provider 호출이 나가고 있었다(실측).
+   * 쓸 수 없는 응답에 요청·비용·지연을 쓰지 않는다.
+   */
+  const hasSignals =
+    result.score !== null &&
+    (result.goodSignals.length > 0 || result.frictionSignals.length > 0);
 
   const run = () => requestCompatibilityNarrative(result, fingerprint);
 

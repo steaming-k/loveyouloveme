@@ -165,7 +165,18 @@ async function testCompatibilityNarrative() {
       computedScore: 55,
       comparedCount: 4,
       dimensions: [
-        { key: 'contact', label: '연락', kind: 'friction', minePhrase: '연락 중요도 2/5', theirsPhrase: '자주' },
+        /**
+         * v1.30 — `ref`가 필수다. 프롬프트가 "이 ref를 그대로 복사하라"로 바뀌었으므로,
+         * 이걸 빼고 요청하면 **실제 앱이 보내는 것과 다른 요청**을 검증하게 된다.
+         */
+        {
+          key: 'contact',
+          label: '연락',
+          kind: 'friction',
+          minePhrase: '연락 중요도 2/5',
+          theirsPhrase: '자주',
+          ref: { source: 'compatibility', field: 'contact' },
+        },
       ],
       targetRelation: null,
     },
@@ -177,11 +188,22 @@ async function testCompatibilityNarrative() {
   }
   const narratives = json.data.narratives ?? [];
   const scoreLeak = narratives.some((n) => /\d{2,3}\s*점/.test(n.explanation ?? ''));
+  /**
+   * v1.30 — **근거가 붙어 있는지 반드시 본다.**
+   *
+   * 예전 프롬프트는 field를 자유 서술로 뒀고 모델이 매번 이름을 지어냈다. 파싱은
+   * 통과하지만 resolver가 풀지 못해 화면에서는 한 문장도 안 보였다 — 그런데 이
+   * 하네스는 narratives 개수만 세고 있어서 **PASS로 보고했다.** 개수만으로는
+   * 그 실패를 잡을 수 없다는 뜻이라, 근거 유무를 함께 센다.
+   */
+  const withEvidence = narratives.filter((n) => (n.evidenceRefs?.length ?? 0) > 0).length;
+  const evidenceNote =
+    narratives.length > 0 && withEvidence === 0 ? ' · ⚠️ 근거 0 — 화면에는 안 보인다' : '';
   reportRealMode({
     task: 'compatibility-narrative',
     json,
     durationMs,
-    extra: `· narratives: ${narratives.length} · score-leak: ${scoreLeak}`,
+    extra: `· narratives: ${narratives.length} · with-evidence: ${withEvidence} · score-leak: ${scoreLeak}${evidenceNote}`,
   });
 }
 
