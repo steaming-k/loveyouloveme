@@ -1,0 +1,29 @@
+{
+  "name": "deep_report_limitation_allowed",
+  "description": "False Positive Protection — 인과 어휘가 들어간 '한계 문장'은 반드시 통과해야 한다. 막으면 정직한 문장이 사라진다",
+  "task": "deep-report-narrative",
+  "allowed": [
+    {
+      "id": "cs_compat_link_contact",
+      "evidenceRefs": [
+        { "source": "compatibility", "field": "contact" },
+        { "source": "relationship", "field": "hardest" }
+      ]
+    }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "insightId": "cs_compat_link_contact",
+        "headline": "연락 축에서 두 관찰이 같은 자리를 가리켜",
+        "interpretation": "연락이 줄었을 때 힘들었다는 답과 지금 상대의 연락 방식이 같은 축에 놓여 있어. 두 답이 같은 이유에서 나온 건지는 이 자료만으로 알 수 없어.",
+        "uncertainty": "과거 경험이 현재 선호의 원인이라고 단정할 수는 없어.",
+        "evidenceRefs": [
+          { "source": "compatibility", "field": "contact" },
+          { "source": "relationship", "field": "hardest" }
+        ]
+      }
+    ]
+  },
+  "expect": { "narrativeCount": 1, "violationsInclude": [] }
+}

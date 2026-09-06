@@ -14,6 +14,7 @@ import {
 } from '@/services/ai/contextBuilders';
 import { buildDemoObservedResult, buildMeta } from '@/services/ai/fallback';
 import { photoFingerprint, prepareImagesForAnalysis } from '@/services/ai/imagePrep';
+import { PROMPT_VERSIONS } from '@/services/ai/promptVersions';
 import type { EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
 import type {
   AiFailureReason,
@@ -257,7 +258,12 @@ export function requestDeepReportNarrative(
       ok: true,
       data: {
         narratives: [],
-        meta: buildMeta({ mode: 'demo', promptVersion: 'deep-report-v1', inputFingerprint: fingerprint }),
+        // ⚠️ 버전을 여기 적어두지 않는다 — 프롬프트를 고칠 때마다 조용히 어긋난다(v1.27).
+        meta: buildMeta({
+          mode: 'demo',
+          promptVersion: PROMPT_VERSIONS.deepReport,
+          inputFingerprint: fingerprint,
+        }),
       },
     });
   }
@@ -267,6 +273,9 @@ export function requestDeepReportNarrative(
     insights: context.insights.map((item) => ({
       id: item.id,
       evidenceRefs: item.evidence.map((entry) => entry.ref),
+      // v1.27 — Quality Gate (F)가 'AI가 이 문장을 다시 쓴 것인지' 볼 기준.
+      // allowedConnection은 ruleSummary를 그대로 담은 것이다(contextBuilders).
+      ruleSummary: item.allowedConnection,
     })),
   });
 }

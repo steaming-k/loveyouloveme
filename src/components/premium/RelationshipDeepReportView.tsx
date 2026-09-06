@@ -222,9 +222,23 @@ export function RelationshipDeepReportView({
       */}
       {aiNarrative && connectionTotal > 0 ? (
         <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-end gap-2">
-            <AiSourceLabel mode={aiNarrative.mode} />
-          </div>
+          {/*
+            ⚠️ v1.27 — **화면에 AI 문장이 실제로 있을 때만 라벨을 붙인다.**
+
+            `mode`만 보고 붙이면 안 된다. Provider는 성공했지만 Quality Gate가 문장을
+            전부 떨어뜨린 경우(v1.27 (F) 중복 게이트 · 안전 검사) `mode`는 'real'인데
+            화면에는 규칙 문장만 남는다. 그 상태에서 'AI 설명' 라벨만 떠 있으면 **없는
+            것을 있다고 표시하는 것**이다 — 이 제품에서 가장 하면 안 되는 종류의 거짓이다.
+
+            `status === 'ready'`는 narratives가 1개 이상일 때만 된다(`deepReportHasItems`).
+            전부 떨어졌으면 status는 'unavailable'이고 reason은 null이라 아래 Notice도
+            조용하다 — demo와 같은 결말이다. 규칙 리포트만으로 완결되므로 그게 맞다.
+          */}
+          {aiNarrative.status === 'ready' ? (
+            <div className="flex items-center justify-end gap-2">
+              <AiSourceLabel mode={aiNarrative.mode} />
+            </div>
+          ) : null}
           <AiNarrativeNotice
             task="deep-report-narrative"
             status={aiNarrative.status}

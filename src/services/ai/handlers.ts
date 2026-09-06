@@ -18,6 +18,7 @@ import {
 import {
   evidenceRefsAreSubsetOf,
   filterSafeItems,
+  isRedundantNarrative,
   scanCoreNarrative,
   scanDeepNarrative,
   scanHistoryNarrative,
@@ -529,8 +530,15 @@ export async function runHistoryTask(
 export interface DeepReportRequest {
   inputFingerprint: string;
   context: unknown;
-  /** Quality Gate (A)를 통과해 실제로 AI에게 보낸 Insight만 — id 허용목록 + evidenceRef 대조용 */
-  insights: readonly Pick<CrossSourceInsight, 'id' | 'evidenceRefs'>[];
+  /**
+   * Quality Gate (A)를 통과해 실제로 AI에게 보낸 Insight만 — id 허용목록 + evidenceRef 대조용.
+   *
+   * v1.27 — ruleSummary가 추가됐다. Quality Gate (F)가 AI 문장이 이 규칙 문장을 그냥
+   * 다시 쓴 것인지 판정하는 기준이다. context에도 같은 문자열이 allowedConnection으로
+   * 들어가지만, **게이트의 입력은 프롬프트용 free-form context가 아니라 (E)와 같은
+   * 이 타입 있는 허용목록에서 읽는다** — 두 게이트가 서로 다른 곳을 보면 어긋난다.
+   */
+  insights: readonly Pick<CrossSourceInsight, 'id' | 'evidenceRefs' | 'ruleSummary'>[];
 }
 
 export async function runDeepReportTask(
@@ -586,7 +594,43 @@ export async function runDeepReportTask(
       scanDeepNarrative,
     );
 
-    const narratives: DeepNarrative[] = scan.items.map((item) => ({
+    /**
+     * Quality Gate (F) — **규칙 문장을 되풀이한 narrative는 버린다** (v1.27 · §24).
+     *
+     * (E)와 안전 검사를 다 통과해도 남는 실패가 하나 있다. v1.26 실측에서 어떤 연결의
+     * AI 문장이 규칙 문장의 마지막 문장을 글자 그대로 반복했다. 위험한 주장이 아니므로
+     * 안전 검사는 통과한다 — 그런데 사용자에게는 같은 말이 두 번 보인다.
+     *
+     * v1.27의 목표는 AI를 더 똑똑하게 만드는 게 아니라 **규칙이 확인한 범위 안에
+     * 머물게 하는 것**이다. 그 범위 안에 머물면서 아무것도 더하지 않는 문장은 지면만
+     * 차지한다. 그래서 여기서 떨어뜨리고, 화면은 규칙 문장으로 완결시킨다.
+     */
+    const ruleSummaryById = new Map(request.insights.map((item) => [item.id, item.ruleSummary]));
+    const novel = scan.items.filter(
+      (item) => !isRedundantNarrative(item.interpretation, ruleSummaryById.get(item.insightId) ?? ''),
+    );
+
+    /**
+     * v1.27 — **필터링 결과를 관측할 수 있게 한다.**
+     *
+     * v1.26까지 이 핸들러는 `scan.violations`를 계산해놓고 아무 데도 남기지 않았다.
+     * 그래서 "AI 문장이 화면에 없다"를 봤을 때 **모델이 안 만든 것인지, 안전 검사가
+     * 버린 것인지 구분할 방법이 없었다.** v1.27에서 인과·예측 검사를 새로 넣으면서
+     * 이 구분이 반드시 필요해졌다 — 과도한 거부를 발견하지 못하면 §22 실패
+     * (모든 문장이 사라진 리포트)를 알아채지 못한다.
+     *
+     * ⚠️ Production에서는 남기지 않는다. 그리고 **문장 원문은 절대 로그에 넣지 않는다** —
+     * 개수와 위반 라벨만이다(§34 Privacy).
+     */
+    if (process.env.NODE_ENV !== 'production') {
+      console.info(
+        `[ai] deep-report filter parsed=${parsed.length} refChecked=${refChecked.length} ` +
+          `safe=${scan.items.length} novel=${novel.length}` +
+          `${scan.violations.length > 0 ? ` violations=${scan.violations.join(',')}` : ''}`,
+      );
+    }
+
+    const narratives: DeepNarrative[] = novel.map((item) => ({
       insightId: item.insightId,
       headline: item.headline,
       interpretation: item.interpretation,

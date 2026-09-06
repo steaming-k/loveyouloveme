@@ -68,7 +68,11 @@ const SOURCE_LABEL: Record<CrossSourceEvidenceSource, string> = {
  *
  * 우선순위대로 첫 매치 하나만 쓴다. 어떤 경우에도 문장이 하나는 나온다.
  */
-function limitationFor(sources: readonly CrossSourceEvidenceSource[]): string {
+/**
+ * v1.27 — `export`로 바꿨다. AI 프롬프트가 **화면과 같은 limitation 문장**을 받아야
+ * 하기 때문이다. 사용자가 보는 경계와 모델이 받는 경계가 다르면 경계가 아니다.
+ */
+export function limitationFor(sources: readonly CrossSourceEvidenceSource[]): string {
   const has = (source: CrossSourceEvidenceSource) => sources.includes(source);
 
   if (has('history')) {
@@ -139,7 +143,22 @@ export function buildConnections(input: {
       // AI는 '어떻게 말할지'만 담당한다. 실패하면 null이고 ruleSummary로 완결된다.
       // ⚠️ `interpretation`은 규칙 판정을 설명하는 문장이고, 판정 자체를 바꾸지 못한다.
       narrativeText: narrative?.interpretation ?? null,
-      limitation: narrative?.uncertainty ?? limitationFor(uniqueSources),
+      /**
+       * ⚠️ v1.27 — **경계는 AI가 쓰지 않는다.**
+       *
+       * v1.26까지는 `narrative?.uncertainty ?? limitationFor(...)`였다. 즉 AI가 한계
+       * 문장을 보내오면 규칙이 정한 경계를 **덮어썼다.** 두 가지가 동시에 잘못된다:
+       *
+       *  1. 경계를 정하는 문장이, 그 경계에 갇혀야 하는 쪽의 저작물이 된다.
+       *  2. `scanClaimBoundary`는 한계 문장에서 인과·예측 어휘를 **일부러 통과시킨다**
+       *     ('원인이라고 말할 수 없어'를 막을 수 없으니까). 그래서 AI가 쓴 한계 문장은
+       *     파이프라인에서 검사가 가장 느슨한 자리인데, 하필 경계를 정하는 자리다.
+       *
+       * 프롬프트도 LIMITATION을 '화면에 이미 보이는 것과 같은 문자열'이라고 모델에게
+       * 알려준다 — 코드가 그 말을 지키게 한다. AI의 `uncertainty`는 파싱 단계에서
+       * '근거 또는 한계를 동반했는지' 판정하는 신호로만 쓰이고, 화면에는 오지 않는다.
+       */
+      limitation: limitationFor(uniqueSources),
       evidence: resolveEvidenceRefs(insight.evidenceRefs, resolverContext).map((item) => ({
         sourceLabel: item.sourceLabel,
         text: item.text,

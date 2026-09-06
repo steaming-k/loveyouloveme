@@ -1,0 +1,28 @@
+{
+  "name": "deep_report_type_causality",
+  "description": "유형 -> 행동 1:1 대응 — 'I라서 혼자 있는 시간이 필요하다'. 이 서비스가 가장 경계하는 형태다",
+  "task": "deep-report-narrative",
+  "allowed": [
+    {
+      "id": "cs_mbti_link_alone",
+      "evidenceRefs": [
+        { "source": "mbti_lens", "field": "energy" },
+        { "source": "compatibility", "field": "alone" }
+      ]
+    }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "insightId": "cs_mbti_link_alone",
+        "headline": "성향과 개인 시간",
+        "interpretation": "너는 I라서 혼자 있는 시간이 더 필요한 거야.",
+        "evidenceRefs": [
+          { "source": "mbti_lens", "field": "energy" },
+          { "source": "compatibility", "field": "alone" }
+        ]
+      }
+    ]
+  },
+  "expect": { "narrativeCount": 0, "violationsInclude": ["causal_connective"] }
+}

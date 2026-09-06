@@ -52,6 +52,21 @@ function oneOf<T extends string>(value: unknown, allowed: readonly T[]): T | nul
 
 const CONFIDENCES: readonly Confidence[] = ['low', 'medium', 'high'];
 const CATEGORIES: readonly ObservedCategory[] = ['interest', 'activity', 'social', 'lifestyle'];
+/**
+ * AI 응답의 evidenceRef에서 허용하는 source.
+ *
+ * ⚠️ v1.27 Audit에서 발견한 v1.26 버그 — `compatibility`와 `mbti_lens`가 빠져 있었다.
+ * v1.26에서 Cross-source 조합 ④⑤를 신설하면서 TS 타입(`EvidenceRef`)에는 두 source를
+ * 추가했는데 **런타임 스키마에는 넣지 않았다.** 그 결과:
+ *   1. AI가 그 ref를 인용하면 `parseEvidenceRef`가 조용히 버린다
+ *   2. refs가 전부 버려지면 `parseDeepReportResponse`가 그 narrative를 통째로 드롭한다
+ *      (근거도 한계도 없으면 버리는 규칙)
+ *   3. 남더라도 Quality Gate (E)의 ref 대조가 **무의미해진다**
+ *      (`[].every(...)`는 항상 true라 빈 배열은 어떤 검사도 통과한다)
+ * 즉 v1.26의 새 연결들은 AI 설명을 못 받거나 근거 검사를 우회했다.
+ *
+ * ⚠️ 이 목록은 `EvidenceRef` 타입과 **항상 같이 움직여야 한다.**
+ */
 const EVIDENCE_SOURCES = [
   'declared',
   'relationship',
@@ -60,6 +75,10 @@ const EVIDENCE_SOURCES = [
   'history',
   'target',
   'deep_followup',
+  /** v1.26 — 이미 계산된 동기화율 축 판정 */
+  'compatibility',
+  /** v1.26 — MBTI 성향 렌즈의 한 축 */
+  'mbti_lens',
 ] as const;
 
 const MIRROR_AXIS_KEYS: readonly MirrorAxisKey[] = MIRROR_AXES.map((axis) => axis.key);

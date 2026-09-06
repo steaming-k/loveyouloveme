@@ -8,6 +8,7 @@ import { PROMPT_VERSIONS } from '@/services/ai/promptVersions';
 import {
   evidenceRefsAreSubsetOf,
   filterSafeItems,
+  isRedundantNarrative,
   scanCoreNarrative,
   scanDeepNarrative,
   scanHistoryNarrative,
@@ -248,6 +249,8 @@ export async function POST(request: Request): Promise<Response> {
     const insights = (Array.isArray(body.allowed) ? body.allowed : []) as Array<{
       id: string;
       evidenceRefs: EvidenceRef[];
+      /** v1.27 — Quality Gate (F) 중복 판정 기준. fixture가 주지 않으면 검사하지 않는다 */
+      ruleSummary?: string;
     }>;
     const allowedIds = insights.map((item) => item.id);
     const evidenceByInsight = new Map(insights.map((item) => [item.id, item.evidenceRefs]));
@@ -264,10 +267,20 @@ export async function POST(request: Request): Promise<Response> {
       scanDeepNarrative,
     );
 
+    /**
+     * Quality Gate (F) — 규칙 문장을 되풀이한 narrative는 버린다(v1.27 · §24).
+     * 실제 핸들러와 **같은 함수**를 쓴다 — 판정 로직을 테스트용으로 복제하지 않는다.
+     */
+    const ruleSummaryById = new Map(insights.map((item) => [item.id, item.ruleSummary ?? '']));
+    const novel = scan.items.filter(
+      (item) => !isRedundantNarrative(item.interpretation, ruleSummaryById.get(item.insightId) ?? ''),
+    );
+
     return Response.json({
       ok: true,
       promptVersion: PROMPT_VERSIONS.deepReport,
-      narratives: scan.items.map((item) => ({
+      redundantCount: scan.items.length - novel.length,
+      narratives: novel.map((item) => ({
         insightId: item.insightId,
         headlineLength: item.headline.length,
         interpretationLength: item.interpretation.length,

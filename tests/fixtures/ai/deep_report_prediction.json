@@ -1,0 +1,28 @@
+{
+  "name": "deep_report_prediction",
+  "description": "예측 — '앞으로 더 커질 가능성이 높아'. 아직 일어나지 않은 일은 규칙이 확인한 범위가 아니다",
+  "task": "deep-report-narrative",
+  "allowed": [
+    {
+      "id": "cs_compat_link_alone",
+      "evidenceRefs": [
+        { "source": "compatibility", "field": "alone" },
+        { "source": "declared", "field": "alone" }
+      ]
+    }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "insightId": "cs_compat_link_alone",
+        "headline": "개인 시간 축",
+        "interpretation": "개인 시간에 대한 기대가 서로 달라. 앞으로 이 차이가 더 커질 가능성이 높아.",
+        "evidenceRefs": [
+          { "source": "compatibility", "field": "alone" },
+          { "source": "declared", "field": "alone" }
+        ]
+      }
+    ]
+  },
+  "expect": { "narrativeCount": 0, "violationsInclude": ["prediction_likelihood"] }
+}

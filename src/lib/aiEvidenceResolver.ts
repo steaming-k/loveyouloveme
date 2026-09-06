@@ -243,6 +243,25 @@ function findDeepQuestionTemplate(questionId: string): DeepQuestionTemplate | nu
   return null;
 }
 
+/**
+ * 정밀 관찰 답변을 근거 문장으로 옮긴다.
+ *
+ * ⚠️ **Privacy — 이 함수만 자유서술 원문을 통과시킨다(120자 상한).**
+ *
+ * 다른 자유서술은 전부 막혀 있다. `experience.note`는 내용 대신 "직접 적어준 메모가
+ * 있어"라는 사실만 내보내고, declared/target/relationship은 저장된 라벨·점수만
+ * 문장으로 만든다. 여기만 예외인 이유는 **그 답 자체가 근거**라서다 — `custom`
+ * 선택지는 라벨이 없고 사용자가 쓴 문장이 곧 답이다. 지우면 AI가 설명할 대상이
+ * 사라지고 근거 없는 문장만 남는다.
+ *
+ * 그래서 경계는 "보내지 않는다"가 아니라 **어디까지 보내는가**로 잡는다:
+ *   - 목적지는 AI Provider **뿐**이다. 외부 Analytics로는 나가지 않는다
+ *     (`sanitizeForExternal` + `EXTERNAL_FORBIDDEN_KEYS`).
+ *   - 120자에서 자른다. 근거로 인용하기엔 충분하고, 긴 서술을 통째로 넘기지 않는다.
+ *
+ * 이 사실은 기능명세서 §24.11(Privacy — AI Provider로 가는 것)에 그대로 적혀 있다.
+ * **코드와 문서 중 한쪽만 바뀌면 안 된다.**
+ */
 function deepAnswerValueText(answer: DeepAnalysisAnswer, template: DeepQuestionTemplate | null): string | null {
   const { value } = answer;
   const optionLabel = (id: string): string | null => {

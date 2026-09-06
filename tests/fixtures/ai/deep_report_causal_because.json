@@ -1,0 +1,28 @@
+{
+  "name": "deep_report_causal_because",
+  "description": "강한 인과 — '과거 경험 때문에 지금 민감해졌다'. 규칙은 두 관찰이 같은 축을 가리킨다는 것까지만 확인했다",
+  "task": "deep-report-narrative",
+  "allowed": [
+    {
+      "id": "cs_compat_link_contact",
+      "evidenceRefs": [
+        { "source": "compatibility", "field": "contact" },
+        { "source": "relationship", "field": "hardest" }
+      ]
+    }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "insightId": "cs_compat_link_contact",
+        "headline": "연락 축",
+        "interpretation": "과거 관계에서 연락 감소가 힘들었기 때문에 지금 연락 기준이 높아진 거야.",
+        "evidenceRefs": [
+          { "source": "compatibility", "field": "contact" },
+          { "source": "relationship", "field": "hardest" }
+        ]
+      }
+    ]
+  },
+  "expect": { "narrativeCount": 0, "violationsInclude": ["causal_because"] }
+}

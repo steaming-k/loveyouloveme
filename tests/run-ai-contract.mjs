@@ -238,6 +238,12 @@ async function run(fixture) {
       check(name, `narrative 개수 ${expect.narrativeCount}`,
         narratives.length === expect.narrativeCount, `실제 ${narratives.length}`);
     }
+    if (expect.redundantCount !== undefined) {
+      // 안전 검사에서 버려진 것과 '규칙 문장 되풀이'로 버려진 것을 구분해서 본다
+      check(name, `중복으로 버린 개수 ${expect.redundantCount}`,
+        (result.redundantCount ?? 0) === expect.redundantCount,
+        `실제 ${result.redundantCount ?? 0}`);
+    }
     if (expect.insightIds) {
       check(name, `insightId ${expect.insightIds.join(',')}`,
         eq(narratives.map((n) => n.insightId), expect.insightIds),

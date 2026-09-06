@@ -1,0 +1,44 @@
+{
+  "name": "deep_report_redundant_narrative",
+  "description": "v1.26 실측 — AI가 규칙 문장의 마지막 문장을 글자 그대로 반복했다. 안전 검사는 전부 통과하므로 Quality Gate (F)가 잡아야 한다",
+  "task": "deep-report-narrative",
+  "allowed": [
+    {
+      "id": "cs_compat_link_contact",
+      "ruleSummary": "지금 상대와 연락 방식에서 차이가 보이는데, 이 축은 네 관계 경험에서 신호가 있었던 축이고, 이전 관찰에서도 반복해서 나온 축이야. 서로 다른 관찰이 같은 축을 가리키고 있어.",
+      "evidenceRefs": [
+        {
+          "source": "compatibility",
+          "field": "contact"
+        },
+        {
+          "source": "relationship",
+          "field": "hardest"
+        }
+      ]
+    }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "insightId": "cs_compat_link_contact",
+        "headline": "연락 축에서 관찰이 겹쳐",
+        "interpretation": "지금 상대와의 연락 방식에서 차이가 보이는데, 이는 과거 관계에서도 신호가 있었던 축이야. 서로 다른 관찰이 같은 축을 가리키고 있어.",
+        "evidenceRefs": [
+          {
+            "source": "compatibility",
+            "field": "contact"
+          },
+          {
+            "source": "relationship",
+            "field": "hardest"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 0,
+    "redundantCount": 1
+  }
+}

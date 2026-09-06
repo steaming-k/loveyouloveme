@@ -231,6 +231,135 @@ export function hasUnsupportedCertainty(text: string): boolean {
   return UNSUPPORTED_CERTAINTY_PATTERNS.some((pattern) => pattern.test(text));
 }
 
+/* ------------------------------- 인과·예측 주장 (v1.27 · Narrative Integrity) */
+
+/**
+ * **AI가 규칙 엔진이 확인한 범위보다 한 발 더 나가는 것을 막는다.**
+ *
+ * v1.26 실측에서 이 문장이 통과했다:
+ *   "이 차이가 관계에서의 소통 방식에 **영향을 미칠 수 있을** 것 같아"
+ *
+ * 헤지("~수 있을 것 같아")는 있었지만 문제는 확신의 강도가 아니라 **주장의 종류**였다.
+ * deterministic layer는 두 관찰이 **같은 축을 가리킨다**는 것만 확인했는데, AI가
+ * '영향'이라는 **인과 방향**을 새로 만들었다.
+ *
+ * 왜 기존 스캐너가 놓쳤나 — `scanDeepNarrative`는 민감 추론·마음 읽기·Lens 누출·성장
+ * 서사·일반론·단정 표현을 보는데, **인과/예측 패턴이 하나도 없었다.** 확신을 낮추는
+ * 표현만 검사했고 주장의 종류는 검사하지 않았다.
+ *
+ * ⚠️ 단어만 막으면 안 된다. 다음은 **반드시 통과해야 하는** 정직한 한계 문장이다:
+ *   "과거 경험이 현재 선호의 **원인**이라고 단정할 수는 없어."
+ *   "한쪽이 다른 쪽에 **영향을 준다**고 말할 수는 없어."
+ *   "MBTI가 실제 행동을 **결정한다**는 뜻은 아니야."
+ * 그래서 이 검사는 **부정/한계 표지가 같은 문장 안에 있으면 통과시킨다.**
+ */
+
+/**
+ * 인과 주장 — 강한 것과 약한 것을 함께 막는다.
+ * Premium AI에서 기본 허용하는 계층은 **연관**뿐이다
+ * ('함께 나타난다' / '같은 방향으로 보인다' / '나란히 놓인다' / '비슷한 장면이 있다').
+ */
+const CAUSAL_CLAIM_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
+  /* 강한 인과 */
+  { label: 'causal_because', pattern: /때문에|때문이|탓에|덕분에|(으로|로)\s*인해|인해서/ },
+  { label: 'causal_result', pattern: /결과적으로|그\s*결과|원인이\s*(되|됐|된)|(을|를)\s*초래/ },
+  { label: 'causal_effect', pattern: /영향(을|이)\s*(주|줬|준|미치|미쳤|미친|받)/ },
+  { label: 'causal_make', pattern: /(이|가)\s*만들었|만들어냈|(으로|로)\s*이어졌|생기게\s*(했|된)/ },
+  { label: 'causal_determine', pattern: /결정(한다|해|했|짓는)|좌우(한다|해|했)|(이|가)\s*원인/ },
+  /**
+   * 생성 주장 — v1.27 corpus에서 놓쳤다.
+   * '이별이 지금의 기준을 **만들었어**' / '모순이 **만들어졌어**' 같은 형태는 위 패턴이
+   * 전부 통과시켰다(목적격·피동형이라 (이|가) 만들었 에 걸리지 않았다).
+   */
+  { label: 'causal_create', pattern: /만들었|만들어졌|만들어진|만들어내|생겨났|생기게\s*(했|된)/ },
+  /**
+   * 인과 연결어미 — v1.27 corpus에서 놓쳤다.
+   * 'I라서 혼자 있는 시간이 필요한 거야'는 이 서비스가 가장 경계하는 형태다
+   * (유형 -> 행동 1:1 대응). 한국어 ~라서는 사실상 인과 전용이라 단독으로 막는다.
+   *
+   * 주의: ~해서/~아서는 넣지 않는다 — '확인이 필요해서', '같아서'처럼 인과가 아닌
+   * 용법이 너무 많아 오탐이 난다. 그 형태는 causal_create 같은 결과 쪽 표현으로 잡는다.
+   */
+  { label: 'causal_connective', pattern: /[가-힣A-Z]라서(\s|$)/ },
+  /* 약한 인과 — 헤지가 붙어도 인과 방향을 새로 만드는 것은 같다 */
+  { label: 'causal_weak', pattern: /(으로|로)\s*이어질\s*수|작용할\s*수|영향을?\s*미칠\s*수|영향을?\s*줄\s*수/ },
+];
+
+/** 예측 — 아직 일어나지 않은 일을 말한다 */
+const PREDICTION_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
+  { label: 'prediction_likelihood', pattern: /가능성이\s*(높|커|크)|확률이\s*(높|커)/ },
+  { label: 'prediction_future', pattern: /앞으로\s*(는)?\s*[^.!?\n]{0,20}(될|할|겠)|결국(에는)?\s*[^.!?\n]{0,20}(될|할|한다)/ },
+  { label: 'prediction_become', pattern: /하게\s*될\s*(거|것|수)|되고\s*말|(을|ㄹ)\s*수밖에\s*없/ },
+];
+
+/** 상대의 의도·마음을 단정 (기존 mind_reading이 못 잡는 형태를 보강) */
+const INTENT_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
+  { label: 'intent_claim', pattern: /마음이\s*(식|떠|멀어졌)|상대가\s*원하는\s*건|상대는\s*너를/ },
+];
+
+/** 관계에 좋음/나쁨을 붙이는 판정 */
+const VALUE_JUDGMENT_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
+  { label: 'value_relationship', pattern: /건강한\s*관계|좋은\s*궁합|나쁜\s*궁합|이상적인\s*(관계|커플)|위험한\s*관계/ },
+];
+
+/**
+ * **False Positive Protection.**
+ *
+ * '원인' · '영향을 준다' · '결정한다' 같은 말은 **한계를 말할 때 반드시 필요하다.**
+ * 이 서비스의 limitation 문장들이 정확히 그 형태다 — 막으면 정직한 문장이 사라진다.
+ *
+ * 그래서 같은 문장 안에 부정/한계 표지가 있으면 인과·예측 주장으로 보지 않는다.
+ * **문장 단위**로 본다 — 문서 전체에 하나만 있으면 통과시키는 방식은 우회가 너무 쉽다
+ * ("A 때문에 B야. 물론 단정할 수는 없어." 가 통과해버린다).
+ */
+const LIMITATION_MARKERS: readonly RegExp[] = [
+  /단정(할|하지|짓지)/,
+  /말할\s*수\s*(는)?\s*없/,
+  /알\s*수\s*(는)?\s*없/,
+  /뜻은?\s*아니/,
+  /것은?\s*아니/,
+  /(라고|다고)\s*(는)?\s*(볼|보기|하기|말하기)\s*(는)?\s*(어렵|힘들)/,
+  /근거(는|가)?\s*(는)?\s*없/,
+  /확인(할|해봐야|해야)/,
+  /까지(야|다|이다)/,
+];
+
+/** 문장 분리 — 한국어 종결부호와 줄바꿈 기준. 완벽한 파서가 아니라 검사 단위다 */
+function splitSentences(text: string): string[] {
+  return text
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+}
+
+function hasLimitationMarker(sentence: string): boolean {
+  return LIMITATION_MARKERS.some((pattern) => pattern.test(sentence));
+}
+
+/**
+ * @returns 위반 라벨 목록. 한계 문장은 통과시킨다.
+ */
+export function scanClaimBoundary(text: string): SafetyScanResult {
+  const groups = [
+    ...CAUSAL_CLAIM_PATTERNS,
+    ...PREDICTION_PATTERNS,
+    ...INTENT_PATTERNS,
+    ...VALUE_JUDGMENT_PATTERNS,
+  ];
+
+  const violations = new Set<string>();
+
+  for (const sentence of splitSentences(text)) {
+    // 이 문장이 한계를 말하고 있으면 인과 어휘가 있어도 주장이 아니다.
+    if (hasLimitationMarker(sentence)) continue;
+    for (const { label, pattern } of groups) {
+      if (pattern.test(sentence)) violations.add(label);
+    }
+  }
+
+  return { safe: violations.size === 0, violations: [...violations] };
+}
+
 /**
  * Deep Report Narrative 전용 검사(§26). Core 검사(금지 추론·Lens 누출) +
  * 성장 서사 금지(History와 같은 이유로 필요하다 — 변화를 다루므로) +
@@ -241,6 +370,12 @@ export function scanDeepNarrative(text: string): SafetyScanResult {
   const violations = [...base.violations];
   if (isGenericSentence(text)) violations.push('generic_sentence');
   if (hasUnsupportedCertainty(text)) violations.push('unsupported_certainty');
+  /**
+   * v1.27 — **AI_OUTPUT ⊆ DETERMINISTIC_EVIDENCE.**
+   * 규칙 엔진은 두 관찰이 같은 축을 가리킨다는 것까지만 확인했다. 인과·예측·의도·
+   * 가치판정은 그 범위 밖이므로 여기서 막는다(한계 문장은 통과).
+   */
+  violations.push(...scanClaimBoundary(text).violations);
   return { safe: violations.length === 0, violations };
 }
 
@@ -257,6 +392,80 @@ export function evidenceRefsAreSubsetOf(
   const key = (ref: EvidenceRef): string => JSON.stringify(ref);
   const allowed = new Set(insightRefs.map(key));
   return narrativeRefs.every((ref) => allowed.has(key(ref)));
+}
+
+/* ------------------------- Quality Gate (F) 중복 (v1.27 · §24) */
+
+/**
+ * AI 문장이 **규칙 문장을 그냥 다시 쓴 것인지** 판정한다.
+ *
+ * v1.26 실측에서 실제로 나온 실패다. 어떤 연결의 규칙 문장이
+ *   "… 서로 다른 관찰이 같은 축을 가리키고 있어."
+ * 였는데 AI가 붙인 문장이 **마지막 문장을 글자 그대로 반복**했다.
+ * 안전 검사는 전부 통과한다 — 위험한 주장이 아니기 때문이다. 그런데 사용자에게는
+ * 같은 말이 두 번 보인다. 그러면 Premium이 파는 것이 '연결'이 아니라 '분량'이 된다.
+ *
+ * ⚠️ 이것은 안전 문제가 아니라 **가치 문제**라서 `scanDeepNarrative`에 넣지 않고 별도
+ * 게이트로 둔다. 걸리면 그 narrative만 버리고 화면은 규칙 문장으로 완결된다
+ * (`DeepConnection.narrativeText`가 null을 허용한다) — AI가 없어도 리포트는 남는다.
+ *
+ * ⚠️ 판정은 형태소 분석 없이 **글자 bigram**으로 한다. 한국어는 조사가 붙어
+ * '축이/축을/축은'이 모두 다른 어절이 되므로, 어절 비교는 새 정보를 과대평가한다.
+ *
+ * ⚠️ **임계값은 초기 캘리브레이션 값이다 · NOT VALIDATED.**
+ *
+ * v1.26 실측 3건으로 잡은 값이다(0.137 버림 / 0.596 · 0.672 통과). 표본이 3건이므로
+ * "이 값이 옳다"고 말할 수 없다 — **지금 명백한 되풀이를 막는다**까지가 근거다.
+ * 조정은 dev 로그의 `novel=` 관측치를 모은 뒤에 한다(감으로 올리고 내리지 않는다).
+ */
+const MIN_NARRATIVE_NOVELTY = 0.35;
+
+/** 비교 전 정규화 — 문장부호·공백 차이 때문에 중복을 놓치지 않게 한다 */
+function normalizeForCompare(text: string): string {
+  return text.replace(/[^0-9A-Za-z가-힣]/g, '');
+}
+
+function charBigrams(text: string): Set<string> {
+  const compact = normalizeForCompare(text);
+  const grams = new Set<string>();
+  for (let i = 0; i + 2 <= compact.length; i += 1) grams.add(compact.slice(i, i + 2));
+  return grams;
+}
+
+/**
+ * 규칙 문장에 없는 bigram의 비율. 낮을수록 규칙 문장을 되풀이한 것이다.
+ *
+ * @returns 0(완전 중복) ~ 1(완전히 새로운 문장)
+ */
+export function noveltyRatio(text: string, reference: string): number {
+  const target = charBigrams(text);
+  if (target.size === 0) return 0;
+  const base = charBigrams(reference);
+  let novel = 0;
+  for (const gram of target) if (!base.has(gram)) novel += 1;
+  return novel / target.size;
+}
+
+/**
+ * 규칙 문장의 한 문장을 **글자 그대로** 옮겨왔는지.
+ * 짧은 문장(<10자)은 우연히 겹칠 수 있어 세지 않는다.
+ */
+export function echoesReferenceSentence(text: string, reference: string): boolean {
+  const base = normalizeForCompare(reference);
+  if (base.length === 0) return false;
+  return splitSentences(text).some((sentence) => {
+    const compact = normalizeForCompare(sentence);
+    return compact.length >= 10 && base.includes(compact);
+  });
+}
+
+/**
+ * @returns 이 narrative가 규칙 문장에 아무것도 더하지 않는지
+ */
+export function isRedundantNarrative(text: string, reference: string): boolean {
+  if (reference.trim().length === 0) return false;
+  if (echoesReferenceSentence(text, reference)) return true;
+  return noveltyRatio(text, reference) < MIN_NARRATIVE_NOVELTY;
 }
 
 /**

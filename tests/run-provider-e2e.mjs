@@ -214,8 +214,15 @@ async function testHistoryInsight() {
 
 /* -------------------------------------------------- deep-report-narrative */
 async function testDeepReportNarrative() {
+  /**
+   * v1.27 — `ruleSummary`가 필수다. 서버의 Quality Gate (F)가 'AI가 이 문장을 그냥 다시
+   * 쓴 것인지' 판정하는 기준이라서, 이게 없으면 실제 앱이 보내는 것과 다른 요청이 되고
+   * (F)를 통과하는 척하게 된다 — 하네스가 계약을 따라가지 못하면 신호가 거짓이 된다.
+   */
   const insight = {
     id: 'e2e_cs_mirror_contact',
+    ruleSummary:
+      '네가 말한 연락 기준과 실제 관계에서 가장 힘들었던 지점이 같은 축을 가리키고 있어.',
     evidenceRefs: [
       { source: 'declared', field: 'contact' },
       { source: 'relationship', field: 'hardest' },
@@ -235,6 +242,9 @@ async function testDeepReportNarrative() {
             { ref: insight.evidenceRefs[1], text: '연락 감소가 가장 힘들었음' },
           ],
           strength: 'strong',
+          // v1.27 프롬프트가 실제로 읽는 두 칸 — 없으면 모델이 다른 지시를 받는다
+          allowedConnection: '네가 말한 연락 기준과 실제 관계에서 가장 힘들었던 지점이 같은 축을 가리키고 있어.',
+          limitation: '네가 말한 기준과 관계 경험을 나란히 놓은 것까지야. 어느 쪽이 진짜 너인지는 정하지 않아.',
         },
       ],
     },
@@ -246,11 +256,18 @@ async function testDeepReportNarrative() {
   }
   const narratives = json.data.narratives ?? [];
   const evidenceOk = narratives.every((n) => (n.evidenceRefs?.length ?? 0) >= 1);
+  /**
+   * v1.27 — narratives가 0건이어도 실패가 아니다. 안전 검사나 (F) 중복 게이트가
+   * 전부 떨어뜨렸을 수 있고, 그건 설계된 결말이다(화면은 규칙 문장으로 완결된다).
+   * 다만 **0건이라는 사실은 반드시 보이게** 한다 — 조용히 넘기면 '모델이 안 만든 것'과
+   * '게이트가 버린 것'을 구분할 수 없다. 문장 원문은 출력하지 않는다(§10).
+   */
+  const gateNote = narratives.length === 0 ? ' · ⚠️ 전부 게이트에서 걸러짐' : '';
   reportRealMode({
     task: 'deep-report-narrative',
     json,
     durationMs,
-    extra: `· narratives: ${narratives.length} · evidence-subset-ok: ${evidenceOk}`,
+    extra: `· narratives: ${narratives.length} · evidence-subset-ok: ${evidenceOk}${gateNote}`,
   });
 }
 

@@ -8,6 +8,7 @@ import {
   PAST_FACTOR_LABEL,
 } from '@/data/labels';
 import { resolveEvidenceRef, type EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
+import { limitationFor } from '@/services/premiumConnections';
 import { sanitizeFreeText } from './safety';
 import type {
   CompatibilityResult,
@@ -251,6 +252,18 @@ export interface DeepReportContext {
      */
     evidence: Array<{ ref: EvidenceRef; text: string }>;
     strength: string;
+    /**
+     * v1.27 — **ALLOWED CONNECTION.** 규칙 엔진이 확인한 주장 그대로다(`ruleSummary`).
+     * 모델은 이 범위 안에서만 말할 수 있다 — 여기 없는 관계(인과·예측)를 새로 만들면
+     * `scanClaimBoundary`가 그 항목을 버린다.
+     */
+    allowedConnection: string;
+    /**
+     * v1.27 — **LIMITATION.** 이 연결이 말할 수 없는 것.
+     * 화면에 이미 보이는 것과 **같은 문자열**이다 — 사용자가 보는 경계와 모델이 받는
+     * 경계가 다르면 경계가 아니다.
+     */
+    limitation: string;
   }>;
 }
 
@@ -283,6 +296,19 @@ export function buildDeepReportContext(
       type: insight.type,
       axis: insight.axis ?? null,
       sources: insight.sources,
+      /**
+       * v1.27 — 모델에게 **규칙이 확인한 주장**과 **말할 수 없는 것**을 함께 준다.
+       *
+       * v1.26까지는 evidence와 type 라벨만 보냈다. 그래서 모델은 "이 연결이 왜 눈에
+       * 띄는지 설명하라"는 요청만 받았고, 규칙이 어디까지 확인했는지 몰랐다 —
+       * 실측에서 두 관찰이 같은 축을 가리킨다는 것만 확인된 상황에 모델이
+       * '영향을 미칠 수 있을'이라는 **인과 방향**을 새로 붙였다.
+       *
+       * 두 문장은 화면에 이미 보이는 것과 **같은 문자열**이다 — 사용자가 보는 경계와
+       * 모델이 받는 경계가 다르면 안 된다.
+       */
+      allowedConnection: insight.ruleSummary,
+      limitation: limitationFor(insight.sources),
       evidence,
       strength: insight.strength,
     });

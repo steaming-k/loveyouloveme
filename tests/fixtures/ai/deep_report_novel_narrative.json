@@ -1,0 +1,44 @@
+{
+  "name": "deep_report_novel_narrative",
+  "description": "v1.26 실측 — 같은 구조지만 AI가 추상적인 규칙 문장에 실제 값(연락 감소·연락이 뜸함)을 채워 넣었다. Quality Gate (F)가 이건 통과시켜야 한다",
+  "task": "deep-report-narrative",
+  "allowed": [
+    {
+      "id": "cs_reltarget_contact",
+      "ruleSummary": "과거 관계에서 가장 힘들었던 지점과, 지금 상대에 대해 네가 이미 알고 있다고 입력한 특성이 같은 축을 가리키고 있어.",
+      "evidenceRefs": [
+        {
+          "source": "relationship",
+          "field": "hardest"
+        },
+        {
+          "source": "target",
+          "field": "contact"
+        }
+      ]
+    }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "insightId": "cs_reltarget_contact",
+        "headline": "연락이라는 같은 자리",
+        "interpretation": "연락 감소가 가장 힘들었던 과거 경험과, 현재 상대가 연락이 뜸하다는 특성이 같은 축을 가리키고 있어. 두 신호가 나란히 놓여 있어.",
+        "evidenceRefs": [
+          {
+            "source": "relationship",
+            "field": "hardest"
+          },
+          {
+            "source": "target",
+            "field": "contact"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 1,
+    "redundantCount": 0
+  }
+}

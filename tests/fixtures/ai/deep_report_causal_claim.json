@@ -1,0 +1,31 @@
+{
+  "name": "deep_report_causal_claim",
+  "description": "v1.26 실측에서 통과했던 문장 — '영향을 미칠 수 있을 것 같아'. 헤지가 붙어도 인과 방향을 새로 만드는 것이므로 scanClaimBoundary가 걸러야 한다",
+  "task": "deep-report-narrative",
+  "allowed": [
+    {
+      "id": "cs_compat_link_contact",
+      "evidenceRefs": [
+        { "source": "compatibility", "field": "contact" },
+        { "source": "relationship", "field": "hardest" }
+      ]
+    }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "insightId": "cs_compat_link_contact",
+        "headline": "연락 축에서 두 관찰이 겹쳐",
+        "interpretation": "지금 상대와 연락 기준이 다르게 나왔어. 이 차이가 관계에서의 소통 방식에 영향을 미칠 수 있을 것 같아.",
+        "evidenceRefs": [
+          { "source": "compatibility", "field": "contact" },
+          { "source": "relationship", "field": "hardest" }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 0,
+    "violationsInclude": ["causal_weak"]
+  }
+}

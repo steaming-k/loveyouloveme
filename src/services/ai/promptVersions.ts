@@ -26,8 +26,20 @@ export const PROMPT_VERSIONS = {
   compatibility: 'compatibility-v2',
   /** v1.7 — 길이 제한 · '~수도 있어' 톤 강제 · 반복 신호 확정 금지 */
   history: 'history-v2',
-  /** v1.9 — Cross-source Insight 설명. headline/interpretation/situation/question만 쓴다 */
-  deepReport: 'deep-report-v1',
+  /**
+   * v1.9 — Cross-source Insight 설명. headline/interpretation/situation/question만 쓴다.
+   *
+   * v1.27 — **v2로 올렸다.** Prompt Contract를 구조화했고(OBSERVED FACTS /
+   * ALLOWED CONNECTION / LIMITATION) context에 `allowedConnection`·`limitation` 두
+   * 필드가 새로 들어간다. 같은 입력이라도 **모델이 받는 것이 달라졌으므로** 버전을
+   * 올려야 한다 — 안 올리면 v1 프롬프트로 만든 응답이 캐시에서 그대로 나온다.
+   *
+   * ⚠️ `deepReportFingerprint`는 insights/declared/target/validated/deepAnswers만
+   * 해싱하므로 **프롬프트 변경을 감지하지 못한다.** 캐시 키에 promptVersion이 함께
+   * 들어가는지가 관건이고, 이 상수는 결과 `meta.promptVersion`으로도 나가서
+   * QA에서 어느 프롬프트로 만든 문장인지 구분하게 해준다.
+   */
+  deepReport: 'deep-report-v2-bounded',
 } as const;
 
 export const ANALYSIS_VERSION = '1.0';
