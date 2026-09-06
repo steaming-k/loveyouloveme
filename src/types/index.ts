@@ -84,6 +84,53 @@ export interface MbtiSelfLens {
   note: string;
 }
 
+/* -------------------------------- MBTI 조합 패턴 (v1.25 · P3-2) */
+
+/**
+ * 두 사람의 4축 같음/다름이 만드는 **구조**의 이름.
+ *
+ * ⚠️ 유형쌍(INFP × ESTJ)마다 문장을 두지 않는다 — 그건 궁합 사전이다.
+ * 256개 조합 전부가 아래 5개 중 정확히 하나에 들어간다.
+ *   INNER  정보를 받아들이고(S/N) 판단하는(T/F) 과정
+ *   OUTER  에너지를 회복하고(E/I) 생활을 조직하는(J/P) 리듬
+ */
+export type MbtiPatternKey =
+  | 'all-same'
+  | 'all-different'
+  | 'inner-same'
+  | 'outer-same'
+  | 'mixed';
+
+/**
+ * 무료 MBTI Lens가 보장하는 세 가지 (P3-2):
+ *   1. 조합에서 눈여겨볼 성향 패턴   → label · body · watchFor
+ *   2. 러비의 심리/철학적 관찰 1개    → observation
+ *   3. 실제로 확인해볼 질문 1개       → check
+ *
+ * ⚠️ 전부 **MBTI 데이터만으로** 만든다. 관계 답변을 여기에 끌어오지 않는다 —
+ * 관계 신호와의 대조는 별도 블록(`MbtiBridgeReport`)의 일이다.
+ */
+export interface MbtiPatternCheck {
+  axisKey: MbtiAxisKey;
+  axisEyebrow: string;
+  axisLabel: string;
+  /** 이 축에서 두 사람이 같은 쪽인지. 질문을 왜 고른지 설명이 갈린다 */
+  same: boolean;
+  question: string;
+  /** 이 질문을 고른 이유 한 줄 */
+  why: string;
+}
+
+export interface MbtiPatternReport {
+  key: MbtiPatternKey;
+  label: string;
+  body: string;
+  watchFor: string;
+  /** 러비의 심리/철학적 관찰. 진단이 아니라 인간 일반에 대한 관찰이다 */
+  observation: string;
+  check: MbtiPatternCheck;
+}
+
 /* ------------------------- MBTI × Relationship Signal Bridge (v1.24 · P3-1) */
 
 /**

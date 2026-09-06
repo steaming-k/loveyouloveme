@@ -77,7 +77,9 @@ export const PREMIUM_FEATURES: Record<PremiumFeatureId, PremiumFeatureDefinition
     source: 'mbti',
     title: 'MBTI 렌즈 상세',
     description: '네 축의 관찰 문장과 대화 주제를 축마다 펼쳐서 볼 수 있어.',
-    freeRecap: ['4축 비교표', '실제 관계 신호와의 비교'],
+    // v1.25 P3-2 — 무료가 실제로 주는 것을 그대로 적는다. Paywall이 무료 범위를
+    // 실제보다 작게 보여주면(그래서 유료가 커 보이면) 그것도 거짓 약속이다.
+    freeRecap: ['4축 비교표', '조합 패턴 + 러비의 관찰', '확인해볼 질문 1개', '실제 관계 신호와의 비교'],
     additions: [
       '축별 관찰 문장 4개',
       '선호가 다른 축의 대화 질문',

@@ -1,6 +1,7 @@
 import { buildCompatibility, buildConversationQuestions } from '@/lib/logic/compatibility';
 import { buildMbtiBridge } from '@/lib/logic/mbtiBridge';
 import { buildMbtiLens, buildMbtiQuestions } from '@/lib/logic/mbtiLens';
+import { buildMbtiPattern } from '@/lib/logic/mbtiPattern';
 import { buildMirrorReport } from '@/lib/logic/mirror';
 import { buildHomeHighlights, buildRelationshipProfile } from '@/lib/logic/profile';
 import { callAiTask } from '@/services/ai/aiClient';
@@ -330,6 +331,8 @@ export const aiSelectors = {
   mbtiQuestions: buildMbtiQuestions,
   /** v1.24 P3-1 — 이미 계산된 두 결과를 나란히 놓는 presentation 비교. 새 점수가 아니다 */
   mbtiBridge: buildMbtiBridge,
+  /** v1.25 P3-2 — MBTI 데이터만으로 만드는 조합 패턴. 관계 답변을 읽지 않는다 */
+  mbtiPattern: buildMbtiPattern,
   mirror: buildMirrorReport,
   profile: buildRelationshipProfile,
   homeHighlights: buildHomeHighlights,

@@ -21,15 +21,20 @@ import {
   ReportSectionEyebrow,
 } from '@/components/report/ReportShell';
 import { MBTI_LENS_COPY } from '@/data/copy';
-import { selectMbtiAxisObservation, selectMbtiLensHeadline } from '@/data/lovyNotes';
+import { selectMbtiLensHeadline } from '@/data/lovyNotes';
 import { trackEvent } from '@/lib/analytics';
 import { buildMbtiSelfLens } from '@/lib/logic/mbtiLens';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { premiumFeatureState } from '@/services/premiumService';
 import { RESULT_ANCHORS, ROUTES } from '@/lib/routes';
-import { useMbtiBridge, useMbtiLens } from '@/hooks/useAnalysis';
+import { useMbtiBridge, useMbtiLens, useMbtiPattern } from '@/hooks/useAnalysis';
 import { useSession } from '@/state/SessionProvider';
-import type { MbtiBridgeReport, MbtiLensReport, MbtiSelfLens } from '@/types';
+import type {
+  MbtiBridgeReport,
+  MbtiLensReport,
+  MbtiPatternReport,
+  MbtiSelfLens,
+} from '@/types';
 
 /**
  * X1-a MBTI Lens — Compatibility Lens **Detail** Screen
@@ -41,9 +46,15 @@ import type { MbtiBridgeReport, MbtiLensReport, MbtiSelfLens } from '@/types';
  * 나란히 놓여 '성향만으로는 설명되지 않는 지점'이 드러나게 한다:
  *
  *   01 MBTI LENS        조합 · 축 요약 · 한 문장       ← 익숙한 Hook (첫 viewport)
- *   02 4 AXES           네 축 관찰표 + 러비의 관찰
- *   03 BUT IN REAL LIFE 성향 렌즈 vs 네가 답한 관계 신호 ← 차별점
+ *   02 4 AXES           네 축 관찰표
+ *   03 PATTERN          조합 패턴 + 러비 관찰 + 확인해볼 질문 (v1.25 P3-2)
+ *   04 BUT IN REAL LIFE 성향 렌즈 vs 네가 답한 관계 신호 ← 차별점
  *   LENS → CORE         실제 관계 신호로 돌아가기
+ *
+ * v1.25 P3-2 — 실사용 피드백 "구조는 좋아졌는데 정보가 적다"를 반영해 `03 PATTERN`을
+ * 신설했다. **축 설명을 늘려서 채우지 않았다**(MBTI 교육 페이지가 되면 실패다) —
+ * 무료가 반드시 세 가지를 주도록 만든 블록이다: 조합 패턴 · 러비의 관찰 1개 ·
+ * 확인해볼 질문 1개. 전부 MBTI 데이터만으로 만들고 관계 답변을 끌어오지 않는다.
  *
  * ⚠️ 이 화면의 어떤 값도 동기화율에 영향을 주지 않는다. `buildMbtiLens`와
  * `buildCompatibility`는 한 줄도 바뀌지 않았고, 새 Route도 만들지 않았다.
@@ -63,6 +74,7 @@ function MbtiLensView() {
   const { answers } = useSession();
   const report = useMbtiLens();
   const bridge = useMbtiBridge();
+  const pattern = useMbtiPattern();
   const [variant] = useState(() => resolvePriceVariant());
 
   const selfLens = useMemo(() => buildMbtiSelfLens(answers.mbti), [answers.mbti]);
@@ -112,8 +124,13 @@ function MbtiLensView() {
       {/* STATE — 내 MBTI가 없으면 상대 유무와 무관하게 내 입력부터 유도한다(Self First) */}
       {!selfLens ? (
         <EmptyLensView hasTarget={Boolean(answers.target.mbti)} />
-      ) : couple && report && bridge ? (
-        <CoupleLensView report={report} bridge={bridge} compatibilityDone={answers.completed.compatibility} />
+      ) : couple && report && bridge && pattern ? (
+        <CoupleLensView
+          report={report}
+          pattern={pattern}
+          bridge={bridge}
+          compatibilityDone={answers.completed.compatibility}
+        />
       ) : (
         <SelfOnlyLensView lens={selfLens} />
       )}
@@ -150,10 +167,12 @@ function MbtiLensView() {
 
 function CoupleLensView({
   report,
+  pattern,
   bridge,
   compatibilityDone,
 }: {
   report: MbtiLensReport;
+  pattern: MbtiPatternReport;
   bridge: MbtiBridgeReport;
   compatibilityDone: boolean;
 }) {
@@ -218,15 +237,71 @@ function CoupleLensView({
           code={MBTI_LENS_COPY.sections.axes.code}
           title={MBTI_LENS_COPY.sections.axes.title}
         >
+          {/*
+            v1.25 P3-2 — 여기 있던 러비의 한 줄 관찰을 03 PATTERN으로 옮겼다.
+            그 한 줄은 바로 위 표가 이미 보여준 사실("A는 비슷, B는 갈림")을 문장으로
+            옮긴 것뿐이라 새로 얻는 게 없었다. 관찰은 두껍게 한 곳에서 한다.
+          */}
           <MbtiAxisField report={report} />
-
-          {/* 러비는 여기서 '설명하는 전문가'가 아니라 '관찰하는 외계인'이다 */}
-          <LovyNote label="LOVY OBSERVATION">{selectMbtiAxisObservation(report)}</LovyNote>
         </ReportSection>
 
-        {/* ══ 03 · BUT IN REAL LIFE — 이 화면의 차별점 ══════════════════════ */}
+        {/*
+          ══ 03 · PATTERN — 무료가 반드시 주는 세 가지 (v1.25 P3-2) ═══════════
+          ① 조합에서 눈여겨볼 성향 패턴  ② 러비의 심리/철학적 관찰  ③ 확인해볼 질문
+          전부 MBTI 데이터만으로 만든다 — 관계 답변을 억지로 끌어오지 않는다.
+        */}
         <ReportSection
           index="03"
+          code={MBTI_LENS_COPY.sections.pattern.code}
+          title={MBTI_LENS_COPY.sections.pattern.title}
+          caption={MBTI_LENS_COPY.patternCaption}
+        >
+          {/* ① 패턴 — 유형쌍 사전이 아니라 4축이 만드는 '모양'의 이름이다 */}
+          <div className="flex flex-col gap-2.5 rounded-card border border-line bg-surface p-4">
+            <p className="text-[13.5px] font-semibold keep-all tracking-[-0.2px]">
+              {pattern.label}
+            </p>
+            <p className="text-[12.5px] keep-all leading-relaxed text-ink-sub">{pattern.body}</p>
+
+            <div className="border-t border-line-soft pt-3">
+              <p className="text-[10px] font-semibold tracking-[0.1em] text-ink-faint">
+                {MBTI_LENS_COPY.patternWatchLabel}
+              </p>
+              <p className="mt-0.5 text-[12.5px] keep-all leading-relaxed text-ink">
+                {pattern.watchFor}
+              </p>
+            </div>
+          </div>
+
+          {/* ② 러비 — 유형 해설자가 아니라 인간을 관찰하는 외계인. 진단하지 않는다 */}
+          <LovyNote label="LOVY OBSERVATION">{pattern.observation}</LovyNote>
+
+          {/* ③ 확인해볼 질문 — 답을 예측해서 말하지 않고, 물어볼 것만 준다 */}
+          <div className="flex flex-col gap-1.5 border-l-2 border-line-strong pl-3.5">
+            <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <span className="text-[10px] font-semibold tracking-[0.1em] text-ink-faint">
+                {MBTI_LENS_COPY.patternCheckLabel}
+              </span>
+              <span className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
+                {pattern.check.axisEyebrow}
+              </span>
+            </p>
+            <p className="text-[13.5px] font-medium keep-all leading-relaxed text-ink">
+              “{pattern.check.question}”
+            </p>
+            <p className="text-[11.5px] keep-all leading-relaxed text-ink-muted">
+              {pattern.check.why}
+            </p>
+          </div>
+
+          <p className="text-[11px] keep-all leading-relaxed text-ink-muted">
+            {MBTI_LENS_COPY.patternNotice}
+          </p>
+        </ReportSection>
+
+        {/* ══ 04 · BUT IN REAL LIFE — 이 화면의 차별점 ══════════════════════ */}
+        <ReportSection
+          index="04"
           code={MBTI_LENS_COPY.sections.bridge.code}
           title={MBTI_LENS_COPY.sections.bridge.title}
           caption={MBTI_LENS_COPY.bridgeCaption}

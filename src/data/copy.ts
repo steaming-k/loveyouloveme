@@ -489,8 +489,17 @@ export const MBTI_LENS_COPY = {
   sections: {
     lens: { code: 'MBTI LENS', title: '성향 렌즈로 보면' },
     axes: { code: '4 AXES', title: '네 개의 축을 나란히' },
+    /** v1.25 P3-2 — 무료가 '정보가 적다'로 읽히지 않게 보장하는 블록 */
+    pattern: { code: 'PATTERN', title: '이 조합에서 눈여겨볼 것' },
     bridge: { code: 'BUT IN REAL LIFE', title: '그런데 실제 관계에서는?' },
   },
+  /* --------------------------------------------- 조합 패턴 (v1.25 P3-2) */
+  patternCaption: '유형쌍마다 정해둔 궁합 해석이 아니야. 네 축이 같고 다른 모양에서 읽히는 것만 적었어.',
+  patternWatchLabel: '눈여겨볼 지점',
+  patternCheckLabel: '확인해볼 질문',
+  /** 패턴 블록 끝 — 이 블록이 무엇이 아닌지 한 번 못박는다 */
+  patternNotice:
+    '여기까지는 성향 렌즈 안에서만 본 거야. 아래에서 네가 실제로 답한 관계 신호와 나란히 놓아볼게.',
   /** 4축 비교표 머리 — 색이 아니라 텍스트로 누구 표시인지 말한다 */
   axesLegendMine: '나',
   axesLegendTheirs: '상대',

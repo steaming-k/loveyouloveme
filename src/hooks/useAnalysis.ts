@@ -19,6 +19,7 @@ import type {
   HistoryReport,
   MbtiBridgeReport,
   MbtiLensReport,
+  MbtiPatternReport,
   MirrorAxisKey,
   MirrorReport,
   RelationshipProfile,
@@ -63,6 +64,18 @@ export function useMbtiLens(): MbtiLensReport | null {
     () => aiSelectors.mbtiLens(answers.mbti, answers.target.mbti),
     [answers.mbti, answers.target.mbti],
   );
+}
+
+/**
+ * MBTI 조합 패턴 (v1.25 P3-2)
+ *
+ * 무료 MBTI Lens가 보장하는 세 가지(패턴 · 러비 관찰 · 확인 질문)를 만든다.
+ * **MBTI 데이터만** 쓴다 — 관계 답변은 읽지 않으므로 `useCompatibility()`에 의존하지
+ * 않는다. 두 MBTI가 모두 있을 때만 값이 있다.
+ */
+export function useMbtiPattern(): MbtiPatternReport | null {
+  const mbtiLens = useMbtiLens();
+  return useMemo(() => aiSelectors.mbtiPattern(mbtiLens), [mbtiLens]);
 }
 
 /**
