@@ -1,6 +1,6 @@
 import { buildCompatibility, buildConversationQuestions } from '@/lib/logic/compatibility';
 import { buildMbtiBridge } from '@/lib/logic/mbtiBridge';
-import { buildMbtiLens, buildMbtiQuestions } from '@/lib/logic/mbtiLens';
+import { buildMbtiLens, buildMbtiSelfLens, buildMbtiQuestions } from '@/lib/logic/mbtiLens';
 import { buildFirstContactReport } from '@/lib/logic/firstContact';
 import { buildMbtiPattern } from '@/lib/logic/mbtiPattern';
 import { buildMirrorReport } from '@/lib/logic/mirror';
@@ -338,6 +338,8 @@ export const aiSelectors = {
   compatibility: buildCompatibility,
   conversationQuestions: buildConversationQuestions,
   mbtiLens: buildMbtiLens,
+  /** v1.32 P4-D — 자기 MBTI만으로 만드는 Self Lens. 상대가 없어도 값이 있다 */
+  mbtiSelfLens: buildMbtiSelfLens,
   mbtiQuestions: buildMbtiQuestions,
   /** v1.24 P3-1 — 이미 계산된 두 결과를 나란히 놓는 presentation 비교. 새 점수가 아니다 */
   mbtiBridge: buildMbtiBridge,

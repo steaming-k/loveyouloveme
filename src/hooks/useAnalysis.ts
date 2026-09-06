@@ -22,6 +22,7 @@ import type {
   MbtiBridgeReport,
   MbtiLensReport,
   MbtiPatternReport,
+  MbtiSelfLens,
   MirrorAxisKey,
   MirrorReport,
   RelationshipProfile,
@@ -58,6 +59,17 @@ export function useApproachHints(): ApproachHint[] {
     () => buildApproachHints(answers.target, compatibility),
     [answers.target, compatibility],
   );
+}
+
+/**
+ * 자기 MBTI만으로 만드는 Self Lens (v1.14 · Self First).
+ *
+ * v1.32 P4-D — Premium 연결(⑦)과 근거 해석(`mbti_lens` ref)이 **상대 없이도** 되게
+ * 하려면 이 값이 필요하다. 새 계산이 아니다 — 기존 `buildMbtiSelfLens`를 그대로 부른다.
+ */
+export function useMbtiSelfLens(): MbtiSelfLens | null {
+  const { answers } = useSession();
+  return useMemo(() => aiSelectors.mbtiSelfLens(answers.mbti), [answers.mbti]);
 }
 
 /** Supporting Lens — 두 MBTI가 모두 있을 때만 값이 있다. 없으면 화면에서 숨긴다. */

@@ -15,6 +15,7 @@ import type {
   MirrorAxisKey,
   MbtiAxisBridge,
   MbtiBridgeReport,
+  MbtiSelfLens,
   MirrorInsight,
   MirrorReport,
   ObservedSignalCategory,
@@ -559,6 +560,13 @@ export interface CrossSourceInsightInput {
   compatibility?: CompatibilityResult;
   /** v1.26 P3-3 — 이미 계산된 MBTI Bridge(v1.24). 없으면 ⑤ 조합을 만들지 않는다 */
   mbtiBridge?: MbtiBridgeReport | null;
+  /**
+   * v1.32 P4-D — 자기 MBTI만으로 만든 Self Lens. 없으면 ⑦ 조합을 만들지 않는다.
+   *
+   * `mbtiBridge`(⑤)는 `MbtiLensReport`를 요구하는데 그건 **양쪽 MBTI**가 있어야
+   * 만들어진다. Solo에게 열리는 건 이쪽뿐이다.
+   */
+  mbtiSelfLens?: MbtiSelfLens | null;
 }
 
 /**
@@ -621,6 +629,66 @@ function fromDeclaredVsObserved(input: {
   };
 }
 /**
+ * ⑦ Declared ↔ MBTI Self Lens — **사진 없이도 열리는 Solo 연결** (v1.32 P4-D)
+ *
+ * v1.29의 ⑥(declared × observed)만으로는 Solo Premium이 사실상 **사진 필수**였다.
+ * "나에 대해 꽤 많은 걸 입력했는데 사진이 없다는 이유로 Deep Report는 못 본다"가
+ * 되면 그건 근거의 문제가 아니라 입장권의 문제다.
+ *
+ * 두 source는 실제로 독립적이다 — MBTI는 사용자가 **자기를 설명한 유형**이고,
+ * declared는 **관계에서 무엇이 중요한지 답한 값**이다. 서로를 참조하지 않고 입력됐다.
+ *
+ * ⚠️ **축을 새로 매핑하지 않는다.** v1.24가 4축 중 의미가 실제로 겹치는 **하나만**
+ * (`energy ↔ alone`) 연결하고 T/F↔갈등 해결 등은 stereotype 위험으로 **의도적으로
+ * 기각**했다. 여기서 그 결정을 뒤집지 않는다 — Premium이라고 더 많이 연결하지 않는다.
+ *
+ * ⚠️ **`I라서 혼자 있는 시간이 필요하다`고 말하지 않는다.** 두 답이 같은 방향으로
+ * 나타났다는 관찰까지다. `limitationFor`의 `mbti_lens` 분기가 "성향이 관계 행동을
+ * 결정한다는 뜻은 아니야"를 항상 붙인다.
+ *
+ * ⚠️ 개인 시간이 보통(3)이면 방향을 말할 수 없으므로 **만들지 않는다.**
+ */
+function fromDeclaredVsMbtiSelf(input: {
+  declared: DeclaredPreference;
+  selfLens: MbtiSelfLens;
+}): CrossSourceInsight | null {
+  const { declared, selfLens } = input;
+
+  const energy = selfLens.axes.find((axis) => axis.key === 'energy');
+  if (!energy) return null;
+
+  const alone = declared.alone;
+  if (alone === null || alone === 3) return null;
+
+  const inward = energy.letter === 'I';
+  const needsAlone = alone >= 4;
+  const aligns = inward === needsAlone;
+
+  const lensPhrase = inward ? '내향(I) 쪽' : '외향(E) 쪽';
+  const answerPhrase = needsAlone ? '혼자 있는 시간을 중요하게' : '혼자 있는 시간은 크게 필요하지 않다고';
+
+  return {
+    id: insightId('selfmbti', 'alone'),
+    type: aligns ? 'MATCH' : 'GAP',
+    axis: 'alone',
+    sources: ['declared', 'mbti_lens'],
+    evidenceRefs: [
+      { source: 'declared', field: 'alone' },
+      { source: 'mbti_lens', field: 'energy' },
+    ],
+    /**
+     * ⚠️ `strong`을 주지 않는다. MBTI는 Supporting Lens이고 동기화율·Mirror 판정에
+     * 들어가지 않는다 — 강도를 올리면 유형이 판정 근거처럼 읽힌다.
+     */
+    strength: 'medium',
+    confidenceReason: aligns ? 'self:mbti+declared:aligns' : 'self:mbti+declared:differs',
+    ruleSummary: aligns
+      ? `성향 렌즈에서는 ${lensPhrase}이고, 실제로 답한 개인 시간 기준도 ${answerPhrase} 답했어. 두 답이 같은 방향으로 나타났어.`
+      : `성향 렌즈에서는 ${lensPhrase}인데, 실제로 답한 개인 시간 기준은 ${answerPhrase} 답했어. 두 답이 다른 방향을 가리키고 있어.`,
+    eligibleForNarrative: true,
+  };
+}
+/**
  * 답변된 Deep Question을 관련 Insight의 근거로 덧붙인다. id가 이제 결정론적이라
  * `answer.insightId`가 항상 같은 논리적 Insight를 가리킨다는 게 전제다(§40 —
  * User Correction/Deep Answer는 "관련된 Insight만" 갱신해야 하고 전체를 다시 만들지 않는다).
@@ -664,7 +732,7 @@ export function buildCrossSourceInsights(input: CrossSourceInsightInput): CrossS
   // declared는 이 함수가 직접 쓰지 않는다 — Mirror(①)가 이미 declared를 소화해 insight로
   // 넘겨준다. 타입에는 남겨둔다: Declared↔Target 같은 조합을 추가할 때 호출부를 바꾸지
   // 않아도 되게 하기 위해서다.
-  const { experience, target, mirror, validated, historyChanges, repeatedSignals } = input;
+  const { declared, experience, target, mirror, validated, historyChanges, repeatedSignals } = input;
 
   const insights: CrossSourceInsight[] = [];
   /** ①에서 축 중복을 판단하려면 ④보다 먼저 필요하다 */
@@ -749,6 +817,23 @@ export function buildCrossSourceInsights(input: CrossSourceInsightInput): CrossS
   if (input.mbtiBridge) {
     const built = fromMbtiBridge({ bridge: input.mbtiBridge, mirror });
     if (built) insights.push(built);
+  }
+
+  /**
+   * ⑦ Declared ↔ MBTI Self Lens (v1.32 P4-D)
+   *
+   * ⑤(MBTI Bridge)가 이미 만든 축에는 만들지 않는다 — ⑤는 동기화율까지 한 겹 더 이은
+   * 것이라 같은 이야기가 두 번 나온다. 커플 사용자의 리포트를 바꾸지 않는 것이
+   * 이 게이트의 목적이다.
+   */
+  if (input.mbtiSelfLens) {
+    const covered = new Set(
+      insights.map((insight) => insight.axis).filter((axis): axis is MirrorAxisKey => Boolean(axis)),
+    );
+    if (!covered.has('alone')) {
+      const built = fromDeclaredVsMbtiSelf({ declared, selfLens: input.mbtiSelfLens });
+      if (built) insights.push(built);
+    }
   }
 
   /**

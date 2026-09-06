@@ -16,6 +16,7 @@ import type {
   DeepAnalysisAnswer,
   EvidenceRef,
   MbtiLensReport,
+  MbtiSelfLens,
   RelationshipHistoryEntry,
   SessionAnswers,
   TargetAxisKey,
@@ -68,6 +69,17 @@ export interface EvidenceResolverContext {
   compatibility?: CompatibilityResult;
   /** v1.26 — 이미 계산된 MBTI 렌즈. 없으면 mbti_lens ref는 해석되지 않는다 */
   mbtiLens?: MbtiLensReport | null;
+  /**
+   * v1.32 P4-D — **상대 없이도 성향 렌즈 근거를 풀 수 있게 한다.**
+   *
+   * `mbtiLens`는 `buildMbtiLens(mine, theirs)`의 결과라 **양쪽 MBTI가 있어야** 만들어진다.
+   * 그래서 Solo 사용자에게는 항상 null이었고, `mbti_lens` ref도 항상 해석되지 않았다.
+   * 자기 MBTI만으로 만드는 `MbtiSelfLens`를 함께 받아 self-only 경로를 연다.
+   *
+   * ⚠️ 새 source를 만들지 않는다 — 같은 `mbti_lens` 어휘를 쓴다. 라벨('성향 렌즈')도,
+   * `limitationFor`의 경계 문장('성향이 관계 행동을 결정한다는 뜻은 아니야')도 그대로다.
+   */
+  mbtiSelfLens?: MbtiSelfLens | null;
 }
 
 const MIRROR_AXIS_LABEL = new Map(MIRROR_AXES.map((axis) => [axis.key as string, axis.label]));
@@ -343,13 +355,25 @@ export function resolveEvidenceRef(
     }
     case 'mbti_lens': {
       const axis = context.mbtiLens?.axes.find((item) => item.key === ref.field);
-      if (!axis) return null;
+      if (axis) {
+        return {
+          key: `mbti_lens:${ref.field}`,
+          sourceLabel: '성향 렌즈',
+          text: axis.same
+            ? `${axis.label} — 둘 다 ${axis.mineLetter}`
+            : `${axis.label} — ${axis.mineLetter} × ${axis.theirsLetter}`,
+        };
+      }
+      /**
+       * v1.32 P4-D — 상대 MBTI가 없으면 **내 글자만** 말한다.
+       * 상대를 추측해 채우지 않는다 — 없는 쪽은 문장에도 없다.
+       */
+      const selfAxis = context.mbtiSelfLens?.axes.find((item) => item.key === ref.field);
+      if (!selfAxis) return null;
       return {
         key: `mbti_lens:${ref.field}`,
         sourceLabel: '성향 렌즈',
-        text: axis.same
-          ? `${axis.label} — 둘 다 ${axis.mineLetter}`
-          : `${axis.label} — ${axis.mineLetter} × ${axis.theirsLetter}`,
+        text: `${selfAxis.label} — 나는 ${selfAxis.letter}`,
       };
     }
     default:

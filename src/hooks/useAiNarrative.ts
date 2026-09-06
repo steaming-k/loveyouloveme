@@ -25,6 +25,7 @@ import {
   useHistoryReport,
   useMbtiBridge,
   useMbtiLens,
+  useMbtiSelfLens,
   useMirror,
   useRepeatedSignals,
 } from '@/hooks/useAnalysis';
@@ -170,6 +171,8 @@ export function useEvidenceContext(): EvidenceResolverContext {
    */
   const compatibility = useCompatibility();
   const mbtiLens = useMbtiLens();
+  /** v1.32 P4-D — 상대가 없어도 성향 렌즈 근거가 풀리게 한다(자기 MBTI만으로 만든다) */
+  const mbtiSelfLens = useMbtiSelfLens();
 
   return useMemo(
     () => ({
@@ -179,8 +182,9 @@ export function useEvidenceContext(): EvidenceResolverContext {
       deepAnswers: answers.deepAnswers,
       compatibility,
       mbtiLens,
+      mbtiSelfLens,
     }),
-    [answers, validated, entries, compatibility, mbtiLens],
+    [answers, validated, entries, compatibility, mbtiLens, mbtiSelfLens],
   );
 }
 
@@ -201,6 +205,8 @@ export function useCrossSourceInsights(): CrossSourceInsight[] {
    */
   const compatibility = useCompatibility();
   const mbtiBridge = useMbtiBridge();
+  /** v1.32 P4-D — ⑦(declared × MBTI self)의 입력. 상대가 없어도 값이 있다 */
+  const crossMbtiSelfLens = useMbtiSelfLens();
 
   return useMemo(
     () =>
@@ -217,6 +223,8 @@ export function useCrossSourceInsights(): CrossSourceInsight[] {
         deepAnswers: answers.deepAnswers,
         compatibility,
         mbtiBridge,
+        // v1.32 P4-D — 상대 없이 열리는 ⑦ 조합의 입력. 새 계산이 아니다
+        mbtiSelfLens: crossMbtiSelfLens,
       }),
     [
       answers.declared,
@@ -231,6 +239,7 @@ export function useCrossSourceInsights(): CrossSourceInsight[] {
       answers.deepAnswers,
       compatibility,
       mbtiBridge,
+      crossMbtiSelfLens,
     ],
   );
 }
