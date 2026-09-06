@@ -769,6 +769,36 @@ export interface HistoryMirrorInsightSnapshot {
 export interface RelationshipHistoryEntry {
   id: string;
   /**
+   * 이 기록이 **누구에 대한 관찰인가** (v1.34 · P4-B).
+   *
+   * ⚠️ **optional이다.** v1.33 이전에 저장된 기록에는 이 필드가 없고, 그건 전부
+   * 커플 관찰이므로 `undefined`를 `'couple'`로 읽는다(`historyAudienceOf`).
+   * 파괴적 migration을 하지 않는다 — 사용자의 기존 기록을 다시 쓰지 않는다.
+   *
+   * ⚠️ 이 구분이 없으면 **커플 변화 리포트가 Solo 기록과 비교된다.**
+   * `buildHistoryReport`는 마지막 두 항목을 보고, `findRepeatedRelationshipSignals`는
+   * 모든 항목을 훑는다 — 둘 다 audience를 몰랐다.
+   */
+  audience?: 'couple' | 'solo';
+  /**
+   * Solo 관찰의 self signal 스냅샷 (v1.34 · P4-B).
+   *
+   * 커플 기록에는 없다. Mirror가 만들어지지 않는 사용자(관계 경험 없음)도 자기
+   * 기준은 답했으므로, 그 기준을 **그때의 값 그대로** 얼려둔다.
+   *
+   * ⚠️ 자유서술·사진 원문·생년월일은 넣지 않는다(기존 History privacy 정책 유지).
+   */
+  soloSnapshot?: {
+    /** 그때 답한 관계 기준 — `declaredSnapshot`과 같은 값이지만 Solo 비교의 주어다 */
+    signals: { axis: MirrorAxisKey; level: string }[];
+    /** 그때 화면에 보인 핵심 한 문장 */
+    headline: string;
+    /** 그때 함께 나타난 두 신호의 id 목록 — 문장이 아니라 규칙 id만 */
+    pairIds: string[];
+    /** 그때 쓸 수 있던 정보 종류 — 사진/MBTI 유무 등 categorical만 */
+    sources: ('declared' | 'mbti' | 'observed' | 'experience')[];
+  };
+  /**
    * 분석 입력(status + declared + experience)에서 파생한 지문.
    * 같은 분석을 두 번 저장하면 새 항목이 쌓이지 않고 갱신된다 — 저장 반복이
    * '관계 횟수'처럼 부풀려지는 것을 막기 위해서다.

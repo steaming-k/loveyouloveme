@@ -19,6 +19,8 @@ import { formatEntryDate } from '@/lib/historyFormat';
 import { ROUTES } from '@/lib/routes';
 import { useHistoryReport, useRepeatedSignals } from '@/hooks/useAnalysis';
 import { useHistory } from '@/state/HistoryProvider';
+import { historyAudienceOf } from '@/lib/logic/soloHistory';
+import type { RelationshipHistoryEntry } from '@/types';
 
 /**
  * F1 Relationship History — 실제 기능 (v1.3에서 정적 mock 제거)
@@ -167,7 +169,7 @@ function HistoryView() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[11px] tnum text-ink-muted">
-                        {formatEntryDate(entry.createdAt)} · Relationship Mirror
+                        {formatEntryDate(entry.createdAt)} · {historyKindLabel(entry)}
                       </span>
                       <span className="flex-none text-[13px] text-ink-faint" aria-hidden>
                         →
@@ -189,4 +191,17 @@ function HistoryView() {
       </div>
     </ScreenLayout>
   );
+}
+
+
+/**
+ * 이 기록이 어떤 관찰인지 (v1.34 P4-B).
+ *
+ * ⚠️ 예전에는 모든 항목에 `Relationship Mirror`가 붙었다. Solo 관찰에는 그게 **거짓**이다 —
+ * 상대도 Mirror 판정도 없는 기록에 관계 분석 이름을 붙이지 않는다.
+ *
+ * 탭을 나누지 않고 **같은 timeline 안에서 metadata로만** 구분한다(§23).
+ */
+function historyKindLabel(entry: RelationshipHistoryEntry): string {
+  return historyAudienceOf(entry) === 'solo' ? '나의 관찰' : 'Relationship Mirror';
 }

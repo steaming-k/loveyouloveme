@@ -399,7 +399,46 @@ export function resolveEvidenceRefs(
     result.push(resolved);
   }
 
-  return result;
+  return aggregateSameText(result);
+}
+
+/**
+ * **같은 문장이 여러 줄 나오지 않게 묶는다** (v1.34 · P4-C)
+ *
+ * v1.31에서 React duplicate key는 고쳤지만 **콘텐츠 중복은 남아 있었다.**
+ * `fromRepeatedSignal`이 기록마다 history ref를 하나씩 만들고, 근거 문장은
+ * `{날짜} 기록에서도 {축} 축에 {신호}`다 — **같은 날 저장된 기록끼리는 날짜도 같아**
+ * 글자 하나까지 동일해진다. 사용자에게는 같은 줄이 세 번 보인다(실측).
+ *
+ * ⚠️ **중복을 지우면서 개수 정보를 잃지 않는다.** 3줄을 1줄로 줄이되 몇 번의 관찰에서
+ * 나왔는지를 문장에 남긴다 — 그게 원래 이 근거가 말하려던 것이다.
+ *
+ * ⚠️ **날짜만으로 묶지 않는다.** 서로 다른 snapshot이 같은 날일 수 있고, 같은 날이어도
+ * 값이 다르면 다른 관찰이다. 묶는 기준은 **문장 자체가 완전히 같은가**이고, 문장에는
+ * 이미 source·축·값·날짜가 모두 들어 있다.
+ *
+ * ⚠️ 반복 어휘를 쓰지 않는다. 여기서 말하는 것은 "같은 근거가 N번 나왔다"는 사실뿐이고,
+ * '꾸준히/계속' 같은 해석은 규칙 문장(`ruleSummary`)의 몫이다(§41 — UI가 반복이라
+   말하는데 logic이 1회로 세는 불일치를 막는다).
+ */
+function aggregateSameText(items: readonly ResolvedEvidence[]): ResolvedEvidence[] {
+  const byText = new Map<string, { item: ResolvedEvidence; count: number }>();
+
+  for (const item of items) {
+    const found = byText.get(item.text);
+    if (found) found.count += 1;
+    else byText.set(item.text, { item, count: 1 });
+  }
+
+  return [...byText.values()].map(({ item, count }) =>
+    count === 1
+      ? item
+      : {
+          ...item,
+          // 근거가 몇 개로 줄었는지는 화면이 알 필요 없다 — 문장이 사실을 말한다.
+          text: `${item.text} (관찰 ${count}회)`,
+        },
+  );
 }
 
 /**

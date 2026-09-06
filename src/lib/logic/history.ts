@@ -1,3 +1,4 @@
+import { filterHistoryByAudience } from './soloHistory';
 import { MIRROR_AXES } from '@/data/axes';
 import { withTopicParticle } from '@/lib/korean';
 import type {
@@ -294,8 +295,19 @@ export function buildHistorySummary(changes: HistoryAxisChange[]): string {
  * @param entries 오래된 것부터 정렬된 전체 History
  */
 export function buildHistoryReport(
-  entries: readonly RelationshipHistoryEntry[],
+  allEntries: readonly RelationshipHistoryEntry[],
 ): HistoryReport {
+  /**
+   * v1.34 P4-B — **커플 기록만 본다.**
+   *
+   * 이 함수는 마지막 두 항목을 비교하는데, 같은 저장소에 Solo 관찰이 섞이면
+   * **커플 변화 리포트가 Solo 기록과 비교된다.** 두 기록은 주어가 다르므로
+   * 그 비교는 의미가 없다. Solo 비교는 `buildSoloHistoryReport`가 따로 한다.
+   *
+   * ⚠️ `audience`가 없는 예전 기록은 커플로 읽는다 — 기존 기록을 다시 쓰지 않는다.
+   */
+  const entries = filterHistoryByAudience(allEntries, 'couple');
+
   // 기록 1개로 가짜 변화를 만들지 않는다 (§8, Edge C)
   if (entries.length < 2) {
     return {
@@ -339,8 +351,14 @@ export function buildHistoryReport(
  * 금지 표현: '너는 항상 이래' / '반복되는 문제야' / '너의 연애 패턴은 이거야'
  */
 export function findRepeatedRelationshipSignals(
-  entries: readonly RelationshipHistoryEntry[],
+  allEntries: readonly RelationshipHistoryEntry[],
 ): RepeatedRelationshipSignal[] {
+  /**
+   * v1.34 P4-B — 여기도 **커플 기록만** 본다. 모든 항목을 훑는 함수라
+   * Solo 관찰이 섞이면 커플의 반복 신호 개수가 조용히 달라진다.
+   */
+  const entries = filterHistoryByAudience(allEntries, 'couple');
+
   if (entries.length < 2) return [];
 
   const signals: RepeatedRelationshipSignal[] = [];

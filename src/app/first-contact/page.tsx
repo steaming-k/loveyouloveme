@@ -7,6 +7,7 @@ import { Button } from '@/components/common/Button';
 import { BottomNavigation } from '@/components/common/BottomNavigation';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
+import { useToast } from '@/components/common/ToastProvider';
 import { NoticeBox, SectionLabel } from '@/components/common/primitives';
 import { LovyNote } from '@/components/lovy/LovyNote';
 import { ReportHeader, ReportSection } from '@/components/report/ReportShell';
@@ -22,6 +23,10 @@ import { useCrossSourceInsights } from '@/hooks/useAiNarrative';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { hasDeepConnection } from '@/services/premiumConnections';
 import { premiumFeatureState } from '@/services/premiumService';
+import { createEntryId } from '@/lib/historyRepository';
+import { analysisFingerprint } from '@/lib/logic/history';
+import { buildSoloHistoryEntry, buildSoloHistoryReport } from '@/lib/logic/soloHistory';
+import { useHistory } from '@/state/HistoryProvider';
 import { useSession } from '@/state/SessionProvider';
 
 /**
@@ -47,6 +52,52 @@ export default function FirstContactPage() {
   const report = useFirstContact();
 
   const hasMbti = Boolean(answers.mbti);
+
+  /**
+   * Solo Retention (v1.34 P4-B)
+   *
+   *   CURRENT   이 화면 — 지금 답으로 매번 다시 계산한다
+   *   HISTORY   저장된 snapshot — 그때의 값을 그대로 얼려둔다
+   *   CHANGE    둘 **사이**의 비교
+   *
+   * ⚠️ 비교는 저장된 snapshot과 현재 결과 사이에서만 한다. History가 현재 answers로
+   * 과거를 다시 계산하면 그건 기록이 아니다.
+   */
+  const { entries, saveEntry } = useHistory();
+  const { showToast } = useToast();
+  const soloHistory = buildSoloHistoryReport({ entries, current: report ?? { available: false } as never });
+
+  const analysisId = analysisFingerprint(answers.status, answers.declared, answers.experience);
+  const alreadySaved = entries.some((entry) => entry.analysisId === analysisId);
+
+  const handleSave = () => {
+    if (!report?.available) return;
+    const entry = buildSoloHistoryEntry({
+      answers,
+      report,
+      id: createEntryId(),
+      createdAt: new Date().toISOString(),
+      analysisId,
+    });
+    if (!entry) {
+      showToast('이번 관찰은 기록으로 남길 근거가 부족했어');
+      return;
+    }
+    const { created } = saveEntry(entry);
+    /**
+     * §32 — **새 이벤트를 만들지 않는다.** 기존 `relationship_history_entry_created`에
+     * `audience`만 더한다. Solo 때문에 기존 KPI의 의미가 깨지지 않게 low-cardinality
+     * property 하나로 구분한다.
+     */
+    if (created) {
+      trackEvent('relationship_history_entry_created', {
+        audience: 'solo',
+        history_count: entries.length + 1,
+        signal_count: report.signals.length,
+      });
+    }
+    showToast(created ? '이때의 기준을 기억해둘게' : '이미 남겨둔 관찰이야');
+  };
 
   /**
    * Solo Premium (§39 ~ §41)
@@ -184,6 +235,64 @@ export default function FirstContactPage() {
           {report.headline}
         </p>
 
+        {/*
+          시간축 비교 (v1.34 P4-B).
+
+          ⚠️ 저장된 snapshot과 **지금 결과** 사이의 비교다. 과거를 현재 answers로
+          다시 계산하지 않는다 — 그러면 과거가 지금에 맞춰 바뀌고, 그건 기록이 아니다.
+
+          ⚠️ 기록이 없으면 이 섹션 자체가 없다. "아직 비교할 게 없어"를 섹션으로
+          만들어 자리를 차지하지 않는다 — 대신 아래 저장 CTA가 다음 걸음을 말한다.
+        */}
+        {soloHistory.comparable ? (
+          <ReportSection
+            index={nextIndex()}
+            code="WHAT CHANGED"
+            title="지난 관찰과 비교하면"
+            caption={`저장해둔 관찰 ${soloHistory.entryCount}개와 지금 답을 나란히 놓은 거야. 성향이 변했다는 뜻은 아니야.`}
+          >
+            {soloHistory.headline ? (
+              <p className="px-1 text-[14px] font-medium keep-all leading-relaxed">
+                {soloHistory.headline}
+              </p>
+            ) : null}
+            <ul className="flex flex-col">
+              {soloHistory.changes.map((change) => (
+                <li
+                  key={change.axis}
+                  className="flex flex-col gap-1 border-t border-line-soft py-3 first:border-t-0 first:pt-0"
+                >
+                  <span className="flex items-baseline gap-2">
+                    <span className="text-[10px] font-semibold tracking-[0.1em] text-mint-ink">
+                      {change.state === 'STABLE' ? '유지' : change.state === 'CHANGE' ? '달라짐' : '처음'}
+                    </span>
+                    <span className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
+                      {change.label}
+                    </span>
+                  </span>
+                  {change.previousText ? (
+                    <span className="text-[12px] keep-all leading-relaxed text-ink-muted">
+                      지난 관찰 · {change.previousText}
+                    </span>
+                  ) : null}
+                  <span className="text-[13px] keep-all leading-relaxed">
+                    지금 · {change.currentText}
+                  </span>
+                  {/*
+                    ⚠️ §18 — 반복 어휘는 관찰 3회부터. 2시점은 반복의 증거가 아니다.
+                    `repeatable`이 false면 이 줄 자체가 없다.
+                  */}
+                  {change.repeatable ? (
+                    <span className="text-[11.5px] keep-all leading-relaxed text-ink-muted">
+                      {change.observationCount}번의 관찰에서 같은 방향이었어.
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </ReportSection>
+        ) : null}
+
         {/* 01 — 내가 답한 기준. SUBJECT A ↓ SIGNAL 01/02/03 구조(§50) */}
         <ReportSection
           index={nextIndex()}
@@ -295,6 +404,25 @@ export default function FirstContactPage() {
           ⚠️ Hook 문구는 Solo 전용이다. 궁합·상대 해석을 약속하지 않는다 —
           이 사용자에게는 그게 만들어지지 않는다.
         */}
+        {/*
+          §12 · §13 — **자동 저장하지 않는다.** 결과를 볼 때마다 기록이 쌓이면
+          '관찰 횟수'가 실제보다 부풀고, 그건 이 제품이 하지 않기로 한 것이다.
+          Mirror와 같은 의도적 Save action을 쓴다.
+
+          문구는 '분석 결과 저장'이 아니라 **'이때의 나를 관찰로 남긴다'**는 화법이다.
+        */}
+        <div className="mt-8 flex flex-col gap-2">
+          <SectionLabel>이 관찰 남기기</SectionLabel>
+          <p className="px-1 text-[12px] keep-all leading-relaxed text-ink-muted">
+            {alreadySaved
+              ? '이번 답은 이미 관찰 기록으로 남겨뒀어. 생각이 달라지면 그때 다시 관찰해보자.'
+              : '지금 답한 기준을 기록으로 남겨두면, 나중에 다시 관찰했을 때 무엇이 달라졌는지 볼 수 있어.'}
+          </p>
+          <Button variant={alreadySaved ? 'secondary' : 'primary'} onClick={handleSave}>
+            {alreadySaved ? '다시 저장하기' : '이때의 나를 기록해두기'}
+          </Button>
+        </div>
+
         <div className="mt-8">
           <PremiumEntryRow
             feature={premiumFeature}

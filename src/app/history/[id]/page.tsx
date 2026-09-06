@@ -27,6 +27,7 @@ import { buildHistoryChanges } from '@/lib/logic/history';
 import { ROUTES } from '@/lib/routes';
 import { useHistory } from '@/state/HistoryProvider';
 import type { RelationshipHistoryEntry } from '@/types';
+import { historyAudienceOf } from '@/lib/logic/soloHistory';
 
 /**
  * F1-a History Detail (§13/§14) — '그때의 나 vs 지금의 나'
@@ -74,6 +75,15 @@ function HistoryEntryView() {
 
   const insight = entry.coreInsight.userCorrection?.trim() || entry.coreInsight.original;
   const isLatest = latest?.id === entry.id;
+  /**
+   * v1.34 P4-B — Solo 관찰에는 상대도 Mirror 판정도 없다.
+   *
+   * ⚠️ **커플용 자리를 빈 채로 남겨두지 않는다.** 이 분기가 없으면 Solo 기록에서
+   * `이때의 Mirror 판정`은 제목만 있고 목록이 비고, 관계 경험 칩은 "기록이 없어"만
+   * 뜨고, 화면 상단에는 사실이 아닌 `Relationship Mirror` 라벨이 붙는다.
+   * 없는 것은 자리도 만들지 않는다(§24).
+   */
+  const isSolo = historyAudienceOf(entry) === 'solo';
 
   // '그때의 나 vs 지금의 나' — 최신 기록과 비교한다. 자기 자신이 최신이면 비교하지 않는다.
   const comparison = !isLatest && latest ? buildHistoryChanges(entry, latest) : [];
@@ -100,7 +110,7 @@ function HistoryEntryView() {
         <div className="flex flex-col gap-5">
           <PageHeading
             lines={['이때의 관찰']}
-            caption={`${formatEntryDate(entry.createdAt)} · Relationship Mirror`}
+            caption={`${formatEntryDate(entry.createdAt)} · ${isSolo ? '나의 관찰' : 'Relationship Mirror'}`}
           />
 
           {/* ① 당시 Core Insight */}
@@ -116,8 +126,15 @@ function HistoryEntryView() {
             ) : null}
           </section>
 
-          {/* ⑦ 현재 기준과 비교 — 최신 기록이면 비교 대상이 없다 */}
-          {isLatest ? (
+          {/*
+            ⑦ 현재 기준과 비교 — 최신 기록이면 비교 대상이 없다.
+
+            ⚠️ Solo 기록에는 붙이지 않는다. `meaningful`은 Mirror 스냅샷을 비교한
+            결과인데 Solo에는 그 판정이 없어서 항상 "크게 달라진 기준은 없었어"만
+            나온다 — 비교하지 않은 것을 '차이가 없다'로 말하지 않는다.
+            Solo의 시간축 비교는 `/first-contact`의 WHAT CHANGED가 담당한다.
+          */}
+          {isSolo ? null : isLatest ? (
             <p className="rounded-chip bg-sunken px-3.5 py-3 text-meta keep-all leading-relaxed text-ink-sub">
               <Lines lines={HISTORY_COPY.entryLatest} />
             </p>
@@ -139,10 +156,13 @@ function HistoryEntryView() {
           {/* ② 당시 Declared Me */}
           <ChipSection title="이때 말한 나 (DECLARED)" items={declaredChips(entry)} />
 
-          {/* ③ 당시 Relationship Evidence */}
-          <ChipSection title="이때의 관계 경험 (RELATIONSHIP)" items={evidenceChips(entry)} />
+          {/* ③ 당시 Relationship Evidence — Solo에는 관계 경험 자체가 없을 수 있다 */}
+          {isSolo ? null : (
+            <ChipSection title="이때의 관계 경험 (RELATIONSHIP)" items={evidenceChips(entry)} />
+          )}
 
-          {/* ④ 당시 Mirror Snapshot */}
+          {/* ④ 당시 Mirror Snapshot — Solo에는 Mirror 판정이 없다(빈 섹션을 만들지 않는다) */}
+          {isSolo ? null : (
           <section className="flex flex-col gap-2.5">
             <SectionLabel>이때의 Mirror 판정</SectionLabel>
             <ul className="flex flex-col gap-2">
@@ -167,6 +187,7 @@ function HistoryEntryView() {
               ))}
             </ul>
           </section>
+          )}
 
           {/* ⑥ 당시 Profile Metadata — MBTI는 참고 정보로만 */}
           <section className="flex flex-col gap-2">
