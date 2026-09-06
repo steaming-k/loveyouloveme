@@ -389,3 +389,30 @@ export function narrativeIsShowable(
   if (resolveEvidenceRefs(narrative.evidenceRefs, context).length > 0) return true;
   return Boolean(narrative.uncertainty?.trim());
 }
+
+/**
+ * 화면에 **실제로 그려질** Narrative가 하나라도 있는지 (v1.28)
+ *
+ * `narrativeIsShowable`은 문장 1개를 보는데, 화면은 "이 섹션에 AI 설명이 있는가"를
+ * 알아야 할 때가 있다 — `AI 설명` 배지가 그렇다. 배지가 `mode === real`만 보고 붙으면
+ * **Provider는 성공했지만 그릴 문장이 하나도 없는 상태**에서 배지만 남는다.
+ * 없는 것을 있다고 표시하는 것이라 이 제품에서 가장 하면 안 되는 종류의 거짓이다.
+ *
+ * ⚠️ 판정을 화면마다 다시 쓰지 않기 위해 여기 둔다. **렌더러와 같은 술어**
+ * (`narrativeIsShowable`)를 쓰는 것이 핵심이다 — 배지와 본문이 다른 기준을 보면
+ * 언젠가 반드시 어긋난다.
+ *
+ * @param match 그 섹션이 실제로 그리는 항목만 고르는 조건(축 등). 없으면 전체.
+ */
+export function hasShowableNarrative<
+  T extends { evidenceRefs: readonly EvidenceRef[]; uncertainty?: string },
+>(
+  narratives: readonly T[] | undefined,
+  context: EvidenceResolverContext,
+  match?: (item: T) => boolean,
+): boolean {
+  if (!narratives || narratives.length === 0) return false;
+  return narratives.some(
+    (item) => (match ? match(item) : true) && narrativeIsShowable(item, context),
+  );
+}

@@ -100,6 +100,17 @@ export function RelationshipDeepReportView({
   const connectionTotal =
     (report.corePattern ? 1 : 0) + report.connections.length + report.singleSourceNotes.length;
 
+  /**
+   * 화면에 실제로 그려진 AI 문장이 있는가 (v1.28)
+   *
+   * `DeepConnectionCard`는 `connection.narrativeText`가 null이면 그 문단을 아예
+   * 그리지 않는다. 그러니 배지의 근거도 같은 값이어야 한다.
+   * `singleSourceNotes`는 AI 문장을 갖지 않으므로 세지 않는다.
+   */
+  const hasRenderedAiNarrative =
+    Boolean(report.corePattern?.connection.narrativeText) ||
+    report.connections.some((connection) => Boolean(connection.narrativeText));
+
   const viewSent = useRef(false);
   const [utOpen, setUtOpen] = useState(false);
   const [completed, setCompleted] = useState(false);
@@ -234,11 +245,17 @@ export function RelationshipDeepReportView({
             전부 떨어졌으면 status는 'unavailable'이고 reason은 null이라 아래 Notice도
             조용하다 — demo와 같은 결말이다. 규칙 리포트만으로 완결되므로 그게 맞다.
           */}
-          {aiNarrative.status === 'ready' ? (
-            <div className="flex items-center justify-end gap-2">
-              <AiSourceLabel mode={aiNarrative.mode} />
-            </div>
-          ) : null}
+          {/*
+            v1.28 — 판정을 `status`가 아니라 **화면에 실제로 그려진 문장**으로 바꿨다.
+            `status === ready`는 narrative가 1개 이상 돌아왔다는 뜻일 뿐이라, 그 문장이
+            지금 그려지는 연결에 붙지 못하면 여전히 배지만 남는다. Compatibility와
+            같은 규칙을 쓴다 — 배지는 `지금 여기 AI 문장이 있다`를 뜻한다.
+          */}
+          <AiSourceLabel
+            mode={aiNarrative.mode}
+            hasNarrative={hasRenderedAiNarrative}
+            className="self-end"
+          />
           <AiNarrativeNotice
             task="deep-report-narrative"
             status={aiNarrative.status}

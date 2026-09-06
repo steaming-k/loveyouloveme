@@ -26,12 +26,39 @@ const FALLBACK_COPY: Partial<Record<AiFailureReason, string>> = {
   NO_USABLE_IMAGE: '분석에 쓸 수 있는 자료가 없어서 확인된 신호만 보여주고 있어.',
 };
 
-/** 작은 출처 라벨 — AI 설명 섹션 제목 옆에 붙인다 */
-export function AiSourceLabel({ mode }: { mode: AiMode | null }) {
-  if (mode === 'real') return <Tag tone="neutral">AI 설명</Tag>;
+/**
+ * 작은 출처 라벨 — AI 설명 섹션 제목 옆에 붙인다.
+ *
+ * ⚠️ **v1.28 — 배지의 뜻은 `Provider가 real이었다`가 아니라
+ * `지금 이 화면에 실제 AI 생성 설명이 있다`이다.**
+ *
+ * 예전에는 `mode`만 봤다. 그런데 Provider가 성공해도 화면에 문장이 하나도 안 남는
+ * 경로가 여럿이다 — Quality Gate가 전부 떨어뜨렸거나(v1.27 (F) 중복 · 안전 검사),
+ * 근거를 되살릴 수 없어 렌더러가 건너뛰었거나(`narrativeIsShowable`), 그 섹션의
+ * 축에 해당하는 문장이 애초에 없거나. 그 상태에서 `AI 설명`만 떠 있으면
+ * **없는 것을 있다고 표시하는 것**이다.
+ *
+ * 그래서 `hasNarrative`는 선택 인자가 아니라 **필수**다. 기본값을 주면 호출부가
+ * 판단을 건너뛰고도 조용히 통과한다 — 이 결함이 정확히 그렇게 생겼다.
+ *
+ * `fallback`만 예외로 무조건 표시한다. 이 태그는 AI가 있다는 주장이 아니라
+ * **AI 없이 규칙으로 채웠다는 고지**라서, 문장이 없을 때 오히려 필요하다.
+ */
+export function AiSourceLabel({
+  mode,
+  hasNarrative,
+  className,
+}: {
+  mode: AiMode | null;
+  /** 이 라벨이 가리키는 범위에 실제로 그려진 AI 문장이 있는가 */
+  hasNarrative: boolean;
+  className?: string;
+}) {
+  if (mode === 'fallback') return <Tag tone="friction" className={className}>규칙 기반 대체</Tag>;
+  if (!hasNarrative) return null;
+  if (mode === 'real') return <Tag tone="neutral" className={className}>AI 설명</Tag>;
   // 개발 전용 mock을 'AI 설명'으로 표시하지 않는다 — 실제 Provider 응답이 아니다(§5).
-  if (mode === 'mock') return <Tag tone="friction">MOCK AI</Tag>;
-  if (mode === 'fallback') return <Tag tone="friction">규칙 기반 대체</Tag>;
+  if (mode === 'mock') return <Tag tone="friction" className={className}>MOCK AI</Tag>;
   return null;
 }
 

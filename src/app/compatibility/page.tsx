@@ -49,7 +49,7 @@ import {
 import { PREMIUM_HOOK_COPY } from '@/data/premium';
 import { useAnchorScroll } from '@/hooks/useAnchorScroll';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
-import { narrativeIsShowable } from '@/lib/aiEvidenceResolver';
+import { hasShowableNarrative, narrativeIsShowable } from '@/lib/aiEvidenceResolver';
 import { trackEvent, trackOnce, trackOncePerAnalysis } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
 import { formatEntryDate } from '@/lib/historyFormat';
@@ -156,6 +156,29 @@ function CompatibilityView() {
           text: item.conversationQuestion as string,
         }))
     : [];
+  /**
+   * GOOD 섹션의 `AI 설명` 배지가 참인지 (v1.28)
+   *
+   * 배지는 `narrative.mode`만 보고 붙고 있었다. 그런데 이 섹션의 AI 문장은
+   * `CompatibilityAxisNarrative`가 **축마다** 판정해서 그린다 — 그 축의 narrative가
+   * 없거나 근거를 되살릴 수 없으면(`narrativeIsShowable`) 아무것도 안 그린다.
+   * 그래서 Provider가 성공해도 **배지만 남고 본문에는 AI 문장이 없는** 상태가 된다.
+   *
+   * 판정을 여기서 새로 쓰지 않고 렌더러와 **같은 술어**를 쓴다
+   * (`hasShowableNarrative` → `narrativeIsShowable`). 기준이 두 벌이 되면 어긋난다.
+   *
+   * 접혀 있는 행(`restGood`)은 세지 않는다 — 배지의 뜻이
+   * "지금 화면에 AI 설명이 있다"이므로, 펼치기 전에는 아직 없는 게 맞다.
+   */
+  const shownGoodAxes = new Set(
+    [topGood, ...(showAllGood ? restGood : [])].map((dimension) => dimension?.key),
+  );
+  const goodSectionHasAi = hasShowableNarrative(
+    narrative.data?.narratives,
+    evidenceContext,
+    (item) => shownGoodAxes.has(item.dimensionKey),
+  );
+
   const mbtiQuestionCount = questions.filter((question) => question.fromMbti).length;
   const savedQuestionsList = questions.filter((question) =>
     answers.savedQuestions.includes(question.id),
@@ -439,7 +462,7 @@ function CompatibilityView() {
             index={sectionNo.good ?? sectionNo.friction}
             code={REPORT_COPY.sections.good.code}
             title={REPORT_COPY.sections.good.title}
-            action={<AiSourceLabel mode={narrative.mode} />}
+            action={<AiSourceLabel mode={narrative.mode} hasNarrative={goodSectionHasAi} />}
           >
             <ul className="flex flex-col gap-2.5">
               <SignalCard
@@ -752,7 +775,8 @@ function CompatibilityView() {
                   <section className="flex flex-col gap-2.5">
                     <SectionLabel className="flex items-center gap-1.5">
                       러비가 덧붙인 질문
-                      <AiSourceLabel mode={narrative.mode} />
+                      {/* 이 블록 자체가 aiQuestions.length > 0일 때만 렌더된다 */}
+                      <AiSourceLabel mode={narrative.mode} hasNarrative />
                     </SectionLabel>
                     <ul className="flex flex-col gap-2">
                       {aiQuestions.map((item) => (
