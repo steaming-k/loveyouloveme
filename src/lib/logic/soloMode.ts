@@ -34,7 +34,20 @@ function hasTargetSignal(target: TargetProfile): boolean {
  *  - `no_target` 지금 특정 상대가 없다 → 내 기준만으로 First Contact Report
  */
 export function soloModeOf(answers: SessionAnswers): SoloMode {
-  const { target } = answers;
+  return soloModeOfTarget(answers.target);
+}
+
+/**
+ * 같은 판정을 **상대 정보만으로** 한다 (v1.33).
+ *
+ * `soloModeOf`는 원래 `answers.target`만 읽고 있었다. 그 사실을 시그니처로 드러내면
+ * `SessionAnswers` 전체를 갖지 않은 곳(예: Cross-source Engine)도 **같은 함수**로
+ * audience를 판정할 수 있다.
+ *
+ * ⚠️ 판정 로직을 두 벌 만들지 않기 위해 `soloModeOf`가 이 함수를 부른다 —
+ * 기준이 갈라지면 화면과 엔진이 서로 다른 사용자로 취급하게 된다.
+ */
+export function soloModeOfTarget(target: TargetProfile): SoloMode {
   if (targetKnownCount(target) >= TARGET_MIN_KNOWN) return 'couple';
   return hasTargetSignal(target) ? 'unknown_target' : 'no_target';
 }

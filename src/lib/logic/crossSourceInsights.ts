@@ -1,4 +1,5 @@
 import { MIRROR_AXES } from '@/data/axes';
+import { soloModeOfTarget } from './soloMode';
 import { withTopicParticle } from '@/lib/korean';
 import { HARDEST_TO_AXIS } from './mirror';
 import { toTargetValues } from './values';
@@ -734,6 +735,14 @@ export function buildCrossSourceInsights(input: CrossSourceInsightInput): CrossS
   // 않아도 되게 하기 위해서다.
   const { declared, experience, target, mirror, validated, historyChanges, repeatedSignals } = input;
 
+  /**
+   * 이 리포트를 누구를 위해 만드는가 (v1.33).
+   *
+   * 화면이 쓰는 것과 **같은 함수**다(`soloModeOfTarget`). 새 boolean을 만들어
+   * 여기저기 퍼뜨리지 않는다 — 판정이 갈라지는 순간 화면과 엔진이 어긋난다.
+   */
+  const audience: 'solo' | 'couple' = soloModeOfTarget(target) === 'couple' ? 'couple' : 'solo';
+
   const insights: CrossSourceInsight[] = [];
   /** ①에서 축 중복을 판단하려면 ④보다 먼저 필요하다 */
   const compatibilityInput = input.compatibility;
@@ -820,13 +829,26 @@ export function buildCrossSourceInsights(input: CrossSourceInsightInput): CrossS
   }
 
   /**
-   * ⑦ Declared ↔ MBTI Self Lens (v1.32 P4-D)
+   * ⑦ Declared ↔ MBTI Self Lens — **Solo 전용** (v1.32 P4-D · v1.33 명시적 격리)
    *
-   * ⑤(MBTI Bridge)가 이미 만든 축에는 만들지 않는다 — ⑤는 동기화율까지 한 겹 더 이은
-   * 것이라 같은 이야기가 두 번 나온다. 커플 사용자의 리포트를 바꾸지 않는 것이
-   * 이 게이트의 목적이다.
+   * ⚠️ v1.32까지 이 조합은 `covered.has('alone')`로만 억제됐다. 실측에서 커플 결과가
+   * 바뀌지는 않았지만 **그건 우연이었다** — 커플 세션은 대개 Mirror가 `alone` 축
+   * insight를 만들어 covered였을 뿐이고, Mirror가 그 축을 UNKNOWN으로 두면 커플
+   * 리포트에도 ⑦이 들어갈 수 있었다. 정책은 "Solo 전용"인데 구현은 "대개 안 걸린다"였다.
+   *
+   * 이제 **audience로 명시적으로 판정한다.** 커플에서 MBTI를 잇는 것은 ⑤
+   * (P3-1 MBTI ↔ Relationship Bridge)의 몫이고, 이 조합은 상대가 없을 때만 쓴다.
+   *
+   * ⚠️ 새 입력을 만들지 않았다 — 이미 받고 있는 `target`으로 화면과 **같은 함수**
+   * (`soloModeOfTarget`)를 써서 판정한다. 판정 기준이 두 벌이 되면 화면과 엔진이
+   * 서로 다른 사용자로 취급하게 된다.
    */
-  if (input.mbtiSelfLens) {
+  if (audience === 'solo' && input.mbtiSelfLens) {
+    /**
+     * 여기서 `covered`는 **audience 판정이 아니라 축 중복 회피**다.
+     * solo_exp는 Mirror가 살아 있어 ①이 `alone` 축을 이미 다뤘을 수 있는데,
+     * 그때 ⑦까지 내보내면 같은 축 이야기가 리포트에 두 번 나온다.
+     */
     const covered = new Set(
       insights.map((insight) => insight.axis).filter((axis): axis is MirrorAxisKey => Boolean(axis)),
     );
