@@ -14,7 +14,12 @@ import { ReportHeader, ReportSection } from '@/components/report/ReportShell';
 import { FirstContactActionCard } from '@/components/solo/FirstContactActionCard';
 import { SelfPairCard, SelfSignalCard } from '@/components/solo/SelfSignalCard';
 import { NO_EXPERIENCE_FRAME, UNKNOWN_TARGET_FRAME } from '@/data/firstContact';
-import { useFirstContact, useSoloMode } from '@/hooks/useAnalysis';
+import {
+  useFirstContact,
+  useObservedHistoryReport,
+  useSoloHistoryReport,
+  useSoloMode,
+} from '@/hooks/useAnalysis';
 import { trackEvent, trackOnce } from '@/lib/analytics';
 import { ROUTES } from '@/lib/routes';
 import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
@@ -24,8 +29,9 @@ import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { hasDeepConnection } from '@/services/premiumConnections';
 import { premiumFeatureState } from '@/services/premiumService';
 import { createEntryId } from '@/lib/historyRepository';
+import { historyCountBucket } from '@/lib/analytics';
 import { analysisFingerprint } from '@/lib/logic/history';
-import { buildSoloHistoryEntry, buildSoloHistoryReport } from '@/lib/logic/soloHistory';
+import { buildSoloHistoryEntry } from '@/lib/logic/soloHistory';
 import { useHistory } from '@/state/HistoryProvider';
 import { useSession } from '@/state/SessionProvider';
 
@@ -65,7 +71,14 @@ export default function FirstContactPage() {
    */
   const { entries, saveEntry } = useHistory();
   const { showToast } = useToast();
-  const soloHistory = buildSoloHistoryReport({ entries, current: report ?? { available: false } as never });
+  const soloHistory = useSoloHistoryReport();
+  /**
+   * 사진 관찰의 시간축 비교 (§5 ~ §8).
+   *
+   * ⚠️ **사진은 History의 입장권이 아니다**(§29). 사진이 없으면 `comparable === false`이고
+   * 이 섹션만 없다 — 나머지 비교는 그대로 동작한다.
+   */
+  const observedHistory = useObservedHistoryReport();
 
   const analysisId = analysisFingerprint(answers.status, answers.declared, answers.experience);
   const alreadySaved = entries.some((entry) => entry.analysisId === analysisId);
@@ -92,7 +105,8 @@ export default function FirstContactPage() {
     if (created) {
       trackEvent('relationship_history_entry_created', {
         audience: 'solo',
-        history_count: entries.length + 1,
+        // §26 — exact count 대신 low-cardinality bucket. 개수 자체가 지표가 아니다.
+        history_bucket: historyCountBucket(entries.length + 1),
         signal_count: report.signals.length,
       });
     }
@@ -290,6 +304,51 @@ export default function FirstContactPage() {
                 </li>
               ))}
             </ul>
+
+            {/*
+              사진 관찰의 시간축 비교 (§5 ~ §7).
+
+              ⚠️ **장면 관찰이지 취향 진단이 아니다.** 문장은 로직이 만들고
+              ('있었어 / 보이지 않았어 / 새로 나타났어'), 화면은 그 문장에 해석을
+              덧붙이지 않는다. 아래 caption이 그 경계를 사용자에게도 말한다.
+
+              ⚠️ 사진이 없으면 이 블록 자체가 없다 — 사진이 History의 입장권이 아니다(§29).
+            */}
+            {observedHistory.comparable ? (
+              <div className="mt-1 flex flex-col gap-2 border-t border-line-soft pt-3.5">
+                <p className="text-[10px] font-semibold tracking-[0.1em] text-ink-muted">
+                  PHOTO SCENES
+                </p>
+                <ul className="flex flex-col gap-1.5">
+                  {observedHistory.changes.map((change) => (
+                    <li
+                      key={change.category}
+                      className="flex items-start gap-2 text-[12.5px] keep-all leading-relaxed text-ink-sub"
+                    >
+                      <span className="mt-[1px] flex-none text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
+                        {change.state === 'NEW' ? '처음' : change.state === 'STABLE' ? '있음' : '없음'}
+                      </span>
+                      <span className="min-w-0">{change.note}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-[11px] keep-all leading-relaxed text-ink-faint">
+                  사진에서 어떤 장면이 보였는지만 비교한 거야. 취향이나 성격이 달라졌다는
+                  뜻은 아니야.
+                </p>
+              </div>
+            ) : null}
+
+            {/*
+              §31 — 러비가 사용자를 **점점** 알아간다는 감각. 다만
+              '너를 이제 완전히 이해했어'는 금지다. 그래서 문장이 관찰 횟수에 따라
+              달라지고, 어떤 단계에서도 '이해했다'고 말하지 않는다.
+            */}
+            <p className="mt-1 px-1 text-[12px] keep-all leading-relaxed text-ink-muted">
+              {soloHistory.entryCount >= 2
+                ? '몇 번의 관찰이 쌓였어. 여전히 다 아는 건 아니지만, 전보다는 조금 알 것 같아.'
+                : '전에 기록한 너랑 지금을 나란히 놓아봤어.'}
+            </p>
           </ReportSection>
         ) : null}
 

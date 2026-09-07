@@ -10,6 +10,7 @@ import {
   SELF_GAP_LABEL,
 } from '@/data/labels';
 import { formatEntryDate } from '@/lib/historyFormat';
+import { soloSnapshotSignalText } from '@/lib/logic/soloHistory';
 import { withObjectParticle, withTopicParticle } from '@/lib/korean';
 import type {
   CompatibilityResult,
@@ -17,6 +18,7 @@ import type {
   EvidenceRef,
   MbtiLensReport,
   MbtiSelfLens,
+  MirrorAxisKey,
   RelationshipHistoryEntry,
   SessionAnswers,
   TargetAxisKey,
@@ -57,6 +59,17 @@ export interface ResolvedEvidence {
   key: string;
   sourceLabel: EvidenceSourceLabel;
   text: string;
+  /**
+   * **같은 문장인데 서로 다른 관찰**을 구분하는 값 (v1.35 · §13).
+   *
+   * 화면에 직접 나가지 않는다. `aggregateSameText`가 중복을 묶을 때, 문장이 같아도
+   * 이 값이 다르면 **다른 관찰로 보고 묶지 않는다.** 그때는 `label`을 문장 뒤에 붙여
+   * 두 줄이 왜 다른지 사용자가 확인할 수 있게 한다.
+   *
+   * ⚠️ 필요할 때만 붙는다. 값이 하나뿐인 그룹에는 label을 붙이지 않으므로,
+   * 기존 근거 문장(대부분의 경우)은 **글자 하나도 달라지지 않는다.**
+   */
+  variant?: { key: string; label: string };
 }
 
 export interface EvidenceResolverContext {
@@ -209,10 +222,29 @@ function resolveHistory(
   const entry = entries.find((item) => item.id === entryId);
   if (!entry) return null;
 
+  const axisLabel = MIRROR_AXIS_LABEL.get(axis) ?? axis;
+
+  /**
+   * v1.35 P4-B §19 — **Solo 기록의 근거도 풀린다.**
+   *
+   * Solo 관찰에는 Mirror 판정이 없어서(`mirrorSnapshot.insights === []`) 이 함수는
+   * 항상 null을 돌려줬다. 그래서 Solo History를 Premium의 독립 source로 쓰려 해도
+   * 근거가 화면에 하나도 도달하지 못했다. 대신 그때 얼려둔 **단계 값**을 문장으로
+   * 되돌린다 — 저장한 값 그대로이고, 새 해석을 만들지 않는다.
+   */
+  const soloLevel = entry.soloSnapshot?.signals.find((signal) => signal.axis === axis)?.level;
+  if (soloLevel !== undefined && soloLevel !== 'unknown') {
+    const text = soloSnapshotSignalText(axis as MirrorAxisKey, soloLevel);
+    if (!text) return null;
+    return {
+      key: `history:${entryId}:${axis}`,
+      sourceLabel: '과거 관찰',
+      text: `${formatEntryDate(entry.createdAt)} 기록에서는 ${text}`,
+    };
+  }
+
   const snapshot = entry.mirrorSnapshot.insights.find((insight) => insight.axis === axis);
   if (!snapshot) return null;
-
-  const axisLabel = MIRROR_AXIS_LABEL.get(axis) ?? axis;
   /**
    * v1.26 History 실측에서 고쳤다 — 문장에 **어느 기록인지가 없었다.**
    *
@@ -225,8 +257,25 @@ function resolveHistory(
     key: `history:${entryId}:${axis}`,
     sourceLabel: '과거 관찰',
     text: `${formatEntryDate(entry.createdAt)} 기록에서도 ${axisLabel} 축에 ${snapshot.relationshipSignal}`,
+    /**
+     * §13 — 문장에 없는 정보가 판정이다. 판정이 다르면 다른 관찰이므로 묶지 않는다.
+     * 라벨은 History 화면이 이미 쓰는 어휘와 같다.
+     */
+    variant: { key: snapshot.state, label: HISTORY_STATE_PHRASE[snapshot.state] },
   };
 }
+
+/**
+ * 근거 문장에서 판정을 구분할 때 쓰는 라벨 (§13).
+ *
+ * ⚠️ `history.ts`의 `STATE_PHRASE`와 **같은 문장**이다. 같은 것을 두 어휘로 부르면
+ * 사용자가 두 개의 다른 판정으로 읽는다.
+ */
+const HISTORY_STATE_PHRASE: Record<'MATCH' | 'GAP' | 'CHANGE', string> = {
+  MATCH: '말한 기준과 비슷하게 나타남',
+  GAP: '말한 기준보다 크게 반응함',
+  CHANGE: '경험 후 우선순위가 옮겨짐',
+};
 
 /* ------------------------------------------------------------- target */
 
@@ -422,23 +471,46 @@ export function resolveEvidenceRefs(
    말하는데 logic이 1회로 세는 불일치를 막는다).
  */
 function aggregateSameText(items: readonly ResolvedEvidence[]): ResolvedEvidence[] {
-  const byText = new Map<string, { item: ResolvedEvidence; count: number }>();
+  /** 문장 → (variant key → 그 variant의 첫 항목과 개수) */
+  const byText = new Map<string, Map<string, { item: ResolvedEvidence; count: number }>>();
 
   for (const item of items) {
-    const found = byText.get(item.text);
+    const variants = byText.get(item.text) ?? new Map();
+    const variantKey = item.variant?.key ?? '';
+    const found = variants.get(variantKey);
     if (found) found.count += 1;
-    else byText.set(item.text, { item, count: 1 });
+    else variants.set(variantKey, { item, count: 1 });
+    byText.set(item.text, variants);
   }
 
-  return [...byText.values()].map(({ item, count }) =>
-    count === 1
-      ? item
-      : {
-          ...item,
-          // 근거가 몇 개로 줄었는지는 화면이 알 필요 없다 — 문장이 사실을 말한다.
-          text: `${item.text} (관찰 ${count}회)`,
-        },
-  );
+  const result: ResolvedEvidence[] = [];
+
+  for (const variants of byText.values()) {
+    /**
+     * ⚠️ v1.35 §13 실측으로 고쳤다 — **같은 날짜 · 같은 문장인데 판정이 다른 관찰이
+     * 하나로 묶였다.**
+     *
+     * History 근거 문장은 `{날짜} 기록에서도 {축} 축에 {신호}`인데, 여기 **Mirror
+     * 판정(GAP/MATCH/CHANGE)이 들어 있지 않다.** 그래서 같은 날 저장된 두 기록이
+     * 같은 관계 경험 근거를 갖고 판정만 다를 때, 화면에는 서로 다른 두 관찰이
+     * "(관찰 2회)" 한 줄로 합쳐졌다 — 실제로 반복된 적 없는 것을 반복으로 세는 것이다.
+     *
+     * 그래서 묶는 기준을 **문장 + variant**로 바꿨다. variant가 갈리는 그룹에서만
+     * 라벨을 덧붙이므로, 판정이 하나뿐인 대부분의 근거 문장은 그대로다.
+     */
+    const needsLabel = variants.size > 1;
+
+    for (const { item, count } of variants.values()) {
+      const base = needsLabel && item.variant ? `${item.text} · ${item.variant.label}` : item.text;
+      result.push({
+        ...item,
+        // 근거가 몇 개로 줄었는지는 화면이 알 필요 없다 — 문장이 사실을 말한다.
+        text: count === 1 ? base : `${base} (관찰 ${count}회)`,
+      });
+    }
+  }
+
+  return result;
 }
 
 /**

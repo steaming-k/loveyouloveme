@@ -322,6 +322,12 @@ export function buildHistoryReport(
         entries.length === 1
           ? '아직 비교할 과거 기록이 하나뿐이야. 다음 관찰이 쌓이면 변화를 알려줄게.'
           : '아직 저장된 관찰이 없어.',
+      compared: {
+        previousId: null,
+        latestId: null,
+        previousCreatedAt: null,
+        latestCreatedAt: null,
+      },
     };
   }
 
@@ -338,6 +344,18 @@ export function buildHistoryReport(
     stableCount: changes.filter((c) => c.state === 'STABLE').length,
     newCount: changes.filter((c) => c.state === 'NEW').length,
     summary: buildHistorySummary(changes),
+    /**
+     * v1.35 — **비교에 참여한 두 기록을 그대로 알려준다.** 예전에는 화면이 전체
+     * History의 마지막 두 항목(`useHistory().latest`/`previous`)으로 날짜 캡션을 만들어서,
+     * Solo 관찰이 섞이면 "8/31 관찰과 9/07 관찰을 비교했어"라고 적으면서 실제로는
+     * 다른 두 기록을 비교했다.
+     */
+    compared: {
+      previousId: previous.id,
+      latestId: current.id,
+      previousCreatedAt: previous.createdAt,
+      latestCreatedAt: current.createdAt,
+    },
   };
 }
 

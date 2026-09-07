@@ -13,6 +13,7 @@ import { Lines, PageHeading, SectionLabel, Tag } from '@/components/common/primi
 import { HistoryChangeRow } from '@/components/history/HistoryChangeRow';
 import { Lovy } from '@/components/lovy/Lovy';
 import { MIRROR_AXES } from '@/data/axes';
+import { OBSERVED_CATEGORY_LABEL } from '@/lib/logic/observedSignals';
 import { HISTORY_COPY } from '@/data/copy';
 import {
   AFFECTION_LABEL,
@@ -27,7 +28,12 @@ import { buildHistoryChanges } from '@/lib/logic/history';
 import { ROUTES } from '@/lib/routes';
 import { useHistory } from '@/state/HistoryProvider';
 import type { RelationshipHistoryEntry } from '@/types';
-import { historyAudienceOf } from '@/lib/logic/soloHistory';
+import {
+  historyAudienceOf,
+  soloSnapshotPairs,
+  soloSnapshotSignalText,
+  SOLO_SOURCE_LABEL,
+} from '@/lib/logic/soloHistory';
 
 /**
  * F1-a History Detail (§13/§14) — '그때의 나 vs 지금의 나'
@@ -47,7 +53,7 @@ function HistoryEntryView() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const { showToast } = useToast();
-  const { entries, getEntry, deleteEntry, latest } = useHistory();
+  const { entries, getEntry, deleteEntry } = useHistory();
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const id = typeof params.id === 'string' ? params.id : '';
@@ -74,7 +80,6 @@ function HistoryEntryView() {
   }
 
   const insight = entry.coreInsight.userCorrection?.trim() || entry.coreInsight.original;
-  const isLatest = latest?.id === entry.id;
   /**
    * v1.34 P4-B — Solo 관찰에는 상대도 Mirror 판정도 없다.
    *
@@ -85,8 +90,21 @@ function HistoryEntryView() {
    */
   const isSolo = historyAudienceOf(entry) === 'solo';
 
-  // '그때의 나 vs 지금의 나' — 최신 기록과 비교한다. 자기 자신이 최신이면 비교하지 않는다.
-  const comparison = !isLatest && latest ? buildHistoryChanges(entry, latest) : [];
+  /**
+   * '그때의 나 vs 지금의 나' — **같은 audience의 최신 기록**과 비교한다.
+   *
+   * ⚠️ v1.35 §10 — 예전에는 `useHistory().latest`(전체 History의 마지막 항목)와
+   * 비교했다. Solo 관찰이 마지막에 저장돼 있으면 커플 기록이 **Mirror 판정이 없는
+   * Solo 기록과 비교**되어 전 축이 INSUFFICIENT가 되고, 화면에는 "이때와 지금 사이에
+   * 크게 달라진 기준은 없었어"가 떴다 — 비교하지 않은 것을 '차이가 없다'로 말한 것이다
+   * (Mixed History 실측 버그).
+   */
+  const sameAudience = entries.filter((item) => historyAudienceOf(item) === historyAudienceOf(entry));
+  const audienceLatest = sameAudience.length > 0 ? sameAudience[sameAudience.length - 1]! : null;
+  const isLatest = audienceLatest?.id === entry.id;
+
+  const comparison =
+    !isLatest && audienceLatest ? buildHistoryChanges(entry, audienceLatest) : [];
   const meaningful = comparison.filter(
     (change) => change.state === 'SHIFT' || change.state === 'NEW',
   );
@@ -153,8 +171,32 @@ function HistoryEntryView() {
             </p>
           )}
 
-          {/* ② 당시 Declared Me */}
-          <ChipSection title="이때 말한 나 (DECLARED)" items={declaredChips(entry)} />
+          {/*
+            ② 당시 Declared Me — **커플 기록에서만** 칩으로 보여준다.
+
+            Solo 기록은 같은 값을 아래 `SoloSnapshotSections`가 그때의 문장으로 되돌려
+            보여준다. 둘을 함께 렌더하면 같은 답이 숫자 칩과 문장으로 두 번 나온다.
+          */}
+          {isSolo && entry.soloSnapshot ? (
+            /*
+              v1.35 §11 — **Solo 기록의 본문을 다 보여준다.**
+
+              저장은 v1.34부터 했지만 상세 화면은 `soloSnapshot`을 읽지 않았다. 그래서
+              Solo 기록 상세는 Declared 칩과 MBTI metadata만 남고, 그때의 기준 문장·함께
+              나타난 신호·러비 관찰·쓸 수 있던 정보 종류는 어디에도 보이지 않았다
+              (P4-B Audit).
+
+              ⚠️ 여기서 **현재 answers로 다시 계산하지 않는다**(§12). 얼려둔 단계 값과
+              규칙 id만 읽어서 그때의 문장을 되돌린다.
+            */
+            <SoloSnapshotSections
+              snapshot={entry.soloSnapshot}
+              /* 문구가 바뀌어 단계를 못 찾으면 그때 답한 값 자체는 남아 있다 — 칩으로 대신 보여준다 */
+              fallbackChips={declaredChips(entry)}
+            />
+          ) : (
+            <ChipSection title="이때 말한 나 (DECLARED)" items={declaredChips(entry)} />
+          )}
 
           {/* ③ 당시 Relationship Evidence — Solo에는 관계 경험 자체가 없을 수 있다 */}
           {isSolo ? null : (
@@ -274,6 +316,113 @@ function ChipSection({ title, items }: { title: string; items: string[] }) {
         <p className="px-1 text-meta text-ink-muted">기록이 없어</p>
       )}
     </section>
+  );
+}
+
+/**
+ * Solo 기록의 본문 (v1.35 · §11)
+ *
+ *   이때 함께 나타난 신호   `pairIds` → 규칙 문장
+ *   러비 관찰               그때 화면 맨 위에 보인 한 문장
+ *   당시 source             그때 쓸 수 있던 정보 종류
+ *
+ * ⚠️ 저장된 것은 **값과 규칙 id뿐**이다. 문장은 여기서 다시 만들고, 규칙을 못 찾으면
+ * 그 줄은 아예 없다 — 없는 값을 지어내지 않는다.
+ */
+function SoloSnapshotSections({
+  snapshot,
+  fallbackChips,
+}: {
+  snapshot: NonNullable<RelationshipHistoryEntry['soloSnapshot']>;
+  fallbackChips: string[];
+}) {
+  const pairs = soloSnapshotPairs(snapshot.pairIds);
+  const signals = snapshot.signals
+    .map((signal) => ({
+      axis: signal.axis,
+      label: MIRROR_AXES.find((axis) => axis.key === signal.axis)?.label ?? signal.axis,
+      text: soloSnapshotSignalText(signal.axis, signal.level),
+    }))
+    .filter((signal): signal is { axis: typeof signal.axis; label: string; text: string } =>
+      signal.text !== null,
+    );
+
+  return (
+    <>
+      {signals.length === 0 ? (
+        <ChipSection title="이때의 나의 기준" items={fallbackChips} />
+      ) : (
+        <section className="flex flex-col gap-2.5">
+          <SectionLabel>이때의 나의 기준</SectionLabel>
+          <ul className="flex flex-col gap-2">
+            {signals.map((signal) => (
+              <li
+                key={signal.axis}
+                className="flex flex-col gap-1 rounded-row border border-line bg-surface p-3.5"
+              >
+                <span className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
+                  {signal.label}
+                </span>
+                <span className="text-[12.5px] keep-all leading-relaxed text-ink-sub">
+                  {signal.text}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {pairs.length > 0 ? (
+        <section className="flex flex-col gap-2.5">
+          <SectionLabel>이때 함께 나타난 신호</SectionLabel>
+          <ul className="flex flex-col gap-2">
+            {pairs.map((pair) => (
+              <li
+                key={pair.id}
+                className="flex flex-col gap-1.5 rounded-row border border-line bg-surface p-3.5"
+              >
+                <span className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
+                  {pair.labels}
+                </span>
+                <p className="text-[12.5px] keep-all leading-relaxed text-ink-sub">
+                  {pair.observation}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {snapshot.headline ? (
+        <section className="flex flex-col gap-2">
+          <SectionLabel>이때 러비가 본 것</SectionLabel>
+          <p className="rounded-chip bg-sunken px-3.5 py-3 text-[12.5px] keep-all leading-relaxed text-[#555]">
+            {snapshot.headline}
+          </p>
+        </section>
+      ) : null}
+
+      <section className="flex flex-col gap-2">
+        <SectionLabel>당시 쓸 수 있던 정보</SectionLabel>
+        <ul className="flex flex-wrap gap-1.5">
+          {snapshot.sources.map((source) => (
+            <MetaChip key={source} label={SOLO_SOURCE_LABEL[source]} />
+          ))}
+        </ul>
+        {/*
+          §5 — 사진은 **활동 범주만** 남긴다. 사진 원본·base64·AI 서술 원문은 저장하지
+          않으므로 보여줄 것도 없다. 그래서 여기 나오는 건 장면의 이름뿐이다.
+        */}
+        {snapshot.observed && snapshot.observed.length > 0 ? (
+          <p className="px-1 text-[11px] keep-all leading-relaxed text-ink-faint">
+            이때 사진에서 보인 장면 ·{' '}
+            {snapshot.observed
+              .map((item) => OBSERVED_CATEGORY_LABEL[item.category])
+              .join(' · ')}
+          </p>
+        ) : null}
+      </section>
+    </>
   );
 }
 

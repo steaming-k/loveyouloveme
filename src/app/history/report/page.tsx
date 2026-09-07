@@ -17,14 +17,18 @@ import { Lovy } from '@/components/lovy/Lovy';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { HISTORY_COPY, LOVY_LINES } from '@/data/copy';
 import { PREMIUM_HOOK_COPY } from '@/data/premium';
-import { trackEvent } from '@/lib/analytics';
+import { historyCountBucket, trackEvent } from '@/lib/analytics';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { premiumFeatureState } from '@/services/premiumService';
 import { hasDeepConnection } from '@/services/premiumConnections';
 import { formatEntryDate } from '@/lib/historyFormat';
 import { ROUTES } from '@/lib/routes';
 import { useCrossSourceInsights, useHistoryNarrative } from '@/hooks/useAiNarrative';
-import { useHistoryReport, useRepeatedSignals } from '@/hooks/useAnalysis';
+import {
+  useComparedHistoryEntries,
+  useHistoryReport,
+  useRepeatedSignals,
+} from '@/hooks/useAnalysis';
 import { useHistory } from '@/state/HistoryProvider';
 import type { HistoryAxisChange } from '@/types';
 
@@ -44,8 +48,16 @@ export default function HistoryReportPage() {
 
 function HistoryReportView() {
   const router = useRouter();
-  const { entries, previous, latest } = useHistory();
+  const { entries } = useHistory();
   const report = useHistoryReport();
+  /**
+   * v1.35 §10 — **비교에 참여한 두 커플 기록.**
+   *
+   * 예전에는 `useHistory().previous`/`latest`(전체 History의 마지막 두 항목)로 날짜
+   * 캡션을 만들었다. `report`는 커플 기록만 비교하므로, Solo 관찰이 마지막에 저장돼
+   * 있으면 화면이 **비교하지 않은 기록의 날짜**를 적었다(Mixed History 실측 버그).
+   */
+  const { previous, latest } = useComparedHistoryEntries();
   const repeated = useRepeatedSignals();
   const crossSourceInsights = useCrossSourceInsights();
   const [variant] = useState(() => resolvePriceVariant());
@@ -78,6 +90,8 @@ function HistoryReportView() {
   useEffect(() => {
     trackEvent('relationship_history_change_report_view', {
       entry_count: report.entryCount,
+      // §26 — bucket을 함께 보낸다(§24 KPI는 기존 property로 계속 계산된다)
+      history_bucket: historyCountBucket(report.entryCount),
       change_count: report.shiftCount + report.newCount,
     });
   }, [report.entryCount, report.shiftCount, report.newCount]);

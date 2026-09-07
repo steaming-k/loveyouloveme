@@ -656,6 +656,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
    * 그대로 남아있는 것처럼 보인다(Audit에서 발견한 실제 누수). Compatibility/Mirror/History
    * 계산에는 어차피 관여하지 않는 저장소라 지워도 분석 결과에는 영향이 없다.
    */
+  /**
+   * v1.35 P4-B §4 — **History는 Target lifecycle과 분리된다.**
+   *
+   *   NEW TARGET   새 분석 context만 초기화한다
+   *   HISTORY      사용자가 별도로 삭제하지 않는 한 유지된다
+   *
+   * 이 함수는 `SessionAnswers`만 다루고, History는 완전히 다른 저장소
+   * (`lym.history.v1` · `historyRepository`)에 있다. 그래서 여기서 History를 지우지
+   * 않는 것은 '깜빡한 것'이 아니라 **구조적으로 닿지 않는 것**이다 — Solo/Couple
+   * 관찰 기록은 '누구와의 분석인가'가 아니라 '내 기준이 어떻게 움직였나'의 기록이므로
+   * 상대가 바뀌어도 주어가 그대로다.
+   *
+   * History를 지우는 경로는 **사용자가 명시적으로 고른 두 곳뿐**이다:
+   *   - Home '내 관찰 데이터 삭제'에서 '기록도 함께 삭제'를 체크한 경우
+   *   - UT_MODE의 '다음 참가자를 위해 초기화'
+   * 두 경로 모두 `useHistory().clearAll()`을 화면에서 직접 부른다.
+   */
   const resetTargetContext = useCallback(() => {
     clearPremiumIntents();
     // vNext — Preview Unlock도 분석 단위 상태다. 새 상대로 넘어가면 함께 비운다.

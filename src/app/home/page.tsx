@@ -24,7 +24,9 @@ import {
   useHistoryReport,
   useHomeHighlights,
   useMirror,
+  useSoloHistoryReport,
 } from '@/hooks/useAnalysis';
+import { filterHistoryByAudience } from '@/lib/logic/soloHistory';
 import { useHistory } from '@/state/HistoryProvider';
 import { useSession } from '@/state/SessionProvider';
 
@@ -49,6 +51,18 @@ export default function HomePage() {
   const soloEntryVisible = answers.completed.profile && soloModeOf(answers) !== 'couple';
   const { entries, latest, clearAll: clearHistory } = useHistory();
   const report = useHistoryReport();
+  /**
+   * Solo Retention (v1.35 · §14 ~ §16)
+   *
+   * ⚠️ **새 대형 카드를 만들지 않는다**(§15). 이미 있는 Solo 입구 행 안에서 caption
+   * 한 줄만 실제 데이터로 바꾼다 — Home의 정보량과 시각적 균형을 그대로 둔다.
+   *
+   * ⚠️ **매일 오게 만드는 앱이 아니다**(§16). streak·연속 기록·'오늘도 기록' 같은
+   * 어휘를 쓰지 않고, '생각이 달라졌다면 다시 관찰해볼까?'까지만 말한다.
+   */
+  const soloReport = useSoloHistoryReport();
+  const soloEntryCount = filterHistoryByAudience(entries, 'solo').length;
+  const coupleEntryCount = entries.length - soloEntryCount;
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [utResetOpen, setUtResetOpen] = useState(false);
   /**
@@ -57,15 +71,60 @@ export default function HomePage() {
    */
   const [alsoDeleteHistory, setAlsoDeleteHistory] = useState(true);
 
+  /**
+   * §14 — **실제 데이터가 있을 때만** 다른 문장을 쓴다.
+   *
+   *   0건       첫 관찰을 권한다
+   *   1건       기억해뒀다는 사실만 말한다 (비교는 아직 없다)
+   *   2건 이상  달라진 기준이 실제로 있으면 그 개수를 말한다
+   *   3건 이상  반복 어휘는 `repeatable`(= `SOLO_REPEAT_MIN_OBSERVATIONS`)이 참일 때만
+   *
+   * ⚠️ 개수를 세는 것과 반복을 주장하는 것은 다르다(§8). 아래 `stable`은
+   * `change.repeatable`을 직접 보므로, 2시점에서 '계속 보인다'고 말하지 않는다.
+   */
+  const soloRetentionLine = (() => {
+    const changed = soloReport.comparable
+      ? soloReport.changes.filter((change) => change.state === 'CHANGE').length
+      : 0;
+    const stable = soloReport.comparable
+      ? soloReport.changes.filter((change) => change.state === 'STABLE' && change.repeatable).length
+      : 0;
+
+    if (soloEntryCount === 0) {
+      return '상대가 없어도 네가 관계를 어떻게 생각하는지는 관찰할 수 있어. 첫 관찰을 남겨볼까?';
+    }
+    if (soloEntryCount === 1 && changed === 0 && stable === 0) {
+      return '이때의 나를 기록해뒀어. 전에 남긴 기준과 비교해볼 수 있어.';
+    }
+    if (changed > 0) {
+      return `지난 관찰과 달라진 기준이 ${changed}개 있어.`;
+    }
+    if (stable > 0) {
+      return '몇 번의 관찰에서 계속 보인 기준이 있어.';
+    }
+    return '생각이 조금 달라졌다면 다시 관찰해볼까?';
+  })();
+
   /** §27 — History 0개 / 1개 / 2개 이상 */
   const historyCta = (() => {
     if (entries.length === 0) {
-      return {
-        title: '아직 저장된 관찰이 없어.',
-        preview: 'Relationship Mirror를 저장하면 여기에 쌓여.',
-        action: '시작',
-        href: ROUTES.mirror,
-      };
+      /**
+       * ⚠️ v1.35 §30 — **갈 수 없는 길을 알려주지 않는다.** 상대도 관계 경험도 없는
+       * 사용자에게 Mirror는 만들어지지 않으므로 "Mirror를 저장하면"은 거짓 안내였다.
+       */
+      return soloEntryVisible
+        ? {
+            title: '아직 저장된 관찰이 없어.',
+            preview: '첫 관찰을 남기면 여기에 쌓여.',
+            action: '시작',
+            href: ROUTES.firstContact,
+          }
+        : {
+            title: '아직 저장된 관찰이 없어.',
+            preview: 'Relationship Mirror를 저장하면 여기에 쌓여.',
+            action: '시작',
+            href: ROUTES.mirror,
+          };
     }
     if (entries.length === 1) {
       return {
@@ -75,13 +134,25 @@ export default function HomePage() {
         href: ROUTES.history,
       };
     }
+    if (report.headline) {
+      return {
+        title: '지난 관찰과 달라진 신호가 있어.',
+        preview: report.headline.note,
+        action: '보기',
+        href: ROUTES.historyReport,
+      };
+    }
+    /**
+     * ⚠️ v1.35 §10 — **커플 요약을 Solo 기록에 붙이지 않는다.**
+     *
+     * `report.summary`는 커플 기록만 보므로, Solo 관찰만 2건 저장한 사용자에게는
+     * `러비가 기억하고 있는 관찰 2개` 아래에 "아직 저장된 관찰이 없어"가 붙었다(실측).
+     */
     return {
-      title: report.headline
-        ? '지난 관찰과 달라진 신호가 있어.'
-        : `러비가 기억하고 있는 관찰 ${entries.length}개`,
-      preview: report.headline?.note ?? report.summary,
+      title: `러비가 기억하고 있는 관찰 ${entries.length}개`,
+      preview: coupleEntryCount > 0 ? report.summary : soloRetentionLine,
       action: '보기',
-      href: report.headline ? ROUTES.historyReport : ROUTES.history,
+      href: ROUTES.history,
     };
   })();
 
@@ -211,7 +282,7 @@ export default function HomePage() {
                     FIRST CONTACT REPORT
                   </span>
                   <span className="text-[12.5px] keep-all leading-relaxed text-ink-sub">
-                    상대가 없어도 네가 관계를 어떻게 생각하는지는 관찰할 수 있어.
+                    {soloRetentionLine}
                   </span>
                 </span>
                 <span className="flex-none rounded-[6px] bg-brand-tint px-2 py-1.5 text-label font-semibold text-brand-pressed">

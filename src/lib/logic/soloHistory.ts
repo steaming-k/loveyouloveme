@@ -1,8 +1,10 @@
 import { MIRROR_AXES } from '@/data/axes';
-import { SELF_VALUE_TEXT, type SelfLevel } from '@/data/firstContact';
+import { SELF_PAIR_RULES, SELF_VALUE_TEXT, type SelfLevel } from '@/data/firstContact';
+import { OBSERVED_CATEGORY_LABEL } from './observedSignals';
 import type {
   FirstContactReport,
   MirrorAxisKey,
+  ObservedSignalCategory,
   RelationshipHistoryEntry,
   SessionAnswers,
 } from '@/types';
@@ -79,7 +81,177 @@ export function buildSoloSnapshot(input: {
     headline: report.headline,
     pairIds: report.pairs.map((pair) => pair.id),
     sources,
+    observed: currentObservedSnapshot(answers),
   };
+}
+
+/* ------------------------------------------------------------- observed */
+
+/**
+ * 지금 사진에서 보이는 활동 범주를 **얼려둘 최소 형태**로 옮긴다 (§5).
+ *
+ * ⚠️ 사진·base64·AI 서술 원문은 옮기지 않는다. 이미 계산돼 있던 `ObservedSignal`의
+ * `category`/`occurrenceCount`/`strength`만 읽는다 — 여기서 새 판정을 만들지 않는다.
+ *
+ * ⚠️ 사용자가 제외(`excluded`)한 관찰은 넣지 않는다. 화면에서 지운 근거가 기록에
+ * 남아 다음 관찰과 비교되면, 사용자가 취소한 관찰이 되살아난다.
+ *
+ * @returns 사진 근거가 없으면 `[]` — `undefined`(그때는 저장하지 않았음)와 구분한다.
+ */
+function currentObservedSnapshot(
+  answers: SessionAnswers,
+): NonNullable<NonNullable<RelationshipHistoryEntry['soloSnapshot']>['observed']> {
+  if (answers.photos.length === 0 || !answers.observedAnalysis) return [];
+
+  const seen = new Set<ObservedSignalCategory>();
+  const items: NonNullable<
+    NonNullable<RelationshipHistoryEntry['soloSnapshot']>['observed']
+  > = [];
+
+  for (const trait of answers.observedAnalysis.traits) {
+    const signal = trait.signal;
+    if (!signal) continue;
+    if (answers.observations[trait.id]?.excluded) continue;
+    if (seen.has(signal.category)) continue;
+    seen.add(signal.category);
+    items.push({
+      category: signal.category,
+      occurrences: signal.occurrenceCount,
+      strength: signal.strength,
+    });
+  }
+
+  return items;
+}
+
+/**
+ * 지금 사진에서 보이는 활동 범주 (비교의 NOW 쪽).
+ *
+ * @returns 사진 근거가 아예 없으면 `null`. `[]`(사진은 있는데 집계 신호가 없음)와
+ *   구분해야 한다 — 전자는 '비교할 수 없다'이고 후자는 '이번엔 장면이 없었다'다(§29).
+ */
+export function currentObservedCategories(
+  answers: SessionAnswers,
+): { category: ObservedSignalCategory }[] | null {
+  if (answers.photos.length === 0 || !answers.observedAnalysis) return null;
+  return currentObservedSnapshot(answers).map((item) => ({ category: item.category }));
+}
+
+/**
+ * 한 활동 범주가 시간축에서 어떻게 나타났는가 (§7).
+ *
+ * ⚠️ 네 번째 상태 `INSUFFICIENT`는 **범주 단위가 아니라 리포트 단위**다
+ * (`ObservedHistoryReport.comparable === false`). 비교할 과거 사진 스냅샷이 없거나
+ * 지금 사진 근거가 없는 것은 특정 범주의 성질이 아니라 비교 자체의 상태이기 때문이다 —
+ * 범주별로 `INSUFFICIENT`를 붙이면 '이 활동만 정보가 부족하다'로 잘못 읽힌다.
+ */
+export type ObservedChangeState = 'NEW' | 'STABLE' | 'ABSENT';
+
+export interface ObservedHistoryChange {
+  category: ObservedSignalCategory;
+  label: string;
+  state: ObservedChangeState;
+  /** 이 범주가 보인 관찰 횟수(과거 + 현재) */
+  observationCount: number;
+  /** 반복 어휘를 써도 되는가 — `SOLO_REPEAT_MIN_OBSERVATIONS`와 **같은 기준**이다(§8) */
+  repeatable: boolean;
+  /** 화면에 그대로 쓰는 한 문장 */
+  note: string;
+}
+
+export interface ObservedHistoryReport {
+  /** `observed`를 저장한 과거 기록 수 */
+  snapshotCount: number;
+  comparable: boolean;
+  changes: ObservedHistoryChange[];
+}
+
+/**
+ * 과거 사진 관찰과 지금 사진 관찰을 비교한다 (§5 ~ §8).
+ *
+ * ⚠️ **장면 관찰이지 취향·성격 진단이 아니다.** 그래서 이 함수가 만드는 문장은
+ * '있었다 / 없었다 / 새로 나타났다'까지다:
+ *
+ *   허용   `지난 관찰에는 카페 장면이 있었고, 이번 관찰에서는 보이지 않았어.`
+ *   금지   `카페를 덜 좋아하게 됐어.` · `취향이 바뀌었어.` · `독립적인 성향이 강해졌어.`
+ *
+ * ⚠️ **1회 → 1회 없음을 '사라졌다'로 과장하지 않는다**(§7). `ABSENT` 문구는
+ * "이번 관찰에서는 보이지 않았어"까지고, 그 이상은 말하지 않는다.
+ *
+ * ⚠️ **사진이 없어졌을 때 전부 ABSENT로 만들지 않는다**(§29). 지금 사진 근거가
+ * 아예 없으면 그건 '장면이 사라졌다'가 아니라 '이번엔 비교할 사진이 없다'다.
+ */
+export function buildObservedHistoryReport(input: {
+  entries: readonly RelationshipHistoryEntry[];
+  /** 지금 사진에서 보이는 범주. 사진이 없으면 null — `[]`(사진은 있는데 신호 없음)과 다르다 */
+  current: readonly { category: ObservedSignalCategory }[] | null;
+}): ObservedHistoryReport {
+  const snapshots = filterHistoryByAudience(input.entries, 'solo')
+    .map((entry) => entry.soloSnapshot?.observed)
+    .filter((observed): observed is NonNullable<typeof observed> => observed !== undefined);
+
+  if (snapshots.length === 0 || input.current === null) {
+    return { snapshotCount: snapshots.length, comparable: false, changes: [] };
+  }
+
+  const latest = snapshots[snapshots.length - 1]!;
+  const pastLatest = new Set(latest.map((item) => item.category));
+  const currentSet = new Set(input.current.map((item) => item.category));
+
+  /** 표시 순서는 `OBSERVED_CATEGORY_LABEL`(= `CATEGORY_RULES`) 순서를 그대로 따른다 */
+  const order = Object.keys(OBSERVED_CATEGORY_LABEL) as ObservedSignalCategory[];
+  const changes: ObservedHistoryChange[] = [];
+
+  for (const category of order) {
+    const inPast = pastLatest.has(category);
+    const inNow = currentSet.has(category);
+    if (!inPast && !inNow) continue;
+
+    const label = OBSERVED_CATEGORY_LABEL[category];
+    const pastHits = snapshots.filter((snapshot) =>
+      snapshot.some((item) => item.category === category),
+    ).length;
+    const observationCount = pastHits + (inNow ? 1 : 0);
+    const repeatable = inNow && inPast && observationCount >= SOLO_REPEAT_MIN_OBSERVATIONS;
+
+    if (inNow && !inPast) {
+      changes.push({
+        category,
+        label,
+        state: 'NEW',
+        observationCount,
+        repeatable: false,
+        note: `${label} 장면이 이번 관찰에 새로 나타났어.`,
+      });
+      continue;
+    }
+
+    if (inNow && inPast) {
+      changes.push({
+        category,
+        label,
+        state: 'STABLE',
+        observationCount,
+        repeatable,
+        note: repeatable
+          ? `${observationCount}번의 관찰에서 ${label} 장면이 있었어.`
+          : `지난 관찰에도, 이번 관찰에도 ${label} 장면이 있었어.`,
+      });
+      continue;
+    }
+
+    changes.push({
+      category,
+      label,
+      state: 'ABSENT',
+      observationCount,
+      repeatable: false,
+      // ⚠️ '사라졌다'가 아니다 — 이번 관찰에서 보이지 않았다는 사실까지만 말한다(§7).
+      note: `지난 관찰에는 ${label} 장면이 있었고, 이번 관찰에서는 보이지 않았어.`,
+    });
+  }
+
+  return { snapshotCount: snapshots.length, comparable: changes.length > 0, changes };
 }
 
 /**
@@ -195,6 +367,14 @@ export interface SoloHistoryReport {
   changes: SoloAxisChange[];
   /** 화면 맨 위 한 줄. 비교할 게 없으면 null */
   headline: string | null;
+  /**
+   * 비교의 PAST 쪽으로 **실제로 쓴** 기록 id (v1.35).
+   *
+   * ⚠️ 화면·엔진이 `useHistory().latest`를 대신 쓰면 안 된다 — 그 값은 audience를
+   * 가리지 않아서, 커플 기록이 마지막에 저장돼 있으면 Solo 비교와 다른 기록을 가리킨다.
+   * 근거(evidenceRef)는 **비교에 참여한 기록**을 가리켜야 한다.
+   */
+  baselineEntryId: string | null;
 }
 
 const LEVEL_TEXT = (axis: MirrorAxisKey, level: string): string | null => {
@@ -210,21 +390,33 @@ const LEVEL_TEXT = (axis: MirrorAxisKey, level: string): string | null => {
  */
 export function buildSoloHistoryReport(input: {
   entries: readonly RelationshipHistoryEntry[];
-  current: FirstContactReport;
+  /**
+   * 지금 결과. **`null`을 그대로 받는다** — 커플 사용자는 First Contact Report가
+   * 만들어지지 않아서 `useFirstContact()`가 null을 준다. 예전 호출부는
+   * `report ?? { available: false } as never`로 타입을 우회하고 있었다.
+   */
+  current: FirstContactReport | null;
 }): SoloHistoryReport {
   const soloEntries = filterHistoryByAudience(input.entries, 'solo').filter(
     (entry) => entry.soloSnapshot !== undefined,
   );
 
-  if (soloEntries.length === 0 || !input.current.available) {
-    return { entryCount: soloEntries.length, comparable: false, changes: [], headline: null };
+  const current = input.current;
+  if (soloEntries.length === 0 || !current?.available) {
+    return {
+      entryCount: soloEntries.length,
+      comparable: false,
+      changes: [],
+      headline: null,
+      baselineEntryId: null,
+    };
   }
 
   /** 가장 최근 과거가 비교의 기준선이다 */
   const latest = soloEntries[soloEntries.length - 1]!;
   const changes: SoloAxisChange[] = [];
 
-  for (const signal of input.current.signals) {
+  for (const signal of current.signals) {
     const currentLevel = levelKeyOf(signal.key, signal.valueText);
     const past = soloEntries
       .map((entry) => entry.soloSnapshot?.signals.find((item) => item.axis === signal.key)?.level)
@@ -269,6 +461,7 @@ export function buildSoloHistoryReport(input: {
     comparable: true,
     changes,
     headline: buildHeadline(changes),
+    baselineEntryId: latest.id,
   };
 }
 
@@ -282,7 +475,16 @@ function buildHeadline(changes: readonly SoloAxisChange[]): string {
   const isNew = changes.filter((change) => change.state === 'NEW');
 
   if (changed.length > 0) {
-    const labels = changed.map((change) => change.label).join(' · ');
+    /**
+     * v1.35 — **축 이름을 다 나열하지 않는다.** 5축이 모두 달라진 세션에서
+     * "개인 시간 · 연락 · 취미 공유 · 갈등 해결 · 애정 표현에서 …"가 되어 한 문장이
+     * 목록처럼 읽혔다(360px 실측). 앞의 세 개까지만 부르고 나머지는 개수로 말한다 —
+     * 축별 상세는 바로 아래 목록에 전부 있으므로 정보가 사라지지 않는다.
+     */
+    const MAX_LABELS = 3;
+    const shown = changed.slice(0, MAX_LABELS).map((change) => change.label).join(' · ');
+    const rest = changed.length - MAX_LABELS;
+    const labels = rest > 0 ? `${shown} 외 ${rest}개` : shown;
     return `${labels}에서 지난 관찰과 다르게 답했어.`;
   }
   if (isNew.length === changes.length) {
@@ -290,3 +492,45 @@ function buildHeadline(changes: readonly SoloAxisChange[]): string {
   }
   return '지난 관찰과 같은 방향으로 답했어.';
 }
+
+/* --------------------------------------------------- snapshot 표시 (§11) */
+
+/**
+ * 저장된 단계 키를 그때의 문장으로 되돌린다.
+ *
+ * ⚠️ 문장을 저장하지 않았기 때문에 **표시할 때 다시 만든다**(§5 Privacy). 문구를 고쳐서
+ * 단계를 못 찾으면 `null`이고, 화면은 그 줄을 아예 그리지 않는다 — 없는 값을 지어내지 않는다.
+ */
+export function soloSnapshotSignalText(axis: MirrorAxisKey, level: string): string | null {
+  return LEVEL_TEXT(axis, level);
+}
+
+/**
+ * 그때 함께 나타난 두 신호의 관찰 문장 (§11).
+ *
+ * 저장된 것은 규칙 id뿐이라 여기서 `SELF_PAIR_RULES`를 다시 읽는다. 규칙이 삭제·개명되면
+ * 그 항목은 조용히 빠진다 — 과거 기록을 새 규칙으로 다시 쓰지 않는다.
+ */
+export function soloSnapshotPairs(
+  pairIds: readonly string[],
+): { id: string; labels: string; observation: string }[] {
+  return pairIds
+    .map((id) => SELF_PAIR_RULES.find((rule) => rule.id === id))
+    .filter((rule): rule is (typeof SELF_PAIR_RULES)[number] => rule !== undefined)
+    .map((rule) => ({
+      id: rule.id,
+      labels: rule.axes.map((axis) => AXIS_LABEL.get(axis) ?? axis).join(' · '),
+      observation: rule.observation,
+    }));
+}
+
+/** 그때 쓸 수 있던 정보 종류의 표시 이름 (§11 '당시 source') */
+export const SOLO_SOURCE_LABEL: Record<
+  NonNullable<RelationshipHistoryEntry['soloSnapshot']>['sources'][number],
+  string
+> = {
+  declared: '내가 답한 기준',
+  mbti: '성향 렌즈',
+  observed: '사진 관찰',
+  experience: '관계 경험',
+};

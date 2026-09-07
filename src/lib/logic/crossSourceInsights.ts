@@ -1,5 +1,6 @@
 import { MIRROR_AXES } from '@/data/axes';
 import { soloModeOfTarget } from './soloMode';
+import type { SoloAxisChange, SoloHistoryReport } from './soloHistory';
 import { withTopicParticle } from '@/lib/korean';
 import { HARDEST_TO_AXIS } from './mirror';
 import { toTargetValues } from './values';
@@ -568,6 +569,16 @@ export interface CrossSourceInsightInput {
    * 만들어진다. Solo에게 열리는 건 이쪽뿐이다.
    */
   mbtiSelfLens?: MbtiSelfLens | null;
+  /**
+   * v1.35 §19 — 이미 계산된 **Solo** 시간축 비교(`buildSoloHistoryReport`). 없으면
+   * ⑧ 조합을 만들지 않는다.
+   *
+   * ⚠️ 여기서 Solo 비교를 다시 계산하지 않는다 — 이 파일은 판정을 만들지 않는다.
+   *   `historyChanges`  커플 기록끼리의 비교 (`buildHistoryReport`)
+   *   `soloHistory`     저장된 Solo snapshot vs **지금 답** (`buildSoloHistoryReport`)
+   * 둘은 주어도 시점도 다르므로 섞지 않는다.
+   */
+  soloHistory?: SoloHistoryReport | null;
 }
 
 /**
@@ -625,8 +636,98 @@ function fromDeclaredVsObserved(input: {
      */
     strength: repeated ? 'medium' : 'weak',
     confidenceReason: repeated ? 'self:declared+observed:repeated' : 'self:declared+observed:single',
-    ruleSummary: `${label}에 대해 네가 답한 기준과, 사진 기록에서 반복해서 보인 활동이 같은 축을 가리키고 있어.`,
+    /**
+     * ⚠️ v1.35 §8 — **반복 어휘는 실제 반복 근거가 있을 때만 쓴다.**
+     *
+     * 예전 문장은 강도와 무관하게 "사진 기록에서 **반복해서** 보인 활동"이었다. 그런데
+     * `findCorroboratingObservedTrait`의 키워드 경로는 `strength`를 요구하지 않아서
+     * **사진 한 장짜리 단일 관찰에도** 같은 문장이 붙었다(실측). 그리고 `strength`가
+     * `repeated`(서로 다른 장면 2개)인 경우도 `describeSignal`이 이미
+     * "반복인지는 아직 조심스러워"라고 말하는 구간이다 — 같은 데이터에 대해 화면과
+     * 리포트가 서로 다른 말을 하게 된다.
+     *
+     * 그래서 반복 임계값을 **`SOLO_REPEAT_MIN_OBSERVATIONS`와 하나로 맞춘다**:
+     * 서로 다른 장면 3개 이상(`strong_repeated`)일 때만 '반복해서'라고 쓴다.
+     */
+    ruleSummary:
+      signal?.strength === 'strong_repeated'
+        ? `${label}에 대해 네가 답한 기준과, 사진 기록에서 반복해서 보인 활동이 같은 축을 가리키고 있어.`
+        : `${label}에 대해 네가 답한 기준과, 사진에서 보인 활동이 같은 축을 가리키고 있어.`,
     eligibleForNarrative: true,
+  };
+}
+
+/**
+ * ⑧ Solo History ↔ Current Declared — **상대도 사진도 MBTI도 없이 열리는 연결** (v1.35 · §19 ~ §22)
+ *
+ * P4-B Audit에서 확인한 것: Solo History는 저장되고 화면에 비교까지 보이는데,
+ * **Premium 엔진은 그 기록을 입력으로 받지도 않았다.** `historyChanges`는
+ * `buildHistoryReport`의 결과이고 그건 커플 기록만 본다 — 즉 Solo 사용자가 관찰을
+ * 몇 번 쌓아도 Deep Report의 source는 늘지 않았다.
+ *
+ * 두 source는 실제로 독립적이다. `history`는 **그때 저장해 얼려둔 값**이고
+ * `declared`는 **지금 답한 값**이다. 서로를 참조하지 않고 서로 다른 시점에 입력됐다.
+ *
+ * ⚠️ **기록이 한 건 있다는 이유만으로 만들지 않는다**(§22). 만드는 조건은
+ * **두 축 이상이 함께 움직였는가**다:
+ *
+ *   FREE     축별로 '지난 관찰과 다르게 답했어' — 이미 무료가 다 보여준다(§17)
+ *   PREMIUM  그 변화들이 **같은 시점에 함께** 나타났다는 관찰 (§18)
+ *
+ * 한 축만 달라진 경우는 무료 비교 문장을 반복하는 것뿐이라 아무것도 만들지 않는다 —
+ * 억지 generator를 만들지 않는다(§21 · §23 Duplication Matrix).
+ *
+ * ⚠️ **과거 → 현재 인과를 만들지 않는다**(§20). `limitationFor`의 `history` 분기가
+ * "과거가 지금의 원인이라고는 말할 수 없어"를 항상 붙인다. `ruleSummary`도
+ * '다른 방향을 가리키고 있어'까지고 '왜'는 말하지 않는다.
+ *
+ * ⚠️ MBTI를 원인으로 끌어오지 않는다 — 이 조합에는 `mbti_lens`가 아예 없다(§21).
+ */
+function fromSoloHistoryChanges(input: {
+  changes: readonly SoloAxisChange[];
+  baselineEntryId: string | null;
+}): CrossSourceInsight | null {
+  const { changes, baselineEntryId } = input;
+  if (!baselineEntryId) return null;
+
+  const moved = changes.filter((change) => change.state === 'CHANGE');
+  // 한 축만 달라진 것은 무료가 이미 말한 사실이다 — 같은 문장을 유료에서 반복하지 않는다.
+  if (moved.length < 2) return null;
+
+  /**
+   * 축 이름을 다 나열하지 않는다 — 5축이 모두 움직인 세션에서 한 문장이 목록처럼
+   * 읽혔다(실측). 앞의 세 개까지 부르고 나머지는 개수로 말한다. 축별 상세는
+   * 무료 비교 목록에 전부 있으므로 정보가 사라지지 않는다.
+   */
+  const MAX_LABELS = 3;
+  const allLabels = moved.map((change) => change.label);
+  const shown = allLabels.slice(0, MAX_LABELS).join(' · ');
+  const rest = allLabels.length - MAX_LABELS;
+  const labelPhrase = rest > 0 ? `${shown} 외 ${rest}개` : shown;
+
+  return {
+    /** 축 하나에 매달린 관찰이 아니다 — 대표 축만 붙이고 id는 조합 전체를 가리킨다 */
+    id: insightId('solohistory', 'change'),
+    type: 'CHANGE',
+    axis: moved[0]!.axis,
+    sources: ['history', 'declared'],
+    evidenceRefs: [
+      ...moved.map((change) => ({
+        source: 'history' as const,
+        entryId: baselineEntryId,
+        axis: change.axis,
+      })),
+      ...moved.map((change) => ({ source: 'declared' as const, field: change.axis })),
+    ],
+    /**
+     * ⚠️ `strong`을 주지 않는다. 두 축이 함께 달라졌다는 관찰이고, 그게 왜인지는
+     * 이 데이터로 알 수 없다 — 강도를 올리면 시간축 비교가 판정처럼 읽힌다.
+     */
+    strength: 'medium',
+    confidenceReason: `solo_history:changed:${moved.length}`,
+    ruleSummary: `${labelPhrase} — ${allLabels.length}개 기준이 지난 관찰과 지금 사이에서 함께 다른 방향을 가리키고 있어. 어느 쪽이 맞다고 정하지는 않을게.`,
+    eligibleForNarrative: true,
+    relatedHistoryIds: [baselineEntryId],
   };
 }
 /**
@@ -825,6 +926,21 @@ export function buildCrossSourceInsights(input: CrossSourceInsightInput): CrossS
   // ⑤ MBTI Lens ↔ Relationship Signal (v1.26)
   if (input.mbtiBridge) {
     const built = fromMbtiBridge({ bridge: input.mbtiBridge, mirror });
+    if (built) insights.push(built);
+  }
+
+  /**
+   * ⑧ Solo History ↔ Current Declared — **Solo 전용** (v1.35 §19 ~ §22)
+   *
+   * ⚠️ 커플 리포트에는 넣지 않는다. 커플의 시간축 비교는 ③(`historyChanges`)이 담당하고,
+   * 그건 저장된 기록끼리의 비교다 — 두 비교를 한 리포트에 함께 내보내면 같은 '변화'
+   * 이야기가 서로 다른 시점 기준으로 두 번 나온다.
+   */
+  if (audience === 'solo' && input.soloHistory?.comparable) {
+    const built = fromSoloHistoryChanges({
+      changes: input.soloHistory.changes,
+      baselineEntryId: input.soloHistory.baselineEntryId,
+    });
     if (built) insights.push(built);
   }
 

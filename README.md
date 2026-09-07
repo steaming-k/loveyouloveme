@@ -7,7 +7,7 @@
 론칭 프로젝트입니다. 실측 확인된 사실과 미검증 항목을 분리해서 기록합니다 — "구현했다"와
 "검증됐다"를 같은 말로 쓰지 않습니다.
 
-**기준 문서** — 현재 버전 **v1.34**
+**기준 문서** — 현재 버전 **v1.35**
 
 | 문서 | 담는 것 | 언제 보나 |
 |---|---|---|
@@ -45,6 +45,8 @@ http://localhost:3000 · 기준 뷰포트 **393 × 852** (360px에서도 깨지�
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
 | `npm run test:ai` | AI 스키마/안전 검증 Contract Test (Provider Key 불필요) |
+| `npm run test:observed` | 사진 파이프라인 E2E (`/api/ai/observed-profile` 왕복) |
+| `npm run test:history` | History Fixture H0~H10 + Observed 시간축 + 근거 묶음 + Solo Premium 게이트 (Provider Key 불필요) |
 | `npm run test:ai:e2e` | 실제 `/api/ai/*` Route 왕복 (Key 없으면 SKIPPED로 정직하게 보고) |
 | `node tests/run-observed-e2e.mjs` | Observed(사진) 파이프라인 E2E |
 
@@ -150,7 +152,8 @@ src/
 │                          useAnchorScroll(v1.11) · useShare · useAnalyticsConsent(v1.12)
 ├─ lib/
 │  ├─ logic/               values · compatibility · mirror · profile · observed ·
-│  │                       observedSignals(사진 신호 집계) · history · crossSourceInsights (순수 함수)
+│  │                       observedSignals(사진 신호 집계) · history(커플 변화) ·
+│  │                       soloHistory(Solo·Observed 시간축) · crossSourceInsights (순수 함수)
 │  ├─ aiFingerprint.ts     AI 재호출/무효화 기준 (MBTI·출생정보·Premium 제외)
 │  ├─ aiEvidenceResolver.ts EvidenceRef → 실제 세션 데이터 문장
 │  ├─ historyRepository.ts localStorage 직접 접근 유일 지점(History 저장소 경계)
@@ -188,7 +191,23 @@ src/
 | **Target Person** | 사용자가 *알고 있는* 상대 정보 | S19 |
 | **Compatibility** | 두 사람의 공통점 / 차이 | S21R |
 | **Relationship Mirror** | Declared Me vs Relationship Me | S26·S27R |
-| **Relationship History** | 저장된 과거 Mirror Snapshot(현재 세션과 별개 저장소) | F1~F3 |
+| **Relationship History** | 저장된 과거 Snapshot(현재 세션과 별개 저장소). 커플 기록은 Mirror Snapshot, Solo 기록은 Self Signal Snapshot | F1~F3 · S-FC |
+
+```
+CURRENT   = 지금의 기준          매번 다시 계산한다
+HISTORY   = 당시의 frozen observation   그때의 값을 그대로 얼려둔다
+CHANGE    = 두 snapshot의 비교
+```
+
+> **Retention Principle** — 러비는 한 번의 결과를 기억하는 게 아니라,
+> 시간이 지나며 달라지는 기준을 관찰한다.
+>
+> 그래서 History는 **상대의 lifecycle에 묶이지 않습니다.** 새 상대를 시작해도
+> (`resetTargetContext()`) 기록은 남습니다 — 기록의 주어가 상대가 아니라 나이기
+> 때문입니다. 기록이 지워지는 경로는 사용자가 명시적으로 고른 두 곳뿐입니다.
+>
+> 그리고 **매일 오게 만드는 앱이 아닙니다.** `streak`·`연속 기록` 어휘를 쓰지 않고,
+> 반복 어휘는 관찰 3회부터 씁니다 — 2시점은 반복의 증거가 아닙니다.
 
 ---
 

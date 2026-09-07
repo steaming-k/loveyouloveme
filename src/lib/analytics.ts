@@ -389,6 +389,22 @@ function sanitizeForExternal(
   return safe;
 }
 
+/**
+ * 저장된 관찰 기록 수를 **low-cardinality bucket**으로 (v1.35 · §26)
+ *
+ * 정확한 개수를 외부 Analytics에 보내지 않는다. 관찰을 많이 쌓은 사용자는 그 숫자
+ * 자체가 준식별자에 가까워지고, 우리가 알고 싶은 것은 애초에 '몇 개인가'가 아니라
+ * **'없음 / 하나 / 비교 가능 / 반복 판정 가능'** 네 구간이기 때문이다.
+ *
+ * ⚠️ 경계가 제품 정책과 같다: `2`부터 비교가 되고, `3_plus`부터 반복 어휘가 허용된다
+ * (`SOLO_REPEAT_MIN_OBSERVATIONS`). 임의로 나눈 구간이 아니다.
+ */
+export function historyCountBucket(count: number): '0' | '1' | '2' | '3_plus' {
+  if (count <= 0) return '0';
+  if (count === 1) return '1';
+  return count === 2 ? '2' : '3_plus';
+}
+
 /** 이벤트 1건 기록. local store에 남기고, GA4 전송 조건(§16)을 만족하면 그쪽에도 보낸다. */
 export function trackEvent(name: AnalyticsEvent, properties: AnalyticsProperties = {}): void {
   const store = readStore();

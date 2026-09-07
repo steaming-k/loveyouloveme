@@ -10,6 +10,13 @@ import {
   findRepeatedRelationshipSignals,
   pastObservationFor,
 } from '@/lib/logic/history';
+import {
+  buildObservedHistoryReport,
+  buildSoloHistoryReport,
+  currentObservedCategories,
+  type ObservedHistoryReport,
+  type SoloHistoryReport,
+} from '@/lib/logic/soloHistory';
 import { aiSelectors } from '@/services/aiService';
 import { useHistory } from '@/state/HistoryProvider';
 import { useSession } from '@/state/SessionProvider';
@@ -25,6 +32,7 @@ import type {
   MbtiSelfLens,
   MirrorAxisKey,
   MirrorReport,
+  RelationshipHistoryEntry,
   RelationshipProfile,
   RepeatedRelationshipSignal,
   SoloMode,
@@ -193,10 +201,65 @@ export function useRepeatedSignals(): RepeatedRelationshipSignal[] {
   return useMemo(() => findRepeatedRelationshipSignals(entries), [entries]);
 }
 
-/** 이전 기록 vs 최신 기록 변화 리포트 (F2) */
+/** 이전 기록 vs 최신 기록 변화 리포트 (F2) — **커플 기록만** 본다 */
 export function useHistoryReport(): HistoryReport {
   const { entries } = useHistory();
   return useMemo(() => buildHistoryReport(entries), [entries]);
+}
+
+/**
+ * 커플 변화 비교에 **실제로 참여한 두 기록** (v1.35 · §10)
+ *
+ * ⚠️ 화면이 `useHistory().latest`/`previous`를 쓰면 안 된다. 그 값은 audience를 가리지
+ * 않아서, Solo 관찰이 마지막에 저장돼 있으면 화면에 적힌 날짜와 실제로 비교한 기록이
+ * 어긋난다(Mixed History 실측 버그). 근거·캡션은 전부 이 값을 기준으로 만든다.
+ */
+export function useComparedHistoryEntries(): {
+  previous: RelationshipHistoryEntry | null;
+  latest: RelationshipHistoryEntry | null;
+} {
+  const { entries } = useHistory();
+  const report = useHistoryReport();
+  return useMemo(() => {
+    const find = (id: string | null) =>
+      id ? (entries.find((entry) => entry.id === id) ?? null) : null;
+    return { previous: find(report.compared.previousId), latest: find(report.compared.latestId) };
+  }, [entries, report.compared.previousId, report.compared.latestId]);
+}
+
+/**
+ * Solo 시간축 비교 — 저장된 Solo snapshot vs **지금 답** (v1.34 · v1.35에서 훅으로 승격)
+ *
+ * ⚠️ `useHistoryReport`(커플)와 주어도 시점도 다르다. 섞어 쓰지 않는다.
+ *
+ *   CURRENT   `useFirstContact()` — 지금 답으로 매번 다시 계산
+ *   HISTORY   저장된 snapshot — 그때의 값을 그대로 얼려둔 것
+ *   CHANGE    이 훅
+ *
+ * ⚠️ 화면에서 계산하지 않는다. 예전에는 `/first-contact`가 직접
+ * `buildSoloHistoryReport`를 부르면서 `report ?? { available: false } as never`로
+ * 타입을 우회했다 — 같은 계산이 다른 화면에 필요해지는 순간 그 우회가 복사된다.
+ */
+export function useSoloHistoryReport(): SoloHistoryReport {
+  const { entries } = useHistory();
+  const current = useFirstContact();
+  return useMemo(
+    () => buildSoloHistoryReport({ entries, current }),
+    [entries, current],
+  );
+}
+
+/**
+ * Observed 시간축 비교 — 저장된 활동 범주 vs 지금 사진 (v1.35 · §5 ~ §8)
+ *
+ * ⚠️ 사진은 **선택 source**다. 사진이 없으면 `comparable === false`이고, 그건
+ * '장면이 사라졌다'가 아니라 '이번엔 비교할 사진이 없다'다(§29).
+ */
+export function useObservedHistoryReport(): ObservedHistoryReport {
+  const { answers } = useSession();
+  const { entries } = useHistory();
+  const current = useMemo(() => currentObservedCategories(answers), [answers]);
+  return useMemo(() => buildObservedHistoryReport({ entries, current }), [entries, current]);
 }
 
 /**

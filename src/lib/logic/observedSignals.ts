@@ -120,6 +120,21 @@ const CATEGORY_RULES: readonly CategoryRule[] = [
   },
 ];
 
+/**
+ * 활동 범주의 표시 이름 (v1.35 · P4-B §5).
+ *
+ * ⚠️ 라벨을 두 번 적지 않는다 — `CATEGORY_RULES`가 이미 유일한 출처다. History의
+ * Observed 시간축 비교는 범주만 저장하므로, 화면에 이름을 붙일 때 이 표를 읽는다.
+ */
+export const OBSERVED_CATEGORY_LABEL: Record<ObservedSignalCategory, string> = {
+  ...(Object.fromEntries(CATEGORY_RULES.map((rule) => [rule.category, rule.label])) as Record<
+    ObservedSignalCategory,
+    string
+  >),
+  /** `categorizeLabel`은 `other`를 만들지 않는다 — 저장된 legacy 값을 위한 자리다 */
+  other: '그 외 장면',
+};
+
 function normalize(text: string): string {
   return text.toLowerCase().replace(/\s+/g, '');
 }

@@ -21,6 +21,7 @@ import {
 import { useHistory } from '@/state/HistoryProvider';
 import { useSession } from '@/state/SessionProvider';
 import {
+  useComparedHistoryEntries,
   useCompatibility,
   useHistoryReport,
   useMbtiBridge,
@@ -28,6 +29,7 @@ import {
   useMbtiSelfLens,
   useMirror,
   useRepeatedSignals,
+  useSoloHistoryReport,
 } from '@/hooks/useAnalysis';
 import type {
   AiFailureReason,
@@ -194,11 +196,21 @@ export function useEvidenceContext(): EvidenceResolverContext {
  */
 export function useCrossSourceInsights(): CrossSourceInsight[] {
   const { answers } = useSession();
-  const { latest, previous } = useHistory();
   const mirror = useMirror();
   const validated = useValidatedObservations();
   const report = useHistoryReport();
   const repeatedSignals = useRepeatedSignals();
+  /**
+   * v1.35 §10 — **비교에 참여한 기록을 근거로 건다.**
+   *
+   * 예전에는 `useHistory().latest`/`previous`(전체 History의 마지막 두 항목)를 썼다.
+   * 그런데 `report.changes`는 **커플 기록만** 비교하므로, Solo 관찰이 마지막에 저장돼
+   * 있으면 ③ History 연결의 근거가 비교에 참여하지 않은 기록을 가리켰다 —
+   * Solo 기록에는 Mirror 판정이 없어서 그 근거는 화면에서 조용히 사라진다.
+   */
+  const { latest, previous } = useComparedHistoryEntries();
+  /** v1.35 §19 — ⑧(Solo History × 지금 답)의 입력. 이미 계산된 비교를 **읽기만** 한다 */
+  const soloHistory = useSoloHistoryReport();
   /**
    * v1.26 P3-3 — ④ Compatibility 연결과 ⑤ MBTI Bridge 연결의 입력.
    * 둘 다 이미 계산이 끝난 결과이고, Engine은 이 값을 **읽기만** 한다.
@@ -225,6 +237,8 @@ export function useCrossSourceInsights(): CrossSourceInsight[] {
         mbtiBridge,
         // v1.32 P4-D — 상대 없이 열리는 ⑦ 조합의 입력. 새 계산이 아니다
         mbtiSelfLens: crossMbtiSelfLens,
+        // v1.35 §19 — 상대·사진·MBTI 없이 열리는 ⑧ 조합의 입력
+        soloHistory,
       }),
     [
       answers.declared,
@@ -240,6 +254,7 @@ export function useCrossSourceInsights(): CrossSourceInsight[] {
       compatibility,
       mbtiBridge,
       crossMbtiSelfLens,
+      soloHistory,
     ],
   );
 }

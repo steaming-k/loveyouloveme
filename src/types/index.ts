@@ -797,6 +797,23 @@ export interface RelationshipHistoryEntry {
     pairIds: string[];
     /** 그때 쓸 수 있던 정보 종류 — 사진/MBTI 유무 등 categorical만 */
     sources: ('declared' | 'mbti' | 'observed' | 'experience')[];
+    /**
+     * 그때 사진에서 보였던 **활동 범주만** (v1.35 · P4-B §5).
+     *
+     * ⚠️ 사진 원본·base64·AI 서술 원문은 넣지 않는다. 시간축 비교에 필요한 최소값
+     * (범주 · 장면 수 · 반복 강도)만 남기고, 그 값들은 모두 이미 계산돼 있던
+     * `ObservedSignal`에서 그대로 옮긴다 — 새 판정을 만들지 않는다.
+     *
+     * ⚠️ **`undefined`와 `[]`는 다르다.** `undefined`는 '그때는 이 값을 저장하지
+     * 않았다'(v1.34 이전 기록)이고, `[]`는 '사진 근거가 없는 관찰이었다'다.
+     * 비교는 전자를 `INSUFFICIENT`로, 후자를 '없었다'로 읽는다.
+     */
+    observed?: {
+      category: ObservedSignalCategory;
+      /** 서로 다른 장면 수 — 사진 장수가 아니다(§5 과대계산 금지) */
+      occurrences: number;
+      strength: ObservedSignalStrength;
+    }[];
   };
   /**
    * 분석 입력(status + declared + experience)에서 파생한 지문.
@@ -899,6 +916,19 @@ export interface HistoryReport {
   newCount: number;
   /** 러비 한 줄 요약 */
   summary: string;
+  /**
+   * 이 비교에 **실제로 참여한 커플 기록** (v1.35 · P4-B §10).
+   *
+   * ⚠️ 화면과 Cross-source Engine이 `useHistory().latest`/`previous`를 대신 쓰면 안 된다.
+   * 그 값은 audience를 가리지 않아서, Solo 관찰이 마지막에 저장되면 **비교한 기록과
+   * 화면에 적힌 날짜가 서로 다른 기록을 가리킨다**(실측으로 확인한 Mixed History 버그).
+   */
+  compared: {
+    previousId: string | null;
+    latestId: string | null;
+    previousCreatedAt: string | null;
+    latestCreatedAt: string | null;
+  };
 }
 
 /* ============================ AI Analysis Pipeline (v1.6) ============================ */
