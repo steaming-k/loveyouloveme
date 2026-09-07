@@ -14,6 +14,11 @@ import { cn } from '@/lib/cn';
  * 모션은 CSS transition으로만 만든다(globals.css `.obs-*`). JS로 transform을 붙이면
  * SSR 결과와 첫 클라이언트 렌더가 달라져 hydration이 깨지고, prefers-reduced-motion을
  * 한 곳에서 끌 수 없다.
+ *
+ * ⚠️ v1.38 — 아래 `transitionDelay`는 duration(globals.css `.obs-*`)과 **합쳐서 한 단계
+ * (`OBSERVATION.stageMs` = 520ms) 안에 끝나야 한다.** 1400ms 시절 값(70/90ms stagger)을
+ * 그대로 두면 CONNECT 선이 다 그려지기 전에 다음 단계가 시작돼, 선이 목적지에 닿지 못하고
+ * 사라진다. `stageMs`를 바꾸면 이 delay와 CSS duration을 함께 본다.
  */
 export function ObservationField({
   tokens,
@@ -49,7 +54,7 @@ export function ObservationField({
           key={`path-${row.label}`}
           className="obs-path"
           data-on={connected}
-          style={{ transitionDelay: `${index * 70}ms` }}
+          style={{ transitionDelay: `${index * 45}ms` }}
           d={`M132,${row.y} C156,${row.y} 164,85 184,85`}
           fill="none"
           stroke="var(--color-brand-soft)"
@@ -65,7 +70,7 @@ export function ObservationField({
           className="obs-token"
           data-on={stage >= 0}
           data-dim={written}
-          style={{ transitionDelay: `${index * 90}ms` }}
+          style={{ transitionDelay: `${index * 55}ms` }}
         >
           <rect
             x={6}
@@ -80,7 +85,7 @@ export function ObservationField({
           <circle
             className="obs-mark"
             data-on={collected}
-            style={{ transitionDelay: `${index * 70}ms` }}
+            style={{ transitionDelay: `${index * 45}ms` }}
             cx={22}
             cy={row.y}
             r={2.2}
@@ -140,7 +145,7 @@ export function ObservationField({
             key={y}
             className="obs-line"
             data-on={written}
-            style={{ transitionDelay: `${160 + index * 90}ms` }}
+            style={{ transitionDelay: `${100 + index * 55}ms` }}
             x={204}
             y={y}
             width={[78, 66, 78, 50][index]}

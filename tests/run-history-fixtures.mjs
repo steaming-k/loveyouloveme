@@ -661,6 +661,37 @@ console.log('\nSO — S07이 샘플 타일로 분석을 열지 않는다');
   );
 }
 
+/* ------------- OB — 관찰 시퀀스는 결과를 기다리게 하지 않는다 (v1.38) ------------- */
+
+console.log('\nOB — 궁합 관찰이 사용자를 붙잡아 두지 않는다');
+{
+  const r = await run({ entries: [] });
+  const o = r.observation;
+
+  /**
+   * 궁합은 Provider를 기다리는 화면이 아니라 deterministic 계산이다. 그래서 이 시간은
+   * 그대로 사용자 대기가 된다 — v1.37까지 1400 x 4 + 500 = 6.1초였고 실측도 6,158ms였다.
+   * 3초를 넘기면 '전환'이 아니라 다시 '기다리는 화면'이 된다(기획서 §5.28).
+   */
+  check('첫 관찰이 3초를 넘지 않는다', o.firstMs <= 3000, o);
+  check('첫 관찰이 1.5초보다는 길다 (단계가 순서대로 읽힌다)', o.firstMs >= 1500, o);
+  check('재관찰이 첫 관찰보다 짧다', o.revisitMs < o.firstMs, o);
+  check('재관찰도 1초 이상은 유지한다', o.revisitMs >= 1000, o);
+  check(
+    'reduced-motion이 가장 짧다 (단계 대기 없음)',
+    o.reducedMs < o.revisitMs && o.reducedMs <= 1000,
+    o,
+  );
+
+  /**
+   * ⚠️ 이 상한은 `ObservationField`의 SVG 연출 예산이다.
+   * globals.css `.obs-path`(380ms) + JS stagger(3 x 45 = 135ms) = 515ms 가 한 단계 안에
+   * 끝나야 CONNECT 선이 목적지에 닿는다. stageMs를 이 아래로 내리면 선이 잘린다.
+   */
+  check('한 단계가 CONNECT 연출 예산(515ms) 이상이다', o.stageMs >= 515, o);
+  check('총 길이 = stage x 4 + tail', o.firstMs === o.stageMs * 4 + o.tailMs, o);
+}
+
 console.log(`\n통과 ${passed}건`);
 if (failures.length > 0) {
   console.error(`\n실패 ${failures.length}건:`);

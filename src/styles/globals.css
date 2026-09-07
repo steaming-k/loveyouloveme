@@ -375,12 +375,18 @@
    관찰 → 수집 → 연결 → 보고서. 상태 변화를 이해시키는 motion만 쓴다.
    transition만 사용하므로 아래 prefers-reduced-motion 블록 한 곳에서 전부 꺼지고,
    꺼져도 각 단계의 **최종 상태**는 그대로 보인다(정보가 사라지지 않는다).
+
+   ⚠️ v1.38 — 아래 duration/delay는 `OBSERVATION.stageMs`(motion.ts)에 **맞춰져 있다.**
+   1400ms 단계에 맞춰 잡혀 있던 값이라, 단계를 520ms로 줄이자 CONNECT 선 그리기가
+   620 + 210(delay) = 830ms로 **끝나기 전에 다음 단계가 시작**됐다 — 선이 목적지에
+   닿지 못하고 사라졌다. 연출을 화려하게 만드는 변경이 아니라, 한 단계 안에서
+   시작과 끝이 보이도록 되돌리는 조정이다. `stageMs`를 바꾸면 여기도 함께 본다.
    -------------------------------------------------------------------------- */
 .obs-token {
   opacity: 0;
   transition:
-    opacity 380ms var(--ease-observe),
-    fill-opacity 380ms var(--ease-observe);
+    opacity 300ms var(--ease-observe),
+    fill-opacity 300ms var(--ease-observe);
 }
 .obs-token[data-on='true'] {
   opacity: 1;
@@ -391,7 +397,7 @@
 
 .obs-mark {
   opacity: 0;
-  transition: opacity 300ms var(--ease-observe);
+  transition: opacity 240ms var(--ease-observe);
 }
 .obs-mark[data-on='true'] {
   opacity: 1;
@@ -402,8 +408,8 @@
   stroke-dasharray: 130;
   stroke-dashoffset: 130;
   transition:
-    opacity 260ms var(--ease-observe),
-    stroke-dashoffset 620ms var(--ease-observe);
+    opacity 200ms var(--ease-observe),
+    stroke-dashoffset 380ms var(--ease-observe);
 }
 .obs-path[data-on='true'] {
   opacity: 1;
@@ -412,7 +418,7 @@
 
 .obs-sheet {
   opacity: 0;
-  transition: opacity 400ms var(--ease-observe);
+  transition: opacity 320ms var(--ease-observe);
 }
 .obs-sheet[data-on='true'] {
   opacity: 1;
@@ -420,7 +426,7 @@
 
 .obs-line {
   opacity: 0;
-  transition: opacity 340ms var(--ease-observe);
+  transition: opacity 260ms var(--ease-observe);
 }
 .obs-line[data-on='true'] {
   opacity: 1;

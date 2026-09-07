@@ -47,6 +47,13 @@ function ObservedLoadingView() {
   const analysisDone = useRef(false);
   const sequenceDone = useRef(false);
   /**
+   * v1.38 — ref만으로는 화면이 다시 그려지지 않아 '연출은 끝났는데 결과는 아직'인 구간을
+   * 화면이 말할 수 없었다. 연출이 6.1초에서 2.5초로 짧아지면서 이 구간이 실제로 보이게
+   * 됐고, 그때 `관찰 보고서가 완성됐어.`가 뜨면 **완성되지 않은 것을 완성됐다고 말하는
+   * 것**이다. 상태로 승격해 `LovyObservation`에 그대로 넘긴다.
+   */
+  const [pending, setPending] = useState(true);
+  /**
    * 이미 시작한 요청 key. **요청을 막는 용도가 아니다.**
    *
    * ⚠️ v1.10 수정 — 예전에는 `if (requested.current === key) return;`으로 effect 자체를
@@ -71,6 +78,7 @@ function ObservedLoadingView() {
 
     let cancelled = false;
     analysisDone.current = false;
+    setPending(true);
     setFailure(null);
 
     /** 같은 key에서 이벤트를 한 번만 보낸다 (StrictMode 이중 mount·리렌더 대비) */
@@ -145,6 +153,7 @@ function ObservedLoadingView() {
 
         setObservedAnalysis(result.data);
         analysisDone.current = true;
+        setPending(false);
         goNext();
       } catch {
         if (!cancelled) setFailure('SERVER_ERROR');
@@ -213,6 +222,8 @@ function ObservedLoadingView() {
       tokens={['장면', '활동', '겹치는 신호']}
       caveat={OBSERVATION_CAVEAT.observed}
       onComplete={handleSequenceComplete}
+      /* 연출이 먼저 끝나도 '완성됐어'라고 말하지 않는다 — 실제로 기다리는 중이다 */
+      pending={pending}
       footerNote={`선택한 사진 ${answers.photos.length}장만 관찰 중`}
     />
   );

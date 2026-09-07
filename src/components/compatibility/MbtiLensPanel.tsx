@@ -138,6 +138,40 @@ function AxisRow({
 }
 
 /**
+ * 4축 한눈 요약 — 축 이름 + 같음/다름만 (v1.38 · §22)
+ *
+ * **왜 만들었나.** 첫 읽기에서 필요한 건 '어느 축이 갈렸는가'까지다. 극(pole) 라벨과
+ * marker까지 전부 펼쳐두면 그 블록만 375px에서 546px(0.9 화면)을 먹고, 그 아래 있는
+ * PATTERN과 Bridge(이 화면의 Surprise)가 통째로 밀린다 — 실측에서 Bridge가 2.37 화면
+ * 아래였다. 그래서 **삭제하지 않고 위계를 나눈다**: 요약은 항상 보이고, 상세는 펼친다.
+ *
+ * ⚠️ 새로 판정하지 않는다. `MbtiLensReport`가 이미 계산한 `same`만 읽는다.
+ * 색으로 좋고 나쁨을 칠하지 않는 규칙도 그대로다 — 두 상태 모두 같은 중립 chip이다.
+ */
+export function MbtiAxisSummary({ report }: { report: MbtiLensReport }) {
+  return (
+    <ul className="flex flex-col">
+      {report.axes.map((axis: MbtiAxisComparison) => (
+        <li
+          key={axis.key}
+          className="flex items-baseline justify-between gap-3 border-t border-line-soft py-2 first:border-t-0"
+        >
+          <p className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
+              {axis.eyebrow}
+            </span>
+            <span className="text-[12px] keep-all text-ink-sub">{axis.label}</span>
+          </p>
+          <span className="flex-none rounded-[5px] bg-chip px-1.5 py-0.5 text-[10px] font-semibold text-ink-muted">
+            {axis.same ? MBTI_LENS_COPY.axesSame : MBTI_LENS_COPY.axesDifferent}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
  * 두 사람의 4축 비교표. `MbtiLensReport`가 이미 계산한 축별 같음/다름만 읽는다 —
  * 여기서 새로 판정하지 않고, 개수를 합산해 점수로 만들지도 않는다.
  */

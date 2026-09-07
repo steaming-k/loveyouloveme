@@ -16,6 +16,7 @@ import {
 } from '@/lib/logic/soloHistory';
 import { OBSERVED_TRAITS } from '@/data/observations';
 import { DEMO_PHOTO_IDS, SAMPLE_PHOTOS } from '@/data/samplePhotos';
+import { OBSERVATION, observationTotalMs } from '@/lib/motion';
 import { isPhotoSelectionValid, usablePhotoCount } from '@/lib/validation';
 import { createEmptyAnswers, createEmptyTargetProfile } from '@/state/defaultAnswers';
 import type {
@@ -226,6 +227,20 @@ export async function POST(request: Request): Promise<Response> {
     },
     /** S07 게이트 — 샘플 타일이 분석 조건을 대신 채우지 못한다 */
     photoGate: photoGateCases(),
+
+    /**
+     * v1.38 — 관찰 시퀀스 타이밍. 궁합은 Provider를 기다리는 화면이 아니라
+     * deterministic 계산이므로, 이 값이 그대로 사용자 대기가 된다(§S20).
+     * 값이 조용히 되돌아가는 것을 `tests/run-history-fixtures.mjs`의 OB 절이 막는다.
+     */
+    observation: {
+      stageMs: OBSERVATION.stageMs,
+      tailMs: OBSERVATION.tailMs,
+      revisitScale: OBSERVATION.revisitScale,
+      reducedMs: OBSERVATION.reducedMs,
+      firstMs: observationTotalMs(4),
+      revisitMs: observationTotalMs(4, true),
+    },
   });
 }
 

@@ -23,9 +23,20 @@ export default function CompatibilityLoadingPage() {
   const router = useRouter();
   const { answers, markComplete } = useSession();
   const [failed, setFailed] = useState(false);
-  const resultRef = useRef<{ score: number | null; compared: number } | null>(null);
 
   const funnelAnalysisId = answers.currentAnalysisMeta?.funnelAnalysisId ?? null;
+
+  /**
+   * 재관찰인가 (v1.38 · §16).
+   *
+   * 첫 관찰은 러비가 무엇을 하는지 처음 설명하는 자리지만, 두 번째부터는 이미 아는
+   * 연출이다. 같은 세계관을 같은 길이로 두 번 보여주지 않는다.
+   *
+   * 판정에 새 상태를 만들지 않는다 — `completed.compatibility`는 이미 결과를 본 적이
+   * 있는지를 뜻하고, '새로운 사람과 궁합 보기'는 v1.35에서 이 값을 초기화한다. 즉
+   * **새 상대는 자동으로 false(전체 연출), 같은 상대 재분석만 true**가 된다.
+   */
+  const revisit = answers.completed.compatibility;
 
   /**
    * v1.22 §12 — **새 분석은 맨 위에서 시작한다.**
@@ -52,7 +63,7 @@ export default function CompatibilityLoadingPage() {
           target: answers.target,
         });
         if (!cancelled) {
-          resultRef.current = { score: result.score, compared: result.comparedCount };
+          setResult({ score: result.score, compared: result.comparedCount });
         }
       } catch {
         if (!cancelled) setFailed(true);
@@ -65,22 +76,37 @@ export default function CompatibilityLoadingPage() {
     };
   }, [answers.declared, answers.target]);
 
-  const handleComplete = useCallback(() => {
-    const result = resultRef.current;
+  /**
+   * 연출이 끝났다는 신호. **이동 조건이 아니다** — 아래 effect가 연출 완료와 계산 완료를
+   * 둘 다 만족할 때만 이동시킨다(S08과 같은 패턴).
+   *
+   * ⚠️ v1.38 — 예전에는 `onComplete`에서 곧바로 `resultRef.current`를 읽고 이동했다.
+   * 6.1초 동안 240ms짜리 계산이 못 끝날 일은 없어서 문제가 드러나지 않았을 뿐, 계산이
+   * 늦으면 `score: 0 · compared: 0`을 **실제 결과인 것처럼** Analytics로 보내고 빈 결과
+   * 화면으로 넘어가는 구조였다. 연출을 2.5초로 줄이면서 그 여유가 사라지므로, 없는 값을
+   * 0으로 채우는 대신 있는 값을 기다린다.
+   */
+  const [sequenceDone, setSequenceDone] = useState(false);
+  const [result, setResult] = useState<{ score: number | null; compared: number } | null>(null);
+  const navigatedRef = useRef(false);
+
+  const handleComplete = useCallback(() => setSequenceDone(true), []);
+
+  useEffect(() => {
+    if (!sequenceDone || !result || navigatedRef.current) return;
+    navigatedRef.current = true;
+
     markComplete('compatibility');
 
     // 비교할 정보가 부족하면 점수 대신 '확신 낮음'으로 간다 (E3).
-    if (result && result.score === null) {
+    if (result.score === null) {
       trackEvent('compatibility_low_confidence', { compared: result.compared });
     } else {
-      trackEvent('compatibility_complete', {
-        score: result?.score ?? 0,
-        compared: result?.compared ?? 0,
-      });
+      trackEvent('compatibility_complete', { score: result.score, compared: result.compared });
     }
 
     router.replace(ROUTES.compatibility);
-  }, [markComplete, router]);
+  }, [sequenceDone, result, markComplete, router]);
 
   if (failed) {
     return (
@@ -110,6 +136,8 @@ export default function CompatibilityLoadingPage() {
       tokens={AXIS_DEFINITIONS.map((axis) => axis.label)}
       caveat={OBSERVATION_CAVEAT.compatibility}
       onComplete={handleComplete}
+      /* 궁합은 순수 계산이라 `pending`을 넘기지 않는다 — 연출보다 늦게 끝나지 않는다 */
+      revisit={revisit}
       footerNote="입력된 정보 기준으로만 비교 중"
     />
   );
