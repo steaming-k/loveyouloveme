@@ -7,7 +7,7 @@
 론칭 프로젝트입니다. 실측 확인된 사실과 미검증 항목을 분리해서 기록합니다 — "구현했다"와
 "검증됐다"를 같은 말로 쓰지 않습니다.
 
-**기준 문서** — 현재 버전 **v1.38**
+**기준 문서** — 현재 버전 **v1.39**
 
 | 문서 | 담는 것 | 언제 보나 |
 |---|---|---|
@@ -44,11 +44,27 @@ http://localhost:3000 · 기준 뷰포트 **393 × 852** (360px에서도 깨지�
 | `npm run build` | 프로덕션 빌드 (타입 체크 + 린트 포함) |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
-| `npm run test:ai` | AI 스키마/안전 검증 Contract Test (Provider Key 불필요) |
-| `npm run test:observed` | 사진 파이프라인 E2E (`/api/ai/observed-profile` 왕복) |
-| `npm run test:history` | Logic Fixture 93건 — History H0~H10 + Observed 시간축 + 근거 묶음 + Solo Premium 게이트 + `네가 말한 너` 문구 무결성 + **샘플 근거 정합성 · S07 사진 게이트**(v1.37) (Provider Key 불필요) |
-| `npm run test:ai:e2e` | 실제 `/api/ai/*` Route 왕복 (Key 없으면 SKIPPED로 정직하게 보고) |
-| `node tests/run-observed-e2e.mjs` | Observed(사진) 파이프라인 E2E |
+| `npm run test:ai` | AI 스키마/안전 검증 Contract Test 143건 (Provider Key 불필요 · **dev 서버 필요**) |
+| `npm run test:observed` | 사진 파이프라인 E2E 10건 (`/api/ai/observed-profile` 왕복 · **dev 서버 필요**) |
+| `npm run test:history` | Logic Fixture 100건 — History H0~H10 + Observed 시간축 + 근거 묶음 + Solo Premium 게이트 + `네가 말한 너` 문구 무결성 + 샘플 근거 정합성 · S07 사진 게이트(v1.37) + **관찰 시퀀스 시간 예산**(v1.38) (Provider Key 불필요 · **dev 서버 필요**) |
+| `npm run test:ai:e2e` | 실제 `/api/ai/*` Route 왕복 (**dev 서버 필요** · Key 없으면 SKIPPED로 정직하게 보고) |
+| `node tests/run-observed-e2e.mjs` | `npm run test:observed`와 같은 스크립트 |
+
+> ⚠️ **테스트 4종은 모두 `http://localhost:3000`의 Route를 왕복합니다** — 스크립트가 서버를
+> 직접 띄우지 않습니다(v1.39 확인). 서버 없이 실행하면 `ECONNREFUSED ::1:3000`으로 즉시
+> 실패합니다. 터미널을 두 개 씁니다.
+>
+> ```
+> 터미널 A:  npm run dev
+> 터미널 B:  npm run test:ai && npm run test:observed && npm run test:history
+> ```
+>
+> `test:history`는 검증 로직을 스크립트에 복제하지 않고 개발 전용 Route
+> `/api/dev/history-test`(Production 404)를 통해 **화면과 같은 판정 함수**를 호출합니다.
+> `test:ai`/`test:observed`는 `/api/ai/*`를 왕복하므로 Provider Key가 없으면 demo 경로로
+> 검증되고, 있으면 `meta.mode=real` 경로로 검증됩니다. 대상 서버는 `LYM_BASE_URL`로 바꿀
+> 수 있지만, 두 dev 전용 Route는 Production에서 404이므로 `test:ai`·`test:history`를
+> 배포 URL로 돌릴 수는 없습니다.
 
 > ⚠️ `next dev`가 떠 있는 상태에서 `npm run build`를 돌리면 `.next`가 충돌합니다.
 > 빌드 전에 dev 서버를 끄거나, 충돌 시 `.next`를 지우고 다시 시작하세요.
@@ -288,15 +304,31 @@ real인 척하지 않는다). `.env.example` 참고.
 > | `AI_MODE` | `real` | 서버 전용 (`NEXT_PUBLIC_` 금지) |
 > | `AI_API_KEY` | Provider Key | 서버 전용 |
 > | `NEXT_PUBLIC_AI_MODE` | `real` | 첫 호출 이전 배지 힌트용 |
+>
+> ⚠️ **`NEXT_PUBLIC_AI_MODE`만 `real`로 두면 아무것도 real이 되지 않습니다.** Provider
+> 선택은 `serverEnv.ts`의 server-only 값(`AI_MODE` + `AI_API_KEY`)만 봅니다. 이 변수는
+> 사진을 고르는 시점(아직 응답이 없는 시점)의 안내 문구를 고르는 **표시용 힌트**이고,
+> 결과의 진짜 모드는 응답 `meta.mode`가 말합니다. 전체 표: `기능명세_현행.md` §8.4.
+>
+> **Production 현재 상태 (2026-09-07 실측 · v1.39)** — Production은 여전히 **`demo`**
+> 입니다. `https://loveyouloveme.vercel.app/api/ai/observed-profile`에 사진 0장과 합성
+> 이미지 1장으로 각각 요청했을 때 `meta.mode: "demo"` · `observedState: "demo"` ·
+> `traits: []`가 돌아왔고, `/profile/photos`도 데모 안내 문구를 렌더했습니다.
+> `AI_MODE=real`인데 Key만 없는 상태라면 `CONFIG_ERROR`가 나야 하므로, **Production Runtime에서
+> `AI_MODE`가 `real`로 해석되지 않습니다**(Key 유무는 이 응답으로 판별할 수 없습니다).
+> Vercel Dashboard에는 접근하지 못했으므로 '변수가 설정되어 있지 않다'까지는 단정하지
+> 않습니다 — 값·Scope·Redeploy 중 무엇인지는 Dashboard에서만 알 수 있습니다. 코드 결함이
+> 아니라 **배포 환경 쪽 원인**이고, 조치는 사용자가 직접 해야 합니다 — 절차: `기능명세서.md` §36.9.
 
 **Observed(사진) 파이프라인** — 사진을 한 번에 전체 보내지 않고 **1장씩** Vision
 Provider에 보내 관찰만 받고, "몇 장에서 반복됐는지"는 애플리케이션 코드가 집계합니다
 (`lib/logic/observedSignals.ts`) — Provider가 반복 여부를 스스로 주장하지 못하게 하기
 위해서입니다. 상세는 기능명세서 §6.9.5.
 
-2026-09-04(v1.17)에 실제 `AI_API_KEY`로 `npm run test:ai:e2e`를 1회 실행해 6/6 PASS를
-확인했습니다 — **"이 실행 기준"** VERIFIED이고, 상시 CI로 매 배포마다 검증하는 것은 아닙니다.
-자세한 구분은 기능명세서 §12.1·§8.5·§14.1.
+**2026-09-07(v1.39)에 실제 `AI_API_KEY`로 `npm run test:ai:e2e`를 재실행해 6 Task 전부
+`mode: real`로 PASS(6/6 · SKIPPED 0 · FAIL 0)를 확인했습니다** — 최초 확인은
+2026-09-04(v1.17)이었습니다. 둘 다 **"이 실행 기준"** VERIFIED이고, 상시 CI로 매 배포마다
+검증하는 것은 아닙니다. 자세한 구분은 기능명세서 §12.1·§8.5·§14.1·§36.10.
 
 **AI 검증 회귀 테스트**: `npm run dev` 후 `npm run test:ai` (Provider Key 불필요, 스키마/안전 검증만).
 **Real Provider E2E**: `npm run test:ai:e2e` — 진짜 `/api/ai/*` Route를 왕복한다. Key가 없으면
@@ -433,6 +465,24 @@ en=deep_report_wtp_after_view&epn.price=1900&ep.choice=maybe&…
 - 크게 쓰는 곳: Splash · Onboarding · AI Loading · 중요한 Insight · Mirror Teaser · Empty/Error
   일반 입력 화면에서는 38~46px 아바타 + 말풍선으로만 등장합니다.
 
+### 두 개의 루프 — 4단계와 5단계는 다른 것입니다 (v1.39)
+
+```
+ANALYSIS SEQUENCE (한 번의 분석 안에서)
+OBSERVE → COLLECT → CONNECT → REPORT                     4단계 · loading 연출
+
+PRODUCT LEARNING LOOP (분석과 분석 사이, 시간축에서)
+OBSERVE → COLLECT → CONNECT → REPORT → REMEMBER          5단계 · 세계관
+```
+
+`REMEMBER`는 **다섯 번째 애니메이션 단계가 아닙니다.** History 저장 · Snapshot 동결 ·
+Change Moment · 과거/현재 비교 = 분석이 끝난 **뒤** 시간축에서 일어나는 제품 행동이고,
+담당 화면은 S27R 저장 → F3 → F1 → F1-a → F2입니다.
+
+`LovyObservation`(S08 · S20)의 loading 단계는 **4단계로 고정**합니다. 여기에 REMEMBER를
+얹으면 v1.38이 6.1초 → 2.6초로 줄인 Time-to-Value가 다시 늘어나고, 아직 저장하지도 않은
+행동을 진행 중이라고 말하게 됩니다. 자세히: `기능명세_현행.md` §1.6 · §4.7.
+
 ---
 
 ## 프라이버시 UX
@@ -457,7 +507,8 @@ semantic HTML · 실제 `button`/`input[type=radio]`/`checkbox` 사용 · 모든
 ## 현재 범위 밖 (의도적 제외)
 
 - **Supabase 미연동.** 세션은 `localStorage`에만 저장됩니다. `docs/supabase-info.md`의 자격 증명은 아직 쓰지 않습니다. 붙일 때는 `services/aiService.ts`와 `state/SessionProvider.tsx` 두 경계만 건드리면 됩니다.
-- **실제 AI Provider end-to-end는 2026-09-04(v1.17)에 실제 Key로 1회 6/6 PASS를 확인했습니다.** 상시 CI 검증은 아니라 "이 실행 기준"입니다 — API Key 없이도 스키마/안전 검증(`test:ai`)은 항상 실측합니다.
+- **실제 AI Provider end-to-end는 2026-09-04(v1.17)와 2026-09-07(v1.39)에 실제 Key로 6/6 PASS를 확인했습니다.** 상시 CI 검증은 아니라 "이 실행 기준"입니다 — API Key 없이도 스키마/안전 검증(`test:ai`)은 항상 실측합니다.
+- **Production의 실제 사진 분석은 아직 켜지지 않았습니다(v1.39 실측).** Production 응답이 `meta.mode: "demo"`라서, 배포된 앱에서 사진을 올리면 관찰이 **0개**로 정직하게 비어 있습니다(거짓 관찰을 만들지는 않습니다 — 이 점은 Production에서 직접 확인했습니다). 코드는 정상이고 남은 것은 Vercel Production 환경변수 설정 + Redeploy입니다(USER ACTION REQUIRED · `기능명세서.md` §36.9).
 - **사주 명식 계산 엔진 미연결.** 절입 시각·진태양시 등 정밀 계산이 필요해 `NEXT_PUBLIC_SAJU_ENGINE_READY=false`로 정직하게 "준비 중" 상태를 보여줍니다.
 - **GA4는 실제 전송까지 실측했고, 대시보드 수신은 미확인.** v1.19에서 production 빌드 + Consent granted 상태로 `google-analytics.com/g/collect`에 올바른 payload가 POST되고 GA4가 `204`로 응답하는 것을 확인했습니다. 다만 **GA4 Realtime/DebugView 화면에 뜨는 것까지는 확인하지 않았습니다**(계정 소유자만 볼 수 있음). 또한 `hook_variant`/`source`/`price`/`choice`/`score`는 GA4 Admin에서 Custom Dimension 등록을 해야 리포트에 나옵니다.
 - **Rate Limit은 여전히 인스턴스 메모리 기반.** `RateLimitStore` 인터페이스로 경계는 분리했지만(v1.12), 연결할 공유 저장소(Redis 등) credential이 없어 `SharedRateLimitStore`는 구현하지 않았습니다 — 서버리스 다중 인스턴스에서 정확하지 않습니다(distributed rate limiting NOT VERIFIED).

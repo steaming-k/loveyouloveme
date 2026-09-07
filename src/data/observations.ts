@@ -3,11 +3,16 @@ import type { ObservedTrait } from '@/types';
 /**
  * Observed Me — **샘플 세션 전용** 고정 관찰 데이터 (S09)
  *
- * ⚠️ v1.22 — 이 배열은 이제 `buildSampleObservedResult()` **한 곳**에서만 쓰인다.
- * 그 함수를 타는 경로는 `createSampleAnswers()` 뿐이고, 진입점은 dev 전용
+ * ⚠️ v1.22 — 사용자에게 보이는 경로에서 이 배열을 쓰는 곳은 `buildSampleObservedResult()`
+ * **한 곳**이다. 그 함수를 타는 경로는 `createSampleAnswers()` 뿐이고, 진입점은 dev 전용
  * `PrototypePanel`과 **S06 `/profile/intro`의 '샘플 답변으로 결과부터 볼게'** 두 곳이다.
  * 후자는 Production에서도 보이므로, 아래 문장은 **사용자가 샘플을 직접 선택하면 보인다**
  * (그때는 `DEMO AI` 배지 + '화면 확인용 샘플 세션' 안내가 함께 붙는다).
+ *
+ * ⚠️ v1.39 — import는 두 곳이다. 위 함수 외에 `/api/dev/history-test`(Production **404**)가
+ * fixture 조립용으로 읽는다. 그 Route는 배포에 노출되지 않으므로 **사용자에게 보이는 경로는
+ * 늘지 않았다**(기능명세서 §36.7). "한 곳에서만 쓰인다"고만 적혀 있어 사실과 어긋났던 주석을
+ * 고친 것이고, 침투 경로가 생긴 것이 아니다.
  *
  * v1.21까지는 그와 별개로 **자기 사진을 올린 사용자에게도** 이 값이 결과로 나갔다.
  * 그래서 음식 사진만 올려도 '영화관·상영 시간표' 관찰이 보였다. 지금은 사진 내용을
