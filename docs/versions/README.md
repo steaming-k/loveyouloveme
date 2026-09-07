@@ -86,7 +86,7 @@
 
 | 버전 | 파일 | 추출 커밋 | 범위 |
 |---|---|---|---|
-| **v1.40.1** | *(현재 문서)* | *(커밋 대기)* | Lifecycle Safety & Integrity Hotfix |
+| **v1.40.1** | *(현재 문서)* | `16c4b1a` | Lifecycle Safety & Integrity Hotfix |
 | v1.7~v1.39 | **동결본 없음** | — | 부록 A 변경 이력 + 각 버전 커밋으로 추적 |
 | v1.6 | [기능명세서_v1.6.md](./기능명세서_v1.6.md) | `a772206` | Production AI Analysis Pipeline |
 | v1.5 | [기능명세서_v1.5.md](./기능명세서_v1.5.md) | `7955db0` | Premium Detail + Fake Door |
