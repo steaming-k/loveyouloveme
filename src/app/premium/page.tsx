@@ -40,6 +40,10 @@ import { useHistoryReport, useMbtiLens, useMirror } from '@/hooks/useAnalysis';
 import { useDeepReport } from '@/hooks/useDeepReport';
 import { lensAvailability } from '@/lib/logic/birth';
 import { premiumFeatureState } from '@/services/premiumService';
+import {
+  jobAllowsOutwardAction,
+  resolveRelationshipContext,
+} from '@/lib/logic/relationshipStage';
 import { hasDeepConnection } from '@/services/premiumConnections';
 import { useSession } from '@/state/SessionProvider';
 import type { PremiumFeatureId, PremiumSource } from '@/types';
@@ -206,8 +210,11 @@ function PremiumView() {
         mbtiAvailable: Boolean(mbtiLens),
         astrologyAvailable: birth.couple,
         deepReportAvailable: hasDeepConnection(crossSourceInsights),
+        // v1.40 §37.9 — Paywall 목록에서도 지키지 못할 약속을 뺀다.
+        allowsOutwardAction: jobAllowsOutwardAction(resolveRelationshipContext(answers).job),
       }),
     [
+      answers,
       featureId,
       price,
       mirror.available,
@@ -226,6 +233,14 @@ function PremiumView() {
     PREMIUM_PREVIEW && isDeepReport && feature.status === 'fake-door';
 
   const definition = PREMIUM_FEATURES[featureId];
+  /**
+   * v1.40 §37.9 — 이 Job에서 상대를 향한 행동을 약속해도 되는가.
+   *
+   * Fake Door(`PREMIUM_PREVIEW=false`)라 리포트 본문은 Production에서 열리지 않지만,
+   * **Paywall 목록은 Production에서 보인다.** 관계가 끝났다고 답한 사용자에게 유료
+   * 목차로 '상대에게 확인해볼 질문'을 광고하지 않는다.
+   */
+  const outwardAllowed = jobAllowsOutwardAction(resolveRelationshipContext(answers).job);
   /**
    * §37 · §39 — Paywall 전에 살짝 보여줄 3개 요약. 전체 근거·해석은 잠긴 채로 둔다.
    *
@@ -551,7 +566,11 @@ function PremiumView() {
                 ))}
               </ul>
               <ul className="flex flex-col gap-1.5 rounded-card border border-dashed border-line-strong bg-sunken p-4">
-                {DEEP_REPORT_COPY.previewLockedItems.map((item) => (
+                {/* v1.40 §37.9 — `additions`와 **같은 규칙**을 적용한다. 한쪽만 필터하면
+                    같은 약속이 다른 목록에 남는다(Release Gate 실측). */}
+                {DEEP_REPORT_COPY.previewLockedItems.filter(
+                  (item) => outwardAllowed || !item.includes('상대에게'),
+                ).map((item) => (
                   <li key={item} className="flex gap-2 text-[12px] keep-all text-ink-muted">
                     <span className="flex-none" aria-hidden>
                       🔒
@@ -588,7 +607,10 @@ function PremiumView() {
           <section className="flex flex-col gap-2">
             <SectionLabel>{copy.additionsLabel}</SectionLabel>
             <ul className="flex flex-col gap-1.5 rounded-card border border-brand-edge bg-brand-tint p-4">
-              {definition.additions.map((item) => (
+              {/* v1.40 §37.9 — `definition.additions`(정적 원본)가 아니라 **해석된
+                  `feature.additions`**를 그린다. 원본을 직접 그리면 Job별 필터가
+                  Paywall만 비켜간다 — Release Gate 실측에서 정확히 그 결함이 나왔다. */}
+              {feature.additions.map((item) => (
                 <li
                   key={item}
                   className="flex gap-2 text-[12.5px] keep-all font-medium text-brand-ink"

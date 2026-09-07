@@ -36,8 +36,20 @@ function intFrom(raw: string | undefined, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+/**
+ * ⚠️ v1.40 — `trim()`을 붙였다.
+ *
+ * 이 파일의 다른 값(`AI_API_KEY`·`AI_PROVIDER`·`AI_BASE_URL`·`AI_MODEL`·`AI_VISION_MODEL`)은
+ * 전부 `.trim()`을 쓰는데 `AI_MODE`만 raw 비교였다. 배포 플랫폼 UI에 값을 붙여넣을 때
+ * 뒤에 공백이나 개행이 따라오면 `'real '`이 되고, 그러면 **조용히 demo로 내려간다** —
+ * 앱은 정상 동작하고 화면도 `DEMO AI`로 정직하게 표시되므로 원인을 찾기가 매우 어렵다.
+ *
+ * 의미는 하나도 바꾸지 않았다: `real`/`mock`/`demo`의 정의, Production에서 mock을 막는
+ * 규칙, `canCallProvider`의 판정, fallback 정책 모두 그대로다. **새 mode도 없다.**
+ * 바뀐 것은 "앞뒤 공백이 붙은 같은 값도 같은 값으로 읽는다" 하나뿐이다.
+ */
 function resolveMode(): ServerAiMode {
-  const requested = process.env.AI_MODE;
+  const requested = process.env.AI_MODE?.trim();
   if (requested === 'real') return 'real';
   // mock은 개발 환경에서만 허용한다. Production에서 실수로 켜지면 조용히 demo로 내려간다.
   if (requested === 'mock' && process.env.NODE_ENV !== 'production') return 'mock';

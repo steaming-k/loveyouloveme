@@ -60,7 +60,9 @@ export const PREMIUM_FEATURES: Record<PremiumFeatureId, PremiumFeatureDefinition
     additions: [
       '축별 변화 상세 해석',
       '반복 신호가 나타난 기록 간 연결 설명',
-      '다음 관계에서 확인할 기준',
+      // v1.40 — '다음 관계에서'였다. dating/long_term 사용자에게는 지금 관계가 다음
+      // 관계로 취급되는 문장이라 사실과 어긋난다. 단계와 무관하게 참인 표현으로 바꿨다.
+      '앞으로 확인할 기준',
     ],
   },
   /**

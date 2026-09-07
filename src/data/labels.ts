@@ -79,7 +79,9 @@ export const STATUS_LABEL: Record<RelationshipStatus, string> = {
   solo_exp: '솔로 · 연애 경험 있음',
   crush: '관심 가는 사람이 있음',
   dating: '연애 중',
-  married: '기혼 / 동거',
+  // v1.40 — 결혼 여부를 별도 Job으로 만들지 않는다(가사·재정 데이터를 받지 않으므로).
+  // 그래서 선택지도 '결혼'만이 아니라 오래 함께하는 관계를 함께 담는 라벨로 둔다(§37.3).
+  married: '기혼 / 오래 함께하는 중',
   ended: '최근 관계가 끝남',
 };
 
@@ -94,16 +96,22 @@ export const STATUS_LABEL: Record<RelationshipStatus, string> = {
  * 퍼널로 밀어넣었고, 그 사용자는 동기화율 `?`와 "Mirror를 만들 수 없어"를 지나
  * 홈으로 돌아갔다(P4 Audit 실측). 이제 First Contact Report가 그 자리를 받는다.
  *
- * ⚠️ `dating`/`married`/`ended`는 여전히 false다. 이 세 상태에 맞는 리포트는 아직 없고,
- * **없는 것을 있다고 말하지 않는다.**
+ * v1.40 — `dating`/`married`/`ended`를 true로 올렸다. **약속이 실제로 지켜지게 됐기
+ * 때문이다.** v1.39까지 이 세 상태는 `준비 중` 라벨을 달고도 같은 흐름으로 들어가
+ * `crush`와 **똑같은 결과·똑같은 다음 행동**을 받았다. v1.40에서 각 단계에 실제 Job이
+ * 생겼다 — 판정은 그대로 두고(§37.7) 그 판정을 무엇에 쓸지가 달라진다: `dating`은 조율,
+ * `long_term`은 반복되는 지점, `ended`는 회고다(`STAGE_JOB_COPY`).
+ *
+ * ⚠️ 이 값을 true로 올린 근거는 카피가 아니라 **행동이 실제로 달라지는가**다. Job이
+ * 없는 상태를 라벨만 고쳐서 true로 만들면 v1.28이 했던 거짓 약속으로 돌아간다.
  */
 export const STATUS_SUPPORTED: Record<RelationshipStatus, boolean> = {
   solo_none: true,
   solo_exp: true,
   crush: true,
-  dating: false,
-  married: false,
-  ended: false,
+  dating: true,
+  married: true,
+  ended: true,
 };
 
 export const TARGET_RELATION_LABEL: Record<TargetRelation, string> = {

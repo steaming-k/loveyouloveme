@@ -7,7 +7,7 @@
 론칭 프로젝트입니다. 실측 확인된 사실과 미검증 항목을 분리해서 기록합니다 — "구현했다"와
 "검증됐다"를 같은 말로 쓰지 않습니다.
 
-**기준 문서** — 현재 버전 **v1.39**
+**기준 문서** — 현재 버전 **v1.40**
 
 | 문서 | 담는 것 | 언제 보나 |
 |---|---|---|
@@ -46,6 +46,7 @@ http://localhost:3000 · 기준 뷰포트 **393 × 852** (360px에서도 깨지�
 | `npm run lint` | ESLint |
 | `npm run test:ai` | AI 스키마/안전 검증 Contract Test 143건 (Provider Key 불필요 · **dev 서버 필요**) |
 | `npm run test:observed` | 사진 파이프라인 E2E 10건 (`/api/ai/observed-profile` 왕복 · **dev 서버 필요**) |
+| `npm run test:lifecycle` | Lifecycle Fixture 84건 — Relationship Stage/Job · **불변 검사**(단계만 바꿔도 동기화율·Mirror·Premium 게이트 동일) · Ended/Dating/Long-term Safety · legacy 세션 (**dev 서버 필요**) |
 | `npm run test:history` | Logic Fixture 100건 — History H0~H10 + Observed 시간축 + 근거 묶음 + Solo Premium 게이트 + `네가 말한 너` 문구 무결성 + 샘플 근거 정합성 · S07 사진 게이트(v1.37) + **관찰 시퀀스 시간 예산**(v1.38) (Provider Key 불필요 · **dev 서버 필요**) |
 | `npm run test:ai:e2e` | 실제 `/api/ai/*` Route 왕복 (**dev 서버 필요** · Key 없으면 SKIPPED로 정직하게 보고) |
 | `node tests/run-observed-e2e.mjs` | `npm run test:observed`와 같은 스크립트 |
@@ -56,7 +57,7 @@ http://localhost:3000 · 기준 뷰포트 **393 × 852** (360px에서도 깨지�
 >
 > ```
 > 터미널 A:  npm run dev
-> 터미널 B:  npm run test:ai && npm run test:observed && npm run test:history
+> 터미널 B:  npm run test:ai && npm run test:observed && npm run test:history && npm run test:lifecycle
 > ```
 >
 > `test:history`는 검증 로직을 스크립트에 복제하지 않고 개발 전용 Route
@@ -102,7 +103,7 @@ Mirror 결과(S27~S28, 2개 화면)가 각각 Canonical Route 1개로 합쳐졌�
 |---|---|---|
 | S01 | 스플래시 | `/` |
 | S02~S04 | 온보딩 3단 | `/onboarding` |
-| S05 | 관계 상태 | `/status` |
+| S05 | 관계 상태 (6개 전부 지원 · v1.40) | `/status` |
 | S06 | 프로필 빌딩 인트로 | `/profile/intro` |
 | S07 | 사진 입력 | `/profile/photos` |
 | S08 | 사진 분석 로딩(실제 Vision Provider 호출) | `/profile/analyzing` |
@@ -232,6 +233,47 @@ PREMIUM   Cross-source 연결      "더 길게 쓴 게 아니라 따로 보던 �
   아니라 Core와 같은 읽기 순서(`결론 → 한 문장 → Surprise → 근거`)를 적용한 것입니다.
 - **RETENTION은 습관이 아니라 계기입니다.** `streak`·`연속 기록`을 쓰지 않습니다.
 - **PREMIUM은 길이가 아니라 연결입니다.** 무료 문장을 반복하는 section은 삭제 대상입니다.
+- **상태는 판정을 바꾸지 않고, 판정을 어떻게 쓸지를 바꿉니다** (v1.40) — 아래 참고.
+
+### Relationship Lifecycle (v1.40)
+
+```
+RELATIONSHIP STAGE  →  CURRENT JOB  →  INTERPRETATION  →  ACTION  →  RETENTION
+```
+
+두 개의 **다른 축**을 섞지 않습니다.
+
+| 축 | 값 | 정하는 주체 |
+|---|---|---|
+| **STAGE** | `none` · `talking` · `dating` · `long_term` · `ended` | 사용자가 S05에서 선택 (`answers.status`에서 도출) |
+| **SUFFICIENCY** | `no_target` · `unknown_target` · `couple` | 상대 입력에서 도출 (`soloModeOfTarget()`) |
+| **JOB** | `none` · `unknown` · `talking` · `dating` · `long_term` · `ended` | 위 둘의 곱 |
+
+지원하는 관계 단계와 각 단계의 일:
+
+| 사용자 선택 | JOB | 지금 하는 일 | 하지 않는 것 |
+|---|---|---|---|
+| 솔로 (경험 유무 무관) | `none` | 내 관계 기준 이해 | 상대 추정 |
+| (상대 정보가 부족할 때) | `unknown` | 알아가기 전 내 기준 확인 | 호감 성공 전략 |
+| 관심 가는 사람이 있음 | `talking` | 기대 차이 **확인** | 성공 확률 |
+| 연애 중 | `dating` | 기대 **조율** · 갈등 회복 | 호감 올리기 · '다음 관계' |
+| 기혼 / 오래 함께하는 중 | `long_term` | 반복되는 차이 **조율** | 데이터에 없는 생활 문제 |
+| 최근 관계가 끝남 | `ended` | 관계 **회고** → 다음 기준 | 접근 · 재회 · 치유 약속 |
+
+- **`unknown`은 단계가 아니라 데이터 상태입니다.** 그래서 STAGE 목록에 없습니다.
+- **`married`는 별도 Job이 아닙니다.** 결혼이 바꾸는 Job(가사·재정·주거·양육)의 데이터를
+  받지 않으므로, 선택지는 남기고 해석은 `long_term`과 공유합니다 — 없는 데이터로 개인화를
+  흉내내지 않습니다.
+- **STAGE·JOB은 저장되지 않습니다.** v1.0부터 있던 `answers.status`에서 매번 도출하므로
+  기존 세션에 마이그레이션이 필요 없습니다.
+- **`ended`의 금지는 카피가 아니라 코드입니다.** `JOB_ACTION_KINDS.ended`에 `ask`·`try`·
+  `align`이 없고, 화면은 `jobAllowsOutwardAction()` 한 곳만 보고 블록 자체를 교체합니다.
+  **유료 화면도 같은 규칙을 받습니다** — Deep Report가 재접촉 제안을 생성하지 않고, Paywall
+  목록에서도 그 약속이 빠집니다(₩1,900·Fake Door는 그대로).
+- **단계는 evidence가 아닙니다.** AI에는 저카디널리티 context로만 전달되고
+  `evidenceRefs`에 들어가지 않습니다.
+
+상세는 `기능명세_현행.md` §1.7 · `기능명세서.md` §37.
 
 ---
 
@@ -513,3 +555,6 @@ semantic HTML · 실제 `button`/`input[type=radio]`/`checkbox` 사용 · 모든
 - **GA4는 실제 전송까지 실측했고, 대시보드 수신은 미확인.** v1.19에서 production 빌드 + Consent granted 상태로 `google-analytics.com/g/collect`에 올바른 payload가 POST되고 GA4가 `204`로 응답하는 것을 확인했습니다. 다만 **GA4 Realtime/DebugView 화면에 뜨는 것까지는 확인하지 않았습니다**(계정 소유자만 볼 수 있음). 또한 `hook_variant`/`source`/`price`/`choice`/`score`는 GA4 Admin에서 Custom Dimension 등록을 해야 리포트에 나옵니다.
 - **Rate Limit은 여전히 인스턴스 메모리 기반.** `RateLimitStore` 인터페이스로 경계는 분리했지만(v1.12), 연결할 공유 저장소(Redis 등) credential이 없어 `SharedRateLimitStore`는 구현하지 않았습니다 — 서버리스 다중 인스턴스에서 정확하지 않습니다(distributed rate limiting NOT VERIFIED).
 - 실제 사용자 매칭 · 실제 결제(PG)는 포함하지 않습니다.
+- **관계 단계별 생활 데이터(가사·재정·주거·양육)는 받지 않습니다(v1.40).** 그래서 `long_term`
+  해석은 4축의 **반복성**만 다루고, 생활 문제를 추론하지 않습니다 — 없는 데이터로 개인화하지
+  않는다는 원칙의 결과입니다.

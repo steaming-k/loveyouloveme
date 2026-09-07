@@ -52,6 +52,19 @@ import type {
  * 상세 결과를 만들 근거가 없으면 `unavailable`이다 — 이때는 Paywall을 띄우지 않는다(§40).
  * 사주는 계산 엔진이 없으므로 돈을 내면 사주 상세가 나올 것처럼 보이면 안 된다(§21).
  */
+/**
+ * `additions` 중 **상대를 향한 행동**을 약속하는 항목 (v1.40 §37.9).
+ *
+ * `ended`처럼 그 행동을 제안하지 않는 Job에서는 이 항목을 목록에서 뺀다. 리포트가 실제로
+ * 만들지 않는 것을 팔지 않기 위해서다(v1.26 원칙). 문자열을 그대로 키로 쓰는 이유:
+ * `premium.ts`의 목록을 고칠 때 여기도 함께 눈에 들어오게 하려는 것이다 — 별도 id를
+ * 붙이면 두 곳이 조용히 어긋난다.
+ */
+const OUTWARD_ADDITION_ITEMS = new Set<string>([
+  '상대 취향과 내 관계 방식을 연결한 다가가는 힌트',
+  '연결을 상대에게 확인해볼 질문',
+]);
+
 export function premiumFeatureState(
   id: PremiumFeatureId,
   price: number,
@@ -72,16 +85,32 @@ export function premiumFeatureState(
      * ⑦이 생기면서 **사진이 필수 입장권이 아니게 됐다.**
      */
     solo?: boolean;
+    /**
+     * v1.40 §37.9 — 이 Job에서 상대를 향한 행동을 제안해도 되는가.
+     *
+     * **eligibility·가격·status 판정에는 들어가지 않는다.** 바꾸는 것은
+     * `additions` 목록에서 **지키지 못할 약속 한 줄을 빼는 것**뿐이다 —
+     * `ended`에서는 리포트가 그 섹션을 만들지 않으므로(`allowsOutwardAction: false`),
+     * 그대로 두면 v1.26이 세운 원칙("없는 것을 팔지 않는다")을 어긴다.
+     *
+     * 생략하면 기존 동작(허용)이다.
+     */
+    allowsOutwardAction?: boolean;
   } = {},
 ): PremiumFeature {
   const def = PREMIUM_FEATURES[id];
+
+  const additions =
+    context.allowsOutwardAction === false
+      ? def.additions.filter((item) => !OUTWARD_ADDITION_ITEMS.has(item))
+      : def.additions;
 
   const base: PremiumFeature = {
     id: def.id,
     source: def.source,
     title: def.title,
     description: def.description,
-    additions: def.additions,
+    additions,
     price,
     status: PREMIUM_FAKE_DOOR ? 'fake-door' : 'unavailable',
   };
@@ -507,6 +536,19 @@ export function buildRelationshipDeepReport(input: {
   historyReport: HistoryReport;
   repeatedSignals: readonly RepeatedRelationshipSignal[];
   target: TargetProfile;
+  /**
+   * v1.40 §37.9 — 이 Job에서 **상대를 향한 행동**을 제안해도 되는가
+   * (`jobAllowsOutwardAction(job)`).
+   *
+   * ⚠️ 유료 리포트에도 같은 안전 규칙을 적용한다. 관계가 끝났다고 답한 사용자가 돈을 내고
+   * `먼저 연락해봐` · `제안해봐`를 받는 것은 무료 화면에서 그 문구를 막은 이유와 정확히
+   * 같은 이유로 막아야 한다 — Ended Safety는 무료/유료 경계와 무관하다.
+   *
+   * ⚠️ eligibility·가격·rank·연결 생성에는 **들어가지 않는다.** 이 값은 이미 만들어진
+   * 리포트에서 outward action 섹션 하나를 그릴지만 가른다(§37 stage는 evidence가 아니다).
+   * 생략하면 기존 동작(허용)이다 — 호출부를 강제로 바꾸지 않는다.
+   */
+  allowsOutwardAction?: boolean;
 }): RelationshipDeepReport {
   const {
     insights,
@@ -516,6 +558,7 @@ export function buildRelationshipDeepReport(input: {
     historyReport,
     repeatedSignals,
     target,
+    allowsOutwardAction = true,
   } = input;
 
   /**
@@ -548,7 +591,7 @@ export function buildRelationshipDeepReport(input: {
     connectionQuestions: buildConnectionQuestions(allConnections),
     lovyObservation: selectDeepObservation(corePattern, insights),
     historyDeep,
-    approachInsight: approachInsightFor(target, compatibility),
+    approachInsight: allowsOutwardAction ? approachInsightFor(target, compatibility) : null,
     limitations: deepReportLimitations({ historyReport, compatibility }),
   };
 }

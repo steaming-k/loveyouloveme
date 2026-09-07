@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 
 import { cn } from '@/lib/cn';
 import { revisitHref } from '@/lib/resultView';
+import { resolveRelationshipStage } from '@/lib/logic/relationshipStage';
 import { soloModeOf } from '@/lib/logic/soloMode';
 import { ROUTES } from '@/lib/routes';
 import { useToast } from './ToastProvider';
@@ -73,18 +74,36 @@ export function BottomNavigation() {
    * `completed.profile`이 기준이다.
    */
   const solo = soloModeOf(answers) !== 'couple';
-  const analysisHref = solo ? ROUTES.firstContact : ROUTES.compatibility;
+
+  /*
+    v1.40 §37.15 — `ended`의 '분석'은 궁합이 아니다.
+
+    관계가 끝난 사용자의 Job은 회고이고(REFLECT → UNDERSTAND → CARRY FORWARD), 그 답을
+    주는 화면은 '우리 둘은 얼마나 맞나'가 아니라 '나는 관계에서 어떤 사람이었나'를 다루는
+    Mirror다. 그래서 **목적지만** 바꾼다 — 새 Route를 만들지 않았고, Compatibility 결과는
+    Home의 '최근 분석'에서 여전히 열 수 있다.
+
+    ⚠️ 조건도 `completed.profile`이다. Mirror는 내 답변만으로 만들어지므로 상대 입력
+    완료(`completed.compatibility`)를 요구할 이유가 없다 — solo와 같은 이유다.
+  */
+  const reflecting = resolveRelationshipStage(answers.status) === 'ended';
+  const analysisHref = reflecting
+    ? ROUTES.mirror
+    : solo
+      ? ROUTES.firstContact
+      : ROUTES.compatibility;
+  const selfOnlyAnalysis = solo || reflecting;
 
   const isReady = (key: (typeof TABS)[number]['key']): boolean => {
     if (key === 'home' || key === 'history') return true;
     if (key === 'me') return answers.completed.profile;
-    return solo ? answers.completed.profile : answers.completed.compatibility;
+    return selfOnlyAnalysis ? answers.completed.profile : answers.completed.compatibility;
   };
 
   const handlePress = (tab: (typeof TABS)[number]) => {
     if (!isReady(tab.key)) {
       showToast(
-        tab.key === 'me' || solo
+        tab.key === 'me' || selfOnlyAnalysis
           ? '관찰 기록을 먼저 만들어야 볼 수 있어.'
           : '아직 궁합 관측 기록이 없어. 상대를 먼저 알려줘.',
         'warning',

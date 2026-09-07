@@ -16,6 +16,7 @@ import { UT_MODE } from '@/lib/env';
 import { clearPreviewUnlocks } from '@/lib/premiumAccess';
 import { clearPremiumIntents } from '@/lib/premiumIntentStore';
 import { revisitHref } from '@/lib/resultView';
+import { resolveRelationshipStage } from '@/lib/logic/relationshipStage';
 import { soloModeOf } from '@/lib/logic/soloMode';
 import { ROUTES } from '@/lib/routes';
 import { downloadUtExport } from '@/lib/utExport';
@@ -49,6 +50,16 @@ export default function HomePage() {
    * 만들어지지 않고, 상대가 있으면 궁합 결과와 겹친다.
    */
   const soloEntryVisible = answers.completed.profile && soloModeOf(answers) !== 'couple';
+  /*
+    v1.40 §37.16 — `ended`에서도 '새로운 사람과 궁합 보기'를 primary로 두지 않는다.
+
+    v1.36 §17이 Solo에게 적용한 것과 **같은 판단**이다: 관계가 막 끝났다고 답한
+    사용자의 Home에서 가장 큰 버튼이 다음 사람을 찾으라는 것이면, 화면이 사용자의
+    상태와 반대 방향을 가장 크게 말한다. **버튼을 없애지 않는다** — 그 사이에 마음이
+    달라질 수 있고, 새 상대 기능 자체는 그대로다. 위계만 낮춘다.
+  */
+  const reflecting = resolveRelationshipStage(answers.status) === 'ended';
+  const newTargetSecondary = soloEntryVisible || reflecting;
   const { entries, latest, clearAll: clearHistory } = useHistory();
   const report = useHistoryReport();
   /**
@@ -401,7 +412,7 @@ export default function HomePage() {
           */}
           <div className="flex flex-col gap-1.5 pt-0.5">
             <Button
-              variant={soloEntryVisible ? 'secondary' : 'primary'}
+              variant={newTargetSecondary ? 'secondary' : 'primary'}
               onClick={() => {
                 resetTargetContext();
                 router.push(ROUTES.target);

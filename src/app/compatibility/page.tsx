@@ -57,6 +57,12 @@ import { lensAvailability } from '@/lib/logic/birth';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { isRevisit, revisitHref, revisitSource } from '@/lib/resultView';
 import { RESULT_ANCHORS, ROUTES } from '@/lib/routes';
+import { REFLECTION_QUESTIONS, STAGE_JOB_COPY } from '@/data/stageCopy';
+import {
+  jobAllowsOutwardQuestions,
+  jobAllowsOutwardAction,
+  resolveRelationshipContext,
+} from '@/lib/logic/relationshipStage';
 import { premiumFeatureState } from '@/services/premiumService';
 import { hasDeepConnection } from '@/services/premiumConnections';
 import {
@@ -138,6 +144,18 @@ function CompatibilityView() {
   const pastObservation = usePastObservation(topFriction?.key ?? null);
   const approachHints = useApproachHints();
 
+  /*
+    v1.40 §37 — 관계 단계에 따라 **같은 사실을 무엇에 쓰는지**가 달라진다.
+    ⚠️ `result`(동기화율·신호·comparedCount)는 이 값을 보지 않는다 — 여기서 하는 일은
+    이미 계산된 결과를 감싸는 문구와, 어떤 행동 블록을 그릴지 고르는 것뿐이다.
+  */
+  const { job } = resolveRelationshipContext(answers);
+  const jobCopy = STAGE_JOB_COPY[job];
+  const showOutwardAction = jobAllowsOutwardAction(job);
+  const showOutwardQuestions = jobAllowsOutwardQuestions(job);
+  const reflectionQuestions =
+    job === 'ended' ? REFLECTION_QUESTIONS.ended : REFLECTION_QUESTIONS.none;
+
   const [showAllGood, setShowAllGood] = useState(false);
   const [showAllFriction, setShowAllFriction] = useState(false);
   const [showMoreQuestions, setShowMoreQuestions] = useState(false);
@@ -188,6 +206,8 @@ function CompatibilityView() {
   const crossSourceInsights = useCrossSourceInsights();
   const premiumFeature = premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
     deepReportAvailable: hasDeepConnection(crossSourceInsights),
+    // v1.40 §37.9 — 지키지 못할 약속을 목록에서 뺀다(`ended`는 그 섹션을 만들지 않는다).
+    allowsOutwardAction: showOutwardAction,
   });
 
   useAnchorScroll(result.score !== null);
@@ -214,6 +234,10 @@ function CompatibilityView() {
     // Primary KPI 분모 — 세션당 한 번만. Revisit 여부와 무관하게 기존 정책 그대로(§12).
     // v1.11.1 §17~§20 — 실제 0점과 헷갈리지 않게 result_state:'scored'를 항상 함께 남긴다.
     trackOnce('compatibility_result_view', {
+      // v1.40 §37.17 — 새 이벤트를 만들지 않고 기존 이벤트에 저카디널리티
+      // enum 하나만 더한다. 단계별 결과 열람/전환을 나눠 볼 수 있으면 충분하고,
+      // 상대 이름·관계 기간·자유서술은 보내지 않는다.
+      relationship_stage: job,
       score: result.score,
       result_state: 'scored',
       compared: result.comparedCount,
@@ -224,7 +248,7 @@ function CompatibilityView() {
       score: result.score,
       result_state: 'scored',
     });
-  }, [result.score, result.comparedCount, funnelAnalysisId]);
+  }, [result.score, result.comparedCount, funnelAnalysisId, job]);
 
   useEffect(() => {
     if (!mbtiLens) return;
@@ -418,6 +442,15 @@ function CompatibilityView() {
             항목별 근거는 아래 신호에서 볼 수 있어.
           </ReportEvidenceBlock>
         </div>
+
+        {/*
+          v1.40 §37.8 — 점수를 **무엇에 쓰라는** 한 줄. 점수 자체는 단계와 무관하게 같고,
+          이 문장만 단계에 따라 달라진다. Hook(숫자)을 약화하지 않기 위해 점수와 결과
+          한 문장 **뒤**에 둔다 — 기대한 것을 먼저 주고 그 다음에 다르게 해석한다.
+        */}
+        <p className="px-1 text-caption keep-all leading-relaxed text-ink-sub">
+          {jobCopy.scoreUse}
+        </p>
       </div>
 
       <div className="flex flex-col pt-1">
@@ -631,16 +664,39 @@ function CompatibilityView() {
         <ReportSection
           index={sectionNo.nowWhat}
           code={REPORT_COPY.sections.nowWhat.code}
-          title={REPORT_COPY.sections.nowWhat.title}
-          caption="네가 알려준 이 사람의 취향과 관계 방식을 기준으로 생각해봤어."
+          /* v1.40 — 제목·캡션이 단계별 Job을 따른다(확인 / 조율 / 회고). 섹션 코드와
+             anchor id는 그대로다 — Legacy Redirect와 nav 칩이 이 id로 이동한다. */
+          title={jobCopy.nowWhatTitle}
+          caption={jobCopy.nowWhatCaption}
         >
           {/* 04-a — 행동 */}
           <div
             id={RESULT_ANCHORS.compatibilityApproach}
             className="flex flex-col gap-2.5 scroll-mt-3"
           >
-            <SectionLabel as="h3">{REPORT_COPY.sections.approach.title}</SectionLabel>
-            {approachHints.length > 0 ? (
+            <SectionLabel as="h3">{jobCopy.actionLabel}</SectionLabel>
+            {!showOutwardAction ? (
+              /*
+                v1.40 §37.9 — 관계가 끝난 사용자에게 **상대를 향한 행동을 제안하지 않는다.**
+                '다가갈 때'·'같이 해볼 것'·'먼저 물어볼 것'은 전부 진전을 전제하는 행동이고,
+                여기서는 그 전제가 사실이 아니다. 그래서 카드마다 조건을 붙이지 않고
+                `jobAllowsOutwardAction()` 한 곳에서 블록 자체를 바꾼다.
+                ⚠️ '더 분석해보기' 같은 연쇄 CTA를 두지 않는다 — 회고는 한 번 정리하고 닫는다.
+              */
+              <div className="flex flex-col gap-2 rounded-card border border-dashed border-line-strong bg-canvas-warm p-4">
+                <p className="text-caption keep-all leading-relaxed text-ink-sub">
+                  {job === 'ended'
+                    ? '이 관계에서 뭘 해볼지는 이제 내가 말할 자리가 아닌 것 같아. 대신 네 기준에 뭐가 남았는지 아래에서 같이 보자.'
+                    : '아직 특정한 상대가 없으니 상대에 맞춘 행동은 만들지 않았어. 대신 네 기준을 아래에서 같이 보자.'}
+                </p>
+                <a
+                  href={`#${RESULT_ANCHORS.compatibilityQuestions}`}
+                  className="inline-flex min-h-11 items-center self-start text-[12.5px] font-medium text-brand-pressed"
+                >
+                  {jobCopy.questionLabel} 보러 가기 →
+                </a>
+              </div>
+            ) : approachHints.length > 0 ? (
               <ul className="flex flex-col gap-2.5">
                 {approachHints.map((hint, index) => (
                   <ApproachHintCard
@@ -661,7 +717,7 @@ function CompatibilityView() {
                 <a
                   href={`#${RESULT_ANCHORS.compatibilityQuestions}`}
                   onClick={() => trackEvent('approach_hint_question_click', {})}
-                  className="text-[12.5px] font-medium text-brand-pressed"
+                  className="inline-flex min-h-11 items-center self-start text-[12.5px] font-medium text-brand-pressed"
                 >
                   이야기해볼 질문 보러 가기 →
                 </a>
@@ -670,7 +726,12 @@ function CompatibilityView() {
 
             <div className="flex items-center justify-between px-1">
               <p className="text-[11px] keep-all text-ink-faint">
-                이건 공략법은 아니야. 실제론 직접 물어보는 게 가장 정확해.
+                {showOutwardAction
+                  ? '이건 공략법은 아니야. 실제론 직접 물어보는 게 가장 정확해.'
+                  : /* v1.40 — '되돌리는 방법이 아니야'였다. 부정문이라도 되돌린다는 어휘를
+                       화면에 올리면 그 선택지를 떠올리게 한다. Ended Safety 검사도 그
+                       어휘를 통째로 금지한다. */
+                    '여기서 관계를 어떻게 할지는 말하지 않아. 네 기준을 정리하는 데만 써.'}
               </p>
               {/* v1.13 §36 — 상대 정보는 틀릴 수 있다. resetTargetContext()를 쓰지 않는다 —
                   그건 새 상대용이고, 여기는 지금 값을 그대로 고치는 것이다. */}
@@ -690,7 +751,7 @@ function CompatibilityView() {
             id={RESULT_ANCHORS.compatibilityQuestions}
             className="mt-7 flex flex-col gap-2.5 scroll-mt-3"
           >
-            <SectionLabel as="h3">{REPORT_COPY.sections.questions.title}</SectionLabel>
+            <SectionLabel as="h3">{jobCopy.questionLabel}</SectionLabel>
             <div className="flex gap-1.5 rounded-chip bg-sunken p-1" role="tablist">
               <button
                 type="button"
@@ -725,7 +786,31 @@ function CompatibilityView() {
               </button>
             </div>
 
-            {questionTab === 'recommended' ? (
+            {questionTab === 'recommended' && !showOutwardQuestions ? (
+              /*
+                v1.40 §37.12 — `ended`/`none`에서는 **주어가 나인 회고 질문**을 준다.
+                상대에게 연락하게 만드는 질문을 추천하지 않는다(`jobAllowsOutwardQuestions`).
+                ⚠️ 원인을 캐거나 후회를 유도하지 않는다. 3개로 닫고, '더 분석하기'를 붙이지
+                않는다 — 회고는 한 번 정리하는 것이고 반추 루프를 만들지 않는다(§37.13).
+                ⚠️ 저장 기능을 붙이지 않았다. 이 질문들은 세션 데이터에서 생성된 항목이 아니라
+                고정 문구이고, `savedQuestions`(id 기반)에 섞으면 저장 목록의 의미가 깨진다.
+              */
+              <div className="flex flex-col gap-2.5">
+                <ul className="flex flex-col gap-2">
+                  {reflectionQuestions.map((question) => (
+                    <li
+                      key={question}
+                      className="border-t border-line pt-2.5 text-[14px] keep-all leading-relaxed text-ink first:border-t-0 first:pt-0"
+                    >
+                      {question}
+                    </li>
+                  ))}
+                </ul>
+                <p className="px-1 text-[11px] keep-all leading-relaxed text-ink-faint">
+                  답을 지금 정리하지 않아도 괜찮아. 떠오른 게 있으면 관찰 기록에 남겨두면 돼.
+                </p>
+              </div>
+            ) : questionTab === 'recommended' ? (
               <>
                 <ul className="flex flex-col gap-2.5">
                   {(showMoreQuestions ? questions : questions.slice(0, 3)).map((question) => (
@@ -937,11 +1022,19 @@ function LowConfidenceView() {
   // '좋아하는 것'만 알고 있으면 활동 힌트는 만들 수 있다. friction 힌트(§24)는
   // score===null이라 frictionSignals가 비어 있으므로 자연히 만들어지지 않는다.
   const approachHints = useApproachHints();
+  /*
+    v1.40 §37.9 — E3에서도 같은 안전 규칙을 적용한다. 상대 정보가 부족한 상태(E3)와
+    관계가 끝난 상태는 겹칠 수 있고, 그때 '이 사람에게 다가갈 때'가 그대로 뜨면
+    본문과 같은 결함이 E3 화면에만 남는다.
+  */
+  const { job: lowDataJob } = resolveRelationshipContext(answers);
+  const showLowDataAction = jobAllowsOutwardAction(lowDataJob);
 
   useEffect(() => {
     // v1.11.1 §17~§20 — E3(확신 낮음)는 '0점'이 아니라 '계산 자체가 불가능한 상태'다.
     // 0으로 기록하면 실제 0점(4축 모두 최대 차이)과 Analytics에서 구분할 수 없다.
     trackOnce('compatibility_result_view', {
+      relationship_stage: lowDataJob,
       score: null,
       result_state: 'insufficient',
       compared: result.comparedCount,
@@ -951,7 +1044,7 @@ function LowConfidenceView() {
       score: null,
       result_state: 'insufficient',
     });
-  }, [result.comparedCount, funnelAnalysisId]);
+  }, [result.comparedCount, funnelAnalysisId, lowDataJob]);
 
   useEffect(() => {
     if (approachHints.length === 0) return;
@@ -1009,9 +1102,9 @@ function LowConfidenceView() {
           </p>
         </div>
 
-        {approachHints.length > 0 ? (
+        {showLowDataAction && approachHints.length > 0 ? (
           <section id={RESULT_ANCHORS.compatibilityApproach} className="flex flex-col gap-2.5">
-            <SectionLabel>이 사람에게 다가갈 때</SectionLabel>
+            <SectionLabel>{STAGE_JOB_COPY[lowDataJob].actionLabel}</SectionLabel>
             <p className="px-1 text-caption keep-all leading-relaxed text-ink-sub">
               동기화율은 아직 못 냈지만, 네가 알려준 것만으로도 생각해볼 게 있어.
             </p>

@@ -384,6 +384,39 @@ export type RelationshipStatus =
   | 'married'
   | 'ended';
 
+/* --------------------------------- Relationship Lifecycle (v1.40 · §37) */
+
+/**
+ * 사용자가 **선택한** 관계 단계. `RelationshipStatus`에서 도출된다
+ * (`resolveRelationshipStage()`), **저장되지 않는다.**
+ *
+ * `married`가 별도 값이 아닌 이유 — 결혼 여부 자체로 다른 해석을 만들려면 가사·재정·
+ * 주거·양육 같은 데이터가 필요한데 이 제품은 그걸 **받지 않는다.** 없는 데이터로
+ * 개인화를 흉내내지 않기 위해, 사용자 선택지는 `기혼 / 오래 함께하는 중`으로 남기고
+ * 내부 단계는 `long_term`을 공유한다(§37.3).
+ *
+ * `unknown`이 여기 없는 이유 — 그건 관계 단계가 아니라 **데이터 상태**다.
+ * `RelationshipJob`을 본다.
+ */
+export type RelationshipStage = 'none' | 'talking' | 'dating' | 'long_term' | 'ended';
+
+/**
+ * 지금 이 사용자에게 **필요한 일**. `(RelationshipStage × SoloMode)`에서 도출된다
+ * (`resolveRelationshipJob()`), **저장되지 않는다.**
+ *
+ * `unknown` = 단계는 무엇이든 비교할 상대 근거가 아직 모자란 상태. 이때 Job은
+ * '비교'가 아니라 '알아가기'다.
+ */
+export type RelationshipJob = 'none' | 'unknown' | 'talking' | 'dating' | 'long_term' | 'ended';
+
+/**
+ * 제안 가능한 행동의 종류. Job이 허용하는 종류만 화면에 오른다
+ * (`JOB_ACTION_KINDS`).
+ *
+ * ⚠️ 새 판정이 아니다 — 이미 만들어진 문장을 **어느 Job에서 보여줄지**만 가른다.
+ */
+export type RelationshipActionKind = 'ask' | 'try' | 'notice' | 'align' | 'reflect';
+
 /* ------------------------------------------------------ Observed Me (S07~S09) */
 
 export interface PhotoAsset {

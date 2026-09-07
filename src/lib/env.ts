@@ -1,6 +1,12 @@
-/** 클라이언트가 참고하는 모드 힌트. 실제 판단은 서버·응답 meta가 한다 */
+/**
+ * 클라이언트가 참고하는 모드 힌트. 실제 판단은 서버·응답 meta가 한다.
+ *
+ * ⚠️ v1.40 — `trim()`을 붙였다. 서버의 `resolveMode()`와 **같은 이유**다(§serverEnv):
+ * 배포 UI에 붙여넣은 값 뒤에 공백이 따라오면 힌트만 조용히 demo로 내려가고, 그러면
+ * 서버는 real인데 S07 안내 문구만 "전송하지 않아"로 어긋난다.
+ */
 export const AI_MODE_HINT: 'demo' | 'real' =
-  process.env.NEXT_PUBLIC_AI_MODE === 'real' ? 'real' : 'demo';
+  process.env.NEXT_PUBLIC_AI_MODE?.trim() === 'real' ? 'real' : 'demo';
 
 /** 개발용 AI Debug 패널 (§80). 일반 사용자에게 노출하지 않는다 */
 export const AI_DEBUG = process.env.NEXT_PUBLIC_AI_DEBUG === 'true';

@@ -9,6 +9,10 @@ import {
 } from '@/hooks/useAiNarrative';
 import { useCompatibility, useHistoryReport, useRepeatedSignals } from '@/hooks/useAnalysis';
 import { analysisFingerprint } from '@/lib/logic/history';
+import {
+  jobAllowsOutwardAction,
+  resolveRelationshipContext,
+} from '@/lib/logic/relationshipStage';
 import { buildRelationshipDeepReport } from '@/services/premiumService';
 import { useSession } from '@/state/SessionProvider';
 
@@ -56,8 +60,10 @@ export function useDeepReport(enabled: boolean) {
         historyReport,
         repeatedSignals: repeated,
         target: answers.target,
+        // v1.40 §37.9 — Ended Safety는 무료/유료 경계와 무관하다. 화면과 **같은 술어**를 쓴다.
+        allowsOutwardAction: jobAllowsOutwardAction(resolveRelationshipContext(answers).job),
       }),
-    [insights, narrative.data, resolverContext, compatibility, historyReport, repeated, answers.target],
+    [insights, narrative.data, resolverContext, compatibility, historyReport, repeated, answers],
   );
 
   return { report, insights, resolverContext, analysisId, narrative };

@@ -10,6 +10,7 @@ import { SelectableRow } from '@/components/common/SelectableRow';
 import { InlineError, PageHeading } from '@/components/common/primitives';
 import { useToast } from '@/components/common/ToastProvider';
 import { STATUS_LABEL, STATUS_SUPPORTED } from '@/data/labels';
+import { STATUS_DESCRIPTION } from '@/data/stageCopy';
 import { trackEvent } from '@/lib/analytics';
 import { ROUTES } from '@/lib/routes';
 import { useSession } from '@/state/SessionProvider';
@@ -61,7 +62,7 @@ export default function StatusPage() {
       <div className="flex flex-col gap-[18px]">
         <PageHeading
           lines={['지금 너의 관계 상태는 어때?']}
-          caption="솔로도, 관심 가는 사람이 있는 경우도 볼 수 있어. 연애 중·기혼 상태에 맞는 분석은 준비 중이야."
+          caption="고른 상태에 따라 같은 관찰을 어떻게 쓸지가 달라져. 판정이 달라지는 건 아니야."
         />
 
         <div className="flex flex-col gap-2.5" role="radiogroup" aria-label="관계 상태">
@@ -71,7 +72,7 @@ export default function StatusPage() {
               name="relationship-status"
               value={status}
               label={STATUS_LABEL[status]}
-              description={STATUS_SUPPORTED[status] ? undefined : '준비 중'}
+              description={STATUS_SUPPORTED[status] ? STATUS_DESCRIPTION[status] : '준비 중'}
               selected={answers.status === status}
               onSelect={() => {
                 setStatus(status);

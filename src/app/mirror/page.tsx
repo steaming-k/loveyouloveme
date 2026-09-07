@@ -27,6 +27,11 @@ import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
 import { createEntryId } from '@/lib/historyRepository';
 import { buildHistoryEntry } from '@/lib/logic/history';
+import {
+  jobAllowsOutwardAction,
+  resolveRelationshipContext,
+} from '@/lib/logic/relationshipStage';
+import { STAGE_JOB_COPY } from '@/data/stageCopy';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { isRevisit, revisitSource } from '@/lib/resultView';
 import { RESULT_ANCHORS, ROUTES } from '@/lib/routes';
@@ -79,6 +84,19 @@ function MirrorView() {
 
   const focusAxis = mirror.teaser?.axisKey ?? null;
   const pastObservation = usePastObservation(focusAxis);
+
+  /*
+    v1.40 §37.11 — Mirror의 **판정은 단계와 무관하게 같다**(MATCH/GAP/CHANGE).
+    바뀌는 것은 이 관찰을 어디에 쓰라고 말하는 한 줄이다. `buildMirrorReport()`는
+    이 값을 보지 않는다.
+
+    ⚠️ 근거 문장의 시제는 건드리지 않는다. `이전 관계에서 …으로 선택`은 그 근거의
+    **출처가 과거 경험**이라는 사실이고, 사용자가 지금 연애 중이어도 그 문장은
+    여전히 참이다. 관계 단계와 근거 시점을 혼동하지 않는다(§37.10).
+  */
+  const { job } = resolveRelationshipContext(answers);
+  const jobCopy = STAGE_JOB_COPY[job];
+  const showOutwardAction = jobAllowsOutwardAction(job);
 
   const [editOpen, setEditOpen] = useState(false);
   const [draft, setDraft] = useState(answers.coreCorrection);
@@ -269,7 +287,7 @@ function MirrorView() {
           <PageHeading
             lines={['네가 생각한 너', 'vs 관계에서 나타난 너']}
             size="hero"
-            caption={`비교 가능한 ${mirror.insights.length}개 기준에서`}
+            caption={`비교 가능한 ${mirror.insights.length}개 기준에서 · ${jobCopy.mirrorUse}`}
             eyebrow={
               gapInsights.length > 0 ? (
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -341,6 +359,8 @@ function MirrorView() {
               feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
                 mirrorAvailable: mirror.available,
                 deepReportAvailable: hasDeepConnection(crossSourceInsights),
+                // v1.40 §37.9 — 지키지 못할 약속을 목록에서 뺀다.
+                allowsOutwardAction: showOutwardAction,
               })}
               source="mirror"
               hook={{
