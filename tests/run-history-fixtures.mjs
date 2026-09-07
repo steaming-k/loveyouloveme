@@ -592,6 +592,75 @@ console.log('\nPS — Relationship Profile 요약 문법');
   );
 }
 
+/* --------------- SO — 샘플 세션 근거 · S07 게이트 (v1.37 Release Gate) --------------- */
+
+console.log('\nSO — 샘플 세션 근거가 샘플 타일과 맞는다');
+{
+  const r = await run({ entries: [] });
+  const { demoTileCount, traits } = r.samplePhotos;
+
+  /**
+   * 고정 더미 문장은 어떤 사진을 골라도 같은 말을 한다. 그래서 '반복'·'집계'를 주장하는
+   * 순간 그 문장은 근거 없이 판정하는 문장이 된다(§1.5-1 · §8.5).
+   */
+  const AGGREGATE_CLAIM = /(반복적으로|여러 장|절반 이상|대부분|자주|많은 편|계속)/;
+  check(
+    '근거 문장이 반복·집계를 주장하지 않는다',
+    traits.every((t) => !AGGREGATE_CLAIM.test(t.evidence)),
+    traits.filter((t) => AGGREGATE_CLAIM.test(t.evidence)).map((t) => [t.id, t.evidence]),
+  );
+  check(
+    '관찰 라벨도 집계를 주장하지 않는다',
+    traits.every((t) => !AGGREGATE_CLAIM.test(t.text)),
+    traits.map((t) => [t.id, t.text]),
+  );
+
+  /** 근거가 말하는 장수는 샘플 타일 수를 넘을 수 없다 */
+  const statedCounts = traits.flatMap((t) =>
+    [...t.evidence.matchAll(/(\d+)장/g)].map((m) => ({ id: t.id, n: Number(m[1]) })),
+  );
+  check(
+    '근거가 장수를 말한다 (세지 않고 단정하지 않는다)',
+    statedCounts.length > 0,
+    traits.map((t) => t.evidence),
+  );
+  check(
+    `말한 장수가 샘플 타일 ${demoTileCount}장을 넘지 않는다`,
+    statedCounts.every((c) => c.n >= 1 && c.n <= demoTileCount),
+    statedCounts,
+  );
+
+  /** 영화관 타일은 p2 하나뿐이다 — v1.36까지 '반복적으로 관찰됐어'라고 말하던 자리 */
+  const movie = traits.find((t) => /영화관/.test(t.evidence));
+  check('영화관 근거가 1장이라고 말한다', /1장/.test(movie?.evidence ?? ''), movie);
+  check('한 장짜리 근거에 high confidence를 붙이지 않는다', movie?.confidence !== 'high', movie);
+}
+
+console.log('\nSO — S07이 샘플 타일로 분석을 열지 않는다');
+{
+  const r = await run({ entries: [] });
+  const at = (uploads, samples) =>
+    r.photoGate.find((c) => c.uploads === uploads && c.samples === samples);
+
+  check('사진 0장이면 분석이 열리지 않는다', at(0, 0).canAnalyze === false, at(0, 0));
+  check(
+    '샘플 타일 6장만으로는 분석이 열리지 않는다 (NO_USABLE_IMAGE 경로 차단)',
+    at(0, 6).canAnalyze === false && at(0, 6).selected === 6 && at(0, 6).usable === 0,
+    at(0, 6),
+  );
+  check(
+    '샘플 타일이 부족한 업로드 수를 대신 채우지 못한다',
+    at(2, 4).canAnalyze === false && at(2, 4).selected === 6 && at(2, 4).usable === 2,
+    at(2, 4),
+  );
+  check('업로드 3장이면 분석이 열린다', at(3, 0).canAnalyze === true, at(3, 0));
+  check(
+    '업로드 3장은 샘플 타일이 섞여 있어도 열린다',
+    at(3, 3).canAnalyze === true && at(3, 3).usable === 3,
+    at(3, 3),
+  );
+}
+
 console.log(`\n통과 ${passed}건`);
 if (failures.length > 0) {
   console.error(`\n실패 ${failures.length}건:`);

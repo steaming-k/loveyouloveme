@@ -185,13 +185,28 @@ export function buildRelationshipProfile(
   declared: DeclaredPreference,
   experience: RelationshipExperience,
 ): RelationshipProfile {
+  const observed = observedItems(traits, observations).map((item) => item.label);
+
+  /**
+   * ⚠️ v1.37 — **관찰이 없으면 OBSERVED 레이어 자체가 없다.**
+   *
+   * §0: '사진은 입장권이 아니다. Observed는 보강 근거이고, 없으면 그 섹션만 없다' ·
+   * '없는 것은 자리도 만들지 않는다 — 빈 섹션·빈 카드·정보 없음 자리를 두지 않는다.'
+   * 예전에는 사진이 0장이어도 레이어가 남아 `OBSERVED ME · 사진 관찰 / 아직 기록이 없어`가
+   * 결과 화면 맨 위에 떴다. S07 게이트가 열린 v1.37부터는 그게 흔한 상태가 되므로,
+   * 빈 자리를 남기는 대신 지운다.
+   */
   const layers: ProfileLayer[] = [
-    {
-      id: 'observed',
-      title: 'OBSERVED ME',
-      caption: '사진 관찰',
-      items: observedItems(traits, observations).map((item) => item.label),
-    },
+    ...(observed.length > 0
+      ? [
+          {
+            id: 'observed' as const,
+            title: 'OBSERVED ME',
+            caption: '사진 관찰',
+            items: observed,
+          },
+        ]
+      : []),
     {
       id: 'declared',
       title: 'DECLARED ME',

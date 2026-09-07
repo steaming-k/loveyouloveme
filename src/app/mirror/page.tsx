@@ -164,7 +164,11 @@ function MirrorView() {
                 label="관계 경험 질문 3개"
                 onClick={() => router.push(ROUTES.past(1))}
               />
-              <FillDataRow label="사진 3장 더 고르기" onClick={() => router.push(ROUTES.photos)} />
+              {/*
+                v1.37 — '사진 3장 더 고르기'를 뺐다. Mirror 판정은 `(declared, experience)`만
+                쓴다 — 사진을 더 고른다고 이 화면이 열리지 않는다. 되지 않는 방법을
+                해결책으로 제시하지 않는다(§1.5-3).
+              */}
               <FillDataRow
                 label="관계 성향 질문 4개"
                 onClick={() => router.push(ROUTES.declared(1))}

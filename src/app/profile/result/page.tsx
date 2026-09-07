@@ -68,7 +68,9 @@ function ProfileResultView() {
     markComplete('profile');
     trackEvent('profile_complete', {
       confidence: profile.confidence,
-      observed_items: profile.layers[0]?.items.length ?? 0,
+      // v1.37 — 관찰이 없으면 observed 레이어 자체가 빠진다. 인덱스로 잡으면
+      // Declared 개수를 Observed 개수라고 보내게 된다.
+      observed_items: profile.layers.find((layer) => layer.id === 'observed')?.items.length ?? 0,
     });
   }, [ready, markComplete, profile.confidence, profile.layers]);
 

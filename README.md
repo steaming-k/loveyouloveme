@@ -7,7 +7,7 @@
 론칭 프로젝트입니다. 실측 확인된 사실과 미검증 항목을 분리해서 기록합니다 — "구현했다"와
 "검증됐다"를 같은 말로 쓰지 않습니다.
 
-**기준 문서** — 현재 버전 **v1.36**
+**기준 문서** — 현재 버전 **v1.37**
 
 | 문서 | 담는 것 | 언제 보나 |
 |---|---|---|
@@ -46,7 +46,7 @@ http://localhost:3000 · 기준 뷰포트 **393 × 852** (360px에서도 깨지�
 | `npm run lint` | ESLint |
 | `npm run test:ai` | AI 스키마/안전 검증 Contract Test (Provider Key 불필요) |
 | `npm run test:observed` | 사진 파이프라인 E2E (`/api/ai/observed-profile` 왕복) |
-| `npm run test:history` | Logic Fixture — History H0~H10 + Observed 시간축 + 근거 묶음 + Solo Premium 게이트 + `네가 말한 너` 문구 무결성 (Provider Key 불필요) |
+| `npm run test:history` | Logic Fixture 93건 — History H0~H10 + Observed 시간축 + 근거 묶음 + Solo Premium 게이트 + `네가 말한 너` 문구 무결성 + **샘플 근거 정합성 · S07 사진 게이트**(v1.37) (Provider Key 불필요) |
 | `npm run test:ai:e2e` | 실제 `/api/ai/*` Route 왕복 (Key 없으면 SKIPPED로 정직하게 보고) |
 | `node tests/run-observed-e2e.mjs` | Observed(사진) 파이프라인 E2E |
 
@@ -204,6 +204,10 @@ PREMIUM   Cross-source 연결      "더 길게 쓴 게 아니라 따로 보던 �
 - **SURPRISE는 설명이 아니라 사용자 자신의 결과에서 나옵니다.** 그래서 이 단계의
   품질은 카피가 아니라 **근거 정확도**에 달려 있습니다 — v1.36이 고친 것이 이 지점입니다
   (자세히: `기능명세서.md` §33).
+- **사진은 입장권이 아닙니다.** Observed는 보강 근거이고, 없으면 그 섹션만 없습니다.
+  v1.37 전까지는 원칙만 그랬고 실제로는 사진 3장을 못 내면 S07에서 퍼널이 끝났습니다 —
+  Surprise가 사용자 자신의 답에서 나오는데, 자기 답을 낼 기회 자체를 못 얻던 셈입니다
+  (자세히: `기능명세서.md` §34).
 - **RETENTION은 습관이 아니라 계기입니다.** `streak`·`연속 기록`을 쓰지 않습니다.
 - **PREMIUM은 길이가 아니라 연결입니다.** 무료 문장을 반복하는 section은 삭제 대상입니다.
 

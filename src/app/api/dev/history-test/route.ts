@@ -14,6 +14,9 @@ import {
   filterHistoryByAudience,
   historyAudienceOf,
 } from '@/lib/logic/soloHistory';
+import { OBSERVED_TRAITS } from '@/data/observations';
+import { DEMO_PHOTO_IDS, SAMPLE_PHOTOS } from '@/data/samplePhotos';
+import { isPhotoSelectionValid, usablePhotoCount } from '@/lib/validation';
 import { createEmptyAnswers, createEmptyTargetProfile } from '@/state/defaultAnswers';
 import type {
   DeclaredPreference,
@@ -202,5 +205,62 @@ export async function POST(request: Request): Promise<Response> {
     evidence,
     axisOrder: MIRROR_AXES.map((axis) => axis.key),
     currentAvailable: current.available,
+
+    /**
+     * v1.37 — 퍼널 입구(S07)와 샘플 세션 근거를 화면과 **같은 함수·같은 데이터**로 노출한다.
+     * `tests/run-history-fixtures.mjs`의 SO 절이 이걸 읽는다. 테스트가 상수를 베껴 쓰면
+     * 데이터가 바뀔 때 조용히 무의미해지므로 여기서 원본을 그대로 돌려준다.
+     */
+    samplePhotos: {
+      /** 샘플 세션이 실제로 들고 있는 타일 — 근거 문장이 주장할 수 있는 상한이다 */
+      demoTileCount: DEMO_PHOTO_IDS.length,
+      demoTileLabels: SAMPLE_PHOTOS.filter((photo) =>
+        (DEMO_PHOTO_IDS as readonly string[]).includes(photo.id),
+      ).map((photo) => photo.label),
+      traits: OBSERVED_TRAITS.map((trait) => ({
+        id: trait.id,
+        text: trait.text,
+        confidence: trait.confidence,
+        evidence: trait.evidence,
+      })),
+    },
+    /** S07 게이트 — 샘플 타일이 분석 조건을 대신 채우지 못한다 */
+    photoGate: photoGateCases(),
+  });
+}
+
+/**
+ * `isPhotoSelectionValid()`를 화면과 같은 함수로 통과시킨다.
+ * upload N장 + sample M장 조합이 분석을 열 수 있는지만 본다.
+ */
+function photoGateCases() {
+  const base = createEmptyAnswers();
+  const make = (uploads: number, samples: number) => ({
+    ...base,
+    photos: [
+      ...Array.from({ length: uploads }, (_, index) => ({
+        id: `up-${index}`,
+        label: `upload-${index}`,
+        source: 'upload' as const,
+        objectUrl: `blob:test-${index}`,
+      })),
+      ...SAMPLE_PHOTOS.slice(0, samples).map((photo) => ({ ...photo })),
+    ],
+  });
+
+  return [
+    { uploads: 0, samples: 0 },
+    { uploads: 0, samples: 6 },
+    { uploads: 2, samples: 4 },
+    { uploads: 3, samples: 0 },
+    { uploads: 3, samples: 3 },
+  ].map((testCase) => {
+    const answers = make(testCase.uploads, testCase.samples);
+    return {
+      ...testCase,
+      selected: answers.photos.length,
+      usable: usablePhotoCount(answers),
+      canAnalyze: isPhotoSelectionValid(answers),
+    };
   });
 }

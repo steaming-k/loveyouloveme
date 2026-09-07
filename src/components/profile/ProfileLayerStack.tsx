@@ -13,6 +13,13 @@ const TITLE_CLASS: Record<ProfileLayer['id'], string> = {
   relationship: 'text-brand-pressed',
 };
 
+/** 화면에 실제로 있는 레이어 수를 말한다 — 없는 관찰을 세지 않는다 */
+const LAYER_COUNT_WORD: Record<number, string> = {
+  1: '한',
+  2: '두',
+  3: '세',
+};
+
 const CHIP_CLASS: Record<ProfileLayer['id'], string> = {
   observed: 'bg-sunken text-[#555]',
   declared: 'bg-sunken text-[#555]',
@@ -87,7 +94,12 @@ export function ProfileLayerStack({
 
       <div className="flex flex-col gap-2 border-t border-dashed border-line-strong pt-4">
         <p className="text-[11px] font-semibold tracking-[0.06em] text-ink-muted">
-          세 관찰을 합친 결과
+          {/*
+            v1.37 — 레이어 수를 따라간다. 사진이 없으면 OBSERVED 레이어가 아예 없는데
+            (logic/profile.ts) 라벨만 '세 관찰'로 고정돼 있으면, 두 개를 보여주면서
+            셋을 합쳤다고 말하게 된다.
+          */}
+          {LAYER_COUNT_WORD[layers.length] ?? layers.length} 관찰을 합친 결과
         </p>
         <p className="text-insight keep-all">{coreInsight}</p>
       </div>
