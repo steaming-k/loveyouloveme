@@ -84,7 +84,8 @@ function ProfileResultView() {
   if (!ready) {
     return (
       <ScreenLayout
-        header={<ScreenHeader backHref={ROUTES.pastIntro} title="관찰 기록" />}
+        /* v1.36 A11y — `EmptyStateView`가 h1을 그린다. title(h2)을 앞에 두지 않는다 */
+        header={<ScreenHeader backHref={ROUTES.pastIntro} />}
         footer={
           <Button onClick={() => router.push(ROUTES.declared(1))}>관측 기록 채우기</Button>
         }

@@ -211,9 +211,18 @@ export default function HomePage() {
                 router.push(revisitHref(ROUTES.profileResult, 'home'));
               }}
               aria-label="내 프로필 보기"
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-chip text-[11px] font-semibold text-ink-muted active:bg-sunken"
+              /*
+                v1.36 A11y — 히트 영역만 44px로 올린다(§12.1 시각 높이와 터치 영역의 분리).
+                아바타 원은 안쪽 span이 그리므로 **시각 크기는 32px 그대로**다 — 실측 32px이었다.
+              */
+              className="-m-1.5 flex h-11 w-11 items-center justify-center rounded-full"
             >
-              나
+              <span
+                aria-hidden
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-chip text-[11px] font-semibold text-ink-muted"
+              >
+                나
+              </span>
             </button>
           </header>
 
@@ -285,7 +294,7 @@ export default function HomePage() {
                     {soloRetentionLine}
                   </span>
                 </span>
-                <span className="flex-none rounded-[6px] bg-brand-tint px-2 py-1.5 text-label font-semibold text-brand-pressed">
+                <span className="flex-none rounded-[6px] bg-brand px-2.5 py-1.5 text-label font-semibold text-white">
                   보기
                 </span>
               </button>
@@ -380,9 +389,19 @@ export default function HomePage() {
             </button>
           ) : null}
 
-          {/* 새 분석 시작 — Revisit 기능이 생겼다고 이 CTA를 없애지 않는다(§46) */}
+          {/*
+            새 분석 시작 — Revisit 기능이 생겼다고 이 CTA를 없애지 않는다(§46).
+
+            ⚠️ v1.36 §17 — **Solo 사용자에게는 primary가 아니다.**
+            지금 상대가 없다고 답한 사용자의 Home에서 유일한 primary Button이
+            '새로운 사람과 궁합 보기'였다. 그 사용자의 다음 걸음은 First Contact
+            관찰이고 그건 위의 작은 행에 있었으니, 화면이 사용자의 상태와 반대
+            방향을 가장 크게 말하고 있던 것이다(실측). 버튼을 없애지 않고
+            **위계만** 낮춘다 — 솔로라고 답했어도 그 사이에 누가 생길 수 있다.
+          */}
           <div className="flex flex-col gap-1.5 pt-0.5">
             <Button
+              variant={soloEntryVisible ? 'secondary' : 'primary'}
               onClick={() => {
                 resetTargetContext();
                 router.push(ROUTES.target);

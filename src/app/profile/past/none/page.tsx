@@ -12,11 +12,23 @@ import { cn } from '@/lib/cn';
 import { ROUTES } from '@/lib/routes';
 import { useSession } from '@/state/SessionProvider';
 
-const LAYER_STATUS = [
-  { label: 'Observed Me · 완료', tone: 'mint' as const },
-  { label: 'Declared Me · 완료', tone: 'purple' as const },
-  { label: 'Relationship Me · 경험이 생기면', tone: 'pending' as const },
-];
+/**
+ * 3 Layer 진행 상태.
+ *
+ * ⚠️ v1.36 — `Observed Me · 완료`가 **고정값이었다.** 사진 분석이 실패한 사용자
+ * (`NO_USABLE_IMAGE`)나 사진을 고르지 않은 사용자에게도 '완료'가 떴다 —
+ * 같은 세션에서 `/profile/result`는 `아직 기록이 없어`라고 말하는데 이 화면만
+ * 완료라고 했다(실측). 실제 상태에서 만든다.
+ */
+function layerStatus(hasObserved: boolean) {
+  return [
+    hasObserved
+      ? { label: 'Observed Me · 완료', tone: 'mint' as const }
+      : { label: 'Observed Me · 사진 근거 없음', tone: 'pending' as const },
+    { label: 'Declared Me · 완료', tone: 'purple' as const },
+    { label: 'Relationship Me · 경험이 생기면', tone: 'pending' as const },
+  ];
+}
 
 /**
  * E4 연애 경험 없음
@@ -24,8 +36,12 @@ const LAYER_STATUS = [
  */
 export default function NoExperiencePage() {
   const router = useRouter();
-  const { markComplete } = useSession();
+  const { answers, markComplete } = useSession();
   const copy = STATE_COPY.noExperience;
+
+  /** 사진 근거가 실제로 있는가 — `/profile/result`의 Observed 섹션과 같은 기준이다 */
+  const hasObserved = answers.photos.length > 0 && (answers.observedAnalysis?.traits.length ?? 0) > 0;
+  const LAYER_STATUS = layerStatus(hasObserved);
 
   return (
     <ScreenLayout
@@ -36,10 +52,23 @@ export default function NoExperiencePage() {
             markComplete('experience');
             markComplete('profile');
             trackEvent('profile_complete', { path: 'no_experience' });
-            router.push(ROUTES.target);
+            /**
+             * ⚠️ v1.36 P0 — **`/target`으로 바로 보내지 않는다.**
+             *
+             * v1.29 P4가 `/profile/result`에 Solo 분기(`내 관계 관찰 보기` /
+             * `관심 가는 사람이 있어`)를 만들었는데, 이 화면만 v1.28 그대로
+             * `/target`을 밀고 있었다. 그래서 **상대가 없다고 답한 사용자**가
+             * 프로필을 다 채운 뒤 상대 입력 화면에 도착했고, 거기서는
+             * `아는 항목 하나라도 알려줘`에 막혀 더 갈 수 없었다 —
+             * First Contact Report는 퍼널에서 도달 불가였다(실측).
+             *
+             * 이제 다른 경로(과거 질문 3단)와 **같은 목적지**로 보낸다.
+             * 상대 입력을 없애는 게 아니라, 분기 화면이 고르게 한다.
+             */
+            router.push(ROUTES.profileResult);
           }}
         >
-          상대 관찰하러 가기
+          내 관찰 기록 보기
         </Button>
       }
       centered

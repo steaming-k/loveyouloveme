@@ -97,7 +97,7 @@ export function SignalCard({
       </div>
 
       <details className={cn(compact ? 'pt-0.5' : 'border-t border-line-soft pt-2.5')}>
-        <summary className="cursor-pointer list-none text-[11.5px] font-semibold text-brand-pressed">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center text-[11.5px] font-semibold text-brand-pressed">
           이 신호를 본 근거
         </summary>
         <p className="mt-2 text-[12.5px] keep-all leading-relaxed text-[#555]">

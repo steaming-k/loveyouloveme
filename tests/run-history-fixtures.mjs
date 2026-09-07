@@ -497,6 +497,101 @@ console.log('\nP8 — Solo History가 Premium source가 되는 조건');
   );
 }
 
+/* ------------------- '네가 말한 너' 문구 무결성 (v1.36 Release Gate) ------------------- */
+
+console.log('\nDP — 네가 말한 너 문구가 실제 답을 따라간다');
+{
+  const HIGH = { contact: 5, conflict: 'now', alone: 5, affection: 'a3', hobby: 'h3' };
+  const LOW = { contact: 1, conflict: 'space', alone: 1, affection: 'a1', hobby: 'h1' };
+  const MID = { contact: 3, conflict: 'pause', alone: 3, affection: 'a2', hobby: 'h2' };
+
+  const high = await run({ entries: [], declared: HIGH });
+  const low = await run({ entries: [], declared: LOW });
+  const mid = await run({ entries: [], declared: MID });
+
+  const phraseOf = (r, axis) => r.declaredPhrases.find((p) => p.axis === axis)?.phrase;
+  const AXES = ['alone', 'contact', 'hobby', 'conflict', 'affection'];
+
+  check(
+    '모든 축에 문구가 있다',
+    AXES.every((a) => typeof phraseOf(high, a) === 'string'),
+    high.declaredPhrases,
+  );
+  check(
+    '답이 달라지면 문구도 반드시 달라진다 (고정값이 아니다)',
+    AXES.every((a) => phraseOf(high, a) !== phraseOf(low, a)),
+    AXES.map((a) => [a, phraseOf(high, a), phraseOf(low, a)]),
+  );
+  check(
+    '세 단계가 서로 다른 문구를 갖는다',
+    AXES.every((a) => new Set([phraseOf(high, a), phraseOf(mid, a), phraseOf(low, a)]).size === 3),
+    AXES.map((a) => [a, phraseOf(high, a), phraseOf(mid, a), phraseOf(low, a)]),
+  );
+  check(
+    '연락 5/5에 "별로 중요하지 않"이 붙지 않는다',
+    !/별로 중요하지 않/.test(phraseOf(high, 'contact') ?? ''),
+    phraseOf(high, 'contact'),
+  );
+  check(
+    '연락 1/5에 "중요하게 생각"이 붙지 않는다',
+    !/중요하게 생각/.test(phraseOf(low, 'contact') ?? ''),
+    phraseOf(low, 'contact'),
+  );
+  check(
+    '단계 판정이 First Contact와 같은 함수를 쓴다 (level이 채워진다)',
+    AXES.every((a) => ['low', 'mid', 'high'].includes(high.declaredPhrases.find((p) => p.axis === a)?.level)),
+    high.declaredPhrases.map((p) => [p.axis, p.level]),
+  );
+
+  // Mirror insight / teaser가 같은 문구를 쓴다
+  const withExp = await run({
+    entries: [],
+    declared: HIGH,
+    experience: { important: ['contact_drop'], hardest: 'contact_drop', selfGap: 'yes', skipped: false },
+  });
+  check(
+    'Mirror 축 행의 문구가 답과 일치한다',
+    withExp.mirrorInsights.every((i) => i.declaredPhrase === phraseOf(high, i.axis)),
+    withExp.mirrorInsights.map((i) => [i.axis, i.declaredPhrase]),
+  );
+  check(
+    'Teaser의 관계 문구가 판정이 쓴 근거와 같다 (고정 문장이 아니다)',
+    withExp.mirrorTeaser === null ||
+      withExp.mirrorInsights.some(
+        (i) => i.axis === withExp.mirrorTeaser.axis && i.relationshipSignal === withExp.mirrorTeaser.relationshipPhrase,
+      ),
+    withExp.mirrorTeaser,
+  );
+}
+
+console.log('\nPS — Relationship Profile 요약 문법');
+{
+  const cases = [
+    { alone: 5, contact: 3, conflict: 'pause', affection: 'a2', hobby: 'h2' },
+    { alone: 3, contact: 5, conflict: 'pause', affection: 'a2', hobby: 'h2' },
+    { alone: 3, contact: 3, conflict: 'now', affection: 'a2', hobby: 'h2' },
+    { alone: 3, contact: 3, conflict: 'pause', affection: 'a3', hobby: 'h2' },
+    { alone: 3, contact: 3, conflict: 'pause', affection: 'a2', hobby: 'h3' },
+    { alone: 1, contact: 1, conflict: 'space', affection: 'a1', hobby: 'h1' },
+  ];
+  const summaries = [];
+  for (const declared of cases) {
+    const r = await run({ entries: [], declared, experience: { skipped: true } });
+    summaries.push(r.profileSummary);
+  }
+  check(
+    '경험 없음일 때 "-고 모습이 보여" 같은 깨진 어미가 없다',
+    summaries.every((s) => !/(하고|여기고|좋아하고|느끼고|필요하고) 모습이 보여/.test(s)),
+    summaries,
+  );
+  check('모든 요약이 마침표로 끝난다', summaries.every((s) => /\.$/.test(s)), summaries);
+  check(
+    '관형형 어미로 이어진다',
+    summaries.every((s) => !/모습이 보여/.test(s) || /(는|은|한) 모습이 보여\.$/.test(s)),
+    summaries,
+  );
+}
+
 console.log(`\n통과 ${passed}건`);
 if (failures.length > 0) {
   console.error(`\n실패 ${failures.length}건:`);

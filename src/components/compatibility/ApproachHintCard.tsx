@@ -75,7 +75,7 @@ export function ApproachHintCard({
           className={cn(compact ? 'pt-0.5' : 'border-t border-line-soft pt-2.5')}
           onToggle={onExpand}
         >
-          <summary className="cursor-pointer list-none text-[11.5px] font-semibold text-brand-pressed">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center text-[11.5px] font-semibold text-brand-pressed">
             근거
           </summary>
           <ul className="mt-2 flex flex-wrap gap-1.5">

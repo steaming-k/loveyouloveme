@@ -1,4 +1,5 @@
 import { MIRROR_AXES } from '@/data/axes';
+import { withObjectParticle } from '@/lib/korean';
 import { PREMIUM_FEATURES } from '@/data/premium';
 import { HISTORY_STATE_LABEL } from '@/data/copy';
 import { PREMIUM_FAKE_DOOR, SAJU_ENGINE_READY } from '@/lib/env';
@@ -198,6 +199,13 @@ export function buildMirrorDetail(input: {
 
   const sections: PremiumDetailSection[] = mirror.insights.map((insight) => ({
     label: insight.label,
+    /**
+     * ⚠️ v1.36 — **Mirror는 나 vs 상대가 아니다.** 기본 라벨(`나`/`상대`)을 그대로 쓰면
+     * `말한 나 vs 관계 속의 나` 비교가 상대와의 비교로 읽힌다 — Mirror의 정의를
+     * 정면으로 오표기하는 것이다(실측: `연락 · MATCH · 나 … · 상대 …`).
+     */
+    mineLabel: '말한 나',
+    theirsLabel: '관계 속의 나',
     mine: insight.declaredHasScale
       ? `${insight.declaredPhrase} (${insight.declared}/5)`
       : insight.declaredPhrase,
@@ -453,7 +461,7 @@ function approachInsightFor(
   if (target.alone === 'h' && aloneDimension?.minePhrase) {
     return {
       title: `${primary.label}, 선택지를 열어두고 제안해봐`,
-      text: `상대는 ${primary.label}을(를) 좋아하면서 개인 시간도 중요하게 보는 쪽인데, 너는 개인 시간을 ${aloneDimension.minePhrase}로 답했어. 무료 힌트에서 본 '하나를 구체적으로 제안하기'가 이 조합에서 특히 의미가 있는 이유가 여기 있어 — 일정을 확정해서 통보하면 상대는 자기 시간을 뺏겼다고 느낄 수 있고, 아무 제안도 안 하면 너는 관계가 진전되지 않는다고 느끼기 쉬워. 선택지를 열어둔 제안이 둘 다를 피하는 지점이야.`,
+      text: `상대는 ${withObjectParticle(primary.label)} 좋아하면서 개인 시간도 중요하게 보는 쪽인데, 너는 개인 시간을 ${aloneDimension.minePhrase}로 답했어. 무료 힌트에서 본 '하나를 구체적으로 제안하기'가 이 조합에서 특히 의미가 있는 이유가 여기 있어 — 일정을 확정해서 통보하면 상대는 자기 시간을 뺏겼다고 느낄 수 있고, 아무 제안도 안 하면 너는 관계가 진전되지 않는다고 느끼기 쉬워. 선택지를 열어둔 제안이 둘 다를 피하는 지점이야.`,
     };
   }
 

@@ -3,7 +3,9 @@ import { resolveEvidenceRefs } from '@/lib/aiEvidenceResolver';
 import { buildHistoryReport, findRepeatedRelationshipSignals } from '@/lib/logic/history';
 import { buildCrossSourceInsights } from '@/lib/logic/crossSourceInsights';
 import { buildFirstContactReport } from '@/lib/logic/firstContact';
-import { buildMirrorReport } from '@/lib/logic/mirror';
+import { buildMirrorReport, declaredPhraseOf } from '@/lib/logic/mirror';
+import { selfLevelOf } from '@/lib/logic/firstContact';
+import { buildProfileSummary } from '@/lib/logic/profile';
 import { hasDeepConnection, limitationFor } from '@/services/premiumConnections';
 import { soloModeOfTarget } from '@/lib/logic/soloMode';
 import {
@@ -110,8 +112,36 @@ export async function POST(request: Request): Promise<Response> {
     soloHistory: soloReport,
   });
 
+  /**
+   * v1.36 — **'네가 말한 너' 문구가 실제 답을 따라가는가** (Release Gate).
+   *
+   * v1.35까지 이 문구는 축마다 고정값이라 사용자가 하지 않은 답을 사용자의 답이라고
+   * 표시했다. 회귀를 코드로 막는다 — 같은 축의 문구는 답이 달라지면 반드시 달라져야 한다.
+   */
+  const mirrorForPhrase = buildMirrorReport(declared, experience);
+
   return Response.json({
     ok: true,
+    declaredPhrases: MIRROR_AXES.map((axis) => ({
+      axis: axis.key,
+      level: selfLevelOf(axis.key, declared),
+      phrase: declaredPhraseOf(axis.key, declared),
+    })),
+    mirrorInsights: mirrorForPhrase.insights.map((insight) => ({
+      axis: insight.key,
+      state: insight.state,
+      declared: insight.declared,
+      declaredPhrase: insight.declaredPhrase,
+      relationshipSignal: insight.relationshipSignal,
+    })),
+    mirrorTeaser: mirrorForPhrase.teaser
+      ? {
+          axis: mirrorForPhrase.teaser.axisKey,
+          declaredPhrase: mirrorForPhrase.teaser.declaredPhrase,
+          relationshipPhrase: mirrorForPhrase.teaser.relationshipPhrase,
+        }
+      : null,
+    profileSummary: buildProfileSummary(declared, experience),
     insights: insights.map((insight) => ({
       id: insight.id,
       type: insight.type,

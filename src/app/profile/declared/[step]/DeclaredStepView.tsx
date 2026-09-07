@@ -54,6 +54,13 @@ export function DeclaredStepView({ step }: { step: DeclaredStep }) {
 
     if (step === DECLARED_TOTAL) {
       markComplete('declared');
+      /**
+       * ⚠️ v1.36 §58 — 아래 답변 값은 **외부 Analytics로 나가지 않는다.**
+       * `EXTERNAL_FORBIDDEN_KEYS`가 `contact`/`alone`/`conflict`/`affection`/`hobby`/`mbti`를
+       * 걸러낸다 — 필드를 나눠 보내도 GA4 client id에 묶이면 응답 프로필이 복원되기 때문이다.
+       * 여기 남겨두는 이유는 **local store**(UT 결과 회수·디버깅)가 그 값을 쓰기 때문이고,
+       * 완료 여부는 이벤트 발생 자체가 말해준다.
+       */
       trackEvent('declared_me_complete', {
         contact: declared.contact ?? 0,
         alone: declared.alone ?? 0,

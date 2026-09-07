@@ -1,4 +1,5 @@
 import { TARGET_FIELDS } from '@/data/targetFields';
+import { withObjectParticle } from '@/lib/korean';
 import type {
   ApproachHint,
   ApproachHintKind,
@@ -61,13 +62,14 @@ function activityHint(target: TargetProfile): ApproachHint | null {
   const primary = interests[0]!;
   const evidenceRefs: TargetEvidenceRef[] = [{ type: 'interest', id: primary.id }];
 
-  let rationale = `${primary.label}을(를) 좋아한다고 알려줬어. '언제 한번 보자'보다, 관심 있어 보이는 걸 하나 구체적으로 제안해보는 건 어때?`;
+  // v1.36 — `을(를)` 표기가 화면에 그대로 나갔다. 조사는 라벨 마지막 글자로 정한다.
+  let rationale = `${withObjectParticle(primary.label)} 좋아한다고 알려줬어. '언제 한번 보자'보다, 관심 있어 보이는 걸 하나 구체적으로 제안해보는 건 어때?`;
 
   // 조합(§18-③): 개인 시간을 중요하게 여기는 편이면 '자주 연락해 일정 채우기'보다
   // '하나를 구체적으로 제안하기'가 더 어울린다는 맥락을 붙인다(§18 예시).
   if (target.alone === 'h') {
     evidenceRefs.push({ type: 'alone', value: target.alone });
-    rationale = `${primary.label}을(를) 좋아한다고 알려줬고, 개인 시간도 중요하게 보는 편이야. 자주 연락해 일정을 채우기보다, 관심 있어 보이는 ${primary.label} 하나를 구체적으로 제안해보는 건 어때?`;
+    rationale = `${withObjectParticle(primary.label)} 좋아한다고 알려줬고, 개인 시간도 중요하게 보는 편이야. 자주 연락해 일정을 채우기보다, 관심 있어 보이는 ${primary.label} 하나를 구체적으로 제안해보는 건 어때?`;
   }
 
   return {

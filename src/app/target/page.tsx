@@ -77,6 +77,23 @@ export default function TargetPage() {
             </p>
           ) : null}
           <Button onClick={handleNext}>궁합 관찰하기</Button>
+          {/*
+            v1.36 §8 — **아는 게 하나도 없어도 갈 곳이 있다.**
+
+            `known === 0`이면 위 버튼은 "아는 항목 하나라도 알려줘"에서 막힌다. 그런데
+            이 사용자는 이미 자기 기준을 다 답했고, First Contact Report의
+            `unknown_target` 모드가 정확히 이 상태(사람은 있는데 아는 게 적다)를 위해
+            만들어져 있다 — 상대를 추측하지 않고 물어볼 것만 준다.
+
+            ⚠️ 상대 입력을 건너뛰라고 권하는 게 아니다. 그래서 primary가 아니라
+            text 버튼이고, 아는 항목이 하나라도 생기면 사라진다 — 그때는 위 버튼이
+            실제로 동작하기 때문이다.
+          */}
+          {known === 0 ? (
+            <Button variant="text" onClick={() => router.push(ROUTES.firstContact)}>
+              아직 아는 게 없어 · 내 기준부터 보기
+            </Button>
+          ) : null}
         </div>
       }
       bodyClassName="pt-2 pb-3"

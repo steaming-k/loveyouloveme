@@ -10,6 +10,15 @@ import { STATE_COPY } from '@/data/copy';
  * 둘 다 러비 화법으로 쓰고, 사용자가 다음에 무엇을 할 수 있는지 함께 보여준다.
  */
 
+/**
+ * ⚠️ v1.36 A11y — 제목을 `h1`로 올렸다.
+ *
+ * 이 화면들은 페이지 **전체**를 차지하는 상태 화면이라 다른 heading이 없다. `h2`였을 때
+ * `/mirror`(관측 정보 부족)·`/profile/result`(빈 상태)·`/compatibility/analyzing`(오류)에
+ * **h1이 아예 없었다**(실측: 헤딩이 `H2 > H2`로만 나왔다) — 스크린리더 사용자에게
+ * 이 화면이 무엇에 대한 화면인지 알려주는 첫 지표가 없던 것이다.
+ * 이 컴포넌트를 쓰는 세 화면 모두 자체 `h1`이 없으므로 중복도 생기지 않는다.
+ */
 export function EmptyStateView({
   actions,
   children,
@@ -22,7 +31,7 @@ export function EmptyStateView({
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 px-3.5 pb-10 text-center">
       <Lovy pose={copy.pose} size={120} decorative />
-      <h2 className="text-section keep-all">{copy.title}</h2>
+      <h1 className="text-section keep-all">{copy.title}</h1>
       <p className="text-sub leading-relaxed text-ink-sub">
         {copy.body.map((line) => (
           <span key={line} className="block">
@@ -45,7 +54,7 @@ export function ErrorStateView({ actions }: { actions?: ReactNode }) {
       role="alert"
     >
       <Lovy pose={copy.pose} size={140} decorative />
-      <h2 className="text-section keep-all">{copy.title}</h2>
+      <h1 className="text-section keep-all">{copy.title}</h1>
       <p className="text-sub leading-relaxed text-ink-sub">
         {copy.body.map((line) => (
           <span key={line} className="block">

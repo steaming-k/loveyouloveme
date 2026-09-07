@@ -88,18 +88,60 @@ export function relationshipItems(experience: RelationshipExperience): string[] 
   return items;
 }
 
-/** Declared 답변에서 가장 두드러지는 특징 하나 (우선순위 순서로 첫 매치) */
-function declaredHighlight(declared: DeclaredPreference): string | null {
-  if (declared.alone !== null && declared.alone >= 4) return '개인 시간을 중요하게 여기고,';
-  if (declared.contact !== null && declared.contact >= 4) return '연락을 자주 주고받는 걸 좋아하고,';
-  if (declared.conflict === 'now') return '갈등은 바로 풀고 싶어 하고,';
-  if (declared.affection === 'a3') return '애정 표현을 자주 하고 싶어 하고,';
-  if (declared.hobby === 'h3') return '연인과 많은 걸 함께 하고 싶어 하고,';
-  if (declared.contact !== null && declared.contact <= 2) return '연락에는 크게 얽매이지 않으려 하고,';
-  if (declared.alone !== null && declared.alone <= 2) return '혼자보다는 함께 있는 시간을 편하게 느끼고,';
-  if (declared.conflict === 'space') return '갈등 후에는 혼자 정리할 시간이 필요하고,';
-  if (declared.affection === 'a1') return '애정 표현은 담백한 편을 좋아하고,';
-  if (declared.hobby === 'h1') return '취미는 각자 즐기는 편을 편하게 느끼고,';
+/**
+ * Declared 답변에서 가장 두드러지는 특징 하나 (우선순위 순서로 첫 매치)
+ *
+ * ⚠️ v1.36 — **두 어미를 함께 둔다.**
+ *
+ * v1.35까지는 `-하고,` 연결형 **하나만** 있었고, 관계 경험이 없어 뒤에 붙일 절이
+ * 없으면 쉼표만 떼고 `모습이 보여.`를 붙였다. 그 결과 연애 경험이 없는 모든
+ * 사용자의 Relationship Profile 첫 문장이
+ * **"개인 시간을 중요하게 여기고 모습이 보여."** 처럼 깨졌다(실측).
+ *
+ *   chain   뒤에 관계 경험 문장이 이어질 때
+ *   alone   그 문장 하나로 끝날 때 (관형형)
+ */
+function declaredHighlight(
+  declared: DeclaredPreference,
+): { chain: string; alone: string } | null {
+  const pick = (stem: string, attributive: string) => ({
+    chain: `${stem},`,
+    alone: `${attributive} 모습이 보여.`,
+  });
+
+  if (declared.alone !== null && declared.alone >= 4) {
+    return pick('개인 시간을 중요하게 여기고', '개인 시간을 중요하게 여기는');
+  }
+  if (declared.contact !== null && declared.contact >= 4) {
+    return pick('연락을 자주 주고받는 걸 좋아하고', '연락을 자주 주고받는 걸 좋아하는');
+  }
+  if (declared.conflict === 'now') {
+    return pick('갈등은 바로 풀고 싶어 하고', '갈등은 바로 풀고 싶어 하는');
+  }
+  if (declared.affection === 'a3') {
+    return pick('애정 표현을 자주 하고 싶어 하고', '애정 표현을 자주 하고 싶어 하는');
+  }
+  if (declared.hobby === 'h3') {
+    return pick('연인과 많은 걸 함께 하고 싶어 하고', '연인과 많은 걸 함께 하고 싶어 하는');
+  }
+  if (declared.contact !== null && declared.contact <= 2) {
+    return pick('연락에는 크게 얽매이지 않으려 하고', '연락에는 크게 얽매이지 않으려 하는');
+  }
+  if (declared.alone !== null && declared.alone <= 2) {
+    return pick(
+      '혼자보다는 함께 있는 시간을 편하게 느끼고',
+      '혼자보다는 함께 있는 시간을 편하게 느끼는',
+    );
+  }
+  if (declared.conflict === 'space') {
+    return pick('갈등 후에는 혼자 정리할 시간이 필요하고', '갈등 후에는 혼자 정리할 시간이 필요한');
+  }
+  if (declared.affection === 'a1') {
+    return pick('애정 표현은 담백한 편을 좋아하고', '애정 표현은 담백한 편을 좋아하는');
+  }
+  if (declared.hobby === 'h1') {
+    return pick('취미는 각자 즐기는 편을 편하게 느끼고', '취미는 각자 즐기는 편을 편하게 느끼는');
+  }
   return null;
 }
 
@@ -131,8 +173,8 @@ export function buildProfileSummary(
   const d = declaredHighlight(declared);
   const r = relationshipHighlight(experience);
 
-  if (d && r) return `${d} ${r}`;
-  if (d) return `${d.replace(/,$/, '')} 모습이 보여.`;
+  if (d && r) return `${d.chain} ${r}`;
+  if (d) return d.alone;
   if (r) return r;
   return '아직 뚜렷한 특징을 관찰하기엔 정보가 조금 더 필요해.';
 }

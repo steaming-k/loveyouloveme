@@ -120,10 +120,21 @@ export const DECLARED_QUESTIONS: Record<DeclaredStep, DeclaredStepConfig> = {
         maxLabel: '매일 필요',
       },
     ],
-    observedCompare: {
-      title: '러비의 관찰 기록과 비교',
-      body: ['사진에서도 ', '혼자 보내는 시간', '이 관찰됐어. 지금 답변과 방향이 비슷해.'],
-    },
+    /**
+     * ⚠️ v1.36 P0 — **삭제했다.**
+     *
+     * 이 자리에는 `사진에서도 혼자 보내는 시간이 관찰됐어. 지금 답변과 방향이 비슷해.`가
+     * 하드코딩돼 있었고, 화면(`DeclaredStepView`)은 `observedAnalysis` 상태를 보지 않고
+     * 이 문장을 **무조건** 렌더했다. 그래서
+     *   - 사진을 고르지 않은 사용자
+     *   - 사진 분석이 실패한 사용자(`NO_USABLE_IMAGE`)
+     *   - 카페·야외 등 다른 장면이 관찰된 사용자
+     * 전부에게 같은 관찰이 있었다고 말했다(실측). 근거 없이 말하지 않는다는 원칙의
+     * 정반대다 — 없는 관찰을 지어내는 자리였다.
+     *
+     * 실제 사진 관찰과 답변의 대조는 `/profile/result`(Observed 섹션)와 Premium
+     * Cross-source 연결 ⑥이 **실제 데이터로** 담당한다. 여기서 다시 만들지 않는다.
+     */
   },
   4: {
     step: 4,

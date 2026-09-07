@@ -7,7 +7,7 @@
 론칭 프로젝트입니다. 실측 확인된 사실과 미검증 항목을 분리해서 기록합니다 — "구현했다"와
 "검증됐다"를 같은 말로 쓰지 않습니다.
 
-**기준 문서** — 현재 버전 **v1.35**
+**기준 문서** — 현재 버전 **v1.36**
 
 | 문서 | 담는 것 | 언제 보나 |
 |---|---|---|
@@ -46,7 +46,7 @@ http://localhost:3000 · 기준 뷰포트 **393 × 852** (360px에서도 깨지�
 | `npm run lint` | ESLint |
 | `npm run test:ai` | AI 스키마/안전 검증 Contract Test (Provider Key 불필요) |
 | `npm run test:observed` | 사진 파이프라인 E2E (`/api/ai/observed-profile` 왕복) |
-| `npm run test:history` | History Fixture H0~H10 + Observed 시간축 + 근거 묶음 + Solo Premium 게이트 (Provider Key 불필요) |
+| `npm run test:history` | Logic Fixture — History H0~H10 + Observed 시간축 + 근거 묶음 + Solo Premium 게이트 + `네가 말한 너` 문구 무결성 (Provider Key 불필요) |
 | `npm run test:ai:e2e` | 실제 `/api/ai/*` Route 왕복 (Key 없으면 SKIPPED로 정직하게 보고) |
 | `node tests/run-observed-e2e.mjs` | Observed(사진) 파이프라인 E2E |
 
@@ -176,6 +176,36 @@ src/
 **UI는 분석 데이터를 직접 import하지 않습니다.** 모든 분석 결과는 `services/aiService.ts`
 (+ `services/ai/aiClient.ts`)를 통해서만 들어오고, 계산식은 `lib/logic/*` 한 곳에만
 존재합니다. 화면은 AI Provider를 알지 못합니다.
+
+---
+
+## Product Principle
+
+```
+HOOK      궁합 · MBTI          익숙해서 들어온다
+  ↓
+SURPRISE  YOUR SIGNAL · Mirror  "어? 여기서는 실제 내가 답한 관계 신호까지 보네"
+  ↓
+VALUE     판정 + 근거 + 행동     "나한테 실제로 의미가 있네"
+  ↓
+RETENTION History · 변화 비교    "러비가 예전에 어떻게 답했는지도 기억하네"
+  ↓
+PREMIUM   Cross-source 연결      "더 길게 쓴 게 아니라 따로 보던 걸 연결해서 보여주네"
+```
+
+> **사용자는 기능의 개수를 사는 것이 아니라,
+> 자신의 관계를 더 잘 이해하게 되는 깊이를 산다.**
+
+새 기능을 넣을지 판단할 때 **어느 단계를 강화하는가**를 먼저 답합니다. 어느 단계도
+강화하지 않으면 넣지 않습니다.
+
+- **HOOK은 익숙하게, 해석은 다르게** — 동기화율은 첫 viewport에 그대로 있고,
+  `잠깐. 숫자만 보면 놓치는 게 하나 있어.`는 점수를 본 **뒤에** 옵니다.
+- **SURPRISE는 설명이 아니라 사용자 자신의 결과에서 나옵니다.** 그래서 이 단계의
+  품질은 카피가 아니라 **근거 정확도**에 달려 있습니다 — v1.36이 고친 것이 이 지점입니다
+  (자세히: `기능명세서.md` §33).
+- **RETENTION은 습관이 아니라 계기입니다.** `streak`·`연속 기록`을 쓰지 않습니다.
+- **PREMIUM은 길이가 아니라 연결입니다.** 무료 문장을 반복하는 section은 삭제 대상입니다.
 
 ---
 

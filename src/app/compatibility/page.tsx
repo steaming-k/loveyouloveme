@@ -677,7 +677,8 @@ function CompatibilityView() {
               <button
                 type="button"
                 onClick={() => router.push(ROUTES.target)}
-                className="flex-none text-[11px] font-medium text-brand-pressed"
+                /* v1.36 A11y — 히트 영역만 44px. 글자 크기는 그대로 둔다(§12.1) */
+                className="flex min-h-11 flex-none items-center text-[11px] font-medium text-brand-pressed"
               >
                 상대 정보 수정
               </button>
@@ -697,7 +698,7 @@ function CompatibilityView() {
                 aria-selected={questionTab === 'recommended'}
                 onClick={() => setQuestionTab('recommended')}
                 className={cn(
-                  'min-h-9 flex-1 rounded-[9px] text-caption font-medium transition-colors duration-200',
+                  'min-h-11 flex-1 rounded-[9px] text-caption font-medium transition-colors duration-200',
                   questionTab === 'recommended'
                     ? 'bg-surface font-semibold text-ink shadow-[0_1px_2px_rgba(0,0,0,0.06)]'
                     : 'text-ink-muted',
@@ -714,7 +715,7 @@ function CompatibilityView() {
                   trackEvent('saved_question_view', { count: savedQuestionsList.length });
                 }}
                 className={cn(
-                  'min-h-9 flex-1 rounded-[9px] text-caption font-medium transition-colors duration-200',
+                  'min-h-11 flex-1 rounded-[9px] text-caption font-medium transition-colors duration-200',
                   questionTab === 'saved'
                     ? 'bg-surface font-semibold text-ink shadow-[0_1px_2px_rgba(0,0,0,0.06)]'
                     : 'text-ink-muted',

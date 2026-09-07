@@ -149,7 +149,12 @@ function MirrorView() {
   if (lowData) {
     return (
       <ScreenLayout
-        header={<ScreenHeader backHref={ROUTES.home} title="관계 속의 나" />}
+        /*
+          ⚠️ v1.36 A11y — **`title`을 넘기지 않는다.** `ScreenHeader`의 title은 `h2`로
+          그려져서, 아래 `EmptyStateView`의 `h1`보다 먼저 나오면 heading 순서가
+          H2 → H1로 역전된다. 결과 화면 본문이 같은 이유로 title을 넘기지 않는다.
+        */
+        header={<ScreenHeader backHref={ROUTES.home} />}
         footer={<Button onClick={() => router.push(ROUTES.profileIntro)}>관측 기록 채우기</Button>}
       >
         <EmptyStateView

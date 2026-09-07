@@ -16,6 +16,7 @@ import { SelfPairCard, SelfSignalCard } from '@/components/solo/SelfSignalCard';
 import { NO_EXPERIENCE_FRAME, UNKNOWN_TARGET_FRAME } from '@/data/firstContact';
 import {
   useFirstContact,
+  useMirror,
   useObservedHistoryReport,
   useSoloHistoryReport,
   useSoloMode,
@@ -79,6 +80,11 @@ export default function FirstContactPage() {
    * 이 섹션만 없다 — 나머지 비교는 그대로 동작한다.
    */
   const observedHistory = useObservedHistoryReport();
+  /**
+   * 관계 속의 나 (v1.36). **새 계산이 아니다** — 이미 있는 `useMirror()`를 읽는다.
+   * 관계 경험이 없으면 `available === false`라서 섹션 자체가 렌더되지 않는다.
+   */
+  const mirror = useMirror();
 
   const analysisId = analysisFingerprint(answers.status, answers.declared, answers.experience);
   const alreadySaved = entries.some((entry) => entry.analysisId === analysisId);
@@ -425,7 +431,52 @@ export default function FirstContactPage() {
           </ReportSection>
         ) : null}
 
-        {/* 06 — 보조 렌즈. 상대가 없으므로 궁합 문구를 절대 내지 않는다(§35) */}
+        {/*
+          관계 속의 나 (v1.36 §11 · §12)
+
+          ⚠️ **이 제품의 가장 큰 "어?"가 Solo에게 숨어 있었다.** 연애 경험이 있는
+          Solo 사용자(`solo_exp`)는 Mirror가 실제로 만들어지는데(말한 나 vs 관계 속의 나),
+          First Contact Report에는 그 입구가 없었다 — `OTHER LENSES`가 MBTI만 제공했고
+          Home의 '최근 Mirror' 카드는 한 번 본 뒤에만 뜬다. 즉 한 번도 안 본 사용자는
+          Mirror가 있다는 사실 자체를 몰랐다(실측).
+
+          ⚠️ **없으면 만들지 않는다.** 관계 경험을 건너뛴 사용자에게는 Mirror가 통째로
+          비어 있으므로 이 행이 아예 없다 — 갈 수 없는 길을 알려주지 않는다.
+        */}
+        {mirror.available && mirror.core ? (
+          <ReportSection
+            index={nextIndex()}
+            code="RELATIONSHIP MIRROR"
+            title="관계 속의 나와도 비교해보면"
+            caption="지금 답한 기준과, 이전 관계에서 실제로 나타난 신호를 나란히 놓은 관찰이야."
+          >
+            <button
+              type="button"
+              onClick={() => router.push(ROUTES.mirror)}
+              className="flex min-h-11 w-full items-center justify-between rounded-row border border-line bg-surface px-4 py-3.5 text-left active:bg-sunken"
+            >
+              <span className="flex min-w-0 flex-col gap-0.5">
+                {/*
+                  ⚠️ `gapCount`는 GAP 상태만 센다. CHANGE만 있는 사용자는 `차이 0개`가 되어
+                  바로 아래 요약("말한 기준과 실제 반응이 조금 달랐어")과 반대로 읽혔다.
+                  `/mirror` 헤더와 **같은 기준**(MATCH가 아닌 축)을 쓴다.
+                */}
+                <span className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
+                  차이 {mirror.insights.filter((insight) => insight.state !== 'MATCH').length}개 ·
+                  일치 {mirror.insights.filter((insight) => insight.state === 'MATCH').length}개
+                </span>
+                <span className="text-[13px] keep-all leading-relaxed">
+                  {mirror.core.summary}
+                </span>
+              </span>
+              <span aria-hidden className="flex-none pl-3 text-ink-faint">
+                →
+              </span>
+            </button>
+          </ReportSection>
+        ) : null}
+
+        {/* 07 — 보조 렌즈. 상대가 없으므로 궁합 문구를 절대 내지 않는다(§35) */}
         {hasMbti ? (
           <ReportSection
             index={nextIndex()}

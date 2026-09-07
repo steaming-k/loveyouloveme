@@ -44,7 +44,12 @@ export function ResultSectionNav({
           href={`#${item.id}`}
           onClick={() => trackEvent(event, { section: item.id })}
           className={cn(
-            'relative flex-none rounded-full border border-line bg-surface px-3 py-1.5',
+            /*
+              v1.36 A11y — 실측 32px이었다. 시각 높이는 그대로 두고 히트 영역만
+              44px로 올린다(§12.1) — `min-h-11`과 세로 패딩으로 영역만 넓히고
+              칩의 시각적 크기(글자·테두리)는 건드리지 않는다.
+            */
+            'relative flex min-h-11 flex-none items-center rounded-full border border-line bg-surface px-3 py-1.5',
             'text-[12px] font-medium text-ink-sub active:bg-sunken',
             // 보이는 높이 32px · 실제 터치 타깃 44px (§18 · §32)
             "after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']",

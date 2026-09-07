@@ -1,10 +1,10 @@
 import {
-  DECLARED_PHRASE,
+  DECLARED_PHRASE_BY_LEVEL,
   MIRROR_AXES,
   MIRROR_NOTE,
-  RELATIONSHIP_PHRASE,
 } from '@/data/axes';
 import { adaptiveOptionLabel } from '@/data/adaptive';
+import { selfLevelOf } from './firstContact';
 import { HARDEST_LABEL, PAST_FACTOR_LABEL } from '@/data/labels';
 import { withObjectParticle } from '@/lib/korean';
 import type {
@@ -114,7 +114,8 @@ function buildInsights(
       label,
       declared: declaredValue,
       declaredHasScale: DECLARED_HAS_NATIVE_SCALE[key],
-      declaredPhrase: DECLARED_PHRASE[key],
+      // v1.36 — 실제 답에서 만든다. `declaredValue !== null`이 위에서 보장돼 있다.
+      declaredPhrase: declaredPhraseOf(key, declared) ?? label,
       relationshipSignal: relationshipSignalText(key, label, strength, experience),
       evidenceStrength: strength,
       state,
@@ -184,6 +185,24 @@ export function buildCoreEvidence(
   return items;
 }
 
+/**
+ * '네가 말한 너' 한 줄 — **실제 답에서 만든다** (v1.36)
+ *
+ * ⚠️ v1.35까지는 축마다 고정 문장 하나였다. 그래서 연락을 5/5로 답한 사용자에게도
+ * `연락은 별로 중요하지 않음`이 붙었고(실측), 그 문장이 Mirror Teaser · Premium Mirror
+ * 상세 · History 스냅샷 · **AI 프롬프트**까지 그대로 흘러갔다. 사용자가 하지 않은 답을
+ * 근거로 제시하는 것은 이 제품이 가장 하지 않기로 한 것이다.
+ *
+ * @returns 답이 없으면 `null` — 없는 답을 문장으로 만들지 않는다.
+ */
+export function declaredPhraseOf(
+  axis: MirrorAxisKey,
+  declared: DeclaredPreference,
+): string | null {
+  const level = selfLevelOf(axis, declared);
+  return level ? DECLARED_PHRASE_BY_LEVEL[axis][level] : null;
+}
+
 export function buildMirrorReport(
   declared: DeclaredPreference,
   experience: RelationshipExperience,
@@ -207,8 +226,17 @@ export function buildMirrorReport(
     ? {
         axisKey: focus.key,
         axisLabel: focus.label,
-        declaredPhrase: DECLARED_PHRASE[focus.key],
-        relationshipPhrase: RELATIONSHIP_PHRASE[focus.key],
+        declaredPhrase: focus.declaredPhrase,
+        /**
+         * v1.36 — **판정과 같은 근거를 쓴다.**
+         *
+         * v1.35까지는 축마다 고정 문장(`RELATIONSHIP_PHRASE`)이었다. 그래서 Mirror
+         * 본문이 `개인 시간 · CHANGE · 이전 관계에서 개인 시간을 특별히 중요한 요소로
+         * 꼽지는 않았어`라고 판정한 사용자의 Teaser에 `개인 시간이 꾸준히 중요했음`이
+         * 떴다(실측) — **같은 데이터에 대해 두 화면이 반대로 말했다.**
+         * 이제 판정이 실제로 쓴 근거 문장을 그대로 보여준다.
+         */
+        relationshipPhrase: focus.relationshipSignal,
       }
     : null;
 

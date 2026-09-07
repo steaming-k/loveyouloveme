@@ -102,6 +102,17 @@ function emphasisOf(axis: SelfSignalKey, declared: DeclaredPreference, level: Se
   return level === 'mid' ? 0 : 2;
 }
 
+/**
+ * 한 축의 단계를 실제 답에서 고른다 (v1.36).
+ *
+ * ⚠️ **단계 경계는 이 파일에만 있다.** Mirror의 `declaredPhraseOf`가 이 함수를 부르므로,
+ * First Contact와 Mirror가 같은 답을 언제나 같은 단계로 부른다 — 경계가 두 벌이 되면
+ * 같은 사용자가 화면마다 다르게 설명된다.
+ */
+export function selfLevelOf(axis: SelfSignalKey, declared: DeclaredPreference): SelfLevel | null {
+  return levelOf(axis, declared);
+}
+
 export function buildSelfLevels(declared: DeclaredPreference): Map<SelfSignalKey, SelfLevel> {
   const levels = new Map<SelfSignalKey, SelfLevel>();
   for (const axis of AXIS_ORDER) {

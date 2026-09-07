@@ -134,22 +134,47 @@ export const MIRROR_AXES: readonly { key: MirrorAxisKey; label: string }[] = [
   { key: 'affection', label: '애정 표현' },
 ];
 
-/** 네가 말한 너 — 한 줄 표현 */
-export const DECLARED_PHRASE: Record<MirrorAxisKey, string> = {
-  contact: '연락은 별로 중요하지 않음',
-  alone: '혼자 있는 시간이 가장 중요',
-  hobby: '취미는 같이 하는 게 중요',
-  conflict: '싸우면 바로 이야기하고 싶음',
-  affection: '애정 표현은 적당히',
-};
-
-/** 관계에서 나타난 너 — 한 줄 표현 */
-export const RELATIONSHIP_PHRASE: Record<MirrorAxisKey, string> = {
-  contact: '연락 감소가 가장 힘들었음',
-  alone: '개인 시간이 꾸준히 중요했음',
-  hobby: '실제로는 우선순위가 낮았음',
-  conflict: '갈등이 멈추는 상황이 가장 힘들었음',
-  affection: '표현이 줄면 서운함이 컸음',
+/**
+ * 네가 말한 너 — 한 줄 표현 (v1.36에서 **답변 기반으로 고쳤다**)
+ *
+ * ⚠️ v1.35까지 이 자리에는 축마다 문장 **하나씩**만 있었다. 그 문장은 사용자의 답과
+ * 무관한 고정값이었는데 화면 라벨은 `네가 말한 너`였다 — 즉 **사용자가 하지 않은 답을
+ * 사용자의 답이라고 표시했다.** 연락을 5/5(매우 중요)로 답한 사용자의 Mirror Teaser와
+ * Premium Mirror 상세에 `연락은 별로 중요하지 않음 (5/5)`가 그대로 찍혔고(실측),
+ * 같은 값이 AI 프롬프트의 `ruleJudgements[].declaredPhrase`로 들어가서 러비가
+ * "연락이 별로 중요하지 않다고 생각했지만…"이라고 쓰게 만들었다. AI의 환각이 아니라
+ * **시스템이 먹인 거짓**이었다.
+ *
+ * 이제 단계별 표현을 두고 실제 답에서 고른다(`declaredPhraseOf`). 단계 경계는
+ * `logic/firstContact.ts`의 `selfLevelOf` **하나만** 쓴다 — 경계가 두 벌이 되면
+ * First Contact와 Mirror가 같은 답을 다르게 부른다.
+ */
+export const DECLARED_PHRASE_BY_LEVEL: Record<MirrorAxisKey, Record<'low' | 'mid' | 'high', string>> = {
+  contact: {
+    low: '연락은 별로 중요하지 않음',
+    mid: '연락은 적당하면 됨',
+    high: '연락을 중요하게 생각함',
+  },
+  alone: {
+    low: '혼자 있는 시간은 크게 필요하지 않음',
+    mid: '혼자 있는 시간은 어느 정도 필요',
+    high: '혼자 있는 시간이 중요',
+  },
+  hobby: {
+    low: '취미는 각자 해도 괜찮음',
+    mid: '취미는 가끔 같이 하면 좋음',
+    high: '취미는 거의 같이 하고 싶음',
+  },
+  conflict: {
+    low: '갈등은 혼자 정리한 뒤 이야기',
+    mid: '갈등은 잠깐 진정된 뒤 이야기',
+    high: '갈등은 그날 안에 이야기',
+  },
+  affection: {
+    low: '애정 표현은 담백한 편',
+    mid: '애정 표현은 적당히',
+    high: '애정 표현은 자주 하는 편',
+  },
 };
 
 /**

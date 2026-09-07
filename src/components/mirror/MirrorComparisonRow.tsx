@@ -108,10 +108,17 @@ export function MirrorComparisonRow({
 }
 
 /** 범례 — '말한 나'만 정확한 위치, 관계 경험 신호는 방향으로만 말한다는 것을 알려준다 */
+/**
+ * ⚠️ v1.36 — `항목별 대조`를 `h2`로 올렸다.
+ *
+ * 이 legend가 감싼 섹션에는 heading이 없었고, 안의 축 행들은 `h3`였다. 그래서
+ * `/mirror`의 heading 순서가 **H1 → H3 → … → H2**로 역전됐다(실측). 이 문구가
+ * 이미 그 섹션의 이름이므로 새 제목을 만들지 않고 level만 맞춘다.
+ */
 export function MirrorLegend() {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-1">
-      <span className="text-meta font-semibold text-ink-muted">항목별 대조</span>
+      <h2 className="text-meta font-semibold text-ink-muted">항목별 대조</h2>
       <span className="flex items-center gap-1.5">
         <span
           className="h-[11px] w-[11px] rounded-full border-2 border-ink-faint bg-surface"

@@ -87,7 +87,8 @@ function HistoryView() {
     const soloEmpty = mode !== 'couple' && answers.completed.profile;
     return (
       <ScreenLayout
-        header={<ScreenHeader backHref={ROUTES.home} title="관찰 기록" />}
+        /* v1.36 A11y — 아래 빈 상태 제목이 h1이다. title(h2)을 앞에 두지 않는다 */
+        header={<ScreenHeader backHref={ROUTES.home} />}
         footer={
           soloEmpty ? (
             <Button onClick={() => router.push(ROUTES.firstContact)}>
@@ -103,13 +104,14 @@ function HistoryView() {
       >
         <div className="flex h-full flex-col items-center justify-center gap-4 px-3.5 pb-10 text-center">
           <Lovy pose="calendar" size={120} decorative />
-          <h2 className="text-section keep-all">
+          {/* v1.36 A11y — 이 화면에는 다른 heading이 없다. 제목이 h1이어야 한다 */}
+          <h1 className="text-section keep-all">
             {HISTORY_COPY.empty.title.map((line) => (
               <span key={line} className="block">
                 {line}
               </span>
             ))}
-          </h2>
+          </h1>
           <p className="text-sub keep-all leading-relaxed text-ink-sub">
             {soloEmpty ? HISTORY_COPY.empty.soloBody : HISTORY_COPY.empty.body}
           </p>

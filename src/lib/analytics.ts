@@ -342,6 +342,23 @@ const EXTERNAL_FORBIDDEN_KEYS = new Set([
   'self_mbti',
   'target_mbti',
   'mbti',
+  /**
+   * v1.36 §58 Audit — **Declared 답변 원본.**
+   *
+   * `declared_me_complete`가 `contact`/`alone`/`conflict`/`affection`/`hobby`를
+   * **값 그대로** 싣고 있었다. 키 하나짜리 지문(`analysis_id`)은 v1.19에서 막았는데,
+   * 같은 정보를 **필드 5개로 나눠 보내면** 키 이름 필터도 `looksLikeFingerprint`도
+   * 걸러내지 못한다 — 그리고 GA4 이벤트는 client id에 묶이므로 결과는 같다:
+   * 사용자의 관계 응답 프로필이 외부에 복원된다.
+   *
+   * 완료 여부는 **이벤트가 발생했다는 사실**이 이미 말해준다. 답변 분포가 필요하면
+   * 기기 안에 남는 local store와 `utExport`를 쓴다(그게 그 도구의 용도다).
+   */
+  'contact',
+  'alone',
+  'conflict',
+  'affection',
+  'hobby',
   /** 원문 계열 — 실수로 붙는 것을 막는다(§24) */
   'text',
   'note',
