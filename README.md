@@ -7,7 +7,7 @@
 론칭 프로젝트입니다. 실측 확인된 사실과 미검증 항목을 분리해서 기록합니다 — "구현했다"와
 "검증됐다"를 같은 말로 쓰지 않습니다.
 
-**기준 문서** — 현재 버전 **v1.40**
+**기준 문서** — 현재 버전 **v1.40.1**
 
 | 문서 | 담는 것 | 언제 보나 |
 |---|---|---|
@@ -46,7 +46,7 @@ http://localhost:3000 · 기준 뷰포트 **393 × 852** (360px에서도 깨지�
 | `npm run lint` | ESLint |
 | `npm run test:ai` | AI 스키마/안전 검증 Contract Test 143건 (Provider Key 불필요 · **dev 서버 필요**) |
 | `npm run test:observed` | 사진 파이프라인 E2E 10건 (`/api/ai/observed-profile` 왕복 · **dev 서버 필요**) |
-| `npm run test:lifecycle` | Lifecycle Fixture 84건 — Relationship Stage/Job · **불변 검사**(단계만 바꿔도 동기화율·Mirror·Premium 게이트 동일) · Ended/Dating/Long-term Safety · legacy 세션 (**dev 서버 필요**) |
+| `npm run test:lifecycle` | Lifecycle Fixture **144건** — Relationship Stage/Job · **불변 검사**(단계만 바꿔도 동기화율·Mirror·Premium 게이트 동일) · Ended/Dating/Long-term Safety · **Premium Deep Report 본문의 구조적 안전**(v1.40.1 · `audience` 카운트) · Paywall↔본문 대칭 · fixture enum guard · legacy 세션 (**dev 서버 필요**) |
 | `npm run test:history` | Logic Fixture 100건 — History H0~H10 + Observed 시간축 + 근거 묶음 + Solo Premium 게이트 + `네가 말한 너` 문구 무결성 + 샘플 근거 정합성 · S07 사진 게이트(v1.37) + **관찰 시퀀스 시간 예산**(v1.38) (Provider Key 불필요 · **dev 서버 필요**) |
 | `npm run test:ai:e2e` | 실제 `/api/ai/*` Route 왕복 (**dev 서버 필요** · Key 없으면 SKIPPED로 정직하게 보고) |
 | `node tests/run-observed-e2e.mjs` | `npm run test:observed`와 같은 스크립트 |
@@ -257,8 +257,8 @@ RELATIONSHIP STAGE  →  CURRENT JOB  →  INTERPRETATION  →  ACTION  →  RET
 | (상대 정보가 부족할 때) | `unknown` | 알아가기 전 내 기준 확인 | 호감 성공 전략 |
 | 관심 가는 사람이 있음 | `talking` | 기대 차이 **확인** | 성공 확률 |
 | 연애 중 | `dating` | 기대 **조율** · 갈등 회복 | 호감 올리기 · '다음 관계' |
-| 기혼 / 오래 함께하는 중 | `long_term` | 반복되는 차이 **조율** | 데이터에 없는 생활 문제 |
-| 최근 관계가 끝남 | `ended` | 관계 **회고** → 다음 기준 | 접근 · 재회 · 치유 약속 |
+| 기혼 / 오래 함께하는 중 | `long_term` | 반복되는 차이 **조율** · 같이 이야기해볼 질문 | 데이터에 없는 생활 문제 |
+| 최근 관계가 끝남 | `ended` | 관계 **회고** → 다음 기준 | 접근 · 재회 · 치유 약속 · **상대를 향한 모든 행동·질문** |
 
 - **`unknown`은 단계가 아니라 데이터 상태입니다.** 그래서 STAGE 목록에 없습니다.
 - **`married`는 별도 Job이 아닙니다.** 결혼이 바꾸는 Job(가사·재정·주거·양육)의 데이터를
@@ -268,12 +268,41 @@ RELATIONSHIP STAGE  →  CURRENT JOB  →  INTERPRETATION  →  ACTION  →  RET
   기존 세션에 마이그레이션이 필요 없습니다.
 - **`ended`의 금지는 카피가 아니라 코드입니다.** `JOB_ACTION_KINDS.ended`에 `ask`·`try`·
   `align`이 없고, 화면은 `jobAllowsOutwardAction()` 한 곳만 보고 블록 자체를 교체합니다.
-  **유료 화면도 같은 규칙을 받습니다** — Deep Report가 재접촉 제안을 생성하지 않고, Paywall
-  목록에서도 그 약속이 빠집니다(₩1,900·Fake Door는 그대로).
+  **유료 리포트 본문도 같은 규칙을 받습니다**(v1.40.1) — 아래 참고.
 - **단계는 evidence가 아닙니다.** AI에는 저카디널리티 context로만 전달되고
   `evidenceRefs`에 들어가지 않습니다.
 
-상세는 `기능명세_현행.md` §1.7 · `기능명세서.md` §37.
+### Ended Safety를 어휘에서 구조로 (v1.40.1)
+
+v1.40은 위 규칙을 만들었고 무료 화면에서는 지켜졌지만, **유료 Deep Report 본문에서는
+지켜지지 않았습니다.** `buildActions()`가 `ended` 사용자에게도 `서로 원하는 기준을 한 번
+이야기해보기`(TRY) · `각자 어떤 의미로 받아들이는지 확인해보기`(CHECK)를 만들고,
+`buildConnectionQuestions()`가 상대에게 던지는 질문을 만들었습니다.
+
+**금지어 검사로는 잡히지 않습니다.** 위 문장들에 `다가가`·`고백`·`재회` 같은 어휘가
+하나도 없기 때문입니다 — 문제는 *주제*가 아니라 **행동의 대상**이었습니다.
+
+```ts
+/** 이 행동·질문이 누구를 향하는가 */
+export type DeepAudience = 'outward' | 'self';
+```
+
+그래서 대상을 문장에서 추론하지 않고 **생성 시점에 못박습니다.** 테스트는 문장을 읽지 않고
+셉니다 — `ended`에서 `outwardActionCount === 0`. 금지어 목록은 버리지 않고 **2차 guard**로
+남깁니다.
+
+| | 내용 |
+|---|---|
+| `ended`·`none`이 받는 것 | 같은 연결·같은 축에서 `REFLECT`(근거를 나란히 놓고 읽어보기) + `NOTICE`(다음 관찰 기록에서 알아두기). **비우지 않습니다** — 유료 리포트가 결론 없이 끝나면 안 되니까요 |
+| `ended`·`none`이 받지 않는 것 | 상대에게 던지는 연결 질문(**빈 배열**). 회고 질문으로 채우지도 않습니다 — 무료 화면이 이미 주고 있어서 중복이고, 회고는 한 번 정리하고 닫습니다 |
+| 섹션 제목 | 무료 화면과 **같은 문구**(`STAGE_JOB_COPY[job].nowWhatTitle`)를 씁니다. 새 카피를 만들지 않았습니다 |
+| 게이트 | `buildRelationshipDeepReport({ lifecycle })`가 **필수 파라미터**입니다. v1.40에서는 optional + 기본 허용이었고, 값을 넘기지 않은 호출부가 하필 리포트 본문을 여는 유일한 경로였습니다 — **안전 게이트에 permissive default를 두지 않습니다** |
+
+`test:lifecycle`이 84 → **144건**으로 늘었고, `ended`(outward 0)와
+`dating`/`long_term`(outward 유지)을 **양방향으로** 고정합니다 — 하나를 고치다 전부
+없애는 과필터도 실패로 잡습니다.
+
+상세는 `기능명세_현행.md` §1.7 · `기능명세서.md` §37(v1.40) · **§38(v1.40.1)**.
 
 ---
 
@@ -352,15 +381,43 @@ real인 척하지 않는다). `.env.example` 참고.
 > 사진을 고르는 시점(아직 응답이 없는 시점)의 안내 문구를 고르는 **표시용 힌트**이고,
 > 결과의 진짜 모드는 응답 `meta.mode`가 말합니다. 전체 표: `기능명세_현행.md` §8.4.
 >
-> **Production 현재 상태 (2026-09-07 실측 · v1.39)** — Production은 여전히 **`demo`**
-> 입니다. `https://loveyouloveme.vercel.app/api/ai/observed-profile`에 사진 0장과 합성
-> 이미지 1장으로 각각 요청했을 때 `meta.mode: "demo"` · `observedState: "demo"` ·
-> `traits: []`가 돌아왔고, `/profile/photos`도 데모 안내 문구를 렌더했습니다.
-> `AI_MODE=real`인데 Key만 없는 상태라면 `CONFIG_ERROR`가 나야 하므로, **Production Runtime에서
-> `AI_MODE`가 `real`로 해석되지 않습니다**(Key 유무는 이 응답으로 판별할 수 없습니다).
-> Vercel Dashboard에는 접근하지 못했으므로 '변수가 설정되어 있지 않다'까지는 단정하지
-> 않습니다 — 값·Scope·Redeploy 중 무엇인지는 Dashboard에서만 알 수 있습니다. 코드 결함이
-> 아니라 **배포 환경 쪽 원인**이고, 조치는 사용자가 직접 해야 합니다 — 절차: `기능명세서.md` §36.9.
+> **Production 현재 상태 (2026-09-07 실측 · v1.40.1)** — Production은 **`real`** 입니다.
+>
+> ```bash
+> curl -sX POST https://loveyouloveme.vercel.app/api/ai/observed-profile \
+>   -H 'Content-Type: application/json' -d '{"inputFingerprint":"probe","images":[]}'
+> # → {"ok":false,"reason":"NO_USABLE_IMAGE","requestId":"…"}
+> ```
+>
+> 사진을 한 장도 보내지 않는 이 probe는 **비용이 들지 않으면서** 두 가지를 함께
+> 증명합니다. `handlers.ts`의 분기 순서가
+>
+> ```
+> provider = resolveProvider(true)
+> if (!provider) → mode==='real' ? CONFIG_ERROR : demo 결과(ok:true)
+> if (photoCount === 0) → NO_USABLE_IMAGE      ← 여기 도달했습니다
+> ```
+>
+> 이고, Production은 `NODE_ENV=production`이라 `mock`이 강제로 `demo`로 내려갑니다
+> (`serverEnv.ts`). 따라서 provider가 살아 있다는 것은 **`AI_MODE=real` AND `AI_API_KEY`
+> 존재**를 동시에 뜻합니다 — v1.39에서 "Key 유무는 이 응답으로 판별할 수 없다"고 남겨둔
+> 항목이 이 한 번의 probe로 함께 확정됐습니다.
+>
+> **클라이언트 힌트도 일치합니다.** Production `/profile/photos`가 real 문구
+> (`선택한 사진은 AI 분석을 위해 서버로 전송될 수 있어. …`)를 렌더하고 데모 문구
+> (`지금은 데모 모드라 사진을 전송하지 않아`)는 **0건**입니다 → `NEXT_PUBLIC_AI_MODE`도
+> real입니다. 위에서 경고한 **'서버는 real인데 안내 문구만 demo'(= 개인정보 문구가 거짓이
+> 되는 상태)는 아닙니다.**
+>
+> **여기까지가 VERIFIED이고, 아래는 NOT VERIFIED입니다** — 구분해서 씁니다.
+>
+> | | 항목 |
+> |---|---|
+> | **VERIFIED** | Production runtime의 real 분기 도달 · Provider 설정(`AI_MODE` + Key) 존재 · 클라이언트 힌트 일치 |
+> | **NOT VERIFIED** | **실제 사용자 사진의 내용 인식 품질** (저장소에 사진 asset이 없고 검증 브라우저가 파일 업로드를 못 합니다) · Production 화면에서 `AI OBSERVATION` 배지 육안 확인 · Key의 **유효성**(만료·quota — 위 probe는 Provider 호출 **전** 분기라 '설정돼 있음'까지만 증명합니다) |
+>
+> v1.39는 같은 endpoint에서 `meta.mode: "demo"`를 실측했고 **그 시점에는 사실이었습니다.**
+> 그 뒤 환경변수가 설정됐고, v1.40.1에서 문서를 사실에 맞췄습니다.
 
 **Observed(사진) 파이프라인** — 사진을 한 번에 전체 보내지 않고 **1장씩** Vision
 Provider에 보내 관찰만 받고, "몇 장에서 반복됐는지"는 애플리케이션 코드가 집계합니다

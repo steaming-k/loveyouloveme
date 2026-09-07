@@ -1504,6 +1504,14 @@ export interface DeepConversationQuestion {
   question: ConversationQuestion;
   /** 이 질문을 왜 추천했는지 — 근거 연결 문장(§20) */
   why: string;
+  /**
+   * v1.40.1 — 이 질문을 **누구에게** 던지는가(`DeepAudience`).
+   *
+   * 지금 생성되는 연결 질문은 전부 `outward`다(설계상 '연결을 상대에게 검증하는 질문').
+   * 그래서 `ended`·`none`에서는 이 목록이 비어 있고, 필드는 남은 항목이 실제로
+   * outward인지 테스트가 **문장을 읽지 않고** 확인하기 위해 있다.
+   */
+  audience: DeepAudience;
 }
 
 export interface DeepFinalObservation {
@@ -1591,12 +1599,41 @@ export interface DeepCorePattern {
   connectionCount: number;
 }
 
-/** 처방이 아니다 — 확인해볼 것만 준다(§33) */
-export type DeepActionKind = 'TRY' | 'CHECK' | 'NOTICE';
+/**
+ * 처방이 아니다 — 확인해볼 것만 준다(§33)
+ *
+ * v1.40.1 — `REFLECT`를 추가했다. `JOB_ACTION_KINDS`(`RelationshipActionKind`)에는
+ * v1.40부터 `reflect`가 있었는데 Deep Report의 종류에는 없어서, `ended`에서 허용되는
+ * 유일한 행동 두 개(`reflect`·`notice`) 중 하나를 **유료 리포트가 표현할 수 없었다.**
+ * 그래서 `ended`에서도 `TRY`/`CHECK`가 나왔다(§38.2).
+ */
+export type DeepActionKind = 'TRY' | 'CHECK' | 'NOTICE' | 'REFLECT';
+
+/**
+ * 이 행동·질문이 **누구를 향하는가** (v1.40.1 · §38.2)
+ *
+ * ⚠️ **이 필드가 v1.40.1의 핵심이다.** v1.40의 Ended Safety는 금지 어휘 목록으로
+ * 검증됐는데, 실제로 새어 나간 문장들은 금지 어휘를 하나도 쓰지 않았다:
+ *
+ * ```
+ * 서로 원하는 기준을 한 번 이야기해보기       ← '다가가'·'고백' 없음. 그런데 outward다
+ * 각자 어떤 의미로 받아들이는지 확인해보기     ← 같음
+ * 연락이 줄었을 때, 너한테는 … 어떻게 달라?    ← 상대에게 던지는 질문인데 어휘는 무해하다
+ * ```
+ *
+ * 어휘가 아니라 **행동의 대상**이 문제였으므로, 대상을 문장에서 추론하지 않고
+ * 생성 시점에 구조로 못박는다. 그래야 테스트가 문장을 읽지 않고 셀 수 있다.
+ *
+ * `outward` 상대를 향한다 (물어보기·같이 해보기·맞춰보기)
+ * `self`    주어가 나다 (돌아보기·알아두기·내 기록에서 확인하기)
+ */
+export type DeepAudience = 'outward' | 'self';
 
 export interface DeepAction {
   kind: DeepActionKind;
   text: string;
+  /** v1.40.1 — 이 행동이 상대를 향하는가. `ended`·`none`에서는 `self`만 나온다 */
+  audience: DeepAudience;
 }
 
 /**
@@ -1648,13 +1685,27 @@ export interface RelationshipDeepReport {
    * 더 낮은 위계로 따로 둔다(cross-source 우선 §17).
    */
   singleSourceNotes: DeepConnection[];
-  /** v1.26 §33 — TRY / CHECK / NOTICE. 처방이 아니다 */
+  /** v1.26 §33 — TRY / CHECK / NOTICE / REFLECT. 처방이 아니다 */
   actions: DeepAction[];
   /**
    * v1.26 §32 — Premium 전용 질문. **무료 질문을 반복하지 않는다** —
    * cross-source 연결을 상대에게 검증하는 질문이다.
+   *
+   * v1.40.1 — 그래서 `ended`·`none`에서는 **빈 배열**이다(§38.2). 회고 질문으로
+   * 바꿔 채우지 않는다: 무료 화면이 이미 `REFLECTION_QUESTIONS`로 같은 역할을 하고 있어
+   * 유료에서 또 주면 §22(같은 역할을 두 번 보여주지 않는다)를 어기고, §37.13이 금지한
+   * 반추 루프가 된다.
    */
   connectionQuestions: DeepConversationQuestion[];
+  /**
+   * v1.40.1 — `05` 행동·질문 섹션의 제목. `STAGE_JOB_COPY[job].nowWhatTitle`을 그대로
+   * 쓴다(§38.2).
+   *
+   * ⚠️ 새 copy source를 만들지 않았다. v1.40까지 이 자리는 화면에 하드코딩된
+   * `그래서 무엇을 확인할까` 하나였고, 무료 화면이 같은 자리를 Job별로 갈라 쓰는 동안
+   * 유료 리포트만 `ended` 사용자에게 `확인할까`라고 말했다.
+   */
+  actionSectionTitle: string;
   /** v1.26 §25/§26 — 러비의 깊은 관찰 + 철학 질문. 연결이 없으면 null */
   lovyObservation: DeepLovyObservation | null;
   /** 이 리포트가 못 하는 것 — 항상 사용자에게 보여준다 */

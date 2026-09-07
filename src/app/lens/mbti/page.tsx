@@ -32,6 +32,10 @@ import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { premiumFeatureState } from '@/services/premiumService';
 import { RESULT_ANCHORS, ROUTES } from '@/lib/routes';
 import { useMbtiBridge, useMbtiLens, useMbtiPattern } from '@/hooks/useAnalysis';
+import {
+  jobAllowsOutwardAction,
+  resolveRelationshipContext,
+} from '@/lib/logic/relationshipStage';
 import { useSession } from '@/state/SessionProvider';
 import type {
   MbtiBridgeReport,
@@ -165,7 +169,14 @@ function MbtiLensView() {
 
         {/* MBTI를 강한 유료 Feature로 전면에 두지 않는다 — 상세 안의 한 항목일 뿐(§19) */}
         <PremiumEntryRow
+          /*
+            v1.40.1 §38.3 — `allowsOutwardAction`이 필수가 됐다. `mbti_detail`의
+            `additions`에는 outward 항목이 없어서 지금은 결과가 같지만, **`true`를
+            하드코딩하지 않는다** — 나중에 이 feature에 outward 약속이 추가되면
+            하드코딩한 곳만 조용히 새기 때문이다. 실제 Job에서 도출한다.
+          */
           feature={premiumFeatureState('mbti_detail', resolvePrice(variant), {
+            allowsOutwardAction: jobAllowsOutwardAction(resolveRelationshipContext(answers).job),
             mbtiAvailable: Boolean(report),
           })}
         />

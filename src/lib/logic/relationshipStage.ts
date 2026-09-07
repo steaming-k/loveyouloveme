@@ -8,6 +8,8 @@ import type {
   TargetProfile,
 } from '@/types';
 
+import { STAGE_JOB_COPY } from '@/data/stageCopy';
+
 import { soloModeOfTarget } from './soloMode';
 
 /**
@@ -174,9 +176,51 @@ export const JOB_ACTION_KINDS: Record<RelationshipJob, readonly RelationshipActi
   unknown: ['ask', 'notice'],
   talking: ['ask', 'try', 'notice'],
   dating: ['ask', 'align', 'try'],
-  long_term: ['align', 'try', 'notice'],
+  // v1.40.1 — `ask` 추가. 이유는 아래 참고
+  long_term: ['ask', 'align', 'try', 'notice'],
   ended: ['reflect', 'notice'],
 };
+
+/**
+ * v1.40.1 — **`long_term`에 `ask`를 넣었다** (§38.4)
+ *
+ * v1.40에서는 `['align','try','notice']`였다. 그런데 `jobAllowsOutwardQuestions()`가
+ * 이 배열의 `ask`를 보므로, 화면은 `한 번쯤 같이 이야기해볼 질문`이라는 라벨 아래에
+ * **주어가 나인 `REFLECTION_QUESTIONS.none` 3개**를 그렸다(실측). 라벨과 내용이 어긋났다.
+ *
+ * 두 방향이 가능했다.
+ *
+ * | | 무엇을 바꾸나 | 왜 아닌가 / 왜 맞나 |
+ * |---|---|---|
+ * | A | `ask`를 허용한다 | **채택** |
+ * | B | 라벨을 자기회고로 바꾼다 | 아래 세 가지와 충돌한다 |
+ *
+ * **A를 고른 이유는 구현 편의가 아니라 Job 정의 자체다.**
+ *
+ *  ① **`align`은 `ask` 없이 성립하지 않는다.** `long_term`의 PRIMARY JOB은 `반복되는
+ *    기대 차이를 조율한다`이고 `align`은 '이미 아는 차이를 맞춘다'다. 상대와 한마디도
+ *    하지 않고 맞추는 방법은 없다. 물어보기를 막으면서 같이 해보기(`try`)와
+ *    맞추기(`align`)를 허용하는 것은 **더 깊이 관여하는 행동만 남기고 가벼운 행동을
+ *    금지한** 셈이다 — 안전 방향이 거꾸로다.
+ *  ② **SECONDARY JOB이 `장기적 대화 방식`이다.** 질문을 만들 수 없는 '대화 방식' Job은
+ *    자기 모순이다.
+ *  ③ **`long_term`의 실제 금지선은 질문이 아니다.** `AVOID`는 `없는 생활 문제 생성`이고,
+ *    fixture의 `LONG_TERM_FORBIDDEN`도 가사·재정·양육·주거·성생활이다. 우리가 받지 않은
+ *    데이터를 말하지 않는 것이 이 단계의 제약이고, 상대에게 말을 거는 것은 아니다.
+ *  ④ `jobAllowsOutwardAction('long_term')`은 v1.40부터 이미 `true`였다 — 즉 제품은
+ *    이 단계를 **진행 중인 관계**로 이미 취급하고 상대를 향한 Approach Hint를 주고 있었다.
+ *    질문 채널만 반대였다.
+ *
+ * 결과적으로 `ask`가 없는 Job은 `ended`(상대가 없다)와 `none`(상대가 아직 없다) 둘뿐이고,
+ * 그 둘이 정확히 `jobAllowsOutwardAction()`이 false인 집합이다. **두 술어가 이제 같은
+ * 집합을 가리킨다** — 서로 다른 질문이므로 함수는 둘 다 유지하지만, 답이 갈리는 Job이
+ * 생기면 그건 정책 변경이지 버그가 아니다.
+ *
+ * ⚠️ 이 변경으로 `long_term` 사용자는 `buildConversationQuestions()`의 결정론적 질문
+ * (`연락이 줄어들면 어떤 의미로 받아들이는 편이야?` 등 4축)을 받는다. 그 문장들에는
+ * `LONG_TERM_FORBIDDEN` 어휘가 하나도 없다(fixture가 확인한다). **판정·점수는 하나도
+ * 바뀌지 않는다** — 질문 생성은 v1.0부터 `compatibility` 결과만 읽는다.
+ */
 
 export function jobAllowsAction(job: RelationshipJob, kind: RelationshipActionKind): boolean {
   return JOB_ACTION_KINDS[job].includes(kind);
@@ -199,4 +243,48 @@ export function jobAllowsOutwardAction(job: RelationshipJob): boolean {
  */
 export function jobAllowsOutwardQuestions(job: RelationshipJob): boolean {
   return jobAllowsAction(job, 'ask');
+}
+
+/* ─────────────────────────────────── Deep Report에 넘길 Job 문맥 (v1.40.1) */
+
+/**
+ * Premium Deep Report가 Job에서 읽어야 하는 값 **전부**. (v1.40.1 · §38.2)
+ *
+ * ══ 왜 이 함수가 있어야 하는가 ═══════════════════════════════════════════
+ *
+ * v1.40의 결함은 `ended` 판정이 틀린 게 아니었다. **판정을 읽는 곳이 두 군데였고 한
+ * 곳이 빠졌다.**
+ *
+ * ```
+ * hooks/useDeepReport.ts                    allowsOutwardAction 전달  ✅
+ * app/premium-preview/[feature]/page.tsx    아무것도 전달 안 함        ❌  ← 기본값 true
+ * ```
+ *
+ * 그리고 하필 후자가 **Deep Report 본문을 실제로 여는 유일한 경로**였다
+ * (`/premium`의 본문은 `PREMIUM_PREVIEW && …` 뒤에 있다). 즉 게이트를 optional로 두고
+ * 기본값을 허용으로 잡은 결정이, 게이트가 가장 필요한 화면에서 게이트를 껐다.
+ *
+ * 그래서 v1.40.1은 값을 하나 더 넘기는 대신 **문맥 객체 하나를 필수로** 만든다.
+ * 새 호출부가 이걸 빼먹으면 `tsc`가 막는다 — 사람의 기억이 아니라 타입이 지킨다.
+ *
+ * ⚠️ **여기서 판정을 만들지 않는다.** 세 값 전부 이미 있는 것을 조합할 뿐이다:
+ * 두 개는 기존 술어(`jobAllowsOutwardAction`/`jobAllowsOutwardQuestions`), 하나는
+ * 기존 문구(`STAGE_JOB_COPY[job].nowWhatTitle`). **§37의 원칙 그대로 — stage는
+ * evidence가 아니고, 여기 있는 것도 전부 framing과 안전 게이트다.**
+ */
+export interface DeepReportJobContext {
+  /** 상대를 향한 행동(TRY·CHECK·Approach Insight)을 만들어도 되는가 */
+  allowsOutwardAction: boolean;
+  /** 상대에게 던지는 질문을 만들어도 되는가 */
+  allowsOutwardQuestions: boolean;
+  /** 행동·질문 섹션 제목. 무료 화면 `04 NOW WHAT`과 **같은 문구**를 쓴다 */
+  actionSectionTitle: string;
+}
+
+export function deepReportJobContext(job: RelationshipJob): DeepReportJobContext {
+  return {
+    allowsOutwardAction: jobAllowsOutwardAction(job),
+    allowsOutwardQuestions: jobAllowsOutwardQuestions(job),
+    actionSectionTitle: STAGE_JOB_COPY[job].nowWhatTitle,
+  };
 }

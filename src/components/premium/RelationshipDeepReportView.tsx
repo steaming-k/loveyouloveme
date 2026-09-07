@@ -352,12 +352,19 @@ export function RelationshipDeepReportView({
       ) : null}
 
       {/*
-        05 TRY THIS (§33) — **처방이 아니다.** TRY / CHECK / NOTICE 세 종류로만 말한다.
+        05 TRY THIS (§33) — **처방이 아니다.** TRY / CHECK / NOTICE / REFLECT로만 말한다.
         질문은 무료 질문을 반복하지 않는다 — 연결 자체를 상대에게 검증하는 질문이다(§32).
+
+        v1.40.1 §38.2 — 제목이 하드코딩이 아니다. 무료 화면 `04 NOW WHAT`이 쓰는
+        `STAGE_JOB_COPY[job].nowWhatTitle`을 리포트가 담아 온다(`actionSectionTitle`).
+        v1.40까지는 여기가 항상 `그래서 무엇을 확인할까`였고, 그래서 관계가 끝났다고
+        답한 사용자도 유료 리포트에서 `확인할까`를 읽었다 — 무료 화면은 같은 자리에
+        이미 `그래서 뭐가 남았을까`를 주고 있었다. 두 화면이 서로 다른 말을 했다.
+        ⚠️ 새 copy를 만들지 않았다. 이 컴포넌트는 Job을 모르고, 문구를 고르지도 않는다.
       */}
       {report.actions.length > 0 || report.connectionQuestions.length > 0 ? (
         <section className="flex flex-col gap-3">
-          <SectionLabel>그래서 무엇을 확인할까</SectionLabel>
+          <SectionLabel>{report.actionSectionTitle}</SectionLabel>
 
           {report.actions.length > 0 ? (
             <ul className="flex flex-col">
@@ -366,7 +373,8 @@ export function RelationshipDeepReportView({
                   key={action.kind}
                   className="flex gap-3 border-t border-line-soft py-3 first:border-t-0 first:pt-0"
                 >
-                  <span className="w-[48px] flex-none text-[10px] font-semibold tracking-[0.1em] text-mint-ink">
+                  {/* v1.40.1 — `REFLECT`(7자)가 추가돼 48px에서 넘쳤다. 폭만 늘렸다 */}
+                  <span className="w-[58px] flex-none text-[10px] font-semibold tracking-[0.1em] text-mint-ink">
                     {action.kind}
                   </span>
                   <span className="min-w-0 text-[12.5px] keep-all leading-relaxed">

@@ -92,6 +92,13 @@ export const STAGE_JOB_COPY: Record<RelationshipJob, StageJobCopy> = {
     nowWhatTitle: '그래서 반복되는 지점을 어떻게 다룰까',
     nowWhatCaption: '네가 알려준 관계 방식을 기준으로, 자주 반복될 수 있는 지점을 봤어.',
     actionLabel: '반복될 때 맞춰볼 것',
+    /**
+     * v1.40.1 — 이 라벨은 v1.40부터 그대로인데, **그동안 거짓이었다.**
+     * `JOB_ACTION_KINDS.long_term`에 `ask`가 없어서 이 제목 아래에 주어가 나인
+     * `REFLECTION_QUESTIONS.none`이 그려졌다. v1.40.1에서 `ask`를 허용해
+     * 라벨이 말하는 것(`같이 이야기해볼 질문`)이 실제로 나온다 — 라벨을 바꿔서
+     * 맞춘 게 아니라 **Job 정의를 고쳐서** 맞췄다. 이유는 `JOB_ACTION_KINDS` 주석.
+     */
     questionLabel: '한 번쯤 같이 이야기해볼 질문',
     frictionVerb: '조율',
     mirrorUse: '이 관계에서 반복되는 기준',

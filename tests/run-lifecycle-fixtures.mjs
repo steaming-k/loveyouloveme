@@ -36,10 +36,31 @@ async function run(body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(`HTTP ${response.status} — dev 서버가 떠 있는지 확인해줘`);
+  if (!response.ok) {
+    /**
+     * v1.40.1 — 400 본문을 읽어서 이유를 그대로 보여준다. `INVALID_ENUM`이 여기로
+     * 온다 — 잘못된 fixture 값이 조용히 통과하지 않게 하는 것이 목적이므로, 메시지가
+     * 무엇이 틀렸는지 말해야 한다.
+     */
+    const detail = await response.text().catch(() => '');
+    throw new Error(
+      `HTTP ${response.status} — dev 서버가 떠 있는지 확인해줘${detail ? ` · ${detail}` : ''}`,
+    );
+  }
   const json = await response.json();
   if (!json.ok) throw new Error(`route error: ${JSON.stringify(json)}`);
   return json;
+}
+
+/** 라우트가 **거절해야 하는** 요청. 거절 이유까지 확인한다 */
+async function runExpectingRejection(body) {
+  const response = await fetch(`${BASE_URL}/api/dev/lifecycle-test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = await response.json().catch(() => null);
+  return { status: response.status, json };
 }
 
 /* ── 공통 세션 ──────────────────────────────────────────────────────────────
@@ -53,10 +74,19 @@ async function run(body) {
  * "점수가 null이 아니다" 검사가 이걸 잡는다.
  */
 const DECLARED = { contact: 5, conflict: 'soon', alone: 4, affection: 'a2', hobby: 'h2' };
+/**
+ * ⚠️ v1.40.1 — `selfGap`이 v1.40에서 `'more_expressive'`였다. **그건 enum에 없는
+ * 값이다** (`SelfGapAnswer = 'yes'|'some'|'no'`). `.mjs`는 `tsc`를 받지 않고, 라우트가
+ * partial을 그냥 펴 넣었고, `selfGap`은 Mirror 판정에 안 쓰이므로 **아무 검사도
+ * 실패하지 않았다** — L0~L12 전부가 `selfGap`을 유효값으로 한 번도 실행하지 않았다.
+ *
+ * 이제 유효값을 쓰고, 라우트가 `INVALID_ENUM`으로 시끄럽게 거절한다(§38.5).
+ * 세 값 전부를 아래 `Fixture Enum Guard` 절에서 한 번씩 실제로 실행한다.
+ */
 const EXPERIENCE = {
   important: ['contact', 'alone'],
   hardest: 'contact_drop',
-  selfGap: 'more_expressive',
+  selfGap: 'yes',
 };
 const TARGET = {
   relation: 'talking',
@@ -65,6 +95,23 @@ const TARGET = {
   conflict: 'h',
   alone: 'h',
   affection: 'm',
+  /**
+   * v1.40.1 — **관심사를 넣었다.** v1.40 fixture에는 없었고, 그래서
+   * `approachInsightFor()`가 첫 줄(`interests[0]`이 없으면 null)에서 항상 빠져나갔다.
+   * 즉 `ended`에서 `approachInsight`가 없다는 것을 확인해도, **애초에 아무 단계에서도
+   * 생성되지 않는 값을 확인한 것**이라 게이트를 검증하지 못했다. 이제 dating/long_term에서
+   * 실제로 생성되므로 `ended`의 0이 의미를 갖는다(L13의 `hasApproachInsight === false`).
+   *
+   * ⚠️ `TargetInterest`는 문자열이 아니라 `{ id, category, label }`이다. 문자열을 넣으면
+   * `withObjectParticle(primary.label)`이 `undefined`를 받아 화면이 죽는다 —
+   * 실제로 이 fixture를 만들다 브라우저에서 그렇게 죽였다.
+   */
+  preferences: {
+    interests: [
+      { id: 'i-movie', category: 'movie_show', label: '영화 · 공연' },
+      { id: 'i-walk', category: 'walk', label: '산책 · 자연' },
+    ],
+  },
 };
 
 const SESSION = { declared: DECLARED, experience: EXPERIENCE, target: TARGET };
@@ -96,6 +143,35 @@ const ENDED_FORBIDDEN = [
 ];
 
 const DATING_FORBIDDEN = ['새로운 사람', '호감을 높', '고백', '다음 관계'];
+
+/**
+ * v1.40.1 — **2차 guard 전용.** (§38.2)
+ *
+ * v1.40의 `ENDED_FORBIDDEN`은 `다가가`·`고백`·`재회` 같은 **주제어**만 막았다. 실제로
+ * 새어 나간 유료 본문 문장들은 그런 단어를 하나도 쓰지 않았다:
+ *
+ * ```
+ * 서로 원하는 기준을 한 번 이야기해보기
+ * 각자 어떤 의미로 받아들이는지 확인해보기
+ * ```
+ *
+ * 그래서 여기에는 **상대가 있어야 성립하는 어투**를 담는다. 하지만 이것도 완전하지
+ * 않다 — `너한테는 … 어떻게 달라?`처럼 대명사만으로 상대를 가리키는 문장은 여전히
+ * 못 잡는다. **그래서 1차 판정은 이 목록이 아니라 `audience` 카운트다.** 이 목록은
+ * 구조 검사를 통과한 뒤 남은 문장을 한 번 더 훑는 보조 장치일 뿐이다.
+ *
+ * ⚠️ **일부러 넣지 않은 것이 있다 — 숨기지 않고 적어둔다.** `상대에게`(조사만) 를
+ * 넣으면 `ended` 리포트의 러비 철학 질문(`미리 알 수 없는 걸 상대에게 미리 말해주는
+ * 방법은 있을까?` · `DEEP_OBSERVATION.GAP`)이 걸린다. 그 문장은 **행동 제안이 아니라
+ * 관찰자의 혼잣말**이고 사용자에게 무엇도 요구하지 않으므로 v1.40.1의 대상이 아니다.
+ * 다만 `ended`에게 어울리는 시제인지는 별개 문제라 **잔여 리스크로 기록했다**(§38.2).
+ * 목록을 그 문장에 맞춰 느슨하게 만든 것이 아니라, 그 문장을 이번 범위에서 제외한
+ * 것이다 — 그 판단이 틀렸다면 고칠 곳은 이 목록이 아니라 `DEEP_OBSERVATION`이다.
+ */
+const ENDED_OUTWARD_PHRASES = ['서로 원하는', '각자 어떤', '같이 해보', '함께 해보', '상대에게 물어'];
+
+/** Paywall `additions`에서 상대를 향한 약속을 가리키는 문구 (`OUTWARD_ADDITION_ITEMS`와 짝) */
+const OUTWARD_ADDITION_MARKERS = ['다가가는 힌트', '상대에게 확인해볼 질문'];
 
 const LONG_TERM_FORBIDDEN = ['가사', '재정', '생활비', '육아', '양육', '주거', '성생활'];
 
@@ -255,10 +331,36 @@ async function main() {
       byStatus.dating.context.actionKinds.includes('align'),
       byStatus.dating.context.actionKinds,
     );
+    /**
+     * v1.40.1 §38.4 — **기대값이 뒤집혔다.** v1.40에서는 `ask`가 없다고 검사했는데,
+     * 그러면 화면이 `한 번쯤 같이 이야기해볼 질문`이라는 라벨 아래에 주어가 나인
+     * `REFLECTION_QUESTIONS.none`을 그린다(실측). `align`('이미 아는 차이를 맞춘다')이
+     * 허용되는데 `ask`('물어본다')가 금지되는 것은 **더 깊은 관여만 허용하고 가벼운
+     * 관여를 막은** 상태였다. 정책을 Job 정의에 맞춰 고쳤다(라벨을 바꾸지 않았다).
+     */
     check(
-      'long_term의 action kind에 ask가 없다 (이미 아는 차이를 다루는 단계다)',
-      !byStatus.married.context.actionKinds.includes('ask'),
+      'long_term의 action kind에 ask가 있다 (align은 대화 없이 성립하지 않는다 · §38.4)',
+      byStatus.married.context.actionKinds.includes('ask'),
       byStatus.married.context.actionKinds,
+    );
+    check(
+      'long_term은 상대에게 물어볼 질문을 받는다 (라벨이 말하는 것과 내용이 같다)',
+      byStatus.married.context.allowsOutwardQuestions === true &&
+        byStatus.married.context.copy.questionLabel.includes('같이 이야기해볼'),
+      byStatus.married.context.copy.questionLabel,
+    );
+    check(
+      'ask가 없는 Job은 ended·none 둘뿐이다 (outward action 게이트와 같은 집합)',
+      byStatus.ended.context.allowsOutwardQuestions === false &&
+        noneResult.context.allowsOutwardQuestions === false &&
+        [byStatus.crush, byStatus.dating, byStatus.married, thinResult].every(
+          (result) => result.context.allowsOutwardQuestions === true,
+        ),
+      {
+        ended: byStatus.ended.context.allowsOutwardQuestions,
+        none: noneResult.context.allowsOutwardQuestions,
+        long_term: byStatus.married.context.allowsOutwardQuestions,
+      },
     );
     check(
       'unknown의 action kind는 ask/notice뿐이다',
@@ -327,6 +429,289 @@ async function main() {
   {
     const hits = findForbidden(byStatus.married.context.renderedStrings, LONG_TERM_FORBIDDEN);
     check('가사·재정·육아·주거·성생활 추론 0건', hits.length === 0, hits);
+    /**
+     * v1.40.1 — `ask` 허용으로 long_term이 실제 대화 질문을 받게 됐으므로, 그 질문
+     * 문장들이 이 단계의 진짜 금지선(없는 생활 데이터)을 넘지 않는지 확인한다.
+     */
+    const questionHits = findForbidden(
+      byStatus.married.context.renderedStrings,
+      LONG_TERM_FORBIDDEN,
+    );
+    check(
+      'ask 허용 후에도 없는 생활 데이터를 만들지 않는다 (질문 문장 포함)',
+      questionHits.length === 0 && byStatus.married.context.questionCount > 0,
+      { hits: questionHits, questionCount: byStatus.married.context.questionCount },
+    );
+  }
+
+  /* ═══ L13~L16 · Premium Deep Report 구조적 안전 (v1.40.1 · §38.2) ══════
+
+     v1.40 fixture는 무료 화면 문구 + Paywall `additions`만 훑었다. 유료 **본문**은
+     한 번도 보지 않았고, 그래서 Release Gate가 아래 결함들을 통과시켰다:
+
+       buildActions()            ended에도 TRY/CHECK 생성
+       buildConnectionQuestions() ended에도 상대에게 던지는 질문 생성
+       섹션 제목               ended에도 '그래서 무엇을 확인할까'
+       premium-preview 화면     게이트를 아예 넘기지 않음 (기본값 허용)
+
+     ⚠️ **1차 판정은 구조다.** `audience`를 세고, 문장은 2차 guard로만 훑는다 —
+     새어 나간 문장들에는 금지 어휘가 하나도 없었기 때문이다. */
+
+  /**
+   * 반복 신호(=`historyDeep.prompts`)를 만들려면 커플 기록 2개에 같은 축의 GAP/CHANGE가
+   * 있어야 한다(`findRepeatedRelationshipSignals`). `다음 관계에서 …` 프롬프트가 어느
+   * 단계에서 나오는지 보려면 그 자리를 실제로 켜야 한다.
+   */
+  const mirrorInsight = (axis, state) => ({
+    axis,
+    state,
+    declaredText: `${axis} 스냅샷`,
+    relationshipSignal: `${axis} 관계 신호`,
+  });
+  const historyEntry = (id, createdAt) => ({
+    id,
+    analysisId: `fixture|${id}`,
+    createdAt,
+    audience: 'couple',
+    context: { relationshipStatus: 'dating', targetRelation: 'talking' },
+    profileSnapshot: { mbti: null },
+    declaredSnapshot: { contact: 2, conflict: 'soon', alone: 4, affection: 'a2', hobby: 'h2' },
+    relationshipEvidence: { important: ['contact'], hardest: 'contact_drop', selfGap: 'some', adaptive: null },
+    mirrorSnapshot: { insights: [mirrorInsight('contact', 'GAP')], focusAxis: 'contact' },
+    coreInsight: { original: '연락 축 관찰', userCorrection: null, verdict: null },
+    evidenceCoverage: 'medium',
+  });
+  const REPEATED_ENTRIES = [
+    historyEntry('h-1', '2026-07-01T00:00:00.000Z'),
+    historyEntry('h-2', '2026-08-01T00:00:00.000Z'),
+  ];
+
+  console.log('\nL13~L16 — Premium Deep Report 본문 (유료도 같은 안전 규칙)');
+  const deepByStatus = {};
+  for (const status of ['solo_exp', 'crush', 'dating', 'married', 'ended']) {
+    deepByStatus[status] = await run({ status, ...SESSION, entries: REPEATED_ENTRIES });
+  }
+  const deepNone = await run({ status: 'solo_none', ...NO_TARGET_SESSION, entries: REPEATED_ENTRIES });
+
+  {
+    /* ── 전제: 리포트가 실제로 만들어졌는가 ────────────────────────────────
+       이걸 먼저 확인하지 않으면 아래 '0건'들이 **빈 리포트를 세고 있는 것**과
+       구분되지 않는다. v1.40이 놓친 종류의 착오를 여기서 막는다. */
+    check(
+      '전제 — Deep Report가 실제로 열린다 (빈 리포트를 검사하는 게 아니다)',
+      deepByStatus.dating.deepReport.available === true,
+      deepByStatus.dating.deepReport,
+    );
+    check(
+      '전제 — dating 리포트에 상대를 향한 행동이 실제로 있다',
+      deepByStatus.dating.deepReport.outwardActionCount > 0,
+      deepByStatus.dating.deepReport.actions,
+    );
+    check(
+      '전제 — dating 리포트에 상대에게 던지는 질문이 실제로 있다',
+      deepByStatus.dating.deepReport.outwardQuestionCount > 0,
+      deepByStatus.dating.deepReport.questions,
+    );
+    check(
+      '전제 — 반복 신호가 켜져서 History Deep 프롬프트 자리가 살아 있다',
+      deepByStatus.dating.deepReport.historyDeepAvailable === true,
+      deepByStatus.dating.deepReport.historyDeepAvailable,
+    );
+    check(
+      '전제 — dating 리포트에 Approach Insight가 실제로 생성된다 (ended의 0이 의미를 갖는다)',
+      deepByStatus.dating.deepReport.hasApproachInsight === true,
+      deepByStatus.dating.deepReport.hasApproachInsight,
+    );
+  }
+
+  /* ── L13 Ended — 구조적으로 0이어야 한다 ──────────────────────────────── */
+  {
+    for (const session of [SESSION, NO_TARGET_SESSION, THIN_TARGET_SESSION]) {
+      const result = await run({ status: 'ended', ...session, entries: REPEATED_ENTRIES });
+      const deep = result.deepReport;
+      const where = result.resolution.sufficiency;
+
+      check(
+        `L13 ended 유료 본문 — 상대를 향한 행동 0건 (${where})`,
+        deep.outwardActionCount === 0,
+        deep.actions,
+      );
+      check(
+        `L13 ended 유료 본문 — 상대에게 던지는 질문 0건 (${where})`,
+        deep.outwardQuestionCount === 0 && deep.questions.length === 0,
+        deep.questions,
+      );
+      check(
+        `L13 ended 유료 본문 — action kind가 REFLECT/NOTICE뿐이다 (${where})`,
+        deep.actions.length > 0 &&
+          deep.actions.every((action) => ['REFLECT', 'NOTICE'].includes(action.kind)),
+        deep.actions,
+      );
+      check(
+        `L13 ended 유료 본문 — 행동 섹션이 비어 있지 않다 (${where})`,
+        deep.actions.length > 0,
+        deep.actions,
+      );
+      check(
+        `L13 ended 유료 본문 — Approach Insight 없음 (${where})`,
+        deep.hasApproachInsight === false,
+      );
+      check(
+        `L13 ended 유료 본문 — 섹션 제목이 회고다 (${where})`,
+        deep.actionSectionTitle === '그래서 뭐가 남았을까',
+        deep.actionSectionTitle,
+      );
+      /* 2차 guard — 문장 스캔. 1차(구조)가 통과한 뒤에만 의미가 있다 */
+      const hits = findForbidden(deep.renderedStrings, ENDED_FORBIDDEN);
+      check(`L13 ended 유료 본문 — 금지 어휘 0건 (2차 guard · ${where})`, hits.length === 0, hits);
+      const outwardHits = findForbidden(deep.renderedStrings, ENDED_OUTWARD_PHRASES);
+      check(
+        `L13 ended 유료 본문 — 상대를 향한 어투 0건 (2차 guard · ${where})`,
+        outwardHits.length === 0,
+        outwardHits,
+      );
+    }
+  }
+
+  /* ── L14 none — 상대가 없는 사용자도 같은 규칙 ────────────────────────── */
+  {
+    const deep = deepNone.deepReport;
+    check('L14 none — job=none이다 (전제)', deepNone.resolution.job === 'none', deepNone.resolution);
+    check(
+      'L14 none 유료 본문 — 상대를 향한 행동·질문 0건 (없는 상대에게 제안하지 않는다)',
+      deep.outwardActionCount === 0 && deep.outwardQuestionCount === 0,
+      { actions: deep.actions, questions: deep.questions },
+    );
+    check(
+      'L14 none 유료 본문 — 섹션 제목이 none Job의 것이다',
+      deep.actionSectionTitle === '그래서 뭘 알아둘까',
+      deep.actionSectionTitle,
+    );
+  }
+
+  /* ── L15 Paywall ↔ 본문 대칭 ──────────────────────────────────────────── */
+  {
+    for (const status of ['ended', 'dating', 'married', 'crush']) {
+      const result = deepByStatus[status];
+      const promisesOutward = result.context.premiumAdditions.some((item) =>
+        OUTWARD_ADDITION_MARKERS.some((marker) => item.includes(marker)),
+      );
+      const deliversOutward =
+        result.deepReport.outwardActionCount > 0 ||
+        result.deepReport.outwardQuestionCount > 0 ||
+        result.deepReport.hasApproachInsight;
+      check(
+        `L15 ${status} — Paywall이 약속한 것과 리포트가 주는 것이 같다 (약속 ${promisesOutward} / 제공 ${deliversOutward})`,
+        promisesOutward === deliversOutward,
+        { additions: result.context.premiumAdditions, deep: result.deepReport },
+      );
+    }
+  }
+
+  /* ── L16 과필터 방지 (양방향) ─────────────────────────────────────────── */
+  {
+    for (const status of ['crush', 'dating', 'married']) {
+      const deep = deepByStatus[status].deepReport;
+      check(
+        `L16 ${status} 유료 본문 — 상대를 향한 행동이 유지된다 (ended를 고치다 전부 없애지 않았다)`,
+        deep.outwardActionCount > 0,
+        deep.actions,
+      );
+      check(
+        `L16 ${status} 유료 본문 — 상대에게 던지는 질문이 유지된다`,
+        deep.outwardQuestionCount > 0,
+        deep.questions,
+      );
+      check(
+        `L16 ${status} 유료 본문 — 섹션 제목이 그 Job의 것이다`,
+        deep.actionSectionTitle === deepByStatus[status].context.copy.nowWhatTitle,
+        { title: deep.actionSectionTitle, expected: deepByStatus[status].context.copy.nowWhatTitle },
+      );
+      /**
+       * v1.40.1 — `historyDeep.prompts`가 v1.40에서 항상 `다음 관계에서 …`였다.
+       * 진행 중인 관계에 그 말을 쓰는 것은 `DATING_FORBIDDEN`이 금지한 표현이고,
+       * Ended Safety와 **같은 종류의 결함(방향만 반대)**이다.
+       */
+      const hits = findForbidden(deep.renderedStrings, DATING_FORBIDDEN);
+      check(
+        `L16 ${status} 유료 본문 — '다음 관계'·'고백'·'새로운 사람' 0건 (2차 guard)`,
+        hits.length === 0,
+        hits,
+      );
+    }
+    check(
+      'L16 ended는 반대로 다음 기준을 말할 수 있다 (과필터 아님)',
+      deepByStatus.ended.deepReport.renderedStrings.some((text) =>
+        typeof text === 'string' && text.includes('다음 관계'),
+      ),
+      deepByStatus.ended.deepReport.renderedStrings.filter(
+        (text) => typeof text === 'string' && text.includes('관계'),
+      ),
+    );
+    check(
+      'L16 long_term 유료 본문에 없는 생활 데이터 0건',
+      findForbidden(deepByStatus.married.deepReport.renderedStrings, LONG_TERM_FORBIDDEN).length === 0,
+    );
+  }
+
+  /* ═══ Fixture Enum Guard (v1.40.1 · §38.5) ════════════════════════════ */
+  console.log('\nFixture Enum Guard — 잘못된 enum이 조용히 통과하지 않는다');
+  {
+    const invalid = await runExpectingRejection({
+      status: 'dating',
+      ...SESSION,
+      // v1.40 fixture에 실제로 들어 있던 값. 이제 거절돼야 한다.
+      experience: { ...EXPERIENCE, selfGap: 'more_expressive' },
+    });
+    check(
+      "enum에 없는 selfGap('more_expressive')을 400 INVALID_ENUM으로 거절한다",
+      invalid.status === 400 && invalid.json?.reason === 'INVALID_ENUM',
+      invalid,
+    );
+    const invalidHardest = await runExpectingRejection({
+      status: 'dating',
+      ...SESSION,
+      experience: { ...EXPERIENCE, hardest: 'ghosting' },
+    });
+    check(
+      'enum에 없는 hardest도 거절한다',
+      invalidHardest.status === 400 && invalidHardest.json?.reason === 'INVALID_ENUM',
+      invalidHardest,
+    );
+    const invalidFactor = await runExpectingRejection({
+      status: 'dating',
+      ...SESSION,
+      experience: { ...EXPERIENCE, important: ['contact', 'not_a_factor'] },
+    });
+    check(
+      'enum에 없는 important 항목도 거절한다',
+      invalidFactor.status === 400 && invalidFactor.json?.reason === 'INVALID_ENUM',
+      invalidFactor,
+    );
+    /**
+     * v1.40.1 — `selfGap` 세 값을 **전부 실제로 실행한다.** v1.40에서는 한 번도
+     * 유효값으로 실행되지 않았다. 판정에 쓰이지 않는 값이라도, 실행되지 않는 값은
+     * '통과한다'고 말할 수 없다.
+     */
+    for (const selfGap of ['yes', 'some', 'no']) {
+      const result = await run({
+        status: 'dating',
+        ...SESSION,
+        experience: { ...EXPERIENCE, selfGap },
+      });
+      check(
+        `selfGap='${selfGap}'로 실제 실행된다 (Mirror 판정은 그대로)`,
+        result.ok === true &&
+          JSON.stringify(result.invariant.mirrorStates) ===
+            JSON.stringify(byStatus.dating.invariant.mirrorStates),
+        { selfGap, mirrorStates: result.invariant.mirrorStates },
+      );
+    }
+    // L0의 legacy 경로는 막지 않는다 — 알 수 없는 값을 일부러 넣는 테스트가 살아 있어야 한다.
+    check(
+      'rawStatus로 보낸 알 수 없는 값은 여전히 통과한다 (L0 legacy 테스트 보존)',
+      (await run({ rawStatus: 'legacy_unknown_value', ...SESSION })).resolution.stage === 'none',
+    );
   }
 
   /* ═══ L7 talking → dating (같은 사람) ═══════════════════════════════════ */

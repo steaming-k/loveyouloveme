@@ -17,6 +17,10 @@ import { PREMIUM_PREVIEW } from '@/lib/env';
 import { trackEvent } from '@/lib/analytics';
 import { lensAvailability } from '@/lib/logic/birth';
 import { analysisFingerprint } from '@/lib/logic/history';
+import {
+  deepReportJobContext,
+  resolveRelationshipContext,
+} from '@/lib/logic/relationshipStage';
 import { ROUTES } from '@/lib/routes';
 import {
   buildAstrologyDetail,
@@ -118,6 +122,23 @@ function PremiumPreviewView() {
     if (PREMIUM_PREVIEW && featureId) trackEvent('premium_preview_view', { feature: featureId });
   }, [featureId]);
 
+  /**
+   * v1.40.1 §38.2 — **이 화면이 v1.40 Ended Safety의 구멍이었다.**
+   *
+   * `/premium`의 리포트 본문은 `PREMIUM_PREVIEW` 뒤에 있어서, Deep Report 본문을 실제로
+   * 여는 경로는 v1.40 시점에 이 화면뿐이었다. 그런데 여기서 `buildRelationshipDeepReport`를
+   * 부를 때 Job 문맥을 **하나도 넘기지 않았고**, 그 파라미터는 optional + 기본 허용이었다.
+   * 결과: `ended` 세션으로 이 화면을 열면 `먼저 연락해봐` 계열이 그대로 나왔다.
+   *
+   * 이제 문맥은 필수 파라미터이므로 `tsc`가 이 자리를 강제한다. 화면이 술어를 직접
+   * 조합하지 않고 `deepReportJobContext()` 하나만 부른다 — 무료 화면·훅·이 화면이
+   * 같은 함수를 쓴다.
+   */
+  const lifecycle = useMemo(
+    () => deepReportJobContext(resolveRelationshipContext(answers).job),
+    [answers],
+  );
+
   const report = useMemo(() => {
     if (!featureId) return null;
 
@@ -144,7 +165,12 @@ function PremiumPreviewView() {
             : [],
         });
       case 'history_detail':
-        return buildHistoryDetail({ report: historyReport, repeated });
+        return buildHistoryDetail({
+          report: historyReport,
+          repeated,
+          // v1.40.1 — `다음 관계에서 …`를 진행 중인 관계에 쓰지 않는다.
+          hasCurrentRelationship: lifecycle.allowsOutwardAction,
+        });
       case 'mbti_detail':
         return buildMbtiDetail(mbtiLens);
       case 'astrology_detail':
@@ -160,10 +186,12 @@ function PremiumPreviewView() {
           historyReport,
           repeatedSignals: repeated,
           target: answers.target,
+          lifecycle,
         });
     }
   }, [
     featureId,
+    lifecycle,
     compatibility,
     questions,
     frictionPast,

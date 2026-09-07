@@ -29,7 +29,12 @@ import {
   useHistoryReport,
   useRepeatedSignals,
 } from '@/hooks/useAnalysis';
+import {
+  jobAllowsOutwardAction,
+  resolveRelationshipContext,
+} from '@/lib/logic/relationshipStage';
 import { useHistory } from '@/state/HistoryProvider';
+import { useSession } from '@/state/SessionProvider';
 import type { HistoryAxisChange } from '@/types';
 
 /**
@@ -48,7 +53,10 @@ export default function HistoryReportPage() {
 
 function HistoryReportView() {
   const router = useRouter();
+  const { answers } = useSession();
   const { entries } = useHistory();
+  /** v1.40.1 §38.3 — Paywall `additions`에서 지키지 못할 약속을 뺀다 */
+  const outwardAllowed = jobAllowsOutwardAction(resolveRelationshipContext(answers).job);
   const report = useHistoryReport();
   /**
    * v1.35 §10 — **비교에 참여한 두 커플 기록.**
@@ -249,6 +257,9 @@ function HistoryReportView() {
           feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
             historyComparable: report.comparable,
             deepReportAvailable: hasDeepConnection(crossSourceInsights),
+            // v1.40.1 §38.3 — v1.40에서 이 호출부가 게이트를 빼먹었다. 이 행은
+            // `additions`를 그리지 않아 노출은 없었지만, 누락 자체를 남겨두지 않는다.
+            allowsOutwardAction: outwardAllowed,
           })}
           source="history"
           hook={{

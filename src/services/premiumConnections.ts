@@ -198,37 +198,97 @@ export function selectCorePattern(connections: readonly DeepConnection[]): DeepC
 /* ------------------------------------------------------------------ Action */
 
 /**
- * §33 — 처방이 아니다. TRY / CHECK / NOTICE 세 종류로만 말한다.
+ * §33 — 처방이 아니다. TRY / CHECK / NOTICE / REFLECT 네 종류로만 말한다.
  *
  * core 연결의 축과 type에서 결정론적으로 나온다. 축을 모르면(axis === null)
  * 축 이름 없이도 성립하는 문장만 쓴다 — 없는 축 이름을 만들지 않는다.
+ *
+ * ══ v1.40.1 · §38.2 — `allowsOutwardAction`을 받는다 ═══════════════════
+ *
+ * v1.40까지 이 함수는 Job을 몰랐다. 그래서 `ended` 사용자에게도 세 줄이 그대로 나갔고,
+ * **세 줄 모두 진행 중인 관계를 전제했다:**
+ *
+ * ```
+ * TRY     … 서로 원하는 기준을 한 번 이야기해보기         → 상대와 대화하라는 제안
+ * CHECK   … 각자 어떤 의미로 받아들이는지 확인해보기       → 상대와 확인하라는 제안
+ * NOTICE  … 다시 반복되는지 다음 몇 주 동안 관찰해보기     → 관계가 계속된다는 전제
+ * ```
+ *
+ * ⚠️ **금지 어휘가 하나도 없다.** `다가가`·`고백`·`재회` 어느 것도 쓰지 않으므로
+ * v1.40의 `ENDED_FORBIDDEN` 스캔은 이 세 줄을 전부 통과시킨다. 그래서 v1.40.1은
+ * 문장을 검사하지 않고 **생성 시점에 `audience`를 못박는다**(`DeepAudience`).
+ *
+ * ⚠️ **`ended`에서 세 줄을 지우고 끝내지 않는다.** 유료 리포트가 행동 섹션 없이
+ * 끝나면 사용자는 ₩1,900의 결론을 못 받는다. 대신 **같은 연결·같은 축**에서 주어가
+ * 나인 두 줄을 만든다 — 새 해석을 만드는 게 아니라 이미 만들어진 연결을 회고의
+ * 문법으로 다시 말할 뿐이다(§37.9).
+ *
+ * ⚠️ **일반적인 이별 조언을 만들지 않는다.** `시간이 필요해`·`자신을 돌보자` 같은
+ * 문장은 이 연결 데이터에서 나오지 않으므로 여기서 만들 수 없다. 두 줄 모두 `label`
+ * (=core 연결의 축)에 묶여 있고, 축을 모르면 축 없는 형태로 떨어진다.
  */
-export function buildActions(core: DeepCorePattern | null): DeepAction[] {
+export function buildActions(
+  core: DeepCorePattern | null,
+  options: { allowsOutwardAction: boolean },
+): DeepAction[] {
   if (!core) return [];
 
   const label = core.connection.axis ? axisLabel(core.connection.axis) : null;
-  const actions: DeepAction[] = [];
 
-  actions.push({
-    kind: 'TRY',
-    text: label
-      ? `갈등이 없는 평온한 상황에서 ${label}에 대해 서로 원하는 기준을 한 번 이야기해보기.`
-      : '갈등이 없는 평온한 상황에서 서로 기대하는 기준을 한 번 이야기해보기.',
-  });
-  actions.push({
-    kind: 'CHECK',
-    text: label
-      ? `${label}이 달라지는 순간을 각자 어떤 의미로 받아들이는지 확인해보기.`
-      : '같은 상황을 각자 어떤 의미로 받아들이는지 확인해보기.',
-  });
-  actions.push({
-    kind: 'NOTICE',
-    text: label
-      ? `${label}에서 같은 장면이 다시 반복되는지 다음 몇 주 동안 관찰해보기.`
-      : '같은 장면이 다시 반복되는지 다음 몇 주 동안 관찰해보기.',
-  });
+  /**
+   * `ended`·`none` — 주어가 나인 두 줄. `JOB_ACTION_KINDS`가 허용하는
+   * `reflect`·`notice`와 **정확히 같은 두 종류**다.
+   */
+  if (!options.allowsOutwardAction) {
+    return [
+      {
+        kind: 'REFLECT',
+        audience: 'self',
+        text: label
+          ? `${label}에 대해 네가 답한 내용을 위 근거 목록과 나란히 놓고 한 번 읽어보기.`
+          : '이 연결에 쓰인 근거 목록을 위에서부터 한 번 읽어보기.',
+      },
+      {
+        kind: 'NOTICE',
+        audience: 'self',
+        // RETENTION 경로를 그대로 쓴다(§37 Job Matrix: 회고 → 기록 → 다음 관찰과 비교).
+        text: label
+          ? `${label}이 앞으로도 같은 방향으로 나오는지 다음 관찰 기록에서 알아두기.`
+          : '같은 신호가 앞으로도 같은 방향으로 나오는지 다음 관찰 기록에서 알아두기.',
+      },
+    ];
+  }
 
-  return actions;
+  return [
+    {
+      kind: 'TRY',
+      audience: 'outward',
+      text: label
+        ? `갈등이 없는 평온한 상황에서 ${label}에 대해 서로 원하는 기준을 한 번 이야기해보기.`
+        : '갈등이 없는 평온한 상황에서 서로 기대하는 기준을 한 번 이야기해보기.',
+    },
+    {
+      kind: 'CHECK',
+      audience: 'outward',
+      text: label
+        ? `${label}이 달라지는 순간을 각자 어떤 의미로 받아들이는지 확인해보기.`
+        : '같은 상황을 각자 어떤 의미로 받아들이는지 확인해보기.',
+    },
+    {
+      kind: 'NOTICE',
+      /**
+       * ⚠️ `self`가 맞다. 문장의 주어는 나이고 상대에게 아무것도 요구하지 않는다.
+       * 다만 '다시 반복되는지'가 **관계가 계속된다는 것**을 전제하므로, 위 `ended`
+       * 분기에서는 이 문장을 쓰지 않고 다음 관찰 기록을 보는 형태로 바꿨다.
+       * 즉 `audience`는 '누구를 향하나'만 말하고, '이 Job에서 성립하나'는
+       * 분기 자체가 결정한다 — 한 필드에 두 가지를 담지 않는다.
+       */
+      audience: 'self',
+      text: label
+        ? `${label}에서 같은 장면이 다시 반복되는지 다음 몇 주 동안 관찰해보기.`
+        : '같은 장면이 다시 반복되는지 다음 몇 주 동안 관찰해보기.',
+    },
+  ];
 }
 
 /* ----------------------------------------------------------------- Question */
@@ -250,9 +310,33 @@ const CONNECTION_QUESTION: Partial<Record<MirrorAxisKey, string>> = {
   hobby: '같이 하는 시간이 줄어들면, 너한테는 뭐가 먼저 아쉬워?',
 };
 
+/**
+ * ══ v1.40.1 · §38.2 — `allowsOutwardQuestions`를 받는다 ════════════════
+ *
+ * 위 `CONNECTION_QUESTION` 다섯 문장은 **설계상 전부 상대에게 던지는 질문**이다
+ * (주석 그대로: '연결 자체를 **상대에게** 검증하는 질문'). 그래서 `ended`·`none`에서는
+ * 빈 배열을 돌려준다.
+ *
+ * ⚠️ **회고 질문으로 바꿔 채우지 않는다.** 두 가지 이유이고, 둘 다 기존 원칙이다.
+ *
+ *  ① §22 — 무료 화면이 `ended`에 이미 `REFLECTION_QUESTIONS.ended` 3개를 준다.
+ *    유료에서 같은 **역할**의 질문 블록을 또 주면, v1.26이 두 섹션을 삭제하면서 세운
+ *    기준("Premium이 무료 문장을 반복하면 그 섹션은 삭제 대상")을 그대로 어긴다.
+ *  ② §37.13 — 회고는 **한 번 정리하고 닫는다.** 무료 3개 + 유료 3개는 반추 루프다.
+ *    질문을 늘리는 방향으로 유료 가치를 만들지 않는다.
+ *
+ * `ended`의 유료 가치는 이 섹션이 아니라 위 `buildActions`의 `REFLECT`/`NOTICE`가
+ * 담당한다 — **실제 연결의 축**에 묶인 두 줄이고, 무료 회고 질문은 고정 문구다.
+ *
+ * ⚠️ 새 축별 회고 문장을 만들지 않은 것도 의도다. 그건 새 심리 해석을 쓰는 일이고,
+ * 이 파일이 하지 않기로 한 것이다(파일 상단 '절대 하지 않는 것').
+ */
 export function buildConnectionQuestions(
   connections: readonly DeepConnection[],
+  options: { allowsOutwardQuestions: boolean },
 ): DeepConversationQuestion[] {
+  if (!options.allowsOutwardQuestions) return [];
+
   const seen = new Set<string>();
   const questions: DeepConversationQuestion[] = [];
 
@@ -272,6 +356,8 @@ export function buildConnectionQuestions(
         fromFriction: false,
       },
       why: connection.ruleSummary,
+      // 이 목록의 문장은 전부 상대에게 던지는 질문이다 — 예외 없이 outward다.
+      audience: 'outward',
     });
     // 3개를 넘기지 않는다 — 질문이 많아지면 목록이 되고 아무것도 묻지 않게 된다.
     if (questions.length >= 3) break;

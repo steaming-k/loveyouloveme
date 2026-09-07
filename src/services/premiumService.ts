@@ -5,6 +5,11 @@ import { HISTORY_STATE_LABEL } from '@/data/copy';
 import { PREMIUM_FAKE_DOOR, SAJU_ENGINE_READY } from '@/lib/env';
 import type { EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
 import { buildApproachHints } from '@/lib/logic/approachHints';
+/**
+ * v1.40.1 — **type만 가져온다.** 이 파일은 Job을 도출하지 않는다(stage는 evidence가
+ * 아니고, 도출은 화면·훅이 한다). 받은 문맥을 그대로 쓰기만 한다.
+ */
+import type { DeepReportJobContext } from '@/lib/logic/relationshipStage';
 import {
   buildActions,
   buildConnectionQuestions,
@@ -86,17 +91,34 @@ export function premiumFeatureState(
      */
     solo?: boolean;
     /**
-     * v1.40 §37.9 — 이 Job에서 상대를 향한 행동을 제안해도 되는가.
+     * v1.40 §37.9 · **v1.40.1 §38.3에서 필수로 바꿨다** — 이 Job에서 상대를 향한 행동을
+     * 제안해도 되는가(`jobAllowsOutwardAction(job)`).
      *
      * **eligibility·가격·status 판정에는 들어가지 않는다.** 바꾸는 것은
      * `additions` 목록에서 **지키지 못할 약속 한 줄을 빼는 것**뿐이다 —
      * `ended`에서는 리포트가 그 섹션을 만들지 않으므로(`allowsOutwardAction: false`),
      * 그대로 두면 v1.26이 세운 원칙("없는 것을 팔지 않는다")을 어긴다.
      *
-     * 생략하면 기존 동작(허용)이다.
+     * ⚠️ **v1.40에서는 optional이었고 기본값이 허용이었다. 그래서 호출부 2곳이 값을
+     * 넘기지 않았다** — `/first-contact`와 `/history/report`(v1.40.1 Audit에서 발견).
+     *
+     * **사용자에게 노출된 결함은 아니었다.** `additions`를 실제로 렌더하는 화면은
+     * `/premium` 한 곳뿐이고(`PremiumEntryRow`는 `price`·`status`·`title`·
+     * `description`·`unavailableReason`만 읽는다) 그 호출부는 v1.40부터 게이트를
+     * 넘겼다. 즉 계산된 값이 쓰이지 않았을 뿐, `ended` 사용자가 그 두 화면에서 outward
+     * 약속을 본 적은 없다.
+     *
+     * **그래도 필수로 바꿨다.** 실패 방식이 `buildRelationshipDeepReport`와 같기
+     * 때문이다: 게이트는 있고, 호출부가 빠지고, 기본값이 그것을 덮는다. 지금은
+     * 우연히 무해하지만 `PremiumEntryRow`가 언젠가 `additions`를 요약해 보여주기로
+     * 하면 그 순간 새어 나간다. 이제 새 진입점이 빼먹으면 `tsc`가 막는다.
+     *
+     * 이 값이 결과를 바꾸지 않는 feature(`mbti_detail`·`astrology_detail` —
+     * `additions`에 outward 항목이 없다)도 넘겨야 하지만, **그 판단을 호출부가
+     * 조용히 생략할 수 있게 두지 않는다.**
      */
-    allowsOutwardAction?: boolean;
-  } = {},
+    allowsOutwardAction: boolean;
+  },
 ): PremiumFeature {
   const def = PREMIUM_FEATURES[id];
 
@@ -271,8 +293,22 @@ export function buildMirrorDetail(input: {
 export function buildHistoryDetail(input: {
   report: HistoryReport;
   repeated: readonly RepeatedRelationshipSignal[];
+  /**
+   * v1.40.1 §38.2 — 지금 **진행 중인 관계가 있는** 사용자인가
+   * (`jobAllowsOutwardAction(job)`와 같은 값).
+   *
+   * ⚠️ 이 값이 없던 v1.40에서 `prompts`는 항상 `다음 관계에서 …`였다. 그래서
+   * `dating`·`married` 사용자가 유료 리포트에서 **지금 관계가 끝난 뒤를 전제한
+   * 질문**을 받았다 — `DATING_FORBIDDEN`이 `다음 관계`를 금지 어휘로 올려둔
+   * 바로 그 표현이다. Ended Safety와 **같은 종류의 결함이고 방향만 반대다.**
+   *
+   * 기본값은 `false`(= `다음 관계에서`, v1.40 동작 그대로)다. 이 함수는
+   * standalone `history_detail` 상세에서도 쓰이고, 그 화면은 아직 Job을 읽지
+   * 않는다 — 읽지 않는 곳의 동작을 조용히 바꾸지 않는다(잔여 리스크로 기록).
+   */
+  hasCurrentRelationship?: boolean;
 }): PremiumDetailReport {
-  const { report, repeated } = input;
+  const { report, repeated, hasCurrentRelationship = false } = input;
   const def = PREMIUM_FEATURES.history_detail;
 
   if (!report.comparable) {
@@ -312,8 +348,14 @@ export function buildHistoryDetail(input: {
     available: true,
     freeRecap: def.freeRecap,
     sections,
-    prompts: repeated.map(
-      (signal) => `다음 관계에서 ${signal.label}은 어떻게 다르게 해보고 싶어?`,
+    /**
+     * v1.40.1 — 관계가 진행 중이면 **지금 관계**를 주어로 쓴다. 같은 반복 신호를
+     * 두고 시점만 바꾸는 것이고, 신호 판정·개수는 그대로다.
+     */
+    prompts: repeated.map((signal) =>
+      hasCurrentRelationship
+        ? `지금 관계에서 ${signal.label}은 어떻게 다르게 해보고 싶어?`
+        : `다음 관계에서 ${signal.label}은 어떻게 다르게 해보고 싶어?`,
     ),
     closing: report.summary,
     limitations: [
@@ -537,18 +579,26 @@ export function buildRelationshipDeepReport(input: {
   repeatedSignals: readonly RepeatedRelationshipSignal[];
   target: TargetProfile;
   /**
-   * v1.40 §37.9 — 이 Job에서 **상대를 향한 행동**을 제안해도 되는가
-   * (`jobAllowsOutwardAction(job)`).
+   * v1.40 §37.9 · **v1.40.1 §38.2에서 필수로 바꿨다** — 이 Job에서 무엇을 만들어도
+   * 되는가. `deepReportJobContext(job)`(`logic/relationshipStage.ts`)가 만든다.
    *
    * ⚠️ 유료 리포트에도 같은 안전 규칙을 적용한다. 관계가 끝났다고 답한 사용자가 돈을 내고
    * `먼저 연락해봐` · `제안해봐`를 받는 것은 무료 화면에서 그 문구를 막은 이유와 정확히
    * 같은 이유로 막아야 한다 — Ended Safety는 무료/유료 경계와 무관하다.
    *
-   * ⚠️ eligibility·가격·rank·연결 생성에는 **들어가지 않는다.** 이 값은 이미 만들어진
-   * 리포트에서 outward action 섹션 하나를 그릴지만 가른다(§37 stage는 evidence가 아니다).
-   * 생략하면 기존 동작(허용)이다 — 호출부를 강제로 바꾸지 않는다.
+   * ⚠️ **v1.40에서는 이 값이 optional이었고 기본값이 허용이었다.** 그 결정이
+   * v1.40.1이 닫는 결함을 만들었다: 호출부가 두 곳인데
+   * `hooks/useDeepReport.ts`만 값을 넘겼고, 값을 안 넘긴
+   * `app/premium-preview/[feature]/page.tsx`가 **Deep Report 본문을 실제로 여는
+   * 유일한 경로**였다. 그래서 게이트는 코드에 있었지만 화면에는 적용되지 않았다.
+   * 이제 필수다 — 새 호출부가 빼먹으면 `tsc`가 막는다. 기본값으로 안전을 보장할 수
+   * 있다는 가정을 버렸다.
+   *
+   * ⚠️ eligibility·가격·rank·연결 생성에는 **들어가지 않는다.** 이 값이 가르는 것은
+   * (a) outward 행동·질문을 만들지 (b) 섹션 제목을 무엇으로 쓸지 두 가지뿐이다
+   * (§37 stage는 evidence가 아니다).
    */
-  allowsOutwardAction?: boolean;
+  lifecycle: DeepReportJobContext;
 }): RelationshipDeepReport {
   const {
     insights,
@@ -558,8 +608,9 @@ export function buildRelationshipDeepReport(input: {
     historyReport,
     repeatedSignals,
     target,
-    allowsOutwardAction = true,
+    lifecycle,
   } = input;
+  const { allowsOutwardAction, allowsOutwardQuestions, actionSectionTitle } = lifecycle;
 
   /**
    * v1.26 P3-3 — **연결(Connection)이 이 리포트의 1급 시민이다.**
@@ -577,7 +628,12 @@ export function buildRelationshipDeepReport(input: {
   const singleSourceNotes = allConnections.filter((connection) => connection.sourceCount < 2);
 
   const historyDeep = historyReport.comparable
-    ? buildHistoryDetail({ report: historyReport, repeated: repeatedSignals })
+    ? buildHistoryDetail({
+        report: historyReport,
+        repeated: repeatedSignals,
+        // v1.40.1 — `다음 관계에서 …`를 진행 중인 관계에 쓰지 않는다.
+        hasCurrentRelationship: allowsOutwardAction,
+      })
     : null;
 
   return {
@@ -587,8 +643,10 @@ export function buildRelationshipDeepReport(input: {
     corePattern,
     connections,
     singleSourceNotes,
-    actions: buildActions(corePattern),
-    connectionQuestions: buildConnectionQuestions(allConnections),
+    // v1.40.1 §38.2 — 세 자리 전부 같은 Job 문맥을 받는다. 한 곳만 받으면 그게 v1.40이다.
+    actions: buildActions(corePattern, { allowsOutwardAction }),
+    connectionQuestions: buildConnectionQuestions(allConnections, { allowsOutwardQuestions }),
+    actionSectionTitle,
     lovyObservation: selectDeepObservation(corePattern, insights),
     historyDeep,
     approachInsight: allowsOutwardAction ? approachInsightFor(target, compatibility) : null,

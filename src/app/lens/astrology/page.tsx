@@ -28,6 +28,10 @@ import {
   buildAstrologyCompatibility,
   buildAstrologySelfLens,
 } from '@/services/astrologyService';
+import {
+  jobAllowsOutwardAction,
+  resolveRelationshipContext,
+} from '@/lib/logic/relationshipStage';
 import { useSession } from '@/state/SessionProvider';
 
 /**
@@ -212,7 +216,9 @@ function AstrologyLensView() {
 
         {/* Natal Chart를 가짜로 만들지 않으므로, 상세도 현재 구현 가능한 범위만 제안한다(§20) */}
         <PremiumEntryRow
+          /* v1.40.1 §38.3 — 필수 파라미터. 하드코딩하지 않고 실제 Job에서 도출한다 */
           feature={premiumFeatureState('astrology_detail', resolvePrice(variant), {
+            allowsOutwardAction: jobAllowsOutwardAction(resolveRelationshipContext(answers).job),
             astrologyAvailable: availability.couple,
           })}
         />

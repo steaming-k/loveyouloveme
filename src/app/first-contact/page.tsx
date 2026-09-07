@@ -34,6 +34,10 @@ import { historyCountBucket } from '@/lib/analytics';
 import { analysisFingerprint } from '@/lib/logic/history';
 import { buildSoloHistoryEntry } from '@/lib/logic/soloHistory';
 import { useHistory } from '@/state/HistoryProvider';
+import {
+  jobAllowsOutwardAction,
+  resolveRelationshipContext,
+} from '@/lib/logic/relationshipStage';
 import { useSession } from '@/state/SessionProvider';
 
 /**
@@ -131,9 +135,21 @@ export default function FirstContactPage() {
    */
   const [priceVariant] = useState(() => resolvePriceVariant());
   const crossSourceInsights = useCrossSourceInsights();
+  /**
+   * v1.40.1 §38.3 — v1.40에서 이 호출부가 `allowsOutwardAction`을 넘기지 않았다.
+   *
+   * 이 Route는 비교할 상대가 없는 사용자용이고, `ended` + 상대 정보 없음인 사용자도
+   * 정확히 여기로 온다(`job = 'ended'`). 다만 **이 화면은 `feature.additions`를 그리지
+   * 않으므로**(`PremiumEntryRow`는 `price`·`status`·`title`·`description`만 읽는다)
+   * 사용자에게 outward 약속이 보인 적은 없다 — 계산이 쓰이지 않았을 뿐이다.
+   *
+   * 그래도 게이트를 넘긴다: 파라미터가 필수가 됐고, `PremiumEntryRow`가 나중에
+   * `additions`를 보여주기로 하면 그때 새어 나갈 자리이기 때문이다.
+   */
   const premiumFeature = premiumFeatureState('relationship_deep_report', resolvePrice(priceVariant), {
     deepReportAvailable: hasDeepConnection(crossSourceInsights),
     solo: true,
+    allowsOutwardAction: jobAllowsOutwardAction(resolveRelationshipContext(answers).job),
   });
 
   /**

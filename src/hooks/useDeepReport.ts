@@ -10,7 +10,7 @@ import {
 import { useCompatibility, useHistoryReport, useRepeatedSignals } from '@/hooks/useAnalysis';
 import { analysisFingerprint } from '@/lib/logic/history';
 import {
-  jobAllowsOutwardAction,
+  deepReportJobContext,
   resolveRelationshipContext,
 } from '@/lib/logic/relationshipStage';
 import { buildRelationshipDeepReport } from '@/services/premiumService';
@@ -60,8 +60,12 @@ export function useDeepReport(enabled: boolean) {
         historyReport,
         repeatedSignals: repeated,
         target: answers.target,
-        // v1.40 §37.9 — Ended Safety는 무료/유료 경계와 무관하다. 화면과 **같은 술어**를 쓴다.
-        allowsOutwardAction: jobAllowsOutwardAction(resolveRelationshipContext(answers).job),
+        /**
+         * v1.40 §37.9 — Ended Safety는 무료/유료 경계와 무관하다. 화면과 **같은 술어**를 쓴다.
+         * v1.40.1 §38.2 — 술어 하나가 아니라 문맥 객체 하나를 넘긴다. 넘길 값이
+         * 늘어날 때마다 호출부를 고치면 또 한 곳이 빠진다 — 그게 v1.40의 결함이었다.
+         */
+        lifecycle: deepReportJobContext(resolveRelationshipContext(answers).job),
       }),
     [insights, narrative.data, resolverContext, compatibility, historyReport, repeated, answers],
   );
