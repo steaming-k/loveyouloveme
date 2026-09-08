@@ -1,6 +1,7 @@
 'use client';
 
 import { trackEvent } from '@/lib/analytics';
+import { PROMPT_VERSIONS } from './promptVersions';
 import type { AiFailureReason, AiTask } from '@/types';
 
 /**
@@ -70,8 +71,45 @@ export function clearAiDebugLog(): void {
   debugLog.length = 0;
 }
 
+/**
+ * Task → 그 Task가 쓰는 Prompt 버전. (v1.42 · §40.12)
+ *
+ * ⚠️ **새 source of truth가 아니다.** 값은 전부 `PROMPT_VERSIONS`에서 읽는다. 이 표가
+ * 하는 일은 `AiTask`(라우트 단위)와 `PROMPT_VERSIONS`(프롬프트 단위)의 이름이 하나만
+ * 다르다는 것(`observed-profile` ↔ `observed`)을 메우는 것뿐이고, `Record<AiTask, …>`라
+ * Task가 늘면 `tsc`가 채우라고 막는다.
+ */
+const TASK_PROMPT_VERSION: Record<AiTask, string> = {
+  'observed-profile': PROMPT_VERSIONS.observed,
+  'relationship-insight': PROMPT_VERSIONS.relationship,
+  'compatibility-narrative': PROMPT_VERSIONS.compatibility,
+  'history-insight': PROMPT_VERSIONS.history,
+  'deep-report-narrative': PROMPT_VERSIONS.deepReport,
+};
+
+/**
+ * 캐시 키. (v1.42 — `promptVersion`이 들어왔다 · §40.12)
+ *
+ * ══ 왜 promptVersion이 키에 있어야 하는가 ═════════════════════════════════
+ *
+ * v1.41까지 `task::fingerprint`였다. 지문은 **입력**만 해싱하므로 프롬프트가 바뀌어도
+ * 지문은 그대로다 — `promptVersions.ts`의 `deepReport` 주석이 v1.27부터 이 위험을
+ * 적어 두고 있었다("캐시 키에 promptVersion이 함께 들어가는지가 관건").
+ *
+ * v1.42가 실제로 그 상황을 만든다: `relationship`을 v2 → v3으로 올리면서 프롬프트에
+ * 시제 계약을 넣었다. 같은 dev 세션에서 HMR로 코드만 갈리면 모듈 스코프 `Map`은
+ * 살아 있으므로, **v2 프롬프트가 만든 문장이 v3 계약의 결과인 것처럼 나온다.**
+ *
+ * ⚠️ 실패 형태가 무해한 방향이라는 점이 이 변경을 안전하게 한다. 키가 달라지면 캐시가
+ * 비는 것뿐이고(요청 한 번 더), 틀린 응답이 나올 수는 없다. 반대 방향(키를 안 넣는
+ * 것)의 실패는 **틀린 응답이 조용히 나오는 것**이다.
+ *
+ * ⚠️ 함수 시그니처는 그대로 `(task, fingerprint)`다. `getCachedAiResult` ·
+ * `clearAiCacheEntry` · `callAiTask` 세 곳이 전부 이 헬퍼를 쓰므로 호출부 변경이 0이고,
+ * 세 함수가 같은 키를 만든다는 성질도 유지된다(한 곳만 바뀌면 재시도가 캐시를 못 지운다).
+ */
 function cacheKey(task: AiTask, fingerprint: string): string {
-  return `${task}::${fingerprint}`;
+  return `${task}::${TASK_PROMPT_VERSION[task]}::${fingerprint}`;
 }
 
 /** 클라이언트 타임아웃 — 서버보다 약간 길게 둬서 서버 분류를 우선한다 */

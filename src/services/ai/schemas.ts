@@ -70,6 +70,25 @@ const CATEGORIES: readonly ObservedCategory[] = ['interest', 'activity', 'social
 const EVIDENCE_SOURCES = [
   'declared',
   'relationship',
+  /**
+   * v1.42 §41.2 — **v1.41에서 빠져 있었다.**
+   *
+   * `EvidenceRef`에는 v1.41부터 있었는데(§39.8) 이 목록에는 추가되지 않았다. 바로 위
+   * 주석이 "이 목록은 `EvidenceRef` 타입과 항상 같이 움직여야 한다"고 적어둔 그 규칙이
+   * 실제로 깨진 자리다.
+   *
+   * 결과: 결정론 엔진은 `{source:'current_relationship'}` ref를 만드는데
+   * (`relationshipRefFor`), AI가 **같은 ref를 정확히 인용해도** `parseEvidenceRef`가
+   * `oneOf`에서 걸러 조용히 버렸다. 근거 0개가 된 항목은
+   * `parseRelationshipResponse`에서 **위반 라벨 하나 없이** 떨어졌고, 살아남은 항목은
+   * 같은 축을 `relationship`(과거 경험)으로 **귀속**했다.
+   *
+   * ⚠️ **AI가 새 근거를 만드는 것이 아니다.** 이 값이 허용되는 것은 '이미 결정론
+   * 엔진이 만든 ref를 정확히 되짚을 수 있게' 하는 것뿐이고, deep-report는
+   * `evidenceRefsAreSubsetOf`가 원래 Insight의 ref 집합으로 계속 제한한다 —
+   * `AI_OUTPUT ⊆ DETERMINISTIC_EVIDENCE`는 그대로다.
+   */
+  'current_relationship',
   'adaptive',
   'observed',
   'history',

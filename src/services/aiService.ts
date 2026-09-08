@@ -209,22 +209,59 @@ export function requestRelationshipNarrative(input: {
   answers: SessionAnswers;
   mirror: MirrorReport;
   validated: readonly ValidatedObservation[];
+  /**
+   * v1.42 §40.8 — 필수. `relationshipTenseOf(job)`이 만든 값을 그대로 넘긴다.
+   *
+   * ⚠️ `answers.status`에서 여기서 다시 도출하지 않는다. 그러면 `relationshipStage.ts`
+   * 밖에 두 번째 판정이 생기고, 두 판정이 갈리는 순간 화면과 AI가 서로 다른 시제를
+   * 쓴다 — v1.41이 `relationshipTenseOf()`를 단일 source로 둔 이유 그대로다(§40.10).
+   */
+  tense: RelationshipTense;
+  /**
+   * v1.42 §41.8 — **`jobAllowsOutwardQuestions(job)`에서 온 값.** 필수다.
+   *
+   * ⚠️ 이 값은 **프롬프트 입력이 아니다.** AI에게 Job을 알려주지 않는다는 v1.42의
+   * 결정은 그대로이고, 이건 응답을 받은 뒤 `question`을 남길지 정하는 **post-processing
+   * 안전 문맥**이다. 그래서 `buildRelationshipContext`에 넘기지 않고 요청 최상위로만
+   * 보낸다.
+   *
+   * ⚠️ 호출부에서 `if (status === 'ended')`를 새로 만들지 않는다 — 결정론 질문을
+   * 막는 것과 **같은 술어**를 쓴다(§41.10 단일 source).
+   */
+  allowsOutwardQuestions: boolean;
   pastObservations?: readonly { axis: string; entryId: string; note: string }[];
   fingerprint: string;
 }): Promise<
   { ok: true; data: RelationshipNarrativeBundle } | { ok: false; reason: AiFailureReason }
 > {
-  const { answers, mirror, validated, pastObservations, fingerprint } = input;
+  const {
+    answers,
+    mirror,
+    validated,
+    tense,
+    allowsOutwardQuestions,
+    pastObservations,
+    fingerprint,
+  } = input;
 
   return requestNarrative<RelationshipNarrativeBundle>('relationship-insight', fingerprint, {
     context: buildRelationshipContext({
       answers,
       mirror,
       validated: analysisReadyObservations(validated),
+      tense,
       pastObservations,
     }),
     judgements: mirror.insights.map((insight) => ({ axis: insight.key, state: insight.state })),
     focusAxis: mirror.teaser?.axisKey ?? null,
+    /** v1.42 §41.8 — 서버가 응답 후처리에서만 읽는다. 프롬프트에 들어가지 않는다 */
+    allowsOutwardQuestions,
+    /**
+     * v1.42 §40.13 — **서버의 tense scanner가 읽는다.** context 안에도 같은 값이
+     * 있지만 핸들러는 `context`를 `unknown`으로 받으므로(프롬프트에 그대로 실어
+     * 보내는 것이 유일한 책임), 검사에 쓸 값은 요청 최상위에서 따로 받는다.
+     */
+    tense,
   });
 }
 

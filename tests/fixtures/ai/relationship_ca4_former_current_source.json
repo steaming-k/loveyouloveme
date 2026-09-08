@@ -1,0 +1,50 @@
+{
+  "name": "relationship_ca4_former_current_source",
+  "description": "CA4 (v1.42 §41.5) — SOURCE PROVENANCE와 NARRATIVE TENSE의 분리. 관계가 끝난 사용자(tense=former)가 연애 중일 때 답해둔 S30 근거는 source가 current_relationship으로 **그대로 유지**되고, 시제만 과거형이다. source를 relationship(과거 경험)으로 바꿔치면 S15~S17에서 답한 것처럼 위장하는 것이고, 지우면 회고의 재료를 없애는 것이다(§39.8).",
+  "task": "relationship-insight",
+  "tense": "former",
+  "allowsOutwardQuestions": false,
+  "judgements": [
+    {
+      "axis": "contact",
+      "state": "GAP"
+    },
+    {
+      "axis": "alone",
+      "state": "MATCH"
+    }
+  ],
+  "focusAxis": "contact",
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "GAP",
+        "headline": "연락은 낮게 답했는데 그때는 크게 반응했어",
+        "explanation": "연락 중요도는 낮게 골랐는데, 그때 이 관계에서는 바로 알아차린다고 답했어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "contact"
+          },
+          {
+            "source": "current_relationship",
+            "field": "contact"
+          }
+        ]
+      }
+    ],
+    "core": null
+  },
+  "expect": {
+    "narrativeCount": 1,
+    "evidenceSources": [
+      [
+        "declared",
+        "current_relationship"
+      ]
+    ],
+    "questionCount": 0,
+    "violations": []
+  }
+}

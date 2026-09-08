@@ -29,9 +29,33 @@ export async function POST(request: Request): Promise<Response> {
     return failureResponse('INVALID_OUTPUT', requestId, 400);
   }
 
-  const { inputFingerprint, context, judgements, focusAxis } = body as Record<string, unknown>;
+  const { inputFingerprint, context, judgements, focusAxis, tense, allowsOutwardQuestions } =
+    body as Record<string, unknown>;
 
   if (typeof inputFingerprint !== 'string' || !Array.isArray(judgements)) {
+    return failureResponse('INVALID_OUTPUT', requestId, 400);
+  }
+
+  /**
+   * v1.42 §40.8 — **`tense`는 필수이고 기본값이 없다.**
+   *
+   * `?? 'current'`로 떨어뜨리고 싶어지는데, 그게 정확히 v1.40.1이 닫은 실패 형태다:
+   * 안전 게이트에 관용적인 기본값을 주면 값을 빼먹은 호출부가 조용히 가장 위험한
+   * 쪽으로 간다. 여기서 `'current'`가 기본값이면 관계가 끝난 사용자의 요청이 시제
+   * 검사를 통과해버린다 — 검사가 가장 필요한 경우다.
+   *
+   * 그래서 없으면 400이다. 클라이언트는 `tsc`가 강제하므로 항상 보낸다.
+   */
+  if (tense !== 'current' && tense !== 'former') {
+    return failureResponse('INVALID_OUTPUT', requestId, 400);
+  }
+
+  /**
+   * v1.42 §41.8 — **Job 안전 게이트도 같은 규칙이다.** `?? true`로 떨어뜨리지 않는다 —
+   * 기본값이 허용이면 값을 빼먹은 호출부가 조용히 `ended` 사용자에게 상대를 향한 질문을
+   * 보낸다. 검사가 가장 필요한 경우다.
+   */
+  if (typeof allowsOutwardQuestions !== 'boolean') {
     return failureResponse('INVALID_OUTPUT', requestId, 400);
   }
 
@@ -40,6 +64,8 @@ export async function POST(request: Request): Promise<Response> {
     context,
     judgements: judgements as never,
     focusAxis: (typeof focusAxis === 'string' ? focusAxis : null) as never,
+    tense,
+    allowsOutwardQuestions,
   });
 
   const durationMs = Date.now() - startedAt;

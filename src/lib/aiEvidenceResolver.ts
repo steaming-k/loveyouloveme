@@ -1,5 +1,10 @@
 import { adaptiveOptionLabel } from '@/data/adaptive';
 import { currentSignalLabel } from '@/data/currentRelationship';
+import {
+  currentEvidenceLabel,
+  currentEvidencePrefix,
+  type RelationshipTense,
+} from '@/lib/logic/relationshipEvidence';
 import { AXIS_DEFINITIONS, MIRROR_AXES } from '@/data/axes';
 import { DEEP_QUESTION_BANK, type DeepQuestionTemplate } from '@/data/deepQuestions';
 import {
@@ -50,6 +55,12 @@ export type EvidenceSourceLabel =
    * 근거 목록에서 두 시점이 한 출처로 보이고, 그러면 `정보 N종`이 거짓이 된다.
    */
   | '지금 관계'
+  /**
+   * v1.42 §41.4 — 같은 근거를 `ended`에서 부르는 이름. **source는 그대로
+   * `current_relationship`이고 `key`도 그대로다** — 바뀌는 것은 칩에 보이는 글자뿐이다
+   * (SOURCE PROVENANCE ≠ NARRATIVE TENSE).
+   */
+  | '그때 이 관계'
   | '추가 질문'
   | '사진에서 관찰'
   | '사용자 수정'
@@ -81,6 +92,21 @@ export interface ResolvedEvidence {
 export interface EvidenceResolverContext {
   answers: SessionAnswers;
   validated: readonly ValidatedObservation[];
+  /**
+   * v1.42 §41.4 — 지금 관계 근거를 **부르는 시제**. `relationshipTenseOf(job)`이 만든다.
+   *
+   * ⚠️ **필수다.** v1.41까지 이 자리가 없어서 `resolveCurrentRelationship`이
+   * `지금 관계에서`를 하드코딩했고, `ended` 사용자의 Premium 연결 근거 목록
+   * (`connection.evidence[].text`)과 source 라벨 칩에 현재형이 남았다. 그 문자열은
+   * fixture가 훑는 `renderedStrings`에 **없던 자리**라 검사되지 않았다 — §39.9와
+   * 정확히 같은 실패 형태다.
+   *
+   * ⚠️ 기본값을 두지 않는다. `'current'`가 기본값이면 새 호출부가 조용히 현재형으로
+   * 떨어지고, 그건 `ended` 사용자에게 가장 위험한 기본값이다(v1.40.1 §38.2).
+   *
+   * ⚠️ evidence를 **고르지 않는다.** 이미 정해진 근거를 부를 때 쓰는 호칭이다.
+   */
+  tense: RelationshipTense;
   historyEntries?: readonly RelationshipHistoryEntry[];
   /** v1.9 — Premium Adaptive Deep Question 답변. 없으면 target/deep_followup ref는 해석되지 않는다 */
   deepAnswers?: readonly DeepAnalysisAnswer[];
@@ -168,7 +194,11 @@ function resolveDeclared(field: string, answers: SessionAnswers): string | null 
  * ⚠️ `unsure`(아직 그런 상황이 없었어)도 **문장으로 만들지 않는다.** 답한 것은
  * 사실이지만 근거가 아니고, 근거 목록에 넣으면 개수를 채우는 셈이 된다.
  */
-function resolveCurrentRelationship(field: string, answers: SessionAnswers): string | null {
+function resolveCurrentRelationship(
+  field: string,
+  answers: SessionAnswers,
+  tense: RelationshipTense,
+): string | null {
   const axis = MIRROR_AXES.find((item) => item.key === field);
   if (!axis) return null;
 
@@ -176,7 +206,21 @@ function resolveCurrentRelationship(field: string, answers: SessionAnswers): str
   if (answer === undefined || answer === 'unsure') return null;
 
   const label = currentSignalLabel(axis.key, answer);
-  return label ? `${axis.label}에 대해 지금 관계에서 ${quoted(label)}라고 답했어` : null;
+  /**
+   * v1.42 §41.4 — `지금 관계에서`를 하드코딩하지 않는다. 문구는
+   * `currentEvidencePrefix(tense)` 하나에서만 나온다 — Mirror 행 문장과 **같은 함수**다.
+   */
+  /**
+   * ⚠️ v1.42 — **`quoted()`를 쓰지 않는다.** 그 헬퍼는 목적격 조사(을/를)를 붙이므로
+   * `~을 골랐어` 계열 문장에는 맞지만 여기서는 뒤에 `라고`가 온다. v1.41은 그대로
+   * 써서 실제 화면에 `'바로 알아차리고 마음이 쓰여'를라고 답했어`가 나왔다 —
+   * 이 문자열이 어떤 fixture의 검사 배열에도 없어서 아무도 보지 못했다(§41.4에서
+   * `renderedStrings`를 넓히자 바로 드러났다).
+   *
+   * Mirror 행 문장(`relationshipSignalTextOf`)은 같은 자리에서 조사 없는 따옴표를
+   * 쓴다 — 두 문장이 같은 답을 인용하므로 형태도 같아야 한다.
+   */
+  return label ? `${axis.label}에 대해 ${currentEvidencePrefix(tense)} '${label}'라고 답했어` : null;
 }
 
 /* ----------------------------------------------------- relationship */
@@ -406,9 +450,18 @@ export function resolveEvidenceRef(
      * 시제가 거짓이 된다.
      */
     case 'current_relationship': {
-      const text = resolveCurrentRelationship(ref.field, context.answers);
+      const text = resolveCurrentRelationship(ref.field, context.answers, context.tense);
       return text
-        ? { key: `current_relationship:${ref.field}`, sourceLabel: '지금 관계', text }
+        ? {
+            key: `current_relationship:${ref.field}`,
+            /**
+             * v1.42 §41.4 — 칩 라벨도 시제를 따른다(`그때 이 관계`). `key`는 **그대로**다 —
+             * React key이자 중복 제거 식별자이고, 시제 때문에 근거의 정체성이 달라지지
+             * 않는다(§41.5 SOURCE PROVENANCE ≠ NARRATIVE TENSE).
+             */
+            sourceLabel: currentEvidenceLabel(context.tense),
+            text,
+          }
         : null;
     }
     case 'adaptive': {

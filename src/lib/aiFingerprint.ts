@@ -1,13 +1,15 @@
+import { MIRROR_AXES } from '@/data/axes';
+import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import type {
   CompatibilityResult,
   CrossSourceInsight,
+  CurrentRelationshipEvidence,
   DeclaredPreference,
   DeepAnalysisAnswer,
   HistoryAxisChange,
   MirrorAxisKey,
   RelationshipExperience,
   RelationshipHistoryEntry,
-  RelationshipStatus,
   TargetProfile,
   ValidatedObservation,
 } from '@/types';
@@ -67,23 +69,133 @@ export function compatibilityNarrativeFingerprint(
 }
 
 /**
+ * 지금 관계 근거(S30)를 **축 순서를 고정해서** 지문 조각으로 만든다. (v1.42 · §40.4)
+ *
+ * ══ 왜 `Object.entries`를 쓰지 않는가 ═════════════════════════════════════
+ *
+ * `signals`는 `Partial<Record<MirrorAxisKey, CurrentSignalAnswer>>`이고, 객체 키 순서는
+ * **사용자가 S30에서 답한 순서**다. 연락 → 갈등 순으로 답한 사용자와 갈등 → 연락 순으로
+ * 답한 사용자는 **같은 답을 갖고도 다른 지문**을 받게 되고, 그러면 같은 근거에 대해 AI를
+ * 두 번 부른다. 판정은 `MIRROR_AXES`만 조회하므로 순서에 무관한데 지문만 순서에 민감한
+ * 상태는 그냥 버그다.
+ *
+ * 그래서 `MIRROR_AXES` 순서로 훑는다 — Mirror가 축을 조회하는 것과 **같은 순서**다.
+ *
+ * ⚠️ `askedAt`은 넣지 않는다. 같은 답을 다시 저장하면 timestamp만 달라지는데, 그걸
+ * 지문에 넣으면 **답이 같아도 AI를 다시 부른다**(F2가 검사한다). 지문은 '무엇을
+ * 답했는가'만 본다.
+ *
+ * ⚠️ 답하지 않은 축은 `-`다. `unsure`(아직 그런 상황이 없었어)와 **구분된다** —
+ * `unsure`는 사용자가 고른 보기이고 `resolveAxisEvidence`가 과거로 넘길지 결정하는
+ * 입력이므로, 지문에서도 '답하지 않음'과 같은 값으로 뭉개지 않는다.
+ */
+function currentParts(current: CurrentRelationshipEvidence): (string | null)[] {
+  return MIRROR_AXES.map(({ key }) => {
+    const answer = current.signals[key];
+    return answer === undefined ? null : `${key}:${answer}`;
+  });
+}
+
+/**
  * Relationship Narrative — Declared + Experience + Adaptive + focusAxis +
  * **사용자가 검증한 관찰**이 기준이다.
  *
  * S09에서 관찰을 고치거나 제외하면 지문이 바뀌어 설명이 다시 만들어진다(§42).
+ *
+ * ══ v1.42 — 지문은 **AI 요청과 같은 것**을 담는다 (§40.3~§40.5) ═══════════════
+ *
+ * 두 가지가 바뀌었고, 둘 다 같은 규칙에서 나온다: **AI 응답을 결정하는 값이 지문에
+ * 없으면 캐시가 틀린 답을 돌려준다.**
+ *
+ * ```
+ * 추가   current                 S30 답변이 판정·근거 문장을 바꾼다    → 있어야 한다
+ * 제거   status                  AI context에서 없어졌다(§40.7)        → 있을 이유가 없다
+ * 추가   tense                   status 대신 AI가 받는 값               → 있어야 한다
+ * 추가   allowsOutwardQuestions  서버가 응답에서 question을 지운다(§42) → 있어야 한다
+ * ```
+ *
+ * ⚠️ **`current`가 없던 것이 v1.41의 실제 결함이었다.** `/mirror`에서 AI 설명을 만든 뒤
+ * `/profile/current`로 가서 S30을 답하고 돌아오면, Mirror의 오른쪽 칸은 `지금 관계에서
+ * "…"라고 답함`으로 바뀌는데 지문은 그대로였다 — `focusAxis`가 우연히 바뀌지 않으면
+ * (`pickFocus`는 `MIRROR_AXES` 순서의 첫 매치를 고르므로 앞선 축이 이미 GAP이면 뒤쪽
+ * 축을 답해도 안 바뀐다) 모듈 스코프 캐시가 **이전 관계 근거를 설명하던 문장**을 그대로
+ * 돌려줬다. 행과 AI 설명이 서로 다른 시점을 말하는 화면이 된다.
+ *
+ * ⚠️ **`status` 6종을 `tense` 2종으로 좁힌 것은 우연한 정리가 아니다.** 지문은 AI가 받는
+ * 것을 담아야 하고, v1.42부터 AI는 `status`를 받지 않는다(§40.7). 그래서 부수 효과가
+ * 하나 생기는데 그게 **의도한 것**이다: `talking` → `dating`처럼 근거가 그대로이고 tense도
+ * 같은 단계 변경은 이제 **같은 지문**이다. 같은 근거·같은 시제에 대해 같은 설명을 두 번
+ * 만들지 않는다 — v1.41의 `stage ≠ evidence`가 캐시 층에서도 성립한다(F5).
+ *
+ * 반대로 `dating` → `ended`는 tense가 `current` → `former`로 바뀌므로 **반드시** 지문이
+ * 달라진다. 그게 없으면 관계가 끝난 사용자가 현재형으로 쓰인 캐시 문장을 받는다.
  */
 export function relationshipNarrativeFingerprint(input: {
-  status: RelationshipStatus | null;
+  /**
+   * v1.42 — `status: RelationshipStatus | null`을 대체했다. 이 지문에 raw stage가
+   * 들어갈 자리는 없다 — AI가 받지 않는 값은 캐시 키도 아니다(§40.5).
+   */
+  tense: RelationshipTense;
+  /**
+   * v1.42 Final Cache Safety — **RESPONSE SAFETY POLICY CONTEXT.** (§42)
+   *
+   * ══ 왜 지문에 들어가야 하는가 ═══════════════════════════════════════════
+   *
+   * 이 값은 stage도 job도 evidence도 아니다. AI가 **생성할 사실**을 바꾸지 않는다 —
+   * 프롬프트에 들어가지도 않는다(§41.8). 그런데 **서버가 저장 전에 응답에서
+   * `question`을 지운다**(`applyOutwardQuestionGate`).
+   *
+   * 그리고 클라이언트 캐시가 저장하는 것은 provider raw가 아니라 **그 후처리까지 끝난
+   * 최종 응답**이다(`aiClient.callAiTask`의 `cache.set(key, json.data)`).
+   *
+   * ```
+   * 최종 응답이 이 boolean에 따라 달라진다  →  캐시 identity에 포함해야 한다
+   * ```
+   *
+   * ⚠️ **실측으로 재현된 결함이다.** `target`과 `status`는 **둘 다** 이 지문에 없다
+   * (`target`은 v1.0부터, `status`는 §40.5에서 뺐다). 그래서 그 두 값만 달라지는
+   * 세션들이 같은 지문을 갖는데 `job`은 갈린다.
+   *
+   * ```
+   * dating + 상대 3축         job dating   allow true    fp X
+   * 새로운 사람과 궁합 보기    job unknown  allow true    fp X   (target은 지문에 없다)
+   * S05에서 '솔로' 선택       job none     allow FALSE   fp X   ← 여기서 겹쳤다
+   * ```
+   *
+   * tense는 세 줄 모두 `current`이고 declared·experience·current·focusAxis·validated가
+   * 전부 그대로다. 그러면 캐시 히트로 **질문이 붙은 이전 응답이 job=`none`
+   * 사용자에게 그대로 나온다.**
+   *
+   * ⚠️ **S30에 답한 세션에서는 이 경로가 성립하지 않는다** — `resetTargetContext()`가
+   * §39.20에 따라 `currentRelationship`도 비우므로 지문이 그것 때문에 이미 달라진다.
+   * 즉 결함은 **S30을 답하지 않은 세션**에서만 도달 가능하고, S30이 선택 입력이므로
+   * 그쪽이 다수다.
+   *
+   * ⚠️ **boolean 하나만 넣는다.** `job`·`stage`·`status` 문자열을 넣으면 §40.5가 뺀
+   * 것을 되돌리는 셈이다. boolean 1개면 `crush`↔`dating`(둘 다 허용)은 여전히 같은
+   * 지문이고, `none`↔`dating`(금지↔허용)만 갈라진다 — 정확히 필요한 만큼만 나눈다.
+   *
+   * ⚠️ 이 필드가 지문의 역할을 다시 정의한다: 지문은 '사실 근거의 집합'이 아니라
+   * **'같은 최종 응답을 재사용해도 되는 입력 집합'**이다. `tense`가 이미 그 성격이었다
+   * (시제도 evidence가 아니다).
+   */
+  allowsOutwardQuestions: boolean;
   declared: DeclaredPreference;
   experience: RelationshipExperience;
+  /** v1.42 — S30. 이것이 빠져 있던 것이 stale narrative 결함의 원인이다 */
+  current: CurrentRelationshipEvidence;
   focusAxis: MirrorAxisKey | null;
   validated: readonly ValidatedObservation[];
 }): string {
-  const { status, declared, experience, focusAxis, validated } = input;
+  const { tense, allowsOutwardQuestions, declared, experience, current, focusAxis, validated } =
+    input;
 
   return `rel_${digest([
-    status,
+    tense,
+    // 문자열로 고정한다 — boolean이 `digest`의 `-`(null 표기)와 섞이지 않게 한다
+    allowsOutwardQuestions ? 'q:on' : 'q:off',
     ...declaredParts(declared),
+    ...currentParts(current),
     ...experience.important,
     experience.hardest,
     experience.selfGap,

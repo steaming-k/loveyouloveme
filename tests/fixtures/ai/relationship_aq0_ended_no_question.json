@@ -1,0 +1,62 @@
+{
+  "name": "relationship_aq0_ended_no_question",
+  "description": "AQ0 (v1.42 §41.9) — ended(allowsOutwardQuestions=false)에서 AI question이 0개다. 결정론 질문은 jobAllowsOutwardQuestions로 이미 막혀 있었는데 AI question에는 그 게이트가 없었다. 문자열 blacklist가 아니라 **존재 여부**를 검사한다.",
+  "task": "relationship-insight",
+  "tense": "former",
+  "allowsOutwardQuestions": false,
+  "judgements": [
+    {
+      "axis": "contact",
+      "state": "GAP"
+    },
+    {
+      "axis": "alone",
+      "state": "MATCH"
+    }
+  ],
+  "focusAxis": "contact",
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "GAP",
+        "headline": "연락에서 말한 기준과 달랐어",
+        "explanation": "연락 중요도는 낮게 골랐지만 힘들었던 순간으로는 연락이 줄어든 때를 골랐어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "contact"
+          },
+          {
+            "source": "relationship",
+            "field": "hardest"
+          }
+        ],
+        "question": "연락이 줄어들면 어떤 의미로 받아들이는 편이야?"
+      },
+      {
+        "axis": "alone",
+        "state": "MATCH",
+        "headline": "개인 시간은 비슷했어",
+        "explanation": "혼자 있는 시간을 중요하게 답했고, 이전 관계에서도 중요했던 요소로 골랐어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "alone"
+          }
+        ],
+        "question": "혼자 있고 싶을 때 어떻게 말하는 편이야?"
+      }
+    ],
+    "core": null
+  },
+  "expect": {
+    "narrativeCount": 2,
+    "questionCount": 0,
+    "hasQuestion": [
+      false,
+      false
+    ],
+    "violations": []
+  }
+}

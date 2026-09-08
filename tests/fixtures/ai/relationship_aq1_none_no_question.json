@@ -1,0 +1,61 @@
+{
+  "name": "relationship_aq1_none_no_question",
+  "description": "AQ1 (v1.42 §41.10) — job=none도 같은 정책이다. JOB_ACTION_KINDS.none이 ['notice','reflect']이므로 jobAllowsOutwardQuestions('none')이 false다 — 없는 상대에게 물어볼 것을 만들지 않는다. 새 정책을 만든 것이 아니라 **기존 술어를 그대로 재사용**했다. tense는 current다(none은 부를 관계가 없으므로 relationshipTenseOf가 current를 준다).",
+  "task": "relationship-insight",
+  "tense": "current",
+  "allowsOutwardQuestions": false,
+  "judgements": [
+    {
+      "axis": "contact",
+      "state": "GAP"
+    },
+    {
+      "axis": "alone",
+      "state": "MATCH"
+    }
+  ],
+  "focusAxis": "contact",
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "GAP",
+        "headline": "연락에서 말한 기준과 달랐어",
+        "explanation": "연락 중요도는 낮게 골랐지만 힘들었던 순간으로는 연락이 줄어든 때를 골랐어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "contact"
+          },
+          {
+            "source": "relationship",
+            "field": "hardest"
+          }
+        ],
+        "question": "연락이 줄어들면 어떤 의미로 받아들이는 편이야?"
+      },
+      {
+        "axis": "alone",
+        "state": "MATCH",
+        "headline": "개인 시간은 비슷했어",
+        "explanation": "혼자 있는 시간을 중요하게 답했고, 이전 관계에서도 중요했던 요소로 골랐어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "alone"
+          }
+        ]
+      }
+    ],
+    "core": null
+  },
+  "expect": {
+    "narrativeCount": 2,
+    "questionCount": 0,
+    "hasQuestion": [
+      false,
+      false
+    ],
+    "violations": []
+  }
+}

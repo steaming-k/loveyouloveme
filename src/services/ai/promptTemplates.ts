@@ -166,6 +166,59 @@ Mirror의 정의: '사용자가 말한 기준(Declared)' vs '실제 관계 경�
 - GAP: 말한 기준보다 실제 관계에서 더 크게 반응함
 - CHANGE: 중요하다고 말했지만 경험에서는 우선순위가 옮겨감
 
+[시제] context.tense가 이 설명을 어떤 시제로 쓸지 정한다. 두 값뿐이다.
+
+tense = "current" — 관계가 진행 중이다.
+  진행 중인 관계로 서술해도 된다.
+
+tense = "former" — 관계가 끝났다.
+  **관계가 지금도 이어지고 있는 것처럼 쓰지 않는다.**
+  ❌ '지금 이 관계에서는' / '지금 상대와' / '앞으로 둘이' / '이 사람에게 말해보면'
+  ⭕ '이 관계에서' / '당시' / '그때' / '이전 관계에서'
+
+  ⚠️ tense가 "former"라는 것은 **관계가 끝났다는 사실 하나**만 뜻한다. 그 이상을
+  추론하지 않는다: 왜 헤어졌는지, 무엇이 원인이었는지, 이 관계가 실패했는지,
+  다시 만나야 하는지 — 전부 우리가 받지 않은 정보다. 한 글자도 쓰지 않는다.
+
+[축 식별자] narratives[].axis는 ruleJudgements[].axis의 값을 **그대로 복사**한다.
+
+  ⭕ "axis": "contact"      ← ruleJudgements[].axis에 있는 값
+  ❌ "axis": "연락"          ← label은 사람에게 보여주는 이름이다
+  ❌ "axis": "contact 연락"
+
+허용되는 값은 alone · contact · hobby · conflict · affection **다섯 개뿐**이고 전부
+영문 소문자다. ruleJudgements에 없는 축은 아예 쓰지 않는다.
+
+⚠️ label을 axis에 쓰면 그 항목은 **통째로 버려진다.** 설명이 아무리 좋아도 화면에
+닿지 않는다.
+
+[근거 source] 'relationship'과 'current_relationship'은 **서로 다른 시점**이다.
+
+  relationship          = 이전 관계 경험 (S15~S17에서 답한 것)
+  current_relationship  = 이 관계에 대해 직접 답한 것 (축별 보기 선택)
+
+어느 쪽인지는 ruleJudgements의 relationshipSignal 문장이 말해준다.
+
+  '이전 관계에서 …'                        → relationship
+  '지금 관계에서 …' / '그때 이 관계에서 …'  → current_relationship
+  둘 중 어느 쪽도 분명하지 않으면            → relationship
+
+**그 축을 설명할 때는 그 source를 쓴다** — 시점이 다른 근거를 다른 source로 귀속시키면
+화면의 근거 목록이 사실과 달라진다.
+
+⚠️ **어느 source를 쓸지 모르겠다고 evidenceRefs를 비우지 마라.** 근거 없는 항목은
+그대로 버려지므로 설명이 화면에 닿지 않는다. 판단이 서지 않으면 relationship을 쓴다.
+
+⚠️ **'current_relationship'이라는 이름이 '지금 진행 중'을 뜻하지 않는다.** 그건 그 답을
+**이 관계에 대해** 했다는 뜻일 뿐이다. 관계가 지금도 이어지고 있는지는 context.tense만이
+정한다 — tense가 former면 그 근거도 과거형으로 부른다.
+
+⚠️ 시제를 바꾸려고 **근거를 바꾸지 않는다.** ruleJudgements의 relationshipSignal은
+이미 시제가 맞춰진 문장이다. 그 문장이 '지금 관계에서 …라고 답함'이면 그건 사용자가
+그 관계가 진행 중일 때 답한 내용이고, tense가 "former"여도 **그 사실은 그대로다** —
+'그때 이 관계에서 그렇게 답했다'로 부르면 되고, 근거를 이전 관계 것으로 바꿔치거나
+없는 것으로 취급하지 않는다.
+
 규칙:
 - 사진 관찰(observed)만으로 연애 성향을 결론내지 않는다. observed는 보조 맥락일 뿐이다.
   ❌ '혼자 여행을 좋아해서 독립적인 연애 스타일'
@@ -189,10 +242,10 @@ Mirror의 정의: '사용자가 말한 기준(Declared)' vs '실제 관계 경�
 {
   "narratives": [
     {
-      "axis": "주어진 axis 그대로",
+      "axis": "ruleJudgements[].axis 값 그대로 (영문 키. label 금지)",
       "headline": "한 줄 (단정 대신 '~일지도 몰라' 톤)",
       "explanation": "2~3문장 설명",
-      "evidenceRefs": [{ "source": "declared"|"relationship"|"adaptive"|"observed"|"history", "field": "필드명" }],
+      "evidenceRefs": [{ "source": "declared"|"relationship"|"current_relationship"|"adaptive"|"observed"|"history", "field": "필드명" }],
       "question": "확인해볼 질문 (선택)",
       "uncertainty": "근거가 약하면 채운다 (선택)"
     }
@@ -423,7 +476,7 @@ narratives 배열에서 **아예 빼라.** 개수를 채우려고 약한 문장�
       "interpretation": "왜 이 두 source가 연결되는지, 사용자 언어로 1~3문장",
       "situation": "이 Insight가 실제로 드러날 수 있는 구체적 상황 (선택)",
       "conversationQuestion": "상대와 확인해볼 수 있는 질문 (선택)",
-      "evidenceRefs": [{ "source": "declared"|"relationship"|"adaptive"|"observed"|"history"|"target"|"deep_followup", "field": "필드명 또는 해당 source 식별자" }],
+      "evidenceRefs": [{ "source": "declared"|"relationship"|"current_relationship"|"adaptive"|"observed"|"history"|"target"|"deep_followup", "field": "필드명 또는 해당 source 식별자" }],
       "uncertainty": "근거가 약하면 채운다 (선택)"
     }
   ]

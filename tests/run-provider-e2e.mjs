@@ -51,7 +51,37 @@ const PERSONA_B = {
   },
 };
 
+/**
+ * v1.42 §40.21 — **두 persona가 서로 다른 시제를 실제 Provider로 통과한다.**
+ *
+ * 호출 수를 늘리지 않았다(여전히 2건). Persona A는 진행 중인 관계, Persona B는 끝난
+ * 관계로 두면 `current`·`former` 프롬프트 계약이 둘 다 실제 모델을 한 번씩 지나간다 —
+ * 비용은 그대로이고 검증 범위는 두 배다.
+ */
+const PERSONA_TENSE = { [PERSONA_A.label]: 'current', [PERSONA_B.label]: 'former' };
+
+/**
+ * v1.42 §41.12 — **Job Safety도 실제 Provider로 확인한다.**
+ *
+ * Persona B는 끝난 관계(`former`)이므로 상대를 향한 질문을 만들 수 없다. 프롬프트는
+ * 이 값을 **받지 않는다**(AI에게 Job을 알려주지 않는다) — 서버가 응답을 받은 뒤
+ * `question`을 지운다. 그래서 이 검사는 '모델이 질문을 안 만들었는가'가 아니라
+ * **'게이트가 실제로 작동했는가'**를 본다.
+ */
+const PERSONA_ALLOWS_QUESTIONS = { [PERSONA_A.label]: true, [PERSONA_B.label]: false };
+
 const PERSONAS = [PERSONA_A, PERSONA_B];
+
+/**
+ * `tense: 'former'`에서 나오면 안 되는 현재형 호칭.
+ *
+ * ⚠️ `services/ai/safety.ts`의 `FORMER_TENSE_PATTERNS`와 **같은 것을 노린다.** 목록을
+ * 두 벌 두는 것이 이상적이지 않지만, 이 스크립트는 서버 코드를 import하지 않는 순수
+ * fetch 클라이언트다(다른 tests/*.mjs와 같은 방식). 스캐너 자체의 동작은
+ * `tests/fixtures/ai/relationship_former_*.json` + `npm run test:ai`가 검사하고, 여기서
+ * 보는 것은 **실제 모델 응답이 계약을 지키는가**다.
+ */
+const FORMER_FORBIDDEN = ['지금 이 관계', '지금 관계', '지금 상대', '현재 이 관계', '앞으로 둘이'];
 
 let passed = 0;
 let failed = 0;
@@ -82,8 +112,31 @@ async function callTask(task, body) {
   return { status: response.status, json, durationMs };
 }
 
+/**
+ * v1.42 §40.22 — **Key 없음과 요청 실패를 구분한다.**
+ *
+ * v1.41까지 `mode !== 'real'`이면 무조건 `SKIPPED — KEY NOT AVAILABLE`이었다. 그래서
+ * 라우트가 400을 돌려줘도 "키가 없어서 건너뛰었다"로 보고됐다 — v1.42에서 실제로 그
+ * 일이 났다(`tense`를 안 보내서 400인데 SKIPPED로 찍혔고, 같은 키로 다른 4개 Task는
+ * PASS였다). **검증 도구가 실패를 부재로 보고하면 Release Gate가 무의미해진다.**
+ *
+ * 구분 규칙은 서버 분기 그대로다.
+ *
+ * ```
+ * ok:false + CONFIG_ERROR   AI_MODE=real인데 Key가 없다        → SKIPPED (사실)
+ * ok:true  + mode demo/mock Key 없이 데모로 응답했다            → SKIPPED (사실)
+ * ok:false + 그 외 reason   요청/응답이 실제로 실패했다         → FAIL   (사실)
+ * ```
+ */
+const KEY_ABSENT_REASONS = new Set(['CONFIG_ERROR']);
+
 function reportRealMode({ task, json, durationMs, extra = '' }) {
   const mode = json?.data?.meta?.mode;
+  if (json?.ok === false && !KEY_ABSENT_REASONS.has(json?.reason)) {
+    log(`  duration: ${durationMs}ms · ok=false · reason: ${json?.reason ?? 'n/a'}`);
+    verdict(task, `FAIL — 요청이 거절됐다 (${json?.reason ?? 'unknown'})`);
+    return;
+  }
   if (mode !== 'real') {
     log(`  duration: ${durationMs}ms · reported mode: ${mode ?? 'n/a'} (ok=${json?.ok})`);
     verdict(task, 'SKIPPED — KEY NOT AVAILABLE');
@@ -116,10 +169,23 @@ async function testObservedProfile() {
 /* -------------------------------------------------- relationship-insight */
 async function testRelationshipInsight(persona) {
   const judgements = [{ axis: 'contact', state: 'GAP' }];
+  /**
+   * v1.42 §40.21 — `tense`는 **요청 최상위와 context 양쪽**에 들어간다. 라우트가
+   * 최상위 값으로 시제 스캐너를 돌리고, 프롬프트는 context의 값을 읽는다.
+   *
+   * ⚠️ v1.41까지 이 자리는 `status: 'ex'`였다 — `RelationshipStatus`에 **존재하지도
+   * 않는 값**이다. 아무도 실패하지 않았다는 것이 raw status가 계약 없이 흘러가고
+   * 있었다는 증거다(§40.7). 이제 라우트가 `tense`를 검증하므로 잘못 보내면 400이다.
+   */
+  const tense = PERSONA_TENSE[persona.label] ?? 'current';
+  const allowsOutwardQuestions = PERSONA_ALLOWS_QUESTIONS[persona.label] ?? true;
   const { json, durationMs } = await callTask('relationship-insight', {
     inputFingerprint: `e2e_relationship_${persona.label}`,
+    tense,
+    // v1.42 §41.8 — 라우트가 boolean이 아니면 400이다. 프롬프트에는 들어가지 않는다.
+    allowsOutwardQuestions,
     context: {
-      status: 'ex',
+      tense,
       declared: persona.declared,
       relationship: {
         importantFactors: persona.experience.important,
@@ -134,7 +200,21 @@ async function testRelationshipInsight(persona) {
         label: '연락',
         state: j.state,
         declaredPhrase: '연락 중요도 낮음',
-        relationshipSignal: '연락 감소가 가장 힘들었음',
+        /**
+         * v1.42 §41.13 — **실제 앱이 보내는 형식으로 고쳤다.**
+         *
+         * v1.41까지 `'연락 감소가 가장 힘들었음'`이었다 — `relationshipSignalTextOf`가
+         * 만드는 문장은 `'이전 관계에서 … 으로 선택'`(과거) 또는
+         * `'지금 관계에서 "…"라고 답함'`(현재)이고, 접두어가 근거의 **시점**을 말한다.
+         * 접두어 없는 문장은 이 제품이 만들지 않는다.
+         *
+         * 그 차이가 v1.42 §41.6에서 드러났다: 새 [근거 source] 규칙이 접두어를 보는데
+         * fixture 문장에는 접두어가 없어서 모델이 source를 못 고르고 refs를 비웠다.
+         * **fixture가 실제 요청과 달랐던 것이 프롬프트 결함을 가린 것이 아니라 오히려
+         * 드러냈지만**, 검증 도구는 실제로 보내는 것을 보내야 한다(v1.30이 `ref`를
+         * 넣기로 한 것과 같은 이유).
+         */
+        relationshipSignal: '이전 관계에서 연락이 줄어들 때으로 선택',
         isFocus: true,
       })),
       pastObservations: [],
@@ -148,11 +228,51 @@ async function testRelationshipInsight(persona) {
   }
   const narratives = json.data.narratives ?? [];
   const overridden = narratives.filter((n) => n.state !== 'GAP');
+
+  /**
+   * v1.42 §40.21 — **실제 모델 응답이 시제 계약을 지켰는가.**
+   *
+   * 화면에 그려지는 문자열 전부를 훑는다(`explanation`·`question`·Core). 스캐너가 이미
+   * 서버에서 걸러내므로 여기서 걸리는 것은 **스캐너가 뚫렸다는 뜻**이고, 0건이라는 것은
+   * 프롬프트와 스캐너가 함께 동작했다는 뜻이다 — 어느 쪽이 막았는지는 구분하지 않는다.
+   */
+  const rendered = [
+    ...narratives.flatMap((item) => [item.headline, item.explanation, item.question]),
+    json.data.core?.headline,
+    json.data.core?.summary,
+    ...(json.data.core?.limitations ?? []),
+  ].filter((text) => typeof text === 'string');
+  const tenseLeaks =
+    tense === 'former'
+      ? rendered.filter((text) => FORMER_FORBIDDEN.some((phrase) => text.includes(phrase)))
+      : [];
+
+  /**
+   * v1.42 §41.12 — **Job Safety 실측.** 허용하지 않는 Job에서 질문이 하나라도 남으면
+   * 게이트가 동작하지 않은 것이다. 문장 원문은 찍지 않는다(§10).
+   */
+  const questionCount = narratives.filter((item) => typeof item.question === 'string').length;
+  if (!allowsOutwardQuestions && questionCount > 0) {
+    log(`  duration: ${durationMs}ms · tense=${tense} · JOB GATE LEAK question ${questionCount}건`);
+    verdict(`relationship-insight (${persona.label})`, 'FAIL — outward 금지 Job에 질문이 남았다');
+    return;
+  }
+
+  if (tenseLeaks.length > 0) {
+    // ⚠️ 문장 원문은 찍지 않는다(§10). 몇 건인지만 낸다.
+    log(`  duration: ${durationMs}ms · tense=${tense} · TENSE LEAK ${tenseLeaks.length}건`);
+    verdict(`relationship-insight (${persona.label})`, 'FAIL — former 응답에 현재형 호칭');
+    return;
+  }
+
   reportRealMode({
     task: `relationship-insight (${persona.label})`,
     json,
     durationMs,
-    extra: `· narratives: ${narratives.length} · state-override: ${overridden.length}`,
+    extra:
+      `· tense: ${tense} · outwardQ: ${allowsOutwardQuestions ? 'on' : 'off'} ` +
+      `· narratives: ${narratives.length} · state-override: ${overridden.length} ` +
+      `· tense-leak: 0 · questions: ${questionCount}`,
   });
 }
 

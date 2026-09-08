@@ -1,0 +1,49 @@
+{
+  "name": "relationship_former_current_wording",
+  "description": "A11 (v1.42 §40.13) — 관계가 끝난 사용자(tense=former)에게 관계가 지금도 이어지고 있는 것처럼 쓴 문장은 항목째로 떨어진다. v1.41까지 이 경로에는 검사가 없어서, 결정론 행 라벨이 `그때 이 관계`인데 그 아래 AI 설명이 `지금 이 관계에서는`으로 시작할 수 있었다. 세 축이 각각 다른 위반 패턴을 노린다: contact=ongoing_relation, alone=present_partner, conflict=continuing_pair. core도 함께 떨어져야 한다 — Core는 `limitations[0]`까지 화면에 그리므로 그 문장도 스캔 대상이다.",
+  "task": "relationship-insight",
+  "tense": "former",
+  "judgements": [
+    { "axis": "contact", "state": "GAP" },
+    { "axis": "alone", "state": "MATCH" },
+    { "axis": "conflict", "state": "MATCH" }
+  ],
+  "focusAxis": "contact",
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "GAP",
+        "headline": "연락에서 말한 기준보다 크게 반응했어",
+        "explanation": "지금 이 관계에서는 연락이 줄어들 때 특히 크게 반응하는 편으로 보여.",
+        "evidenceRefs": [{ "source": "relationship", "field": "hardest" }]
+      },
+      {
+        "axis": "alone",
+        "state": "MATCH",
+        "headline": "개인 시간은 말한 기준과 비슷했어",
+        "explanation": "혼자 있는 시간을 중요하게 답했고, 지금 상대와도 그 기준이 비슷하게 유지되고 있어.",
+        "evidenceRefs": [{ "source": "declared", "field": "alone" }]
+      },
+      {
+        "axis": "conflict",
+        "state": "MATCH",
+        "headline": "갈등 해결 방식은 말한 기준과 비슷했어",
+        "explanation": "앞으로 둘이 계속 만나면서 이 방식을 맞춰가면 좋을 것 같아.",
+        "evidenceRefs": [{ "source": "declared", "field": "conflict" }]
+      }
+    ],
+    "core": {
+      "headline": "연락을 낮게 봤지만 실제로는 크게 반응했어",
+      "summary": "네가 말한 기준과 나타난 신호가 연락 축에서 갈렸어.",
+      "evidenceRefs": [{ "source": "relationship", "field": "hardest" }],
+      "limitations": ["지금 이 관계가 어떻게 될지는 알 수 없어"]
+    }
+  },
+  "expect": {
+    "narrativeCount": 0,
+    "states": [],
+    "coreExists": false,
+    "violations": ["ongoing_relation", "present_partner", "continuing_pair"]
+  }
+}

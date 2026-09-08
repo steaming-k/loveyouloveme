@@ -717,6 +717,792 @@ async function main() {
     }
   }
 
+  /* ═══ A0~A14 · AI Relationship Boundary (v1.42 · §40.18) ═══════════════════
+
+     ══ 이 절이 고정하는 것 ═══════════════════════════════════════════════════
+
+     v1.41은 `stage ≠ evidence`를 **결정론 경로에서** 증명했다(위 E0~E17 · R1).
+     v1.42는 같은 주장을 **AI 경계에서** 증명한다 — v1.41 Audit에서 그 경계만 원칙을
+     지키지 않고 있었다.
+
+     ```
+     ① 지문이 근거를 본다      S30이 바뀌면 AI를 다시 부른다        A2 · A3 · A4 · A13
+     ② 지문이 stage를 안 본다  근거·시제가 같으면 같은 지문         A5 · A6
+     ③ 시제도 근거다           tense가 바뀌면 반드시 다른 지문      A7
+     ④ AI는 stage를 못 받는다  context에 raw status 0건             A0 · A8 · A9 · R2
+     ```
+
+     ⚠️ **여기서도 판정을 만들지 않는다.** 라우트가 화면과 같은 함수
+     (`relationshipNarrativeFingerprint` · `buildRelationshipContext`)를 부르고, 이
+     스크립트는 지문 문자열을 **서로 비교만** 한다. 지문은 해시라 내용이 보이지 않으므로
+     `같은가 다른가`만 검사할 수 있고, 그게 캐시가 실제로 하는 판단과 정확히 같다.
+
+     ⚠️ AI **출력**의 시제 검사(A10~A12)는 여기가 아니라 `tests/fixtures/ai/*.json` +
+     `npm run test:ai`다. Provider 응답을 흉내낸 fixture를 실제 파싱·안전 검사에 통과
+     시켜야 하므로 그 도구(`/api/ai/contract-test`)를 쓴다. */
+
+  console.log('\nA0~A14 — AI Relationship Boundary (v1.42)');
+  {
+    /** 위 E 계열과 **같은 세션**을 쓴다 — 두 절이 다른 세션을 쓰면 비교가 성립하지 않는다 */
+    const AI_BASE = { ...SESSION, status: 'dating' };
+
+    /* ── A0 · legacy 세션 (currentRelationship 키가 아예 없다) ──────────── */
+    const a0 = await run(AI_BASE);
+    check(
+      'A0 — legacy 세션에서 AI context에 raw status가 0건',
+      a0.aiBoundary.rawStatusTokens.length === 0,
+      a0.aiBoundary.rawStatusTokens,
+    );
+    check(
+      'A0 — AI context 키에 `status`가 없다 (§40.7)',
+      !a0.aiBoundary.contextKeys.includes('status'),
+      a0.aiBoundary.contextKeys,
+    );
+    check(
+      'A0 — AI context에 `tense`가 있다',
+      a0.aiBoundary.contextKeys.includes('tense'),
+      a0.aiBoundary.contextKeys,
+    );
+
+    /* ── A1 · 현재 근거 없음(빈 객체) → legacy와 같은 지문 ───────────────
+       ⚠️ 이게 v1.42가 **불필요한 재호출을 만들지 않았다**는 증거다. 현재 근거가 없는
+       세션은 v1.41과 다른 지문 값을 갖지만(입력 구성이 달라졌으니 당연하다), **같은
+       세션끼리는 여전히 안정적**이다 — 즉 캐시 동작이 v1.41과 같다. */
+    const a1 = await run({ ...AI_BASE, currentRelationship: { signals: {}, askedAt: null } });
+    check(
+      'A1 — 현재 근거 없음(빈 객체)이 legacy(키 없음)와 같은 지문',
+      a1.aiBoundary.fingerprint === a0.aiBoundary.fingerprint,
+      { a0: a0.aiBoundary.fingerprint, a1: a1.aiBoundary.fingerprint },
+    );
+
+    /* ── A2 · 현재 근거 추가 → 지문이 달라진다 ───────────────────────────── */
+    const a2 = await run({ ...AI_BASE, currentRelationship: CURRENT_MIXED });
+    check(
+      'A2 — 현재 근거를 추가하면 지문이 달라진다',
+      a2.aiBoundary.fingerprint !== a1.aiBoundary.fingerprint,
+      { a1: a1.aiBoundary.fingerprint, a2: a2.aiBoundary.fingerprint },
+    );
+
+    /* ── A2b · Canonicalization (F2 · §40.4) ─────────────────────────────
+       ⚠️ **같은 답이면 같은 지문이어야 한다** — 무엇을 먼저 답했는지, 언제 답했는지와
+       무관하게. `signals`는 객체라서 키 순서가 **사용자가 S30에서 답한 순서**이고,
+       `Object.entries`로 지문을 만들면 연락→갈등 순으로 답한 사용자와 갈등→연락 순으로
+       답한 사용자가 **같은 답으로 다른 지문**을 받는다. 그러면 같은 근거에 대해 AI를
+       두 번 부른다. `askedAt`이 지문에서 빠져 있는 것도 같은 이유다 — 같은 답을 다시
+       저장하면 timestamp만 달라지는데, 그걸로 AI를 다시 부르지 않는다. */
+    const a2Reordered = await run({
+      ...AI_BASE,
+      currentRelationship: {
+        // CURRENT_MIXED와 **같은 답 · 반대 삽입 순서 · 다른 timestamp**
+        signals: { conflict: 'rarely', contact: 'often' },
+        askedAt: '2099-01-01T00:00:00.000Z',
+      },
+    });
+    check(
+      'A2b — 답이 같으면 삽입 순서·askedAt이 달라도 같은 지문 (F2 · §40.4)',
+      a2Reordered.aiBoundary.fingerprint === a2.aiBoundary.fingerprint,
+      { a2: a2.aiBoundary.fingerprint, reordered: a2Reordered.aiBoundary.fingerprint },
+    );
+
+    /* ── A3 · 현재 근거 1개 변경 → 지문이 달라진다 (F3) ─────────────────── */
+    const a3 = await run({
+      ...AI_BASE,
+      currentRelationship: {
+        // contact만 often → sometimes. conflict는 그대로다.
+        signals: { contact: 'sometimes', conflict: 'rarely' },
+        askedAt: CURRENT_MIXED.askedAt,
+      },
+    });
+    check(
+      'A3 — 현재 근거 축 하나만 바꿔도 지문이 달라진다 (F3)',
+      a3.aiBoundary.fingerprint !== a2.aiBoundary.fingerprint,
+      { a2: a2.aiBoundary.fingerprint, a3: a3.aiBoundary.fingerprint },
+    );
+
+    /* ── A4 · 현재 근거 제거 → 근거 없음 상태로 되돌아온다 (F4) ─────────── */
+    check(
+      'A4 — 현재 근거를 지우면 지문이 근거 없음 상태로 되돌아온다 (F4)',
+      a1.aiBoundary.fingerprint === a0.aiBoundary.fingerprint &&
+        a1.aiBoundary.fingerprint !== a2.aiBoundary.fingerprint,
+      {
+        none: a0.aiBoundary.fingerprint,
+        empty: a1.aiBoundary.fingerprint,
+        withEvidence: a2.aiBoundary.fingerprint,
+      },
+    );
+
+    /**
+     * `unsure`(아직 그런 상황이 없었어)는 **답하지 않은 것과 다르다.** 근거는 만들지
+     * 않지만(`resolveAxisEvidence`가 과거로 넘긴다) 사용자가 실제로 고른 보기이므로,
+     * 지문에서 두 상태를 같은 값으로 뭉개면 `unsure`로 바꾼 것이 캐시에 보이지 않는다.
+     */
+    const a4Unsure = await run({
+      ...AI_BASE,
+      currentRelationship: { signals: { contact: 'unsure' }, askedAt: null },
+    });
+    check(
+      'A4 — `unsure`는 답하지 않은 것과 다른 지문이다',
+      a4Unsure.aiBoundary.fingerprint !== a1.aiBoundary.fingerprint,
+      { unsure: a4Unsure.aiBoundary.fingerprint, unanswered: a1.aiBoundary.fingerprint },
+    );
+
+    /* ── A5 · A6 · A7 · stage를 바꿔도 / 시제를 바꾸면 (F5) ───────────────
+       v1.41의 주장이 캐시 층에서도 성립하는가. 세 요청의 **근거는 완전히 같다** —
+       달라지는 것은 S05 답변뿐이다. */
+    const a5 = await run({ ...SESSION, status: 'crush', currentRelationship: CURRENT_MIXED });
+    const a6 = await run({ ...SESSION, status: 'dating', currentRelationship: CURRENT_MIXED });
+    const a7 = await run({ ...SESSION, status: 'ended', currentRelationship: CURRENT_MIXED });
+
+    check('A5 — talking(crush)의 시제는 current', a5.aiBoundary.tense === 'current', a5.aiBoundary.tense);
+    check('A6 — dating의 시제는 current', a6.aiBoundary.tense === 'current', a6.aiBoundary.tense);
+    check('A7 — ended의 시제는 former', a7.aiBoundary.tense === 'former', a7.aiBoundary.tense);
+
+    /**
+     * ⚠️ **이 한 줄이 §40.5의 전부다.** `crush` → `dating`은 stage가 달라졌지만 근거도
+     * 시제도 같다. 지문이 같아야 한다 — 같은 근거·같은 시제에 대해 AI에게 같은 것을 두
+     * 번 물어보지 않는다. v1.41까지는 raw status가 지문에 있었으므로 이 두 요청이
+     * **다른 지문**이었다(= 같은 설명을 두 번 만들었다).
+     */
+    check(
+      'A6 — 근거·시제가 같으면 stage가 달라도 같은 지문 (F5 · stage ≠ cache key)',
+      a6.aiBoundary.fingerprint === a5.aiBoundary.fingerprint,
+      { crush: a5.aiBoundary.fingerprint, dating: a6.aiBoundary.fingerprint },
+    );
+    /**
+     * ⚠️ 그리고 이 한 줄이 그 반대다. `dating` → `ended`는 시제가 바뀌므로 **반드시**
+     * 지문이 달라져야 한다. 안 달라지면 관계가 끝난 사용자가 현재형으로 쓰인 캐시
+     * 문장을 받는다 — stage를 지문에서 빼면서 이 경우를 놓치면 결함이 형태만 바뀐다.
+     */
+    check(
+      'A7 — 시제가 바뀌면 반드시 다른 지문 (ended가 현재형 캐시를 받지 않는다)',
+      a7.aiBoundary.fingerprint !== a6.aiBoundary.fingerprint,
+      { dating: a6.aiBoundary.fingerprint, ended: a7.aiBoundary.fingerprint },
+    );
+
+    /* ── A8 · current tense context ──────────────────────────────────────── */
+    check(
+      'A8 — dating의 AI context.tense가 current이고 raw status가 0건',
+      a6.aiBoundary.contextTense === 'current' && a6.aiBoundary.rawStatusTokens.length === 0,
+      { tense: a6.aiBoundary.contextTense, raw: a6.aiBoundary.rawStatusTokens },
+    );
+    check(
+      'A8 — context.tense와 relationshipTenseOf(job)이 같은 값 (§40.10 단일 source)',
+      a6.aiBoundary.contextTense === a6.aiBoundary.tense,
+      { context: a6.aiBoundary.contextTense, resolved: a6.aiBoundary.tense },
+    );
+
+    /* ── A9 · former tense context ────────────────────────────────────────
+       ⚠️ **AI가 받는 factual input의 시제**를 검사한다. 프롬프트 계약(§40.11)은 모델에게
+       'former로 써라'라고 말하지만, 모델이 인용할 근거 문장 자체가 현재형이면 계약과
+       입력이 서로 모순된다 — v1.41 §39.13이 결정론 경로에서 고친 것이 이것이고, AI
+       경계에도 같은 값이 흘러가는지 여기서 본다. */
+    check(
+      'A9 — ended의 AI context.tense가 former이고 raw status가 0건',
+      a7.aiBoundary.contextTense === 'former' && a7.aiBoundary.rawStatusTokens.length === 0,
+      { tense: a7.aiBoundary.contextTense, raw: a7.aiBoundary.rawStatusTokens },
+    );
+    {
+      const signals = a7.aiBoundary.ruleJudgements.map((item) => item.relationshipSignal);
+      const hits = scan(signals, FORMER_FORBIDDEN_PHRASES);
+      check('A9 — ended가 AI에게 보내는 근거 문장에 현재형 호칭 0건', hits.length === 0, hits);
+    }
+    {
+      // 반대 방향 — dating에게는 `지금 관계에서`가 정상이므로 지워져 있으면 안 된다.
+      const signals = a6.aiBoundary.ruleJudgements.map((item) => item.relationshipSignal);
+      check(
+        'A9 — dating이 AI에게 보내는 근거 문장은 현재형을 유지한다 (과필터 방지)',
+        signals.some((text) => typeof text === 'string' && text.includes('지금 관계')),
+        signals,
+      );
+    }
+
+    /* ── A13 · stale narrative 재현 (v1.41 결함) ══════════════════════════
+
+       ══ 왜 이 조합인가 ═══════════════════════════════════════════════════
+
+       v1.41의 지문 입력은 `status` · `declared` · `experience` · `focusAxis` ·
+       `validated` 다섯 개였다. 그래서 **그 다섯 개가 전부 그대로인데 판정 근거가
+       달라지는 조합**이 있으면 stale 캐시가 난다. 아래 두 요청이 정확히 그 조합이다.
+
+       ```
+       같은 것   status(dating) · declared · experience · validated(없음)
+       같은 것   focusAxis = alone         ← 이것이 핵심이다
+       같은 것   mirrorStates              alone MATCH · contact MATCH
+       다른 것   contact의 근거 시점        past → current
+       다른 것   contact의 근거 문장        이전 관계에서 … → 지금 관계에서 "…"라고 답함
+       ```
+
+       `focusAxis`가 안 바뀌는 이유는 `pickFocus`가 `MIRROR_AXES` 순서(alone → contact →
+       hobby → conflict → affection)의 첫 매치를 고르기 때문이다. `alone`이 이미 첫
+       항목이므로 **뒤쪽 축에 무엇을 답해도 focus는 그대로**다. 즉 이건 희귀한 경계
+       조건이 아니라 **S30을 답하는 흔한 경로**다.
+
+       v1.41에서는 두 요청의 지문이 같았으므로, 화면은 `지금 관계에서 "…"라고 답함`을
+       그리면서 그 아래 AI 설명은 **이전 관계 근거를 설명하던 문장**을 그대로 보여줬다. */
+    {
+      const before = await run(AI_BASE);
+      const after = await run({
+        ...AI_BASE,
+        currentRelationship: { signals: { contact: 'often' }, askedAt: '2026-09-08T00:00:00.000Z' },
+      });
+
+      // ① v1.41 지문 입력이 전부 그대로라는 것을 먼저 고정한다.
+      check(
+        'A13 — focusAxis가 바뀌지 않는다 (v1.41 지문이 눈치채지 못했던 이유)',
+        before.invariant.mirrorFocusAxis === after.invariant.mirrorFocusAxis,
+        { before: before.invariant.mirrorFocusAxis, after: after.invariant.mirrorFocusAxis },
+      );
+      check(
+        'A13 — Mirror 판정(state)도 바뀌지 않는다',
+        JSON.stringify(before.invariant.mirrorStates) ===
+          JSON.stringify(after.invariant.mirrorStates),
+        { before: before.invariant.mirrorStates, after: after.invariant.mirrorStates },
+      );
+
+      // ② 그런데 근거의 시점과 문장은 실제로 달라진다.
+      check(
+        'A13 — contact의 근거 시점이 past → current로 바뀐다',
+        axis(before, 'contact')?.scope === 'past' && axis(after, 'contact')?.scope === 'current',
+        { before: axis(before, 'contact')?.scope, after: axis(after, 'contact')?.scope },
+      );
+      check(
+        'A13 — contact의 근거 문장이 실제로 달라진다',
+        axis(before, 'contact')?.signal !== axis(after, 'contact')?.signal,
+        { before: axis(before, 'contact')?.signal, after: axis(after, 'contact')?.signal },
+      );
+
+      // ③ 그러므로 지문이 달라져야 한다. **이 한 줄이 v1.42가 닫는 결함이다.**
+      check(
+        'A13 — 판정·focus가 그대로여도 근거 시점이 바뀌면 지문이 달라진다 (stale 회귀)',
+        before.aiBoundary.fingerprint !== after.aiBoundary.fingerprint,
+        { before: before.aiBoundary.fingerprint, after: after.aiBoundary.fingerprint },
+      );
+    }
+
+    /* ── A15 · AI가 없어도 결정론 결과는 완결된다 (§40.23) ═══════════════
+       시제 검사를 새로 넣었으므로 **과잉 거부의 최악 경우**를 고정해야 한다: AI 항목이
+       전부 떨어져도 화면이 비면 안 된다. AI는 augmentation이고, 판정·근거·문장은 규칙이
+       이미 완결시켜 둔다(§27).
+
+       ⚠️ 이 라우트는 **항상 `narratives: []`로** Deep Report를 조립한다(Provider Key
+       없이 돌아야 하므로). 즉 위 E0~E17 · A0~A14 전부가 이미 'AI 0건' 조건에서 통과한
+       것이고, 이 블록은 그 사실을 **이름 붙여 명시**한다 — 암묵적 보장은 다음 버전에서
+       조용히 깨진다. */
+    {
+      const noAi = await run({ ...AI_BASE, currentRelationship: CURRENT_MIXED });
+      check(
+        'A15 — AI 문장 0건에서도 Mirror가 열린다',
+        noAi.evidence.mirrorAvailable === true,
+        noAi.evidence.mirrorAvailable,
+      );
+      check(
+        'A15 — AI 문장 0건에서도 축별 판정·근거 문장이 전부 있다',
+        noAi.evidence.axes.length > 0 &&
+          noAi.evidence.axes.every(
+            (item) =>
+              Boolean(item.state) && typeof item.signal === 'string' && item.signal.length > 0,
+          ),
+        noAi.evidence.axes,
+      );
+      check(
+        'A15 — AI 문장 0건에서도 Premium 본문이 규칙 문장으로 완결된다',
+        noAi.deepReport.renderedStrings.every(
+          (text) => typeof text === 'string' && text.length > 0,
+        ),
+        noAi.deepReport.renderedStrings.filter((text) => !text),
+      );
+    }
+
+    /* ── A14 · 캐시 키 배선 구조 검사 ═════════════════════════════════════
+
+       지문이 달라진다는 것(A13)과 **캐시가 그걸 본다는 것**은 다른 명제다. 캐시 키는
+       클라이언트(`aiClient.cacheKey`)에 있고 이 라우트는 그것을 볼 수 없으므로, R1과
+       같은 방식으로 **소스를 읽어** 배선을 고정한다. 실제 캐시 히트/미스는 J1 브라우저
+       실측이 확인한다(§40.20). */
+    {
+      const { readFileSync } = await import('node:fs');
+      const stripComments = (raw) =>
+        raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
+      const hook = stripComments(readFileSync('src/hooks/useAiNarrative.ts', 'utf-8'));
+      /**
+       * ⚠️ 지문 함수에 인자를 넘기는 것과 **memo deps에 넣는 것**은 둘 다 필요하다.
+       * deps에 없으면 `answers.currentRelationship`이 바뀌어도 memo가 이전 지문을 그대로
+       * 돌려주고, 그러면 라우트가 옳은 지문을 계산할 수 있어도 화면은 낡은 지문으로
+       * 캐시를 조회한다 — A13이 통과하면서 결함이 남는 유일한 경로다.
+       */
+      check(
+        'A14 — useRelationshipNarrative가 지문에 currentRelationship을 넘긴다',
+        /relationshipNarrativeFingerprint\(\{[\s\S]*?current:\s*answers\.currentRelationship/.test(
+          hook,
+        ),
+        'useAiNarrative.ts의 지문 호출에 current가 없다',
+      );
+      check(
+        'A14 — 그 지문 memo의 deps에 currentRelationship이 있다',
+        /\[\s*tense,[\s\S]*?answers\.currentRelationship,[\s\S]*?\]/.test(hook),
+        'deps에 answers.currentRelationship이 없다',
+      );
+      check(
+        'A14 — 지문에 raw status를 넘기지 않는다 (§40.5)',
+        !/relationshipNarrativeFingerprint\(\{[\s\S]*?status:/.test(hook),
+        'useAiNarrative.ts의 지문 호출에 status가 남아 있다',
+      );
+
+      const client = stripComments(readFileSync('src/services/ai/aiClient.ts', 'utf-8'));
+      /**
+       * ⚠️ v1.42는 `relationship` 프롬프트를 v2 → v3으로 올린다. 캐시 키에
+       * promptVersion이 없으면 같은 dev 세션(HMR)에서 **v2 프롬프트가 만든 문장이 v3
+       * 계약의 결과인 것처럼** 나온다. v1.27이 적어 둔 리스크를 여기서 닫는다.
+       */
+      check(
+        'A14 — cacheKey가 promptVersion을 포함한다 (§40.12)',
+        /function cacheKey[\s\S]*?TASK_PROMPT_VERSION\[task\]/.test(client),
+        'aiClient.cacheKey에 promptVersion이 없다',
+      );
+    }
+
+    /* ── R2 · Context Builder가 stage를 읽지 않는다 (구조 검사) ═══════════
+       R1이 Resolver를 지키는 방식 그대로 **AI Context Builder**에도 같은 검사를 둔다.
+       v1.41 Audit이 찾은 결함이 정확히 "Resolver는 테스트로 막혀 있는데 AI context는
+       안 막혀 있었다"였으므로, 같은 형태의 재발을 같은 형태의 검사로 막는다. */
+    {
+      const { readFileSync } = await import('node:fs');
+      const raw = readFileSync('src/services/ai/contextBuilders.ts', 'utf-8');
+      // R1과 같은 이유로 주석을 지우고 본다 — 상단 주석이 왜 status를 뺐는지 설명한다.
+      const source = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+      check(
+        'R2 — AI Context Builder가 `RelationshipStatus`를 받지 않는다',
+        !source.includes('RelationshipStatus'),
+        'contextBuilders.ts에 RelationshipStatus가 남아 있다',
+      );
+      check(
+        'R2 — AI Context Builder가 `answers.status`를 읽지 않는다',
+        !source.includes('answers.status'),
+        'contextBuilders.ts가 answers.status를 읽고 있다',
+      );
+      for (const forbidden of ['RelationshipStage', 'RelationshipJob']) {
+        check(
+          `R2 — AI Context Builder가 \`${forbidden}\` 타입을 받지 않는다`,
+          !source.includes(forbidden),
+          forbidden,
+        );
+      }
+    }
+    /* ── CA4b · SOURCE PROVENANCE ≠ NARRATIVE TENSE (v1.42 · §41.5) ══════
+
+       CA0~CA4는 `test:ai`가 **파서 계약**을 본다(어떤 source가 살아남는가). 여기서는
+       같은 근거의 **해석 결과**를 본다 — resolver가 그 ref를 어떤 라벨·문장으로 푸는가.
+
+       ```
+       source   current_relationship   근거의 정체성   ended에서도 그대로
+       key      current_relationship:contact           그대로 (React key · 중복 제거)
+       label    지금 관계 → 그때 이 관계               시제를 따른다
+       text     지금 관계에서 … → 그때 이 관계에서 …   시제를 따른다
+       ```
+
+       ⚠️ v1.41까지 `resolveCurrentRelationship`이 `지금 관계에서`를 **하드코딩**했고
+       `sourceLabel`도 `'지금 관계'` 고정이었다. 그래서 `ended` 사용자의 Premium 연결
+       카드 근거 목록(`근거 N개 보기`)에 현재형이 남았는데, 그 문자열은 fixture가 훑는
+       `renderedStrings`에 **없던 자리**라 통과했다 — §39.9와 정확히 같은 실패 형태다.
+       v1.42에서 문자열을 `currentEvidencePrefix`/`currentEvidenceLabel`로 옮기고,
+       `renderedStrings`에 `evidence[].sourceLabel`·`text`를 더했다. */
+    console.log('\nCA4b — Source Provenance ≠ Narrative Tense (v1.42)');
+    {
+      const dating = await run({ ...SESSION, status: 'dating', currentRelationship: CURRENT_MIXED });
+      const ended = await run({ ...SESSION, status: 'ended', currentRelationship: CURRENT_MIXED });
+
+      const pick = (result) =>
+        result.aiBoundary.resolvedEvidence.filter((item) => item.scope === 'current');
+
+      const datingCurrent = pick(dating);
+      const endedCurrent = pick(ended);
+
+      check(
+        'CA4b — 두 세션의 current 근거 축이 같다 (비교 전제)',
+        datingCurrent.length > 0 &&
+          JSON.stringify(datingCurrent.map((item) => item.axis)) ===
+            JSON.stringify(endedCurrent.map((item) => item.axis)),
+        { dating: datingCurrent.map((i) => i.axis), ended: endedCurrent.map((i) => i.axis) },
+      );
+
+      // ① PROVENANCE — source와 key는 시제와 무관하게 동일하다.
+      check(
+        'CA4b — source가 ended에서도 current_relationship으로 유지된다',
+        endedCurrent.every((item) => item.source === 'current_relationship'),
+        endedCurrent.map((item) => item.source),
+      );
+      check(
+        'CA4b — 근거 key가 시제 때문에 달라지지 않는다',
+        JSON.stringify(datingCurrent.map((item) => item.key)) ===
+          JSON.stringify(endedCurrent.map((item) => item.key)),
+        { dating: datingCurrent.map((i) => i.key), ended: endedCurrent.map((i) => i.key) },
+      );
+
+      // ② TENSE — 라벨과 문장은 시제를 따른다.
+      check(
+        'CA4b — dating의 근거 라벨은 `지금 관계`',
+        datingCurrent.every((item) => item.sourceLabel === '지금 관계'),
+        datingCurrent.map((item) => item.sourceLabel),
+      );
+      check(
+        'CA4b — ended의 근거 라벨은 `그때 이 관계`',
+        endedCurrent.every((item) => item.sourceLabel === '그때 이 관계'),
+        endedCurrent.map((item) => item.sourceLabel),
+      );
+      check(
+        'CA4b — ended의 근거 문장에 현재형 호칭 0건',
+        scan(
+          endedCurrent.flatMap((item) => [item.sourceLabel, item.text]),
+          FORMER_FORBIDDEN_PHRASES,
+        ).length === 0,
+        scan(
+          endedCurrent.flatMap((item) => [item.sourceLabel, item.text]),
+          FORMER_FORBIDDEN_PHRASES,
+        ),
+      );
+      check(
+        'CA4b — dating의 근거 문장은 현재형을 유지한다 (과필터 방지)',
+        datingCurrent.every(
+          (item) => typeof item.text === 'string' && item.text.includes('지금 관계에서'),
+        ),
+        datingCurrent.map((item) => item.text),
+      );
+
+      /**
+       * ③ **검사 배열 자체가 넓어졌는지** 확인한다. 문구를 고치는 것과 그 문구가
+       * 검사되는 자리에 있는 것은 다른 명제다 — v1.41이 J7에서 배운 것이다.
+       */
+      check(
+        'CA4b — 연결 카드 근거 문장이 renderedStrings에 포함된다 (검사 사각 제거)',
+        ended.deepReport.renderedStrings.some(
+          (text) => typeof text === 'string' && text.includes('그때 이 관계'),
+        ),
+        '유료 본문 문자열 배열에 근거 목록이 빠져 있다',
+      );
+      check(
+        'CA4b — ended 유료 본문 전체에 현재형 호칭 0건',
+        scan(ended.deepReport.renderedStrings, FORMER_FORBIDDEN_PHRASES).length === 0,
+        scan(ended.deepReport.renderedStrings, FORMER_FORBIDDEN_PHRASES),
+      );
+    }
+
+    /* ── AQ-D · 결정론 질문 게이트와 AI 게이트가 같은 술어를 쓴다 (§41.10) ═══
+       AQ0~AQ6은 `test:ai`가 **AI 응답 후처리**를 본다. 여기서는 그 게이트가 읽는
+       boolean이 결정론 질문을 막는 것과 **같은 술어**에서 나오는지 본다 —
+       두 값이 갈리면 같은 사용자가 결정론 질문은 못 받고 AI 질문은 받는다. */
+    console.log('\nAQ-D — Job Question Gate 단일 source (v1.42)');
+    {
+      const cases = [
+        { status: 'ended', label: 'ended', expected: false },
+        { status: 'solo_none', label: 'none', expected: false },
+        { status: 'crush', label: 'talking', expected: true },
+        { status: 'dating', label: 'dating', expected: true },
+        { status: 'married', label: 'long_term', expected: true },
+      ];
+      for (const item of cases) {
+        // `solo_none`은 상대 정보를 비워야 job이 `none`이 된다(있으면 talking으로 읽는다)
+        const session =
+          item.label === 'none'
+            ? { declared: DECLARED, experience: EXPERIENCE, target: {}, status: item.status }
+            : { ...SESSION, status: item.status };
+        const result = await run(session);
+        check(
+          `AQ-D — job=${result.resolution.job}(${item.label})의 allowsOutwardQuestions=${item.expected}`,
+          result.context.allowsOutwardQuestions === item.expected,
+          { job: result.resolution.job, actual: result.context.allowsOutwardQuestions },
+        );
+      }
+
+      /**
+       * ⚠️ **`jobAllowsOutwardQuestions`를 재구현하지 않았는지** 구조로 검사한다.
+       * 이 게이트의 값이 다른 곳에서 `status === 'ended'`로 다시 계산되면, 두 판정이
+       * 갈리는 순간 AI 질문만 새어 나간다.
+       */
+      const { readFileSync } = await import('node:fs');
+      const stripComments = (raw) =>
+        raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
+      const hook = stripComments(readFileSync('src/hooks/useAiNarrative.ts', 'utf-8'));
+      check(
+        'AQ-D — 훅이 jobAllowsOutwardQuestions(job)에서 값을 얻는다',
+        /allowsOutwardQuestions\s*=\s*jobAllowsOutwardQuestions\(job\)/.test(hook),
+        '훅이 다른 방법으로 게이트 값을 만들고 있다',
+      );
+      check(
+        'AQ-D — 훅에 status 기반 분기를 새로 만들지 않았다',
+        !/status\s*===\s*'ended'/.test(hook),
+        "useAiNarrative.ts에 status === 'ended' 분기가 있다",
+      );
+
+      const handlers = stripComments(readFileSync('src/services/ai/handlers.ts', 'utf-8'));
+      check(
+        'AQ-D — 핸들러가 공용 게이트 함수를 쓴다 (로직 복제 0)',
+        /applyOutwardQuestionGate\(withStates,\s*request\.allowsOutwardQuestions\)/.test(handlers),
+        '핸들러가 게이트를 인라인으로 재구현하고 있다',
+      );
+      check(
+        'AQ-D — 핸들러에 status/job 기반 분기가 없다',
+        !/RelationshipJob|RelationshipStage|status\s*===\s*'ended'/.test(handlers),
+        'handlers.ts가 stage/job을 직접 보고 있다',
+      );
+
+      const contextBuilders = stripComments(
+        readFileSync('src/services/ai/contextBuilders.ts', 'utf-8'),
+      );
+      check(
+        'AQ-D — allowsOutwardQuestions가 AI context에 들어가지 않는다 (§41.7)',
+        !contextBuilders.includes('allowsOutwardQuestions'),
+        'contextBuilders.ts가 allowsOutwardQuestions를 프롬프트로 보내고 있다',
+      );
+
+      const prompts = stripComments(readFileSync('src/services/ai/promptTemplates.ts', 'utf-8'));
+      check(
+        'AQ-D — 프롬프트에 allowsOutwardQuestions·job·stage가 없다',
+        !prompts.includes('allowsOutwardQuestions') &&
+          !prompts.includes('relationshipJob') &&
+          !prompts.includes('RelationshipStage'),
+        '프롬프트가 Job 정보를 받고 있다',
+      );
+    }
+
+    /* ── CF0~CF6 · Question Gate × Cache Identity (v1.42 · §42) ══════════
+
+       ══ 무엇이 문제였나 ═══════════════════════════════════════════════════
+
+       §41.8은 `allowsOutwardQuestions`를 프롬프트에 넣지 않기로 했고, 그건 맞다.
+       그런데 **지문에도 넣지 않기로** 한 판단은 틀렸다.
+
+       ```
+       aiClient.callAiTask   cache.set(key, json.data)      ← provider raw가 아니다
+       json.data             applyOutwardQuestionGate 적용 후 최종 응답
+       cacheKey              task::promptVersion::fingerprint
+       ```
+
+       캐시가 저장하는 것이 **게이트가 적용된 최종 응답**이므로, 그 게이트의 입력이
+       다르면 재사용해도 되는 응답이 아니다.
+
+       ══ 실제로 겹치는 조합 (실측) ═════════════════════════════════════════
+
+       `target`과 `status`는 **둘 다** 이 지문에 없다(`target`은 v1.0부터, `status`는
+       §40.5에서 뺐다). 그래서 그 두 값만 달라지는 세션들이 같은 지문을 갖는데 job은
+       갈린다 — `allow`는 job에서 나온다.
+
+       ```
+       dating + 상대 3축        job dating   allow true    fp X
+       새로운 사람과 궁합 보기   job unknown  allow true    fp X   (target은 지문에 없다)
+       S05에서 '솔로' 선택      job none     allow FALSE   fp X   ← 겹쳤다
+       ```
+
+       세 줄 모두 tense가 `current`이고 declared·experience·current·focusAxis·validated가
+       전부 같다. 그러면 캐시 히트로 **질문이 붙은 이전 응답이 job=none 사용자에게
+       그대로 나온다.**
+
+       ⚠️ **S30에 답한 세션에서는 이 경로가 성립하지 않는다.** 처음에는 `solo_exp` +
+       S30 근거로 재현했다고 적었는데, 브라우저 실측에서 `resetTargetContext()`가
+       §39.20에 따라 **`currentRelationship`도 비우는 것**을 확인했다 — 그러면 지문이
+       `current` 때문에 이미 달라지므로 겹치지 않는다. 결함은 **S30을 답하지 않은
+       세션**에서만 도달 가능하고, S30이 선택 입력이므로 그쪽이 다수다.
+
+       ⚠️ 아래 fixture는 `CURRENT_MIXED`(S30 있음)로 **정책 분리 자체**를 검사한다 —
+       도달 경로와 무관하게 '같은 지문 입력 + 다른 정책'이 갈리는지가 고정할 불변식이다.
+       도달 경로는 CF-R이 따로 본다.
+
+       ══ 고친 방법 ═════════════════════════════════════════════════════════
+
+       boolean 하나만 지문에 넣었다. `job`·`stage`·`status` 문자열을 넣으면 §40.5가 뺀
+       것을 되돌리는 셈이다 — boolean 1개면 필요한 만큼만 나뉜다(CF3·CF4가 그것을 고정). */
+    console.log('\nCF0~CF6 — Question Gate × Cache Identity (v1.42 §42)');
+    {
+      const CF_SESSION = { declared: DECLARED, experience: EXPERIENCE };
+      const fpOf = (result) => result.aiBoundary.fingerprint;
+
+      /** 같은 근거·같은 시제에서 job만 갈라놓는다 — target 유무가 유일한 차이다 */
+      const withTarget = (status) =>
+        run({ ...CF_SESSION, status, target: TARGET, currentRelationship: CURRENT_MIXED });
+      const withoutTarget = (status) =>
+        run({ ...CF_SESSION, status, target: {}, currentRelationship: CURRENT_MIXED });
+
+      /* CF0 · allow=true에서 지문이 안정적이다 */
+      const allowA = await withTarget('dating');
+      const allowB = await withTarget('dating');
+      check(
+        'CF0 — 같은 근거 + current + allow=true → 같은 지문 (안정)',
+        fpOf(allowA) === fpOf(allowB) && allowA.aiBoundary.allowsOutwardQuestions === true,
+        { a: fpOf(allowA), b: fpOf(allowB), allow: allowA.aiBoundary.allowsOutwardQuestions },
+      );
+
+      /* CF1 · allow=false에서도 지문이 안정적이다 */
+      const denyA = await withoutTarget('solo_exp');
+      const denyB = await withoutTarget('solo_exp');
+      check(
+        'CF1 — 같은 근거 + current + allow=false → 같은 지문 (안정)',
+        fpOf(denyA) === fpOf(denyB) && denyA.aiBoundary.allowsOutwardQuestions === false,
+        { a: fpOf(denyA), b: fpOf(denyB), allow: denyA.aiBoundary.allowsOutwardQuestions },
+      );
+
+      /* CF2 · **이 줄이 §42가 닫는 결함이다** */
+      check(
+        'CF2 — tense가 같아도 allow가 다르면 지문이 다르다 (stale question 회귀)',
+        fpOf(allowA) !== fpOf(denyA),
+        { allowTrue: fpOf(allowA), allowFalse: fpOf(denyA) },
+      );
+      check(
+        'CF2 — 그 두 요청의 tense는 실제로 같다 (문제가 시제가 아님을 고정)',
+        allowA.aiBoundary.tense === 'current' && denyA.aiBoundary.tense === 'current',
+        { a: allowA.aiBoundary.tense, b: denyA.aiBoundary.tense },
+      );
+
+      /* CF3·CF4 · stage isolation은 그대로다 — boolean만 넣었으므로 */
+      const crush = await withTarget('crush');
+      const dating = await withTarget('dating');
+      const married = await withTarget('married');
+      check(
+        'CF3 — crush(talking) vs dating: 같은 tense·같은 allow → 같은 지문 (F5 유지)',
+        fpOf(crush) === fpOf(dating),
+        { crush: fpOf(crush), dating: fpOf(dating) },
+      );
+      check(
+        'CF4 — dating vs married(long_term): 같은 지문 (F5 유지)',
+        fpOf(dating) === fpOf(married),
+        { dating: fpOf(dating), married: fpOf(married) },
+      );
+      check(
+        'CF3·CF4 — 세 job 모두 allow=true다 (같은 지문의 근거)',
+        [crush, dating, married].every((r) => r.aiBoundary.allowsOutwardQuestions === true),
+        [crush, dating, married].map((r) => [
+          r.resolution.job,
+          r.aiBoundary.allowsOutwardQuestions,
+        ]),
+      );
+
+      /* CF5 · none vs dating — 같은 tense, 금지↔허용 */
+      const none = await withoutTarget('solo_none');
+      check(
+        'CF5 — none vs dating: 같은 tense · allow false/true → 다른 지문',
+        fpOf(none) !== fpOf(dating) && none.aiBoundary.tense === dating.aiBoundary.tense,
+        {
+          none: [none.resolution.job, none.aiBoundary.allowsOutwardQuestions, fpOf(none)],
+          dating: [dating.resolution.job, dating.aiBoundary.allowsOutwardQuestions, fpOf(dating)],
+        },
+      );
+
+      /* CF6 · ended 대조군 — 이건 tense가 이미 나눈다 */
+      const ended = await withTarget('ended');
+      check(
+        'CF6 — dating vs ended: tense가 current/former로 달라 이미 분리돼 있었다',
+        fpOf(ended) !== fpOf(dating) && ended.aiBoundary.tense === 'former',
+        { dating: fpOf(dating), ended: fpOf(ended), endedTense: ended.aiBoundary.tense },
+      );
+      /**
+       * ⚠️ **CF6이 대조군인 이유.** `ended`는 tense가 `former`라 §40.5의 지문이 이미
+       * 갈라놨다. 그래서 이번 결함은 `ended`에서 나지 않았고, **같은 tense + 다른 정책**
+       * (`none` vs `talking`/`dating`)에서만 났다. 이 줄이 그 범위를 고정한다.
+       */
+      check(
+        'CF6 — 결함 범위: ended가 아니라 same-tense/different-policy였다',
+        ended.aiBoundary.allowsOutwardQuestions === false &&
+          none.aiBoundary.allowsOutwardQuestions === false &&
+          fpOf(ended) !== fpOf(none),
+        {
+          ended: [ended.aiBoundary.tense, fpOf(ended)],
+          none: [none.aiBoundary.tense, fpOf(none)],
+        },
+      );
+
+      /* CF-R · 실제 도달 경로 재현 (S30 미답 세션) ─────────────────────
+         브라우저에서 확인한 3단계를 그대로 태운다. `current`가 처음부터 비어 있으므로
+         New Target reset이 그것을 비워도 지문이 달라지지 않는다 — 그래서 이 경로에서만
+         정책이 겹쳤다. */
+      const NO_CURRENT = { signals: {}, askedAt: null };
+      const rDating = await run({
+        ...CF_SESSION,
+        status: 'dating',
+        target: TARGET,
+        currentRelationship: NO_CURRENT,
+      });
+      const rReset = await run({
+        ...CF_SESSION,
+        status: 'dating',
+        target: {},
+        currentRelationship: NO_CURRENT,
+      });
+      const rSolo = await run({
+        ...CF_SESSION,
+        status: 'solo_exp',
+        target: {},
+        currentRelationship: NO_CURRENT,
+      });
+
+      check(
+        'CF-R — New Target reset만으로는 정책이 안 바뀐다 (job dating → unknown · 둘 다 허용)',
+        rDating.aiBoundary.allowsOutwardQuestions === true &&
+          rReset.aiBoundary.allowsOutwardQuestions === true &&
+          fpOf(rDating) === fpOf(rReset),
+        {
+          dating: [rDating.resolution.job, fpOf(rDating)],
+          reset: [rReset.resolution.job, fpOf(rReset)],
+        },
+      );
+      check(
+        'CF-R — S05에서 솔로를 고르면 job=none이 되고 정책이 뒤집힌다',
+        rSolo.resolution.job === 'none' &&
+          rSolo.aiBoundary.allowsOutwardQuestions === false &&
+          rSolo.aiBoundary.tense === 'current',
+        {
+          job: rSolo.resolution.job,
+          allow: rSolo.aiBoundary.allowsOutwardQuestions,
+          tense: rSolo.aiBoundary.tense,
+        },
+      );
+      check(
+        'CF-R — 그 전환에서 지문이 갈린다 (v1.42 이전에는 같았다)',
+        fpOf(rDating) !== fpOf(rSolo),
+        { before: fpOf(rDating), after: fpOf(rSolo) },
+      );
+      check(
+        'CF-R — 갈린 이유가 tense가 아니다 (둘 다 current)',
+        rDating.aiBoundary.tense === rSolo.aiBoundary.tense,
+        { a: rDating.aiBoundary.tense, b: rSolo.aiBoundary.tense },
+      );
+
+      /* 구조 검사 — 지문 배선과 단일 source */
+      const { readFileSync } = await import('node:fs');
+      const stripComments = (raw) =>
+        raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
+      const hook = stripComments(readFileSync('src/hooks/useAiNarrative.ts', 'utf-8'));
+      check(
+        'CF — 훅이 지문에 allowsOutwardQuestions를 넘긴다',
+        /relationshipNarrativeFingerprint\(\{[\s\S]*?allowsOutwardQuestions,/.test(hook),
+        '지문 호출에 allowsOutwardQuestions가 없다',
+      );
+      check(
+        'CF — 그 지문 memo deps에도 들어 있다',
+        /\[\s*tense,\s*allowsOutwardQuestions,/.test(hook),
+        'deps에 allowsOutwardQuestions가 없다',
+      );
+      check(
+        'CF — 지문에 job/stage/status 문자열을 넣지 않았다 (§40.5 유지)',
+        !/relationshipNarrativeFingerprint\(\{[\s\S]*?(job|stage|status):/.test(hook),
+        '지문에 stage 계열 문자열이 들어갔다',
+      );
+
+      const fp = stripComments(readFileSync('src/lib/aiFingerprint.ts', 'utf-8'));
+      check(
+        'CF — 지문 함수가 boolean을 canonical 문자열로 고정한다',
+        /allowsOutwardQuestions \? 'q:on' : 'q:off'/.test(fp),
+        'boolean이 digest에 그대로 들어가고 있다',
+      );
+      check(
+        'CF — 지문 함수가 RelationshipStatus를 받지 않는다',
+        !/RelationshipStatus/.test(fp),
+        'aiFingerprint.ts가 RelationshipStatus를 다시 받고 있다',
+      );
+    }
+
+  }
+
   /* ── 결과 ─────────────────────────────────────────────────────────────── */
   console.log('');
   if (failures.length > 0) {

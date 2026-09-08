@@ -6,12 +6,14 @@ import {
 import { sanitizePhotoObservation } from '@/services/ai/handlers';
 import { PROMPT_VERSIONS } from '@/services/ai/promptVersions';
 import {
+  applyOutwardQuestionGate,
   evidenceRefsAreSubsetOf,
   filterSafeItems,
   isRedundantNarrative,
   scanCoreNarrative,
   scanDeepNarrative,
   scanHistoryNarrative,
+  scanRelationshipNarrative,
 } from '@/services/ai/safety';
 import {
   applyObservedBusinessRules,
@@ -48,6 +50,10 @@ interface ContractRequest {
   photoId?: unknown;
   /** v1.10 — Cross-photo Aggregation fixture용 (Provider 없이 규칙만 검증한다) */
   observations?: unknown;
+  /** v1.42 — relationship 시제 fixture용. 없으면 `'current'` (§40.16) */
+  tense?: unknown;
+  /** v1.42 §41.11 — Ended Job Safety fixture용. 없으면 `true`(기존 fixture 호환) */
+  allowsOutwardQuestions?: unknown;
 }
 
 function notFound(): Response {
@@ -157,19 +163,42 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ ok: true, rejected: 'INVALID_OUTPUT', narratives: [] });
     }
 
+    /**
+     * v1.42 §40.16 — fixture가 시제를 지정한다. 없으면 `'current'`다.
+     *
+     * ⚠️ **여기의 기본값은 실서비스 라우트의 기본값과 다른 성질이다.** 실제
+     * `/api/ai/relationship-insight`는 `tense`가 없으면 400이다(§40.8). 이쪽은 Provider를
+     * 부르지 않는 **응답 검증기**이고, v1.41 이전에 쓴 기존 fixture 30개가 `tense`를
+     * 갖고 있지 않다 — 그것들이 계속 `current` 기준으로 통과해야 회귀 기준이 유지된다.
+     * dev 전용(Production 404) 도구의 fixture 호환성이고, 사용자 요청 경로가 아니다.
+     */
+    const tense = body.tense === 'former' ? 'former' : 'current';
+    /**
+     * v1.42 §41.11 — 기존 fixture 30여 개가 이 값을 갖고 있지 않으므로 `true`가 기본이다.
+     * 실서비스 라우트는 boolean이 아니면 **400**이다(§41.8) — dev 전용 검증기의
+     * fixture 호환성이고 사용자 요청 경로가 아니다.
+     */
+    const allowsOutwardQuestions = body.allowsOutwardQuestions !== false;
+
     const withStates = attachRuleStates(parsed.narratives, stateByAxis);
+    // 실제 핸들러와 **같은 함수**를 쓴다 — 검사 로직을 테스트용으로 복제하지 않는다.
+    const scanNarrative = (text: string) => scanRelationshipNarrative(text, tense);
+
+    // 핸들러와 같은 순서 · 같은 함수 — 게이트가 안전 검사 **앞**이다(§41.9)
+    const gated = applyOutwardQuestionGate(withStates, allowsOutwardQuestions);
+
     const scan = filterSafeItems(
-      withStates,
+      gated,
       (item) => `${item.headline} ${item.explanation} ${item.question ?? ''}`,
-      scanCoreNarrative,
+      scanNarrative,
     );
 
     let core = parsed.core;
     if (core) {
       const coreScan = filterSafeItems(
         [core],
-        (item) => `${item.headline} ${item.summary}`,
-        scanCoreNarrative,
+        (item) => `${item.headline} ${item.summary} ${item.limitations.join(' ')}`,
+        scanNarrative,
       );
       core = coreScan.items[0] ?? null;
     }
@@ -177,12 +206,19 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({
       ok: true,
       promptVersion: PROMPT_VERSIONS.relationship,
+      tense,
+      allowsOutwardQuestions,
+      /** v1.42 §41.11 — 문자열 blacklist가 아니라 **존재 여부**를 검사하게 한다 */
+      questionCount: scan.items.filter((item) => item.question !== undefined).length,
       narratives: scan.items.map((item) => ({
         axis: item.axis,
         state: item.state,
         headlineLength: item.headline.length,
         explanationLength: item.explanation.length,
         evidenceCount: item.evidenceRefs.length,
+        hasQuestion: item.question !== undefined,
+        /** v1.42 §41.5 — SOURCE PROVENANCE. 어떤 source가 살아남았는가 */
+        evidenceSources: item.evidenceRefs.map((ref) => ref.source),
       })),
       core: core
         ? {

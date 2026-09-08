@@ -1,0 +1,48 @@
+{
+  "name": "relationship_ca1_current_source",
+  "description": "CA1 (v1.42 §41.2) — 지금 관계 근거를 current_relationship source로 인용하면 통과한다. v1.41에서는 EVIDENCE_SOURCES에 없어서 이 ref가 조용히 버려지고 근거 0개가 된 항목이 위반 라벨 없이 떨어졌다.",
+  "task": "relationship-insight",
+  "tense": "current",
+  "judgements": [
+    {
+      "axis": "contact",
+      "state": "GAP"
+    },
+    {
+      "axis": "alone",
+      "state": "MATCH"
+    }
+  ],
+  "focusAxis": "contact",
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "GAP",
+        "headline": "연락은 낮게 답했는데 지금 관계에서는 크게 반응해",
+        "explanation": "연락 중요도는 낮게 골랐는데, 지금 관계에서는 바로 알아차린다고 답했어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "contact"
+          },
+          {
+            "source": "current_relationship",
+            "field": "contact"
+          }
+        ]
+      }
+    ],
+    "core": null
+  },
+  "expect": {
+    "narrativeCount": 1,
+    "evidenceSources": [
+      [
+        "declared",
+        "current_relationship"
+      ]
+    ],
+    "violations": []
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "name": "relationship_aq6_ended_body_kept",
+  "description": "AQ6 (v1.42 §41.9 · §12) — Narrative 안전 ≠ Question 안전. 질문이 제거돼도 headline·explanation·core는 **전부 유지**된다. 질문 하나 때문에 설명까지 사라지면 과필터다 — 그래서 게이트를 안전 검사 **앞**에 뒀다. 질문에 현재형 호칭('지금 상대와')을 일부러 넣었는데, 게이트가 먼저 지우므로 시제 검사에 걸리지 않고 설명이 살아남는다.",
+  "task": "relationship-insight",
+  "tense": "former",
+  "allowsOutwardQuestions": false,
+  "judgements": [
+    {
+      "axis": "contact",
+      "state": "GAP"
+    },
+    {
+      "axis": "alone",
+      "state": "MATCH"
+    }
+  ],
+  "focusAxis": "contact",
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "GAP",
+        "headline": "연락은 낮게 답했는데 그때는 크게 반응했어",
+        "explanation": "연락 중요도는 낮게 골랐지만, 그때 이 관계에서 가장 힘들었던 순간으로는 연락이 줄어든 때를 골랐어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "contact"
+          },
+          {
+            "source": "relationship",
+            "field": "hardest"
+          }
+        ],
+        "question": "지금 상대와 연락 주기에 대해 이야기해봤어?"
+      },
+      {
+        "axis": "alone",
+        "state": "MATCH",
+        "headline": "개인 시간은 말한 기준과 비슷했어",
+        "explanation": "혼자 있는 시간을 중요하게 답했고, 이전 관계에서도 같은 신호가 보였어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "alone"
+          }
+        ]
+      }
+    ],
+    "core": {
+      "headline": "연락에서 두 답이 갈렸어",
+      "summary": "말한 기준과 그때 이 관계에서 나타난 신호가 연락 축에서 달랐어.",
+      "evidenceRefs": [
+        {
+          "source": "relationship",
+          "field": "hardest"
+        }
+      ],
+      "limitations": [
+        "기록이 한 번이라 반복 여부는 알 수 없어"
+      ]
+    }
+  },
+  "expect": {
+    "narrativeCount": 2,
+    "questionCount": 0,
+    "hasQuestion": [
+      false,
+      false
+    ],
+    "coreExists": true,
+    "coreAxis": "contact",
+    "violations": []
+  }
+}

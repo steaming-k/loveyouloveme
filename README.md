@@ -7,7 +7,7 @@
 론칭 프로젝트입니다. 실측 확인된 사실과 미검증 항목을 분리해서 기록합니다 — "구현했다"와
 "검증됐다"를 같은 말로 쓰지 않습니다.
 
-**기준 문서** — 현재 버전 **v1.41**
+**기준 문서** — 현재 버전 **v1.42**
 
 | 문서 | 담는 것 | 언제 보나 |
 |---|---|---|
@@ -44,10 +44,10 @@ http://localhost:3000 · 기준 뷰포트 **393 × 852** (360px에서도 깨지�
 | `npm run build` | 프로덕션 빌드 (타입 체크 + 린트 포함) |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
-| `npm run test:ai` | AI 스키마/안전 검증 Contract Test 143건 (Provider Key 불필요 · **dev 서버 필요**) |
+| `npm run test:ai` | AI 스키마/안전 검증 Contract Test **290건** (Provider Key 불필요 · **dev 서버 필요**) — v1.42에서 **시제 fixture 3종**(`former` 안전 문장 통과 · `former` 현재형 호칭 드롭 · `current` 과필터 방지) + **근거 귀속 CA0~CA4** + **질문 Job Safety AQ0~AQ6** 추가 |
 | `npm run test:observed` | 사진 파이프라인 E2E 10건 (`/api/ai/observed-profile` 왕복 · **dev 서버 필요**) |
 | `npm run test:lifecycle` | Lifecycle Fixture **144건** — Relationship Stage/Job · **불변 검사**(단계만 바꿔도 동기화율·Mirror·Premium 게이트 동일) · Ended/Dating/Long-term Safety · **Premium Deep Report 본문의 구조적 안전**(v1.40.1 · `audience` 카운트) · Paywall↔본문 대칭 · fixture enum guard · legacy 세션 (**dev 서버 필요**) |
-| `npm run test:relationship-evidence` | Relationship Evidence Fixture **76건** (v1.41) — **stage ≠ evidence 양방향**(`dating`인데 근거가 없으면 current 0 · `talking`인데 근거를 넣으면 current 사용) · **legacy 무변경**(현재 근거가 없는 세션의 판정이 v1.40.1과 JSON 수준에서 동일) · 점수 불변 · scope 정직성(mixed면 이름 붙이지 않음) · `ended` 시제 전수 · Premium ⑨ · Ended safety 회귀 · **Resolver가 stage를 import하지 않는지 구조 검사** (**dev 서버 필요**) |
+| `npm run test:relationship-evidence` | Relationship Evidence Fixture **154건** (v1.41 80 → v1.42 154) — **stage ≠ evidence 양방향**(`dating`인데 근거가 없으면 current 0 · `talking`인데 근거를 넣으면 current 사용) · **legacy 무변경**(현재 근거가 없는 세션의 판정이 v1.40.1과 JSON 수준에서 동일) · 점수 불변 · scope 정직성(mixed면 이름 붙이지 않음) · `ended` 시제 전수 · Premium ⑨ · Ended safety 회귀 · **Resolver가 stage를 import하지 않는지 구조 검사**(R1) · **v1.42 A0~A15** — AI 지문이 S30을 보는가 · stage가 달라도 근거·시제가 같으면 같은 지문인가 · AI context에 raw status 0건인가(R2) · AI가 없어도 결정론 결과가 완결되는가 · **CA4b**(근거의 source는 유지되고 시제만 바뀌는가) · **AQ-D**(AI 질문 게이트가 결정론 질문과 같은 술어를 쓰는가) · **CF0~CF6 · CF-R**(같은 시제에서 질문 정책만 달라도 캐시 identity가 갈리는가) (**dev 서버 필요**) |
 | `npm run test:history` | Logic Fixture 100건 — History H0~H10 + Observed 시간축 + 근거 묶음 + Solo Premium 게이트 + `네가 말한 너` 문구 무결성 + 샘플 근거 정합성 · S07 사진 게이트(v1.37) + **관찰 시퀀스 시간 예산**(v1.38) (Provider Key 불필요 · **dev 서버 필요**) |
 | `npm run test:ai:e2e` | 실제 `/api/ai/*` Route 왕복 (**dev 서버 필요** · Key 없으면 SKIPPED로 정직하게 보고) |
 | `node tests/run-observed-e2e.mjs` | `npm run test:observed`와 같은 스크립트 |
@@ -347,6 +347,179 @@ RELATIONSHIP STAGE  ≠  RELATIONSHIP EVIDENCE TIMEFRAME
 것**입니다.
 
 상세는 `기능명세_현행.md` §1.8 · `기능명세서.md` **§39** · 기획서 **§5.32**.
+
+---
+
+### AI는 관계 단계를 판정 근거로 쓰지 않습니다 (v1.42)
+
+v1.41은 위 원칙을 결정론 경로에서 **구조적으로** 지켰습니다(R1이 강제합니다).
+그런데 v1.41 이후 Audit에서 **정확히 한 곳**이 예외로 남아 있는 것이 나왔습니다.
+
+```
+relationshipEvidence.ts   stage import 0건 · 테스트로 강제     ✅
+mirror.ts                 status 읽지 않음                      ✅
+deep-report-narrative     tense만 받음                          ✅
+relationship-insight      status enum 원문 6종 · 계약 0건       ❌
+```
+
+**같은 원칙을 지키는 곳이 여럿이고 안 지키는 곳이 하나였습니다.** 그 하나가 하필
+문장 생성기(AI)이고, 하필 무료 화면(`/mirror`)입니다.
+
+> **AI는 관계 단계를 판정 근거로 쓰지 않습니다.
+> 문장을 현재형으로 쓸지 과거형으로 쓸지만 압니다.**
+
+```
+BEFORE   RAW STATUS ────────────────────────────────► AI
+AFTER    RELATIONSHIP JOB → RELATIONSHIP TENSE ─────► AI
+```
+
+| 결함 | 무엇이었나 |
+|---|---|
+| **Narrative Cache** (사용자 가시) | 지문에 `currentRelationship`이 없어서 `/mirror` → S30 → `/mirror`에서 **행은 `지금 관계에서 "…"라고 답함`인데 AI 설명은 이전 관계 근거를 설명하던 문장**이 남았습니다. `pickFocus`가 `MIRROR_AXES` 순서의 첫 매치를 고르므로 앞선 축이 이미 GAP이면 뒤쪽 축을 답해도 `focusAxis`가 안 바뀝니다 — 희귀 조건이 아니라 흔한 경로입니다 |
+| **Raw Status Leak** | context에 `status`가 enum 원문으로 들어가고 **프롬프트는 그 필드를 한 번도 언급하지 않았습니다.** 증거: v1.41 E2E가 이 자리에 `status: 'ex'`(존재하지 않는 값)를 보내고도 PASS였습니다 |
+| **AI Tense Safety 부재** | `safety.ts`에 시제 검사기가 **0건**이었습니다. Ended Safety는 결정론 게이트와 fixture 문자열 검사로만 성립했고, **AI 출력 경로에는 방어가 없었습니다** |
+
+| 조치 | 내용 |
+|---|---|
+| Context | `status`(6종) → **`tense`(2종)** · **필수 파라미터**(optional 기본값 금지 — v1.40.1 §38.2와 같은 이유). 라우트도 없으면 **400** |
+| Prompt | `[시제]` 블록 + **`former`에서 이별 원인·재회 추론 명시 금지**. `PROMPT_VERSIONS.relationship` v2 → **v3-tense** |
+| Safety | `scanRelationshipTense` 3패턴. `question`·`limitations`까지 스캔합니다 — `narrative.question`은 **실제로 렌더**되므로 |
+| Fingerprint | `current` **추가**(`MIRROR_AXES` 순서로 정규화 · `askedAt` 제외 · `unsure`와 미답변 구분) · `status` **제거** |
+| Cache Key | `task::fingerprint` → **`task::promptVersion::fingerprint`**. v1.27이 적어둔 리스크를 닫았습니다 |
+
+**`status`를 지문에서 뺀 부수 효과가 의도입니다.**
+
+```
+crush → dating    근거·시제 같음  →  같은 지문    같은 설명을 두 번 만들지 않습니다
+dating → ended    시제 다름       →  다른 지문    현재형 캐시를 받지 않습니다
+```
+
+즉 `stage ≠ evidence`가 **캐시 층에서도** 성립합니다.
+
+⚠️ **`current`에 대칭 검사를 넣지 않은 것도 판단입니다.** 진행 중인 관계도 축의 절반이
+`scope: 'past'`인 것이 정상이고(S30은 선택 입력) 그 축의 근거 문장은 `이전 관계에서 …`
+입니다. 과거 어휘를 금지하면 **근거를 인용할수록 문장이 사라집니다.** 두 방향의 실패
+비용도 다릅니다 — `former`에서 현재형은 끝난 관계를 진행 중이라고 말하는 것이고,
+`current`에서 과거 어휘는 대개 과거 근거를 정확히 인용한 것입니다.
+
+| 검증 | 결과 |
+|---|---|
+| `test:relationship-evidence` | 80 → **115건** (A0~A15 · **R2**가 R1과 같은 형태로 `contextBuilders.ts`의 stage 0건을 강제) |
+| `test:ai` | 143 → **176건** (시제 fixture 3종) |
+| `test:ai:e2e` | **PASS 6 · SKIPPED 0 · FAIL 0** — Persona A `current` · B `former`, 호출 수는 v1.41과 동일 |
+| 브라우저 J1~J5 | stale 재현 후 AI 요청 **2회**(캐시 미스) · `ended`에서 AI 5블록 전부 과거형 · 금지 어휘 0건 · legacy 정상 · console error 0건 |
+| 과필터 | dev 로그 `[ai] relationship filter` — 실제 호출 **7건 전부 `parsed=N safe=N`**(드롭 0) |
+
+**한 줄 교훈** — 원칙을 다섯 곳에서 지키고 한 곳에서 안 지키면 **그 한 곳이 원칙의 실제
+값**입니다. 새 원칙을 세우는 것보다 이미 세운 원칙에 예외가 없게 만드는 것이 먼저이고,
+예외를 없애는 방법은 주석이 아니라 R1·R2 같은 **구조 검사**입니다.
+
+상세는 `기능명세_현행.md` **§8.11** · `기능명세서.md` **§40** · 기획서 **§5.32.6**.
+
+---
+
+### 근거의 출처와 질문의 대상 (v1.42 Blocker Closure)
+
+§8.11이 닫은 것은 **시제**였습니다. Remaining Risks Audit에서 그 경계의 완성 조건을 깨는
+P0 2건이 나왔습니다.
+
+**① AI가 S30 근거를 인용할 수 없었습니다.** `EvidenceRef`에는 v1.41부터
+`current_relationship`이 있는데 파서의 허용 목록(`EVIDENCE_SOURCES`)에는 없었습니다 —
+그 목록 **바로 위 주석**이 "이 목록은 `EvidenceRef` 타입과 항상 같이 움직여야 한다"고
+적어둔 규칙이 깨진 자리입니다.
+
+```
+결정론 엔진   { source: 'current_relationship', field: axis }   만든다
+AI 파서       oneOf(source, EVIDENCE_SOURCES) → null            버린다
+파싱          근거 0개 → 항목 제거 (위반 라벨 0건)               조용히 사라진다
+```
+
+전수 audit 결과 **10종 중 빠진 것은 하나뿐**이었습니다(단순 누락). 파서와 두 Task
+프롬프트 enum에 등록했고 `AI_OUTPUT ⊆ DETERMINISTIC_EVIDENCE`는 그대로입니다 — 허용한
+것은 '이미 만들어진 ref를 정확히 되짚는 것'뿐입니다.
+
+**함께 발견한 것**: resolver가 시제를 몰라 `지금 관계에서`를 하드코딩하고 있었고, 그
+문자열은 Premium 연결 카드의 `근거 N개 보기`에서 **v1.41부터 이미 새고 있었습니다** —
+fixture가 훑는 배열에 그 자리가 없었기 때문입니다(§39.9와 같은 실패 형태).
+
+**② AI 질문이 Job 게이트를 받지 않았습니다.**
+
+```
+연락이 줄었을 때 서로 어떤 기준이 있었는지 이야기해볼 수 있을까?
+```
+
+현재형 호칭이 **하나도 없어서** 시제 스캐너를 통과합니다. 그런데 관계가 끝난 사용자에게
+상대와 이야기해보라고 제안하는 문장입니다.
+
+> **TENSE SAFETY ≠ JOB SAFETY.**
+> `현재형이 아니다`와 `Ended 사용자에게 해도 되는 질문이다`는 다른 명제입니다.
+
+금지할 단어가 없으므로 **검사가 아니라 게이트**가 필요했습니다. `applyOutwardQuestionGate`가
+응답 후처리에서 `ended`·`none`의 질문을 지웁니다 — **AI에게 Job을 주지 않는다는 결정은
+그대로**이고, 값은 결정론 질문과 **같은 술어**(`jobAllowsOutwardQuestions`)에서 나옵니다.
+
+⚠️ **게이트를 안전 검사 앞에 뒀습니다.** 뒤에 두면 질문 하나가 위반일 때 설명까지 항목째로
+사라집니다 — `ended`에서 질문은 어차피 화면에 가지 않으므로 그건 순수한 과필터입니다.
+
+| 검증 | 결과 |
+|---|---|
+| `test:ai` | 176 → **290건** (CA0~CA4 · AQ0~AQ6) |
+| `test:relationship-evidence` | 115 → **135건** (CA4b · AQ-D) |
+| `test:ai:e2e` | PASS 6 · SKIPPED 0 · FAIL 0 — Persona B(former)에서 **`questionsStripped=1` · `narratives: 1`**. 모델이 실제로 질문을 만들었고, 게이트가 그것만 지웠고, 설명은 살아남았습니다 |
+| 브라우저 | `ended` AI 질문 **0** / `dating` 같은 자리에 AI 질문 유지 / Premium 근거 목록 `그때 이 관계` |
+
+**한 줄 교훈** — 주석은 규칙을 **선언**하지만 **강제**하지 않습니다. `EVIDENCE_SOURCES`는
+"타입과 함께 움직여야 한다"는 문장을 자기 바로 위에 갖고 있었고 어긋났습니다. 그리고
+**안전 검사를 하나 만들 때마다 그 검사가 답하지 못하는 질문이 새로 생깁니다** — 검사를
+늘리는 것이 안전을 늘리는 것과 같지 않습니다.
+
+상세는 `기능명세_현행.md` **§8.12** · `기능명세서.md` **§41**.
+
+---
+
+### 질문 게이트와 캐시 identity (v1.42 Final Cache Safety)
+
+Blocker Closure 보고를 검토하다 마지막 결함이 나왔습니다. 그때 이렇게 적었습니다.
+
+> `allowsOutwardQuestions`는 지문에 넣지 않았습니다 — 응답 내용을 정하지 않으므로.
+
+**그 판단이 틀렸습니다.**
+
+```ts
+// aiClient.callAiTask
+cache.set(key, json.data);     // provider raw가 아니라 게이트·안전검사까지 끝난 최종 응답
+```
+
+그리고 `useNarrativeTask`는 요청을 보내기 **전에** 캐시를 읽습니다 — **캐시 히트에는
+게이트가 돌 기회가 없습니다.** "서버가 매번 다시 적용한다"는 방어는 히트에서 성립하지
+않습니다(히트의 정의가 '서버에 가지 않는 것'이니까요).
+
+지문에는 `status`도 `target`도 없는데 `allowsOutwardQuestions`는 그 둘에서 파생됩니다.
+
+```
+① dating + 상대 3축        job dating   allow true    fp X
+② 새로운 사람과 궁합 보기    job unknown  allow true    fp X
+③ S05에서 '솔로' 선택       job none     allow FALSE   fp X   ← 겹쳤습니다
+```
+
+**조치는 boolean 1개**입니다. `job`·`stage`·`status` 문자열은 넣지 않았으므로
+`crush`↔`dating`↔`married`는 여전히 같은 지문이고 `none`↔`dating`만 갈립니다.
+프롬프트·schema·`promptVersion` 변경은 **0**입니다 — cache identity만 고쳤습니다.
+
+⚠️ **`ended`는 대조군입니다.** tense가 `former`라 이미 분리돼 있었으므로, 결함은
+`ended`가 아니라 **같은 시제 · 다른 정책**에서만 났습니다.
+
+| 검증 | 결과 |
+|---|---|
+| `test:relationship-evidence` | 135 → **154건** |
+| Journey A (dating → none) | 질문 **1 → 0** · 두 지문 모두 `REAL`(캐시 미스) · 서버 로그 `outwardQ=off questionsStripped=1` · AI 블록 5개 유지 |
+| Journey B (none → dating) | 질문 **복원** · **서버 요청 증가 0**(캐시 히트) — 과도 무효화가 아닙니다 |
+
+**한 줄 교훈** — **캐시가 무엇을 저장하는지 모르면 캐시 키를 정할 수 없습니다.** "이 값은
+응답 내용을 정하지 않는다"가 참인지는 캐시가 raw를 저장하는지 최종 응답을 저장하는지에
+달려 있었고, 저는 그것을 확인하지 않고 판단했습니다.
+
+상세는 `기능명세_현행.md` **§8.13** · `기능명세서.md` **§42**.
 
 ---
 
@@ -650,7 +823,8 @@ semantic HTML · 실제 `button`/`input[type=radio]`/`checkbox` 사용 · 모든
 ## 현재 범위 밖 (의도적 제외)
 
 - **Supabase 미연동.** 세션은 `localStorage`에만 저장됩니다. `docs/supabase-info.md`의 자격 증명은 아직 쓰지 않습니다. 붙일 때는 `services/aiService.ts`와 `state/SessionProvider.tsx` 두 경계만 건드리면 됩니다.
-- **실제 AI Provider end-to-end는 2026-09-04(v1.17)와 2026-09-07(v1.39)에 실제 Key로 6/6 PASS를 확인했습니다.** 상시 CI 검증은 아니라 "이 실행 기준"입니다 — API Key 없이도 스키마/안전 검증(`test:ai`)은 항상 실측합니다.
+- **실제 AI Provider end-to-end는 2026-09-04(v1.17) · 2026-09-07(v1.39) · 2026-09-08(v1.41 · v1.42)에 실제 Key로 6/6 PASS를 확인했습니다.** 상시 CI 검증은 아니라 "이 실행 기준"입니다 — API Key 없이도 스키마/안전 검증(`test:ai`)은 항상 실측합니다.
+- **v1.42에서 이 검증 도구 자체의 결함을 고쳤습니다.** `run-provider-e2e.mjs`가 `mode !== 'real'`인 응답을 전부 `SKIPPED — KEY NOT AVAILABLE`로 보고하고 있어서, 라우트가 400을 돌려줘도 "키가 없어 건너뜀"으로 찍혔습니다(v1.42 작업 중 실제로 발생 — 같은 키로 다른 4개 Task는 PASS였습니다). 이제 `CONFIG_ERROR`/demo만 SKIPPED이고 나머지 `ok:false`는 **FAIL**입니다. **검증 도구가 실패를 부재로 보고하면 통과 자체가 증거가 되지 않습니다.**
 - **Production의 실제 사진 분석은 아직 켜지지 않았습니다(v1.39 실측).** Production 응답이 `meta.mode: "demo"`라서, 배포된 앱에서 사진을 올리면 관찰이 **0개**로 정직하게 비어 있습니다(거짓 관찰을 만들지는 않습니다 — 이 점은 Production에서 직접 확인했습니다). 코드는 정상이고 남은 것은 Vercel Production 환경변수 설정 + Redeploy입니다(USER ACTION REQUIRED · `기능명세서.md` §36.9).
 - **사주 명식 계산 엔진 미연결.** 절입 시각·진태양시 등 정밀 계산이 필요해 `NEXT_PUBLIC_SAJU_ENGINE_READY=false`로 정직하게 "준비 중" 상태를 보여줍니다.
 - **GA4는 실제 전송까지 실측했고, 대시보드 수신은 미확인.** v1.19에서 production 빌드 + Consent granted 상태로 `google-analytics.com/g/collect`에 올바른 payload가 POST되고 GA4가 `204`로 응답하는 것을 확인했습니다. 다만 **GA4 Realtime/DebugView 화면에 뜨는 것까지는 확인하지 않았습니다**(계정 소유자만 볼 수 있음). 또한 `hook_variant`/`source`/`price`/`choice`/`score`는 GA4 Admin에서 Custom Dimension 등록을 해야 리포트에 나옵니다.

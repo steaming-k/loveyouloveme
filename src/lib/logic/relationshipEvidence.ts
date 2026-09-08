@@ -236,8 +236,20 @@ function quoted(text: string): string {
  */
 export type RelationshipTense = 'current' | 'former';
 
-function currentPrefix(tense: RelationshipTense): string {
+/**
+ * 지금 관계 근거를 문장에서 부르는 말. **이 문구의 단일 source다.** (v1.42 §41.4)
+ *
+ * ⚠️ `aiEvidenceResolver`가 이걸 import한다. v1.41까지 그 파일은
+ * `지금 관계에서`를 **직접 하드코딩**하고 있었고, 그래서 `ended` 사용자의 Premium 연결
+ * 근거 목록(`connection.evidence[].text`)에 현재형이 남았다 — §39.9가 Mirror 캡션에서
+ * 배운 것과 **같은 실패 형태**(문자열이 검사할 수 없는 자리에 인라인으로 있었다)다.
+ */
+export function currentEvidencePrefix(tense: RelationshipTense): string {
   return tense === 'former' ? '그때 이 관계에서' : '지금 관계에서';
+}
+
+function currentPrefix(tense: RelationshipTense): string {
+  return currentEvidencePrefix(tense);
 }
 
 /** 화면·리포트가 공용으로 쓰는 시점 라벨 (annotation 전용 · 카드 추가 없음) */
@@ -247,12 +259,23 @@ export const SCOPE_LABEL: Record<RelationshipEvidenceScope, string> = {
   none: '아직 확인 전',
 };
 
+/**
+ * 지금 관계 근거의 라벨. **반환 타입이 두 리터럴로 좁다.** (v1.42 §41.4)
+ *
+ * `aiEvidenceResolver`의 `EvidenceSourceLabel`(리터럴 union)에 그대로 대입되려면
+ * `string`이 아니라 리터럴이어야 한다 — 그래서 `scopeLabelOf`를 넓게 두고 이 함수를
+ * 따로 뒀다. **문구는 여기 한 곳에만 있다**(`scopeLabelOf`도 이걸 부른다).
+ */
+export function currentEvidenceLabel(tense: RelationshipTense): '지금 관계' | '그때 이 관계' {
+  return tense === 'former' ? '그때 이 관계' : '지금 관계';
+}
+
 /** `ended`에서는 `지금 관계`라고 부르지 않는다 */
 export function scopeLabelOf(
   scope: RelationshipEvidenceScope,
   tense: RelationshipTense,
 ): string {
-  if (scope === 'current' && tense === 'former') return '그때 이 관계';
+  if (scope === 'current') return currentEvidenceLabel(tense);
   return SCOPE_LABEL[scope];
 }
 

@@ -21,6 +21,9 @@ import {
 } from '@/lib/logic/relationshipStage';
 import { buildApproachHints } from '@/lib/logic/approachHints';
 import { buildConversationQuestions } from '@/lib/logic/compatibility';
+import { relationshipNarrativeFingerprint } from '@/lib/aiFingerprint';
+import { resolveEvidenceRefs } from '@/lib/aiEvidenceResolver';
+import { buildRelationshipContext } from '@/services/ai/contextBuilders';
 import { resolvePrice } from '@/lib/premiumVariant';
 import { hasDeepConnection } from '@/services/premiumConnections';
 import { buildRelationshipDeepReport, premiumFeatureState } from '@/services/premiumService';
@@ -246,12 +249,40 @@ export async function POST(request: Request): Promise<Response> {
       historyEntries: entries,
       deepAnswers: [],
       compatibility,
+      // v1.42 §41.4 — 근거 문장·칩의 시제. 화면과 같은 단일 source에서 온다
+      tense,
     },
     compatibility,
     historyReport,
     repeatedSignals,
     target,
     lifecycle,
+  });
+
+  /* ── ⑤ AI Relationship Boundary (v1.42 · §40.17) ────────────────────
+     ⚠️ **여기서도 판정을 만들지 않는다.** 화면이 부를 것과 **같은 함수**를 부르고
+     (`relationshipNarrativeFingerprint` · `buildRelationshipContext`) 결과를 셀 수 있는
+     형태로 낸다. AI 경계를 검사하려면 Provider가 아니라 **지문과 context**를
+     봐야 하고, 그 둘 다 Provider Key 없이 계산된다.
+
+     ⚠️ `validated: []`다 — 이 라우트는 사진을 다루지 않으므로 관찰 근거를
+     지어내지 않는다. 사진 있는 세션의 지문 변화는 v1.7부터 이미 검사된다(§42). */
+  const relationshipContext = buildRelationshipContext({
+    answers,
+    mirror,
+    validated: [],
+    tense,
+  });
+  const relationshipContextJson = JSON.stringify(relationshipContext);
+  const narrativeFingerprint = relationshipNarrativeFingerprint({
+    tense,
+    // v1.42 §42 — 화면이 넘기는 것과 **같은 술어**에서 온다
+    allowsOutwardQuestions: jobAllowsOutwardQuestions(job),
+    declared,
+    experience,
+    current: currentRelationship,
+    focusAxis: mirror.teaser?.axisKey ?? null,
+    validated: [],
   });
 
   return Response.json({
@@ -344,6 +375,78 @@ export async function POST(request: Request): Promise<Response> {
         tense,
       ).map((template) => template.prompt),
       tense,
+    },
+
+    /* ── ⑤ AI 경계 (v1.42 · §40.17) ─────────────────────────────── */
+    aiBoundary: {
+      /**
+       * relationship-insight AI 요청 지문. **A0~A7·A13이 이 문자열만 본다** —
+       * 해시값이므로 무엇이 들어갔는지는 보이지 않고, `같은가 다른가`만 보면 된다.
+       */
+      fingerprint: narrativeFingerprint,
+      /** `relationshipTenseOf(job)` — 화면·근거 문장·AI가 공유하는 단일 source */
+      tense,
+      /**
+       * v1.42 §42 — 지문에 들어간 **응답 안전 정책**. 프롬프트에는 가지 않는다.
+       * CF 계열이 `tense`가 같고 이 값만 다른 조합을 검사한다.
+       */
+      allowsOutwardQuestions: jobAllowsOutwardQuestions(job),
+      /** context에 실제로 실린 시제. 위 `tense`와 **항상 같아야 한다** */
+      contextTense: relationshipContext.tense,
+      /**
+       * AI가 받는 context의 키 목록. **`status`가 여기 없는 것**이 §40.7의 전부다.
+       */
+      contextKeys: Object.keys(relationshipContext).sort(),
+      /**
+       * 직렬화한 context 전체에 raw `RelationshipStatus` enum이 **하나라도 남아
+       * 있는가.** 키 목록만 보면 `status`를 다른 이름으로 감싸서 넣은 경우를 놓친다.
+       *
+       * ⚠️ 문장 원문을 내보내지 않고 **걸린 토큰 목록만** 낸다 — dev 전용이어도
+       * 자유서술(`relationship.note`)을 응답에 싣지 않는다(§34 Privacy).
+       */
+      rawStatusTokens: Object.keys(STATUS_LABEL).filter((value) =>
+        relationshipContextJson.includes(`"${value}"`),
+      ),
+      /**
+       * v1.42 §41.5 — **SOURCE PROVENANCE와 NARRATIVE TENSE를 분리해서 볼 수 있게 낸다.**
+       *
+       * Mirror 축별 근거 ref를 결정론 엔진이 만든 그대로 해석한 결과다. `source`는
+       * 근거의 **정체성**(어느 질문에 답한 것인가)이고 `sourceLabel`/`text`는 그것을
+       * **부르는 말**이다 — `ended`에서 앞은 그대로고 뒤만 바뀐다.
+       */
+      resolvedEvidence: mirror.insights.map((insight) => {
+        const ref =
+          insight.evidenceScope === 'current'
+            ? ({ source: 'current_relationship', field: insight.key } as const)
+            : null;
+        const resolved = ref
+          ? resolveEvidenceRefs([ref], {
+              answers,
+              validated: [],
+              historyEntries: entries,
+              deepAnswers: [],
+              compatibility,
+              tense,
+            })[0] ?? null
+          : null;
+        return {
+          axis: insight.key,
+          scope: insight.evidenceScope,
+          source: ref?.source ?? null,
+          key: resolved?.key ?? null,
+          sourceLabel: resolved?.sourceLabel ?? null,
+          text: resolved?.text ?? null,
+        };
+      }),
+      /**
+       * AI가 받는 **factual input**. 시제가 이미 맞춰진 문장이어야 한다 —
+       * `buildMirrorReport(…, tense)`를 거친 값이므로 A9가 이것으로 시제를 검사한다.
+       */
+      ruleJudgements: relationshipContext.ruleJudgements.map((item) => ({
+        axis: item.axis,
+        state: item.state,
+        relationshipSignal: item.relationshipSignal,
+      })),
     },
     context: {
       actionKinds: JOB_ACTION_KINDS[job],
@@ -463,6 +566,31 @@ export async function POST(request: Request): Promise<Response> {
           connection.limitation,
           ...connection.sourceLabels,
         ]),
+        /**
+         * ⚠️ v1.42 §41.4 — **근거 목록의 `sourceLabel`·`text`를 여기 더했다.**
+         *
+         * v1.41은 `ruleSummary`·`limitation`·`sourceLabels`까지 넣었는데 `evidence`는
+         * 빠뜨렸다. 그래서 `resolveCurrentRelationship`이 하드코딩하고 있던
+         * `지금 관계에서`가 `ended` 사용자의 연결 카드 근거 목록
+         * (`DeepConnectionCard`의 `근거 N개 보기`)에 그대로 나오는데도 fixture가
+         * 통과했다 — **§39.9와 정확히 같은 실패 형태**(렌더되는 문자열이 검사 배열에
+         * 없었다)가 한 버전 뒤에 다시 나온 것이다.
+         *
+         * v1.41 §39.24의 교훈("화면이 실제로 렌더하는 값 전부를 배열에 넣는다")을
+         * 이 자리에도 적용한다.
+         */
+        ...deepReport.connections.flatMap((connection) =>
+          connection.evidence.flatMap((item) => [item.sourceLabel, item.text]),
+        ),
+        ...(deepReport.corePattern
+          ? deepReport.corePattern.connection.evidence.flatMap((item) => [
+              item.sourceLabel,
+              item.text,
+            ])
+          : []),
+        ...deepReport.singleSourceNotes.flatMap((note) =>
+          note.evidence.flatMap((item) => [item.sourceLabel, item.text]),
+        ),
         ...deepReport.singleSourceNotes.flatMap((note) => [
           note.ruleSummary,
           note.limitation,

@@ -1,0 +1,48 @@
+{
+  "name": "relationship_ca0_past_source",
+  "description": "CA0 (v1.42 §41.5) — 과거 근거를 relationship source로 인용하면 그대로 통과한다. v1.41과 동일 동작이어야 하는 기준선이다.",
+  "task": "relationship-insight",
+  "tense": "current",
+  "judgements": [
+    {
+      "axis": "contact",
+      "state": "GAP"
+    },
+    {
+      "axis": "alone",
+      "state": "MATCH"
+    }
+  ],
+  "focusAxis": "contact",
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "GAP",
+        "headline": "연락은 낮게 답했는데 실제로는 크게 반응했어",
+        "explanation": "연락 중요도는 낮게 골랐지만, 가장 힘들었던 순간으로는 연락이 줄어든 때를 골랐어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "contact"
+          },
+          {
+            "source": "relationship",
+            "field": "hardest"
+          }
+        ]
+      }
+    ],
+    "core": null
+  },
+  "expect": {
+    "narrativeCount": 1,
+    "evidenceSources": [
+      [
+        "declared",
+        "relationship"
+      ]
+    ],
+    "violations": []
+  }
+}

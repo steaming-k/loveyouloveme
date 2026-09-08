@@ -50,6 +50,10 @@ async function run(fixture) {
       focusAxis: fixture.focusAxis,
       photoId: fixture.photoId,
       observations: fixture.observations,
+      // v1.42 §40.16 — relationship 시제 fixture. 없으면 라우트가 'current'로 본다
+      tense: fixture.tense,
+      // v1.42 §41.11 — Ended Job Safety fixture. 없으면 라우트가 true로 본다
+      allowsOutwardQuestions: fixture.allowsOutwardQuestions,
     }),
   });
 
@@ -178,6 +182,51 @@ async function run(fixture) {
         `실제 ${result.core.headlineLength}`);
       check(name, 'core summary ≤ 240', result.core.summaryLength <= 240,
         `실제 ${result.core.summaryLength}`);
+    }
+
+    /* v1.42 §40.19 — 시제 계약. 라우트가 fixture의 tense로 실제 실행됐는지를 먼저 본다 —
+       기본값이 조용히 다른 값으로 떨어지면 A10~A12가 전부 거짓 통과하기 때문이다. */
+    if (fixture.tense !== undefined) {
+      check(name, `tense ${fixture.tense}로 실행됨`, result.tense === fixture.tense,
+        `실제 ${result.tense}`);
+    }
+    if (expect.violations) {
+      const actual = result.violations ?? [];
+      for (const label of expect.violations) {
+        check(name, `위반 라벨 '${label}' 감지`, actual.includes(label),
+          `실제 [${actual.join(',')}]`);
+      }
+      if (expect.violations.length === 0) {
+        check(name, '위반 없음', actual.length === 0, `실제 [${actual.join(',')}]`);
+      }
+    }
+
+    /* ── v1.42 §41.5 SOURCE PROVENANCE ─────────────────────────────────
+       근거의 **정체성**을 검사한다. 개수(evidenceCount)만 보면 current_relationship이
+       버려지고 relationship으로 귀속된 상태를 구분할 수 없다 — v1.41의 결함이 정확히
+       그 형태였고, 그래서 위반 라벨도 없이 조용히 지나갔다. */
+    if (expect.evidenceSources) {
+      check(name, `근거 source ${JSON.stringify(expect.evidenceSources)}`,
+        eq(narratives.map((n) => n.evidenceSources ?? []), expect.evidenceSources),
+        `실제 ${JSON.stringify(narratives.map((n) => n.evidenceSources ?? []))}`);
+    }
+
+    /* ── v1.42 §41.11 JOB SAFETY ────────────────────────────────────────
+       문자열 blacklist가 아니라 **질문의 존재 여부**를 검사한다. 시제 중립적인
+       partner-directed question은 어떤 어휘 목록으로도 잡을 수 없다(AQ5). */
+    if (expect.questionCount !== undefined) {
+      check(name, `AI question ${expect.questionCount}개`,
+        result.questionCount === expect.questionCount, `실제 ${result.questionCount}`);
+    }
+    if (expect.hasQuestion) {
+      check(name, `축별 question 유무 [${expect.hasQuestion.join(',')}]`,
+        eq(narratives.map((n) => n.hasQuestion === true), expect.hasQuestion),
+        `실제 [${narratives.map((n) => n.hasQuestion === true).join(',')}]`);
+    }
+    if (fixture.allowsOutwardQuestions !== undefined) {
+      check(name, `allowsOutwardQuestions=${fixture.allowsOutwardQuestions}로 실행됨`,
+        result.allowsOutwardQuestions === fixture.allowsOutwardQuestions,
+        `실제 ${result.allowsOutwardQuestions}`);
     }
   }
 

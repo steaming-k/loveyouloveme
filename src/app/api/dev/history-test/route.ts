@@ -96,6 +96,8 @@ export async function POST(request: Request): Promise<Response> {
     answers,
     validated: [],
     historyEntries: entries,
+    // v1.42 — 이 fixture는 현재 근거를 다루지 않으므로 진행 중 시제를 명시한다.
+    tense: 'current',
   }).map((item) => ({ key: item.key, sourceLabel: item.sourceLabel, text: item.text }));
 
   /**
@@ -170,6 +172,7 @@ export async function POST(request: Request): Promise<Response> {
         answers,
         validated: [],
         historyEntries: entries,
+        tense: 'current',
       }).length,
       ruleSummary: insight.ruleSummary,
       // v1.41 — 이 fixture는 현재 근거를 다루지 않으므로 진행 중 시제를 명시한다.

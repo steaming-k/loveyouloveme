@@ -20,8 +20,67 @@ export const PROMPT_VERSIONS = {
   observed: 'observed-v2-photo',
   /** @deprecated Contract Test fixture 회귀 검증용으로만 남아 있다 */
   observedLegacy: 'observed-v1',
-  /** v1.7 — 길이 제한 · 관련성 필터 · userCorrection 표현 규칙 추가 */
-  relationship: 'relationship-v2',
+  /**
+   * v1.7 — 길이 제한 · 관련성 필터 · userCorrection 표현 규칙 추가
+   *
+   * v1.42 — **v3으로 올렸다.** 모델이 받는 것이 두 군데 달라졌다(§40.11).
+   *
+   * ```
+   * 제거   context.status  RelationshipStatus enum 원문 6종
+   * 추가   context.tense   'current' | 'former'
+   * 추가   프롬프트 [시제] 블록 — former 금지 표현 + 이별 원인 추론 금지
+   * ```
+   *
+   * ⚠️ **버전을 올리지 않으면 v2 프롬프트로 만든 응답이 캐시에서 그대로 나온다.**
+   * v1.27이 `deepReport`를 v2로 올릴 때와 같은 판단이다 — 같은 입력이라도 모델이
+   * 받는 것이 달라졌으면 이전 응답은 다른 계약의 산물이다.
+   *
+   * ⚠️ v1.42부터 `promptVersion`이 **캐시 키에 실제로 들어간다**(`aiClient.cacheKey`).
+   * v1.27이 "캐시 키에 promptVersion이 함께 들어가는지가 관건"이라고 적어 둔 리스크를
+   * 이 버전에서 닫았다 — 아래 `deepReport` 주석 참고.
+   */
+  /**
+   * v1.42 Blocker Closure — **v4로 다시 올렸다** (§41.6).
+   *
+   * v3(`relationship-v3-tense`)은 같은 v1.42 안에서 만들어졌지만 **모델이 받는 것이
+   * 또 달라졌으므로** 다시 올린다. 같은 버전 문자열로 두면 v3 계약(근거 source 5종)에서
+   * 만든 응답이 v4 계약(6종)의 결과인 것처럼 캐시에서 나온다 — 버전을 아끼는 것이
+   * 이득이 되는 경우는 없다.
+   *
+   * ```
+   * 추가   evidenceRefs source enum에 current_relationship
+   * 추가   [근거 source] 블록 — relationship(과거) vs current_relationship(이 관계)
+   * ```
+   *
+   * ⚠️ **v5로 한 번 더 올렸다.** v4의 [근거 source] 블록은 source 판별을
+   * `relationshipSignal`의 접두어 매칭으로만 설명했는데, **어느 쪽도 아닐 때의 규칙이
+   * 없었다.** 실제 Provider E2E에서 그 상태가 재현됐다 — 모델이 판단을 못 하고
+   * `evidenceRefs`를 비웠고, 근거 0개인 항목은 `parseRelationshipResponse`가 버리므로
+   * `parsed=0`(narrative 전멸)이 됐다. v3에서는 `parsed=1`이었다.
+   *
+   * v5는 안전한 기본값(`relationship`)과 "모르겠다고 refs를 비우지 마라"를 명시한다.
+   * **규칙에 빈 칸을 두면 모델이 그 칸을 침묵으로 채운다.**
+   *
+   * ⚠️ **v6 — 진짜 원인은 source가 아니라 `axis`였다.** v5에서도 `parsed=0`이 계속됐고,
+   * 관측 로그를 한 층 더 내리자(§41.14) 원인이 보였다.
+   *
+   * ```
+   * raw=1[연락] allowed=[contact] parsed=0
+   * ```
+   *
+   * 모델이 `axis`에 **한국어 label**(`연락`)을 넣고 있었다 — `oneOf`가 걸러 narrative가
+   * 전멸했다. 프롬프트는 `"주어진 axis 그대로"`라고만 했고, 같은 객체에 `label: '연락'`이
+   * 함께 들어 있어서 그 지시가 모호했다. v1.42의 긴 한국어 규칙 블록이 그 모호함을
+   * 실제 오답으로 바꿨을 가능성이 높다(v3에서는 `contact`가 나왔다).
+   *
+   * 고치는 방향은 v1.30이 이미 정해뒀다: **파서에 별칭을 늘리지 않고 모델이 받는 어휘를
+   * canonical key로 맞춘다.** 그래서 `[축 식별자]` 블록으로 허용값 5개를 명시하고 label
+   * 금지를 예시로 박았다.
+   *
+   * ⚠️ 이 사건이 §41.14(관측 로그 확장)의 존재 이유다. `parsed`까지만 있었을 때는 원인을
+   * 세 가지(모델이 안 만듦 / axis 불일치 / 근거 0개) 중에서 고를 수 없었다.
+   */
+  relationship: 'relationship-v6-axis',
   /** v1.7 — 길이 제한 · 상대 마음 읽기 예시 강화 · uncertainty 필수 조건 명시 */
   /**
    * v1.30 — context가 dimension마다 canonical `ref`를 주고 모델은 그것을 복사한다.
@@ -44,7 +103,19 @@ export const PROMPT_VERSIONS = {
    * 들어가는지가 관건이고, 이 상수는 결과 `meta.promptVersion`으로도 나가서
    * QA에서 어느 프롬프트로 만든 문장인지 구분하게 해준다.
    */
-  deepReport: 'deep-report-v2-bounded',
+  /**
+   * v1.42 Blocker Closure — **v3으로 올렸다** (§41.6).
+   *
+   * `EVIDENCE_SOURCES`는 모든 Task가 공유하는 파서이므로, `current_relationship`을
+   * 추가하면 deep-report의 허용 집합도 함께 넓어진다. 그런데 이 Task의 프롬프트
+   * enum에는 그 값이 없었다 — **모델은 `buildDeepReportContext`가 보내는 evidence의
+   * `ref`에서 그 source를 이미 눈으로 보고 있는데**(⑨ Current × Past 연결) 목록에는
+   * 없으니 복사하면 안 되는 값처럼 읽혔다.
+   *
+   * enum을 맞춰 계약을 일치시켰다. `evidenceRefsAreSubsetOf`가 원래 Insight의 ref
+   * 집합으로 계속 제한하므로 AI가 만들 수 있는 근거가 늘어나는 것은 아니다.
+   */
+  deepReport: 'deep-report-v3-source',
 } as const;
 
 export const ANALYSIS_VERSION = '1.0';

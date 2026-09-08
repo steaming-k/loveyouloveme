@@ -11,6 +11,7 @@ import {
 import type { EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
 import { buildCrossSourceInsights } from '@/lib/logic/crossSourceInsights';
 import {
+  jobAllowsOutwardQuestions,
   relationshipTenseOf,
   resolveRelationshipContext,
 } from '@/lib/logic/relationshipStage';
@@ -179,6 +180,11 @@ export function useEvidenceContext(): EvidenceResolverContext {
   const mbtiLens = useMbtiLens();
   /** v1.32 P4-D — 상대가 없어도 성향 렌즈 근거가 풀리게 한다(자기 MBTI만으로 만든다) */
   const mbtiSelfLens = useMbtiSelfLens();
+  /**
+   * v1.42 §41.4 — 지금 관계 근거를 부르는 시제. memo 밖에서 계산한다(`useMirror`와 같은
+   * 이유). 이 값이 없어서 `ended` 사용자의 근거 문장·칩에 현재형이 남아 있었다.
+   */
+  const tense = relationshipTenseOf(resolveRelationshipContext(answers).job);
 
   return useMemo(
     () => ({
@@ -189,8 +195,9 @@ export function useEvidenceContext(): EvidenceResolverContext {
       compatibility,
       mbtiLens,
       mbtiSelfLens,
+      tense,
     }),
-    [answers, validated, entries, compatibility, mbtiLens, mbtiSelfLens],
+    [answers, validated, entries, compatibility, mbtiLens, mbtiSelfLens, tense],
   );
 }
 
@@ -332,21 +339,64 @@ export function useRelationshipNarrative(
   const validated = useValidatedObservations();
 
   const focusAxis = mirror.teaser?.axisKey ?? null;
+  /**
+   * v1.42 §40.6 — memo 밖에서 계산한다. `useMirror`·`useCrossSourceInsights`와 같은
+   * 이유다: memo 안에서 `resolveRelationshipContext(answers)`를 부르면 memo가 `answers`
+   * 전체에 의존하는데 deps에는 일부 필드만 적히므로 값이 낡을 수 있다. `tense`는 두
+   * 값짜리 문자열이라 deps로 써도 참조 비교 문제가 없다.
+   */
+  const { job } = resolveRelationshipContext(answers);
+  const tense = relationshipTenseOf(job);
+  /**
+   * v1.42 §41.8 — AI가 만든 질문에도 결정론 질문과 **같은 Job 경계**를 적용한다.
+   * 프롬프트에 들어가지 않고 서버 후처리에만 쓰인다.
+   *
+   * ⚠️ **지문에도 들어간다**(§42). Blocker Closure 시점에는 "응답 내용을 정하지 않으므로
+   * 지문에서 뺀다"고 판단했는데 **그 판단이 틀렸다.** 클라이언트 캐시가 저장하는 것은
+   * provider raw가 아니라 **게이트가 적용된 최종 응답**이므로, 이 boolean이 다르면
+   * 재사용해도 되는 응답이 아니다. `solo_exp` + New Target reset에서 실제로 같은 지문에
+   * 허용/금지가 겹쳤다(실측).
+   */
+  const allowsOutwardQuestions = jobAllowsOutwardQuestions(job);
 
+  /**
+   * v1.42 §40.3 · §42 — 지문은 **같은 최종 응답을 재사용해도 되는 입력 집합**이다.
+   *
+   * `currentRelationship`·`tense`가 없던 것이 stale narrative 결함이었고(§40.3),
+   * `allowsOutwardQuestions`가 없던 것이 stale question 결함이었다(§42).
+   * `answers.status`는 빠져 있다 — AI가 받지 않고 응답을 바꾸지도 않는다.
+   */
   const fingerprint = useMemo(
     () =>
       relationshipNarrativeFingerprint({
-        status: answers.status,
+        tense,
+        allowsOutwardQuestions,
         declared: answers.declared,
         experience: answers.experience,
+        current: answers.currentRelationship,
         focusAxis,
         validated,
       }),
-    [answers.status, answers.declared, answers.experience, focusAxis, validated],
+    [
+      tense,
+      allowsOutwardQuestions,
+      answers.declared,
+      answers.experience,
+      answers.currentRelationship,
+      focusAxis,
+      validated,
+    ],
   );
 
   const run = () =>
-    requestRelationshipNarrative({ answers, mirror, validated, fingerprint });
+    requestRelationshipNarrative({
+      answers,
+      mirror,
+      validated,
+      tense,
+      allowsOutwardQuestions,
+      fingerprint,
+    });
 
   return useNarrativeTask<RelationshipNarrativeBundle>({
     task: 'relationship-insight',

@@ -16,6 +16,7 @@ import {
   RELATIONSHIP_SYSTEM_PROMPT,
 } from './promptTemplates';
 import {
+  applyOutwardQuestionGate,
   evidenceRefsAreSubsetOf,
   filterSafeItems,
   isRedundantNarrative,
@@ -23,6 +24,7 @@ import {
   scanDeepNarrative,
   scanHistoryNarrative,
   scanPhotoObservation,
+  scanRelationshipNarrative,
   wrapUserData,
 } from './safety';
 import {
@@ -41,6 +43,7 @@ import {
   repeatedSignals,
   strengthToConfidence,
 } from '@/lib/logic/observedSignals';
+import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import type {
   AiFailureReason,
   AiMode,
@@ -351,6 +354,46 @@ export interface RelationshipRequest {
   /** 규칙이 판정한 축·상태. AI는 이걸 바꿀 수 없다 */
   judgements: Array<{ axis: MirrorAxisKey; state: MirrorState }>;
   focusAxis: MirrorAxisKey | null;
+  /**
+   * v1.42 §41.8 — **Ended Job Safety. 프롬프트에 들어가지 않는다.**
+   *
+   * ══ 왜 시제 검사로는 부족한가 ═════════════════════════════════════════════
+   *
+   * `MirrorAxisNarrative`가 `narrative.question`을 **실제로 렌더**한다. 그런데 결정론
+   * 질문(`buildConversationQuestions`)은 `jobAllowsOutwardQuestions(job)`로 `ended`·
+   * `none`에서 차단되는데 **AI가 만든 질문에는 그 게이트가 없었다.**
+   *
+   * `scanRelationshipTense`는 시제만 본다. 그래서 이런 질문은 통과한다.
+   *
+   * ```
+   * 연락이 줄었을 때 서로 어떤 기준이 있었는지 이야기해볼 수 있을까?
+   * ```
+   *
+   * 현재형 호칭이 하나도 없다 — 그런데 **관계가 끝난 사용자에게 상대와 이야기해보라고
+   * 제안하는 문장**이다. 시제는 맞고 대상이 틀렸다.
+   *
+   * > **TENSE SAFETY ≠ JOB SAFETY.**
+   * > `현재형이 아니다`와 `Ended 사용자에게 해도 되는 질문이다`는 다른 명제다.
+   *
+   * ⚠️ **AI에게 Job을 알려주지 않는다.** 이 값은 프롬프트/컨텍스트에 들어가지 않고,
+   * 응답을 받은 뒤 **post-processing 안전 문맥**으로만 쓴다. v1.42가 raw status를
+   * 뺀 이유가 그대로 여기에도 적용된다 — 단계를 알려주면 모델이 단계에 맞는 내용을
+   * 지어낸다.
+   *
+   * ⚠️ **필수다. optional + 기본값 `true`는 금지다**(v1.40.1 §38.2). 기본값이 허용이면
+   * 값을 빼먹은 호출부가 조용히 `ended`에게 질문을 보낸다.
+   */
+  allowsOutwardQuestions: boolean;
+  /**
+   * v1.42 §40.13 — 시제 검사 기준. **`context` 안에도 같은 값이 있지만 여기서 따로
+   * 받는다.**
+   *
+   * `context`는 `unknown`이다 — 이 핸들러의 책임은 그것을 프롬프트에 그대로 실어
+   * 보내는 것뿐이고, 안을 들여다보지 않는 것이 그 타입의 뜻이다. 검사에 쓸 값을
+   * `context`에서 캐스팅해 꺼내면 그 계약이 깨지고, `context` 모양이 바뀔 때마다
+   * 검사가 조용히 망가진다.
+   */
+  tense: RelationshipTense;
 }
 
 export async function runRelationshipTask(
@@ -387,28 +430,93 @@ export async function runRelationshipTask(
       }),
     });
 
+    /**
+     * v1.42 §41.14 — **모델이 안 만든 것과 파서가 버린 것을 구분한다.**
+     *
+     * v1.27이 안전 검사 앞에 세운 원칙(`parsed` vs `safe`)을 한 층 더 아래로 내린다.
+     * v1.42 작업 중 실제로 필요해졌다: `parsed=0 safe=0 core=1`을 보고도 **모델이
+     * narratives를 비웠는지, 파서가 전부 떨궜는지 알 수 없었다.**
+     *
+     * ⚠️ 세는 것은 **개수와 축 키**뿐이다. 축 키는 우리 enum이고 사용자 데이터가
+     * 아니다 — 문장·필드값은 넣지 않는다(§34 Privacy).
+     */
+    const rawNarratives =
+      raw !== null && typeof raw === 'object' && Array.isArray((raw as { narratives?: unknown }).narratives)
+        ? ((raw as { narratives: unknown[] }).narratives)
+        : [];
+    const rawAxes = rawNarratives
+      .map((item) =>
+        item !== null && typeof item === 'object' ? String((item as { axis?: unknown }).axis) : '?',
+      )
+      .join('|');
+
     const parsed = parseRelationshipResponse(raw, allowedAxes);
     if (!parsed) return { ok: false, reason: 'INVALID_OUTPUT' };
 
     // state는 규칙 값으로 덮어쓴다 — AI가 판정을 바꿀 수 없다(§18).
     const withStates = attachRuleStates(parsed.narratives, stateByAxis);
 
-    // Core Narrative는 금지 추론 + Lens 누출(MBTI·사주·별자리)을 함께 검사한다(v1.7 §36).
+    /**
+     * 금지 추론 + Lens 누출(MBTI·사주·별자리) + **관계 시제**(v1.42 §40.13).
+     *
+     * ⚠️ `question`이 스캔 문자열에 들어가 있는 것이 v1.42에서 중요해졌다.
+     * `MirrorAxisNarrative`가 `narrative.question`을 **실제로 렌더**하므로, 끝난 관계에
+     * `지금 상대와 …?`를 묻는 질문이 오면 여기서 항목째로 떨어져야 한다.
+     */
+    const scanNarrative = (text: string) => scanRelationshipNarrative(text, request.tense);
+
+    /**
+     * v1.42 §41.9 — **Job 게이트를 안전 검사 *앞*에 둔다.** 순서가 정책이다.
+     *
+     * ```
+     * 게이트 먼저   질문을 지운다 → 지워진 질문은 스캔되지 않는다 → 설명은 자기 내용으로만 판정
+     * 스캔 먼저     질문이 위반이면 항목째로 버려진다 → 설명까지 사라진다  ← 과필터
+     * ```
+     *
+     * `ended`에서 질문은 **어차피 화면에 가지 않는다.** 그 문장 때문에 남아 있어야 할
+     * 설명까지 잃는 것은 §27(AI는 augmentation)과 정면으로 어긋난다 — 질문 하나 때문에
+     * 결정론 행 아래가 통째로 비면 사용자는 검사가 있었다는 사실조차 알 수 없다.
+     *
+     * ⚠️ 허용 Job에서는 **아무것도 바뀌지 않는다** — `question`이 그대로 남아 스캔에
+     * 들어가고, 시제 위반이면 v1.42 초기 동작대로 항목이 떨어진다.
+     */
+    const gated = applyOutwardQuestionGate(withStates, request.allowsOutwardQuestions);
+
     const scan = filterSafeItems(
-      withStates,
+      gated,
       (item) => `${item.headline} ${item.explanation} ${item.question ?? ''}`,
-      scanCoreNarrative,
+      scanNarrative,
     );
 
     let core = parsed.core;
     if (core) {
       const coreScan = filterSafeItems(
         [core],
-        (item) => `${item.headline} ${item.summary}`,
-        scanCoreNarrative,
+        // v1.42 — `limitations`도 함께 본다. Core는 `limitations[0]`을 화면에 그린다.
+        (item) => `${item.headline} ${item.summary} ${item.limitations.join(' ')}`,
+        scanNarrative,
       );
       // Core Insight가 안전 검사에 걸리면 버린다 — 화면은 규칙 템플릿으로 되돌아간다.
       core = coreScan.items[0] ?? null;
+    }
+
+    /**
+     * v1.42 §40.15 — **필터 결과를 관측할 수 있게 한다.** v1.27이 deep-report에서 한 것과
+     * 같은 이유다: 문장이 화면에 없을 때 '모델이 안 만든 것'인지 '검사가 버린 것'인지
+     * 구분할 수 없으면, 새로 넣은 시제 검사의 **과잉 거부를 발견할 방법이 없다**.
+     *
+     * ⚠️ Production에서는 남기지 않고, **문장 원문은 절대 로그에 넣지 않는다** —
+     * 개수와 위반 라벨만이다(§34 Privacy).
+     */
+    if (process.env.NODE_ENV !== 'production') {
+      console.info(
+        `[ai] relationship filter tense=${request.tense} ` +
+          `outwardQ=${request.allowsOutwardQuestions ? 'on' : 'off'} ` +
+          `raw=${rawNarratives.length}[${rawAxes}] allowed=[${allowedAxes.join('|')}] ` +
+          `parsed=${parsed.narratives.length} safe=${scan.items.length} core=${core ? 1 : 0}` +
+          `${request.allowsOutwardQuestions ? '' : ` questionsStripped=${withStates.filter((item) => item.question !== undefined).length}`}` +
+          `${scan.violations.length > 0 ? ` violations=${scan.violations.join(',')}` : ''}`,
+      );
     }
 
     return {

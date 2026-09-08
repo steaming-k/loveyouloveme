@@ -1,0 +1,61 @@
+{
+  "name": "relationship_aq5_ended_tense_neutral_question",
+  "description": "AQ5 (v1.42 §41.9) — **이 fixture가 P0-2의 존재 이유다.** 시제상 완전히 중립적인 partner-directed question('연락이 줄었을 때 서로 어떤 기준이 있었는지 이야기해볼 수 있을까?')은 현재형 호칭이 하나도 없어서 tense scanner를 **통과한다**. 그런데 관계가 끝난 사용자에게 상대와 이야기해보라고 제안하는 문장이다 — 시제는 맞고 대상이 틀렸다. Job gate가 제거한다. violations가 비어 있는 것이 요점이다: 시제 검사는 아무것도 걸지 않았고, 질문이 사라진 이유는 Job gate다.",
+  "task": "relationship-insight",
+  "tense": "former",
+  "allowsOutwardQuestions": false,
+  "judgements": [
+    {
+      "axis": "contact",
+      "state": "GAP"
+    },
+    {
+      "axis": "alone",
+      "state": "MATCH"
+    }
+  ],
+  "focusAxis": "contact",
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "GAP",
+        "headline": "연락에서 말한 기준과 달랐어",
+        "explanation": "연락 중요도는 낮게 골랐지만 힘들었던 순간으로는 연락이 줄어든 때를 골랐어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "contact"
+          },
+          {
+            "source": "relationship",
+            "field": "hardest"
+          }
+        ],
+        "question": "연락이 줄었을 때 서로 어떤 기준이 있었는지 이야기해볼 수 있을까?"
+      },
+      {
+        "axis": "alone",
+        "state": "MATCH",
+        "headline": "개인 시간은 비슷했어",
+        "explanation": "혼자 있는 시간을 중요하게 답했고, 이전 관계에서도 중요했던 요소로 골랐어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "alone"
+          }
+        ]
+      }
+    ],
+    "core": null
+  },
+  "expect": {
+    "narrativeCount": 2,
+    "questionCount": 0,
+    "hasQuestion": [
+      false,
+      false
+    ],
+    "violations": []
+  }
+}

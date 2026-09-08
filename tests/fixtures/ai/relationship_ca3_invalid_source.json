@@ -1,0 +1,61 @@
+{
+  "name": "relationship_ca3_invalid_source",
+  "description": "CA3 (v1.42 §41.5) — 목록에 없는 source는 기존대로 버린다. current_relationship을 추가한 것이 '아무 source나 받는다'는 뜻이 아니다. 두 번째 항목은 uncertainty가 있어서 근거 0개로도 살아남지만(§91) 근거 목록은 비어 있어야 한다.",
+  "task": "relationship-insight",
+  "tense": "current",
+  "judgements": [
+    {
+      "axis": "contact",
+      "state": "GAP"
+    },
+    {
+      "axis": "alone",
+      "state": "MATCH"
+    }
+  ],
+  "focusAxis": "contact",
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "GAP",
+        "headline": "연락에서 차이가 보여",
+        "explanation": "지금 관계에서 연락에 민감하다고 답했어.",
+        "evidenceRefs": [
+          {
+            "source": "future_relationship",
+            "field": "contact"
+          },
+          {
+            "source": "current_relationship",
+            "field": "contact"
+          }
+        ]
+      },
+      {
+        "axis": "alone",
+        "state": "MATCH",
+        "headline": "개인 시간은 비슷했어",
+        "explanation": "개인 시간에 대해서는 두 답이 같은 방향이야.",
+        "evidenceRefs": [
+          {
+            "source": "mind_reading",
+            "field": "alone"
+          }
+        ],
+        "uncertainty": "근거가 약해서 단정할 수 없어"
+      }
+    ],
+    "core": null
+  },
+  "expect": {
+    "narrativeCount": 2,
+    "evidenceSources": [
+      [
+        "current_relationship"
+      ],
+      []
+    ],
+    "violations": []
+  }
+}

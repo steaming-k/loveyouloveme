@@ -19,7 +19,6 @@ import type {
   HistoryAxisChange,
   MirrorReport,
   RelationshipExperience,
-  RelationshipStatus,
   SessionAnswers,
   ValidatedObservation,
 } from '@/types';
@@ -56,7 +55,38 @@ export function buildObservedContext(imageIds: readonly string[]): ObservedConte
 /* ------------------------------------------------------ Relationship */
 
 export interface RelationshipContext {
-  status: RelationshipStatus | null;
+  /**
+   * v1.42 §40.7 — **`status: RelationshipStatus | null`을 대체했다.**
+   *
+   * ══ 왜 raw status를 빼는가 ═══════════════════════════════════════════════
+   *
+   * v1.41까지 이 자리에 `answers.status`가 **enum 원문 그대로** 들어갔다 —
+   * `"ended"` · `"married"` · `"solo_exp"`. 같은 객체의 `hardestMoment`·`selfGap`은
+   * 전부 라벨로 바꿔 보내는데 `status`만 raw였고, **프롬프트는 이 필드를 한 번도
+   * 언급하지 않았다.** 즉 모델은 관계 단계를 이름 없는 자유 변수로 받았다.
+   *
+   * 세 가지가 동시에 잘못돼 있었다.
+   *
+   *  ① **계약이 없다.** 프롬프트가 쓰는 법을 말하지 않으므로 모델이 무엇을 하든
+   *    그건 우리가 정한 게 아니다. 판정을 못 바꾸는 것(`attachRuleStates`가 state를
+   *    규칙 값으로 덮어쓴다)과 **문장을 어떻게 쓸지 모르는 것**은 다른 문제다.
+   *  ② **§39.13이 세운 경계를 이 자리만 지키지 않았다.** v1.41은 `RelationshipJob`
+   *    6종을 하위 문장 생성기에 흘리면 Job별 분기가 자란다는 이유로 `tense` 2종으로
+   *    좁혔다. AI는 코드보다 분기를 더 자유롭게 만드는 생성기인데, **가장 좁혀서 줘야
+   *    하는 자리에 가장 raw한 값**이 가고 있었다.
+   *  ③ **stage가 evidence 쪽으로 새는 입구였다.** `relationshipEvidence.ts`는 stage를
+   *    import조차 못 하게 테스트로 막혀 있는데(R1), AI context에는 그대로 있었다.
+   *
+   * 그래서 `status`를 지우고 `tense`만 남긴다. AI가 알아야 하는 것은 하나다 —
+   * **이 문장을 진행 중인 관계로 써야 하는가, 끝난 관계로 써야 하는가.**
+   *
+   * ⚠️ **이 값은 evidence가 아니다.** 근거를 만들지도, 고르지도, 강도를 바꾸지도
+   * 않는다. `ruleJudgements`가 실어 보내는 `relationshipSignal`이 이미
+   * `buildMirrorReport(…, tense)`를 거쳐 시제가 맞는 문장이고, 이 필드는 모델이 **그
+   * 문장들과 같은 시제로 쓰게** 하는 지시일 뿐이다(§40.9 factual input vs narrative
+   * instruction).
+   */
+  tense: RelationshipTense;
   declared: Record<string, string | number | null>;
   relationship: {
     importantFactors: string[];
@@ -125,14 +155,29 @@ export function buildRelationshipContext(input: {
   answers: SessionAnswers;
   mirror: MirrorReport;
   validated: readonly ValidatedObservation[];
+  /**
+   * v1.42 §40.8 — **필수다. optional + 기본값을 두지 않았다.**
+   *
+   * v1.40.1 §38.2가 정확히 이 실수를 닫았다: `DeepReportJobContext`를 optional로 두고
+   * 기본값을 '허용'으로 잡았더니, 호출부가 두 곳인데 한 곳이 값을 빼먹었고 **하필 그
+   * 쪽이 화면을 실제로 여는 경로**였다. 게이트는 코드에 있었지만 화면에는 없었다.
+   *
+   * 같은 형태를 반복하지 않는다. 기본값이 `'current'`면 새 호출부가 조용히
+   * 진행형으로 떨어지고, 그건 `ended` 사용자에게 가장 위험한 기본값이다.
+   * 빼먹으면 `tsc`가 막는다 — 사람의 기억이 아니라 타입이 지킨다.
+   *
+   * ⚠️ 반드시 `relationshipTenseOf(job)`에서 온 값을 넘긴다. 여기서도, 호출부에서도
+   * `if (status === 'ended')`를 새로 쓰지 않는다 — 판정 source는 하나다(§40.10).
+   */
+  tense: RelationshipTense;
   pastObservations?: readonly { axis: string; entryId: string; note: string }[];
 }): RelationshipContext {
-  const { answers, mirror, validated, pastObservations = [] } = input;
+  const { answers, mirror, validated, tense, pastObservations = [] } = input;
   const experience: RelationshipExperience = answers.experience;
   const focusAxis = mirror.teaser?.axisKey ?? null;
 
   return {
-    status: answers.status,
+    tense,
     declared: declaredForContext(answers.declared),
     relationship: {
       importantFactors: experience.important.map((factor) => PAST_FACTOR_LABEL[factor]),

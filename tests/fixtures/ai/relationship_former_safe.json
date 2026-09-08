@@ -1,0 +1,46 @@
+{
+  "name": "relationship_former_safe",
+  "description": "A10 (v1.42 §40.13) — 관계가 끝난 사용자(tense=former)에게 과거형으로 쓴 설명은 그대로 통과한다. 시제 검사가 '과거 회고 문장'을 떨어뜨리면 ended 사용자의 화면에서 AI가 통째로 사라지므로, 통과하는 쪽을 먼저 고정한다. '지금 돌아보면'처럼 `지금`이 들어가도 관계를 현재로 부르지 않으면 정상이다.",
+  "task": "relationship-insight",
+  "tense": "former",
+  "judgements": [
+    { "axis": "contact", "state": "GAP" },
+    { "axis": "alone", "state": "MATCH" }
+  ],
+  "focusAxis": "contact",
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "GAP",
+        "headline": "연락은 낮게 답했는데 그때는 크게 반응했어",
+        "explanation": "연락 중요도는 낮게 골랐지만, 그때 이 관계에서 가장 힘들었던 순간으로는 연락이 줄어든 때를 골랐어.",
+        "evidenceRefs": [
+          { "source": "declared", "field": "contact" },
+          { "source": "relationship", "field": "hardest" }
+        ],
+        "question": "당시 연락이 줄어들 때 어떤 의미로 받아들였는지 떠올려볼래?"
+      },
+      {
+        "axis": "alone",
+        "state": "MATCH",
+        "headline": "개인 시간은 말한 기준과 비슷하게 나타났어",
+        "explanation": "지금 돌아보면 혼자 있는 시간을 중요하게 답했고, 이전 관계에서도 같은 신호가 보였어.",
+        "evidenceRefs": [{ "source": "declared", "field": "alone" }]
+      }
+    ],
+    "core": {
+      "headline": "연락을 낮게 봤지만 그때는 크게 반응했어",
+      "summary": "네가 말한 기준과 그 관계에서 나타난 신호가 연락 축에서 갈렸어.",
+      "evidenceRefs": [{ "source": "relationship", "field": "hardest" }],
+      "limitations": ["기록이 한 번이라 반복 여부는 아직 알 수 없어"]
+    }
+  },
+  "expect": {
+    "narrativeCount": 2,
+    "states": ["GAP", "MATCH"],
+    "coreExists": true,
+    "coreAxis": "contact",
+    "violations": []
+  }
+}

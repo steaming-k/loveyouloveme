@@ -1,0 +1,51 @@
+{
+  "name": "relationship_current_not_overfiltered",
+  "description": "A12 (v1.42 §40.14) — 과필터 방지. 진행 중인 관계(tense=current)에서는 `지금 관계에서` · `지금 상대` 같은 현재형 호칭이 **정상**이고, 결정론 근거 문장(`relationshipSignal`)이 실제로 그렇게 쓰여 있다. former용 패턴이 current 결과까지 떨어뜨리면 dating 사용자의 AI 설명이 통째로 사라진다. 그리고 진행 중인 관계에서도 축의 절반이 `scope: 'past'`인 것이 정상이므로(S30은 선택 입력) `이전 관계에서` 같은 과거 어휘도 함께 통과해야 한다 — 이게 tense scanner를 비대칭으로 둔 이유다. ⚠️ evidenceRefs에 source=current_relationship을 쓰지 않는다 — 그 값은 AI가 파싱 가능한 EVIDENCE_SOURCES 목록에 없어서(v1.41부터 결정론 엔진만 만든다) 참조가 조용히 버려지고, 그러면 근거 0개가 되어 항목이 시제와 무관한 이유로 떨어진다. 이 fixture가 검사하려는 것은 시제 필터이므로 근거는 declared로 둔다(별도 Remaining Risk).",
+  "task": "relationship-insight",
+  "tense": "current",
+  "judgements": [
+    { "axis": "contact", "state": "GAP" },
+    { "axis": "alone", "state": "MATCH" },
+    { "axis": "conflict", "state": "MATCH" }
+  ],
+  "focusAxis": "contact",
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "GAP",
+        "headline": "연락은 낮게 답했는데 실제로는 크게 반응했어",
+        "explanation": "지금 이 관계에서는 연락이 줄어들 때 특히 크게 반응한다고 답했어.",
+        "evidenceRefs": [{ "source": "declared", "field": "contact" }],
+        "question": "지금 상대와 연락 주기에 대해 이야기해본 적 있어?"
+      },
+      {
+        "axis": "alone",
+        "state": "MATCH",
+        "headline": "개인 시간은 말한 기준과 비슷하게 나타났어",
+        "explanation": "이전 관계에서 개인 시간을 중요했던 요소로 골랐고, 말한 기준도 같은 방향이야.",
+        "evidenceRefs": [{ "source": "declared", "field": "alone" }]
+      },
+      {
+        "axis": "conflict",
+        "state": "MATCH",
+        "headline": "갈등 해결은 두 답이 같은 방향이야",
+        "explanation": "앞으로 둘이 이 부분을 계속 만나면서 맞춰가도 될 것 같아.",
+        "evidenceRefs": [{ "source": "declared", "field": "conflict" }]
+      }
+    ],
+    "core": {
+      "headline": "연락을 낮게 봤지만 지금 관계에서는 크게 반응해",
+      "summary": "네가 말한 기준과 지금 관계에서 답한 내용이 연락 축에서 갈렸어.",
+      "evidenceRefs": [{ "source": "declared", "field": "contact" }],
+      "limitations": ["지금 관계에 대한 답이 세 축뿐이라 나머지는 아직 알 수 없어"]
+    }
+  },
+  "expect": {
+    "narrativeCount": 3,
+    "states": ["GAP", "MATCH", "MATCH"],
+    "coreExists": true,
+    "coreAxis": "contact",
+    "violations": []
+  }
+}

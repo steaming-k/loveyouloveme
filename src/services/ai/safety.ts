@@ -1,3 +1,4 @@
+import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import type { EvidenceRef } from '@/types';
 
 /**
@@ -194,6 +195,116 @@ export function scanHistoryNarrative(text: string): SafetyScanResult {
     ({ label }) => label,
   );
   const violations = [...core.violations, ...growth];
+  return { safe: violations.length === 0, violations };
+}
+
+/* ------------------------------------------- Relationship Tense (v1.42 · §40.13) */
+
+/**
+ * `tense: 'former'`에서 **관계가 지금도 이어지고 있다고 단정하는** 표현.
+ *
+ * ══ 왜 이 검사가 필요한가 ═════════════════════════════════════════════════
+ *
+ * v1.41은 `ended` 사용자의 시제를 결정론 경로에서 전부 맞췄다 — Mirror 행 라벨,
+ * `noteFor`, `scopeCaptionOf`, Deep Report의 `limitation`·`sourceLabels`. 그런데
+ * **AI 문장에는 아무 방어가 없었다.** `MirrorAxisNarrative`는 결정론 행 바로 아래에
+ * 붙으므로, 행이 `그때 이 관계에서 …라고 답함`인데 그 아래 AI 설명이
+ * `지금 이 관계에서는 …`으로 시작할 수 있었다.
+ *
+ * 1차 방어는 프롬프트의 `[시제]` 블록이다. 여기는 **최후 방어선**이고, 다른 스캐너와
+ * 같은 원칙으로 만들었다: 완벽한 탐지기가 아니라 **명백한 위반을 통과시키지 않는 장치**.
+ *
+ * ══ 왜 이렇게 좁은가 ══════════════════════════════════════════════════════
+ *
+ * `지금`이라는 단어 자체를 막으면 안 된다. `지금 돌아보면` · `지금은 그게 보여` 같은
+ * 문장은 **끝난 관계를 회고할 때 오히려 자연스럽다.** 막아야 하는 것은 단어가 아니라
+ * **관계가 현재 진행 중이라는 전제**다. 그래서 `지금` 뒤에 `관계`·`상대`가 붙는
+ * 형태만 잡는다.
+ *
+ * `앞으로`도 통째로 막지 않는다. v1.40.1이 `ended`에게 `다음 관계에서 …`를 **허용**했다
+ * (금지한 것은 진행 중인 관계에 그 문구를 쓰는 것이었다). 그래서 `앞으로 둘이`처럼
+ * **이 쌍이 계속된다는 전제**가 있는 형태만 잡는다.
+ */
+const FORMER_TENSE_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
+  { label: 'ongoing_relation', pattern: /(지금|현재)\s*(이\s*)?관계/ },
+  { label: 'present_partner', pattern: /(지금|현재)\s*상대/ },
+  { label: 'continuing_pair', pattern: /앞으로\s*둘이|계속\s*만나(면서|며|고|다)/ },
+];
+
+/**
+ * 관계 시제 위반 검사. (v1.42 · §40.13)
+ *
+ * ⚠️ **`tense === 'current'`에서는 아무것도 막지 않는다.** 이건 게으름이 아니라 판단이다.
+ *
+ * `current` 쪽에 '과거형 어휘 금지'를 대칭으로 넣고 싶어지는데, 그러면 **정상 문장을
+ * 대량으로 떨어뜨린다.** 진행 중인 관계의 사용자도 축의 절반이 `scope: 'past'`인 것이
+ * 정상이고(S30은 선택 입력이다), 그 축의 근거 문장은 `이전 관계에서 …`다. AI가 그
+ * 근거를 인용하면 반드시 과거 어휘가 나온다 — 그걸 위반으로 보면 **근거를 인용할수록
+ * 문장이 사라진다.**
+ *
+ * 두 방향의 실패 비용도 다르다. `former`에서 현재형은 **끝난 관계를 진행 중이라고
+ * 사용자에게 말하는 것**이고, `current`에서 과거 어휘는 대개 그냥 과거 근거를 정확히
+ * 인용한 것이다. 비대칭이 옳다.
+ *
+ * `current` 쪽 시제 정합성은 프롬프트와 J2 실측이 담당한다(§40.14 · Remaining Risk).
+ */
+export function scanRelationshipTense(text: string, tense: RelationshipTense): SafetyScanResult {
+  if (tense !== 'former') return { safe: true, violations: [] };
+
+  const violations = FORMER_TENSE_PATTERNS.filter(({ pattern }) => pattern.test(text)).map(
+    ({ label }) => label,
+  );
+  return { safe: violations.length === 0, violations };
+}
+
+/**
+ * Outward Question Gate — AI가 만든 질문에 **결정론 질문과 같은 Job 경계**를 적용한다.
+ * (v1.42 · §41.9)
+ *
+ * ══ TENSE SAFETY ≠ JOB SAFETY ═══════════════════════════════════════════════
+ *
+ * `scanRelationshipTense`는 **시제**만 본다. 그래서 이런 질문은 통과한다.
+ *
+ * ```
+ * 연락이 줄었을 때 서로 어떤 기준이 있었는지 이야기해볼 수 있을까?
+ * ```
+ *
+ * 현재형 호칭이 하나도 없다 — 그런데 **관계가 끝난 사용자에게 상대와 이야기해보라고
+ * 제안하는 문장**이다. 시제는 맞고 **대상**이 틀렸다. 결정론 질문
+ * (`buildConversationQuestions`)은 `jobAllowsOutwardQuestions(job)`가 이미 막고
+ * 있었는데, AI가 만든 질문에는 그 게이트가 없었다.
+ *
+ * ⚠️ **항목을 버리지 않고 질문만 지운다.** 질문 하나 때문에 설명까지 사라지면
+ * 과필터다(§27 AI는 augmentation) — 그리고 `ended`에서 그 질문은 어차피 화면에 가지
+ * 않으므로 버릴 이유가 없다.
+ *
+ * ⚠️ **호출부는 이 게이트를 안전 검사 *앞*에 둔다.** 지워진 질문이 스캔 문자열에
+ * 들어가면, 화면에 가지도 않는 문장 때문에 설명이 떨어질 수 있다.
+ *
+ * ⚠️ `allows`는 **프롬프트에 들어가지 않는다.** AI에게 Job을 알려주지 않는다는 v1.42의
+ * 결정 그대로이고, 이건 응답 후처리 안전 문맥이다.
+ */
+export function applyOutwardQuestionGate<T extends { question?: string }>(
+  items: readonly T[],
+  allows: boolean,
+): T[] {
+  if (allows) return [...items];
+  return items.map((item) => ({ ...item, question: undefined }));
+}
+
+/**
+ * Relationship Narrative 전용 — 기존 Core 검사 + 시제 검사. (v1.42)
+ *
+ * `scanHistoryNarrative`가 Core 검사에 성장 서사 검사를 더한 것과 **같은 구조**다.
+ * 새 파이프라인을 만들지 않고 기존 `filterSafeItems`에 그대로 들어간다.
+ */
+export function scanRelationshipNarrative(
+  text: string,
+  tense: RelationshipTense,
+): SafetyScanResult {
+  const core = scanCoreNarrative(text);
+  const tenseScan = scanRelationshipTense(text, tense);
+  const violations = [...core.violations, ...tenseScan.violations];
   return { safe: violations.length === 0, violations };
 }
 
