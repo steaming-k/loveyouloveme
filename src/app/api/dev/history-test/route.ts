@@ -4,6 +4,7 @@ import { buildHistoryReport, findRepeatedRelationshipSignals } from '@/lib/logic
 import { buildCrossSourceInsights } from '@/lib/logic/crossSourceInsights';
 import { buildFirstContactReport } from '@/lib/logic/firstContact';
 import { buildMirrorReport, declaredPhraseOf } from '@/lib/logic/mirror';
+import { NO_CURRENT_RELATIONSHIP } from '@/lib/logic/relationshipEvidence';
 import { selfLevelOf } from '@/lib/logic/firstContact';
 import { buildProfileSummary } from '@/lib/logic/profile';
 import { hasDeepConnection, limitationFor } from '@/services/premiumConnections';
@@ -106,8 +107,16 @@ export async function POST(request: Request): Promise<Response> {
   const insights = buildCrossSourceInsights({
     declared,
     experience,
+    /**
+     * v1.41 — 이 fixture는 History/Solo 비교를 검사하는 것이고 **현재 관계 근거를
+     * 다루지 않는다.** `NO_CURRENT_RELATIONSHIP`을 명시적으로 넘겨서, 이 Route의
+     * 모든 판정이 v1.40.1과 동일함을 코드에서 읽을 수 있게 한다(`test:history` 100건
+     * 전부가 회귀 기준이 된다). 현재 근거는 `test:relationship-evidence`가 다룬다.
+     */
+    current: NO_CURRENT_RELATIONSHIP,
+    tense: 'current',
     target,
-    mirror: buildMirrorReport(declared, experience),
+    mirror: buildMirrorReport(declared, experience, NO_CURRENT_RELATIONSHIP, 'current'),
     validated: [],
     historyChanges: coupleReport.changes,
     repeatedSignals: findRepeatedRelationshipSignals(entries),
@@ -122,7 +131,12 @@ export async function POST(request: Request): Promise<Response> {
    * v1.35까지 이 문구는 축마다 고정값이라 사용자가 하지 않은 답을 사용자의 답이라고
    * 표시했다. 회귀를 코드로 막는다 — 같은 축의 문구는 답이 달라지면 반드시 달라져야 한다.
    */
-  const mirrorForPhrase = buildMirrorReport(declared, experience);
+  const mirrorForPhrase = buildMirrorReport(
+    declared,
+    experience,
+    NO_CURRENT_RELATIONSHIP,
+    'current',
+  );
 
   return Response.json({
     ok: true,
@@ -158,7 +172,8 @@ export async function POST(request: Request): Promise<Response> {
         historyEntries: entries,
       }).length,
       ruleSummary: insight.ruleSummary,
-      limitation: limitationFor([...new Set(insight.sources)]),
+      // v1.41 — 이 fixture는 현재 근거를 다루지 않으므로 진행 중 시제를 명시한다.
+      limitation: limitationFor([...new Set(insight.sources)], 'current'),
     })),
     deepReportAvailable: hasDeepConnection(insights),
     audiences: entries.map((entry) => historyAudienceOf(entry)),

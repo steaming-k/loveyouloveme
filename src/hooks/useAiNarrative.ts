@@ -10,6 +10,10 @@ import {
 } from '@/lib/aiFingerprint';
 import type { EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
 import { buildCrossSourceInsights } from '@/lib/logic/crossSourceInsights';
+import {
+  relationshipTenseOf,
+  resolveRelationshipContext,
+} from '@/lib/logic/relationshipStage';
 import { clearAiCacheEntry, getCachedAiResult } from '@/services/ai/aiClient';
 import {
   requestCompatibilityNarrative,
@@ -219,12 +223,18 @@ export function useCrossSourceInsights(): CrossSourceInsight[] {
   const mbtiBridge = useMbtiBridge();
   /** v1.32 P4-D — ⑦(declared × MBTI self)의 입력. 상대가 없어도 값이 있다 */
   const crossMbtiSelfLens = useMbtiSelfLens();
+  /** v1.41 — memo 밖에서 계산한다(deps 정확도 · `useMirror`와 같은 이유) */
+  const tense = relationshipTenseOf(resolveRelationshipContext(answers).job);
 
   return useMemo(
     () =>
       buildCrossSourceInsights({
         declared: answers.declared,
         experience: answers.experience,
+        // v1.41 §39.18 — ⑨(지금 관계 × 이전 관계)의 입력. 비어 있으면 ⑨는 만들어지지 않는다
+        current: answers.currentRelationship,
+        // v1.41 §39.13 — ruleSummary 호칭 전용. 판정·근거에는 들어가지 않는다
+        tense,
         target: answers.target,
         mirror,
         validated,
@@ -243,6 +253,9 @@ export function useCrossSourceInsights(): CrossSourceInsight[] {
     [
       answers.declared,
       answers.experience,
+      // v1.41 — ⑨의 입력과 시제. 근거가 바뀌면 연결 목록도 다시 만들어야 한다
+      answers.currentRelationship,
+      tense,
       answers.target,
       mirror,
       validated,
@@ -407,7 +420,8 @@ export function useDeepReportNarrative(
     [insights, answers.declared, answers.target, validated, answers.deepAnswers],
   );
 
-  const run = () => requestDeepReportNarrative(insights, resolverContext, fingerprint);
+  const deepTense = relationshipTenseOf(resolveRelationshipContext(answers).job);
+  const run = () => requestDeepReportNarrative(insights, resolverContext, fingerprint, deepTense);
 
   return useNarrativeTask<DeepNarrativeBundle>({
     task: 'deep-report-narrative',

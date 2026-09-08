@@ -509,6 +509,103 @@ export interface RelationshipExperience {
   adaptive: AdaptiveAnswer | null;
 }
 
+/* ============ Relationship Evidence Time Model (v1.41 · §39) ============ */
+
+/**
+ * 이 근거는 **언제의 나**인가. (v1.41 · §39.2)
+ *
+ * ══ 왜 이 타입이 필요한가 ═══════════════════════════════════════════════
+ *
+ * v1.40이 Relationship Stage를 만들고 v1.40.1이 stage별 ACTION SAFETY를 닫았는데,
+ * **Core Evidence는 그대로 비대칭이었다.** `dating`의 Job은 `지금 관계에서 기대를
+ * 조율한다`까지 확장됐지만 Mirror가 읽는 `RelationshipExperience`는 S15~S17
+ * (`이전 관계에서 …`) 하나뿐이었다. 즉 제품은 **한 번도 물어본 적 없는 관계**에 대해
+ * `지금 이 관계에서 조율할 기준`이라고 말하고 있었다.
+ *
+ * 고치는 방법은 두 가지였다.
+ *
+ * | | 무엇을 하나 | 왜 아닌가 / 왜 맞나 |
+ * |---|---|---|
+ * | A | `dating`이면 과거 근거를 현재형으로 말한다 | **금지.** 시제만 바꾸면 근거의 출처가 거짓이 된다(§37.20이 이미 정한 규칙) |
+ * | B | 현재 관계 근거를 **따로 수집**하고, 근거의 시점을 타입으로 들고 다닌다 | **채택** |
+ *
+ * ⚠️ **핵심 원칙: RELATIONSHIP STAGE ≠ RELATIONSHIP EVIDENCE TIMEFRAME.**
+ * 사용자가 `dating`을 골랐다는 사실은 현재 관계 근거를 **만들어주지 않는다.**
+ * scope를 정하는 것은 오직 **사용자가 실제로 답한 것이 무엇인가**다.
+ *
+ * ══ 왜 값이 세 개뿐인가 ═════════════════════════════════════════════════
+ *
+ * 처음 후보는 `current | past | general | legacy | insufficient` 다섯이었다. 셋으로
+ * 줄인 이유는 나머지 둘이 **이미 다른 축이 말하고 있는 것**이기 때문이다.
+ *
+ *   general      = Declared Me. 이미 `EvidenceRef.source === 'declared'`가 말한다.
+ *                  Mirror의 왼쪽 칸이 통째로 general이므로 축별 scope로 둘 필요가 없다.
+ *   legacy       = History Snapshot에 이 필드가 **없는 상태**로 표현한다
+ *                  (`HistoryMirrorInsightSnapshot.evidenceScope?`). 없는 것을
+ *                  `'legacy'`로 채우면 그건 소급 추정이다(§39.14).
+ *   insufficient = `'none'`과 같은 말이다. 두 이름을 두면 호출부가 갈린다.
+ *
+ * **enum을 늘리는 것이 정직해지는 것은 아니다.** 늘어난 값마다 분기가 생기고, 분기가
+ * 늘면 한 곳을 빼먹는다 — 그게 v1.40.1이 닫은 결함의 형태였다.
+ */
+export type RelationshipEvidenceScope =
+  /** 사용자가 **지금 관계**에 대해 직접 답했다 (S30) */
+  | 'current'
+  /** 사용자가 **이전 관계 경험**에 대해 답했다 (S15~S17) */
+  | 'past'
+  /** 이 축에는 관계 근거가 없다. 없는 것을 중립값으로 채우지 않는다 */
+  | 'none';
+
+/* -------------------------------------- Current Relationship Me (S30) */
+
+/**
+ * 지금 관계에서 이 축이 **실제로 얼마나 드러나는가**. (v1.41 · §39.4)
+ *
+ * ⚠️ 네 값 전부가 **사용자가 직접 고른 답**이다. `unsure`는 미응답이 아니라
+ * **"아직 그런 상황이 없었어"라고 답한 것**이고, 미응답은 키가 아예 없는 상태다.
+ * 둘을 하나로 묶으면 '물어봤는데 모른다고 답한 사용자'와 '아직 안 물어본 사용자'를
+ * 구분할 수 없어진다 — v1.29가 `no_target`/`unknown_target`을 나눈 것과 같은 이유다.
+ *
+ * ⚠️ **점수가 아니다.** 1/2/3점으로 환산하지 않는다. 이 값이 하는 일은
+ * `EvidenceStrength`(근거의 종류)를 고르는 것뿐이고, 동기화율·`comparedCount`에는
+ * 어디에도 들어가지 않는다.
+ */
+export type CurrentSignalAnswer =
+  /** 이 축이 지금 관계에서 뚜렷하게 드러난다 */
+  | 'often'
+  /** 드러나기도 하고 넘어가기도 한다 */
+  | 'sometimes'
+  /** 지금 관계에서는 거의 드러나지 않는다 — **근거 없음이 아니라 '없다는 근거'다** */
+  | 'rarely'
+  /** 아직 그런 상황이 없었다 — 답은 했지만 근거는 만들 수 없다 */
+  | 'unsure';
+
+/**
+ * 지금 관계 속의 나 (S30 · `/profile/current`).
+ *
+ * ⚠️ **Optional이다. Core Funnel을 막지 않는다**(§39.5). 이 값이 하나도 없어도
+ * v1.40.1까지의 모든 화면·판정이 글자 하나 다르지 않게 동작한다 — Mirror는
+ * `experience`(과거)로 판정하고 scope는 `'past'`가 된다.
+ *
+ * ⚠️ **상대에 대한 관찰이 아니다.** 전부 주어가 나인 행동/반응이고, `상대는 회피형이야?`
+ * · `이 관계는 건강해?` 같은 질문은 만들지 않는다(§39.7 금지 목록).
+ *
+ * ⚠️ **자유서술을 받지 않는다.** History Snapshot에 얼려야 하는 값이고, 자유서술을
+ * 넣으면 기록이 사람 CRM으로 변한다(§39.14).
+ */
+export interface CurrentRelationshipEvidence {
+  /**
+   * 축 → 사용자가 고른 답. **키가 없으면 아직 답하지 않은 것**이다.
+   * 4축이 아니라 Mirror 5축 전부를 받는다 — Mirror가 5축이므로.
+   */
+  signals: Partial<Record<MirrorAxisKey, CurrentSignalAnswer>>;
+  /**
+   * 이 화면을 실제로 열어본 시점. 한 번 본 사용자에게 같은 권유를 반복하지 않기 위한
+   * 표시값이고, **판정에는 쓰지 않는다.** null이면 아직 권유 단계다.
+   */
+  askedAt: string | null;
+}
+
 /* -------------------------------------------------------- Target Person (S19) */
 
 /**
@@ -711,6 +808,15 @@ export interface MirrorInsight {
   /** 관계 경험에서 발견한 신호 — 숫자가 아니라 문장이다 */
   relationshipSignal: string;
   evidenceStrength: EvidenceStrength;
+  /**
+   * v1.41 §39.8 — 이 축의 `relationshipSignal`이 **언제의 나**에서 나왔는가.
+   *
+   * `evidenceStrength`(근거가 얼마나 강한가)와 **직교한다.** 두 값을 한 enum으로
+   * 합치면 `absent + current`(지금 관계에서는 드러나지 않는다고 **답했다**)와
+   * `absent + none`(아무 근거가 없다)을 구분할 수 없어진다 — 전자는 근거가 있는
+   * 상태이고 후자는 없는 상태다. 화면 문구도, evidenceRef 생성 여부도 갈린다.
+   */
+  evidenceScope: RelationshipEvidenceScope;
   state: MirrorState;
   /** 러비의 해석 한 줄 */
   note: string;
@@ -745,6 +851,31 @@ export interface MirrorReport {
   teaser: MirrorTeaser | null;
   core: CoreInsight | null;
   gapCount: number;
+  /**
+   * v1.41 §39.9 — 판정된 축들의 근거가 **어느 시점에서 왔는지**의 요약.
+   *
+   * 축별로 source가 섞일 수 있다(contact는 지금 관계, conflict는 이전 관계). 그때
+   * 화면이 전체를 `지금 관계 속의 나`라고 부르면 **거짓**이므로, 섞였다는 사실을
+   * 화면이 읽을 수 있어야 한다. 카드를 추가하지 않고 캡션·행 annotation으로만 쓴다.
+   */
+  scopeSummary: MirrorScopeSummary;
+}
+
+/** v1.41 — Mirror 근거의 시점 분포. 판정에는 쓰지 않는다(표시 전용) */
+export interface MirrorScopeSummary {
+  /** 근거가 지금 관계에서 온 축 수 */
+  currentCount: number;
+  /** 근거가 이전 관계 경험에서 온 축 수 */
+  pastCount: number;
+  /** 관계 근거 없이 declared만으로 판정된 축 수 (CHANGE) */
+  noneCount: number;
+  /** `currentCount > 0 && pastCount > 0` — 섞였으면 전체를 한 시점으로 부르지 않는다 */
+  mixed: boolean;
+  /**
+   * 이 Mirror를 **한 시점의 이름으로 부를 수 있는가**. 부를 수 있으면 그 시점.
+   * 섞였거나 근거가 없으면 null이고, 화면은 시점 이름을 쓰지 않는다.
+   */
+  dominant: RelationshipEvidenceScope | null;
 }
 
 /* --------------------------------------------- Relationship Profile (S18) */
@@ -797,6 +928,16 @@ export interface HistoryMirrorInsightSnapshot {
   state: Exclude<MirrorState, 'UNKNOWN'>;
   declaredText: string;
   relationshipSignal: string;
+  /**
+   * v1.41 §39.14 — 이 판정의 근거가 **언제의 나**였는지 함께 얼린다.
+   *
+   * ⚠️ **optional이고, 없는 값을 소급 추정하지 않는다.** v1.40까지 저장된 기록에는
+   * 이 필드가 없고, 그 기록들이 전부 과거 경험 근거였다는 것은 **사실이지만 우리가
+   * 그때 그렇게 기록하지 않았다.** `undefined`를 `'past'`로 읽으면 '그때 그렇게
+   * 기록했다'는 거짓이 되므로, 화면은 이 값이 없으면 **시점을 말하지 않는다**
+   * (`legacy` 취급). 새 enum 값을 만들지 않고 **필드의 부재**로 표현한다.
+   */
+  evidenceScope?: RelationshipEvidenceScope;
 }
 
 export interface RelationshipHistoryEntry {
@@ -1042,6 +1183,17 @@ export type AiFailureReason =
 export type EvidenceRef =
   | { source: 'declared'; field: string }
   | { source: 'relationship'; field: string }
+  /**
+   * v1.41 §39.8 — **지금 관계**에 대해 사용자가 직접 답한 값(S30). `field`는
+   * `MirrorAxisKey`다.
+   *
+   * ⚠️ `relationship`(과거 경험)과 **절대 같은 ref로 쓰지 않는다.** v1.40까지
+   * `relationshipRefFor()`는 강도만 보고 `{source:'relationship', field:'hardest'}`를
+   * 만들었는데, 근거가 현재 관계에서 온 경우에 그 ref를 붙이면 resolver가
+   * `이전 관계에서 …` 문장을 돌려준다 — **근거를 지목하는 곳에서 시점을 거짓으로
+   * 만드는 것**이다.
+   */
+  | { source: 'current_relationship'; field: string }
   | { source: 'adaptive'; field: string }
   | { source: 'observed'; traitId: string }
   | { source: 'history'; entryId: string; axis: string }
@@ -1334,6 +1486,12 @@ export type CrossSourceEvidenceSource =
   | 'observed'
   | 'declared'
   | 'relationship'
+  /**
+   * v1.41 §39.8 — 지금 관계 속의 나(S30). `relationship`(과거 경험)과 **다른
+   * source로 센다** — 같은 축에 대해 서로 다른 시점에, 서로를 참조하지 않고 입력된
+   * 두 답이므로 `hasDeepConnection`의 관점에서 실제로 독립적인 2종이다(§39.18).
+   */
+  | 'current_relationship'
   | 'target'
   | 'history'
   | 'adaptive'
@@ -1860,6 +2018,17 @@ export interface SessionAnswers {
   observedAnalysis: ObservedProfileResult | null;
   declared: DeclaredPreference;
   experience: RelationshipExperience;
+  /**
+   * v1.41 §39.4 — **지금 관계 속의 나** (S30 · Optional).
+   *
+   * `experience`(S15~S17)와 나란히 놓이는 **별도의 evidence source**다. 같은 필드에
+   * 덮어쓰지 않는다 — 덮어쓰면 과거 근거가 사라지고, 그러면 Premium의
+   * `Current × Past` 연결(§39.18)이 애초에 만들어질 수 없다.
+   *
+   * ⚠️ v1.40 이전 세션에는 없다. 없으면 빈 값으로 복원되고, 그 상태의 모든 판정은
+   * v1.40.1과 **글자 하나 다르지 않다**(fixture E0가 확인한다).
+   */
+  currentRelationship: CurrentRelationshipEvidence;
   target: TargetProfile;
   /** 저장한 대화 질문 id */
   savedQuestions: ConversationQuestionId[];

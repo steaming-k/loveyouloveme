@@ -4,6 +4,7 @@ import { buildMbtiLens, buildMbtiSelfLens, buildMbtiQuestions } from '@/lib/logi
 import { buildFirstContactReport } from '@/lib/logic/firstContact';
 import { buildMbtiPattern } from '@/lib/logic/mbtiPattern';
 import { buildMirrorReport } from '@/lib/logic/mirror';
+import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import { buildHomeHighlights, buildRelationshipProfile } from '@/lib/logic/profile';
 import { callAiTask } from '@/services/ai/aiClient';
 import {
@@ -18,6 +19,7 @@ import { photoFingerprint, prepareImagesForAnalysis } from '@/services/ai/imageP
 import { PROMPT_VERSIONS } from '@/services/ai/promptVersions';
 import type { EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
 import type {
+  CurrentRelationshipEvidence,
   AiFailureReason,
   AiObservedTrait,
   AiTask,
@@ -251,8 +253,10 @@ export function requestDeepReportNarrative(
   insights: readonly CrossSourceInsight[],
   resolverContext: EvidenceResolverContext,
   fingerprint: string,
+  /** v1.41 §39.13 — 모델이 받는 경계 문장의 시점. 화면과 같은 문자열을 준다 */
+  tense: RelationshipTense,
 ): Promise<{ ok: true; data: DeepNarrativeBundle } | { ok: false; reason: AiFailureReason }> {
-  const context = buildDeepReportContext(insights, resolverContext);
+  const context = buildDeepReportContext(insights, resolverContext, tense);
 
   if (context.insights.length === 0) {
     return Promise.resolve({
@@ -317,15 +321,24 @@ export async function generateMbtiLens(input: {
 export async function generateMirrorInsights(input: {
   declared: DeclaredPreference;
   experience: RelationshipExperience;
+  /** v1.41 — 현재 근거가 없으면 호출부가 `NO_CURRENT_RELATIONSHIP`을 명시적으로 넘긴다 */
+  current: CurrentRelationshipEvidence;
+  tense: RelationshipTense;
 }): Promise<MirrorReport> {
-  return withLatency(buildMirrorReport(input.declared, input.experience));
+  return withLatency(
+    buildMirrorReport(input.declared, input.experience, input.current, input.tense),
+  );
 }
 
 export async function generateHomeHighlights(input: {
   declared: DeclaredPreference;
   experience: RelationshipExperience;
+  current: CurrentRelationshipEvidence;
+  tense: RelationshipTense;
 }): Promise<{ key: string; value: string }[]> {
-  return withLatency(buildHomeHighlights(input.declared, input.experience));
+  return withLatency(
+    buildHomeHighlights(input.declared, input.experience, input.current, input.tense),
+  );
 }
 
 /* -------------------------------------------------------------------------- */

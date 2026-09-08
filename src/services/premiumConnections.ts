@@ -3,6 +3,8 @@ import {
   resolveEvidenceRefs,
   type EvidenceResolverContext,
 } from '@/lib/aiEvidenceResolver';
+import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
+
 import type {
   CrossSourceEvidenceSource,
   CrossSourceInsight,
@@ -52,6 +54,14 @@ function axisLabel(key: string): string {
 const SOURCE_LABEL: Record<CrossSourceEvidenceSource, string> = {
   declared: '내가 답한 기준',
   relationship: '관계 경험',
+  /**
+   * v1.41 §39.9 — `관계 경험`(과거)과 **다른 라벨**이다.
+   *
+   * `정보 N종`을 세는 자리에서 두 시점이 같은 이름을 쓰면, 사용자는 두 개를 이었다는
+   * 표시를 보고 같은 곳을 두 번 봤다고 읽는다. 이름이 다르면 무엇을 이었는지가
+   * 라벨만으로 보인다 — 그게 이 리포트가 파는 것이다.
+   */
+  current_relationship: '지금 관계',
   target: '상대 정보',
   observed: '사진 관찰',
   history: '과거 관찰',
@@ -72,14 +82,51 @@ const SOURCE_LABEL: Record<CrossSourceEvidenceSource, string> = {
  * v1.27 — `export`로 바꿨다. AI 프롬프트가 **화면과 같은 limitation 문장**을 받아야
  * 하기 때문이다. 사용자가 보는 경계와 모델이 받는 경계가 다르면 경계가 아니다.
  */
-export function limitationFor(sources: readonly CrossSourceEvidenceSource[]): string {
+/**
+ * v1.41 §39.13 — 시점을 말하는 source 라벨은 **관계가 끝났으면 다르게 부른다.**
+ *
+ * 브라우저 실측(J7)에서 `ended` 리포트의 연결 카드 칩이 `지금 관계`로 떠 있었다.
+ * 근거는 맞는데 호칭이 틀린 것이고, `audience` 게이트는 이런 자리를 보지 않는다.
+ */
+export function sourceLabelOf(
+  source: CrossSourceEvidenceSource,
+  tense: RelationshipTense,
+): string {
+  if (source === 'current_relationship' && tense === 'former') return '그때 이 관계';
+  return SOURCE_LABEL[source];
+}
+
+/**
+ * @param tense v1.41 §39.13 — **필수다.** 이 함수의 문장 두 개가 `지금 이 관계` ·
+ *   `지금 관계에 대해`로 시점을 직접 말하므로, 기본값을 두면 `ended` 호출부가
+ *   빼먹은 순간 끝난 관계를 진행 중인 것처럼 부른다 — 실측에서 실제로 그랬다.
+ */
+export function limitationFor(
+  sources: readonly CrossSourceEvidenceSource[],
+  tense: RelationshipTense,
+): string {
   const has = (source: CrossSourceEvidenceSource) => sources.includes(source);
+  const thisRelationship = tense === 'former' ? '그때 이 관계' : '지금 이 관계';
+  const currentAnswers = tense === 'former' ? '그때 이 관계에 대해' : '지금 관계에 대해';
 
   if (has('history')) {
     return '과거 관찰과 지금이 같은 축을 가리킨다는 것까지야. 과거가 지금의 원인이라고는 말할 수 없어.';
   }
+  /**
+   * v1.41 §39.18 — **두 시점을 이은 연결의 경계.** `history` 다음, 나머지보다 앞이다.
+   *
+   * 이 조합에서 사용자가 가장 쉽게 넘어가는 결론이 `과거 때문에 지금 이렇다`인데,
+   * 우리가 확인한 것은 두 답이 다른 방향을 가리킨다는 것까지다. 인과도 아니고
+   * '성장/퇴행' 같은 방향 판정도 아니다.
+   */
+  if (has('current_relationship') && has('relationship')) {
+    return '서로 다른 시점에 답한 두 내용을 나란히 놓은 것까지야. 어느 쪽이 진짜 너인지도, 무엇 때문에 달라졌는지도 정하지 않아.';
+  }
   if (has('relationship') && has('compatibility')) {
-    return '두 관찰이 같은 축을 가리킨다는 것까지야. 과거 경험이 지금 이 관계를 그렇게 만들었다는 뜻은 아니야.';
+    return `두 관찰이 같은 축을 가리킨다는 것까지야. 과거 경험이 ${thisRelationship}를 그렇게 만들었다는 뜻은 아니야.`;
+  }
+  if (has('current_relationship')) {
+    return `${currentAnswers} 네가 답한 내용 기준이야. 상대가 실제로 어떻게 느끼는지는 알 수 없어.`;
   }
   if (has('mbti_lens')) {
     return '성향 렌즈와 실제 답변을 나란히 놓은 것까지야. 성향이 관계 행동을 결정한다는 뜻은 아니야.';
@@ -126,8 +173,10 @@ export function buildConnections(input: {
   insights: readonly CrossSourceInsight[];
   narratives: readonly DeepNarrative[];
   resolverContext: EvidenceResolverContext;
+  /** v1.41 §39.13 — source 라벨·경계 문장의 호칭. 연결 생성 규칙은 바뀌지 않는다 */
+  tense: RelationshipTense;
 }): DeepConnection[] {
-  const { insights, narratives, resolverContext } = input;
+  const { insights, narratives, resolverContext, tense } = input;
 
   return insights.map((insight) => {
     const narrative = narratives.find((item) => item.insightId === insight.id) ?? null;
@@ -138,7 +187,7 @@ export function buildConnections(input: {
       id: insight.id,
       axis: insight.axis ?? null,
       sourceCount: uniqueSources.length,
-      sourceLabels: uniqueSources.map((source) => SOURCE_LABEL[source]),
+      sourceLabels: uniqueSources.map((source) => sourceLabelOf(source, tense)),
       ruleSummary: insight.ruleSummary,
       // AI는 '어떻게 말할지'만 담당한다. 실패하면 null이고 ruleSummary로 완결된다.
       // ⚠️ `interpretation`은 규칙 판정을 설명하는 문장이고, 판정 자체를 바꾸지 못한다.
@@ -158,7 +207,7 @@ export function buildConnections(input: {
        * 알려준다 — 코드가 그 말을 지키게 한다. AI의 `uncertainty`는 파싱 단계에서
        * '근거 또는 한계를 동반했는지' 판정하는 신호로만 쓰이고, 화면에는 오지 않는다.
        */
-      limitation: limitationFor(uniqueSources),
+      limitation: limitationFor(uniqueSources, tense),
       evidence: resolveEvidenceRefs(insight.evidenceRefs, resolverContext).map((item) => ({
         // React key로 쓸 canonical 식별자 — 문장을 key로 쓰지 않는다
         key: item.key,
@@ -409,12 +458,57 @@ const DEEP_OBSERVATION: Record<CrossSourceInsightType, DeepLovyObservation> = {
   },
 };
 
+/**
+ * v1.41 §39.13 — **끝난 관계에서만 달라지는 세 줄** (§38.11 항목 ②③)
+ *
+ * v1.40.1의 Remaining Risk 첫 줄에 이 자리가 두 번 등장한다.
+ *
+ * ```
+ * ② GAP.observation   지금 이 관계에서도 같은 축에 놓여 있어
+ * ③ GAP.question      미리 알 수 없는 걸 상대에게 미리 말해주는 방법은 있을까?
+ * ```
+ *
+ * v1.40.1은 이 둘을 "행동 제안이 아니다"라는 이유로 남겼다. ②는 맞는 판단이었고
+ * (사실 서술이다) ③도 형식상 러비의 혼잣말이다. 그런데 **끝난 관계의 사용자에게
+ * `지금 이 관계`라고 부르는 것 자체가 사실이 아니고**, ③은 문면에 `상대에게 …
+ * 말해주는 방법`이 그대로 있어서 `audience` 카운트가 세지 못하는 자리에서
+ * outward로 읽힌다 — v1.40.1이 "blacklist는 대상을 못 막는다"고 적은 그 틈이다.
+ *
+ * ⚠️ **연결도, 판정도, 근거도 바뀌지 않는다.** `core`가 무엇인지, 어떤 type인지 전부
+ * 그대로이고 바뀌는 것은 그 type에 붙는 문장 두 줄이다. 그래서 override 표에
+ * **달라지는 항목만** 둔다 — 전체를 복제하면 두 벌이 되어 한쪽만 고치게 된다.
+ *
+ * ⚠️ `MATCH`의 `지금 이 관계의 답이`도 같은 이유로 갈랐다. `CHANGE`·`CONTRADICTION`·
+ * `REPEATED_SIGNAL`·`UNKNOWN`은 시점을 말하지 않으므로 **손대지 않았다** — 고칠
+ * 이유가 없는 문장을 이 버전 때문에 바꾸지 않는다.
+ */
+const DEEP_OBSERVATION_FORMER: Partial<Record<CrossSourceInsightType, DeepLovyObservation>> = {
+  GAP: {
+    observation:
+      '말한 기준보다 실제 반응이 더 컸던 자리가, 그때 이 관계에서도 같은 축에 놓여 있었어. 인간은 자기가 어디에서 크게 반응하는지 미리 알기 어려운 것 같아 — 겪고 나서야 알게 되는 걸까.',
+    // 주어를 나로 되돌린다. 관계가 끝난 사람에게 '상대에게 말해주는 방법'을 묻지 않는다.
+    question: '미리 알 수 없는 걸 나는 어떻게 알아차리게 되는 걸까?',
+  },
+  MATCH: {
+    observation:
+      '말한 기준과 실제 반응, 그리고 그때 이 관계의 답이 같은 방향을 가리켰어. 일관된 건 편해 보이는데, 편한 자리에서는 서로 설명을 덜 하게 되는 것도 봤어.',
+    question: '잘 맞는 부분에 대해서는 왜 이야기를 덜 하게 되는 걸까?',
+  },
+};
+
 export function selectDeepObservation(
   core: DeepCorePattern | null,
   insights: readonly CrossSourceInsight[],
+  /**
+   * v1.41 — 관계를 부르는 이름. **필수다** — 기본값을 `'current'`로 두면 `ended`
+   * 호출부가 빼먹은 순간 v1.40.1이 닫으려던 문장이 그대로 돌아온다.
+   */
+  tense: RelationshipTense,
 ): DeepLovyObservation | null {
   if (!core) return null;
   const insight = insights.find((item) => item.id === core.connection.id);
   if (!insight) return null;
-  return DEEP_OBSERVATION[insight.type];
+  return tense === 'former'
+    ? (DEEP_OBSERVATION_FORMER[insight.type] ?? DEEP_OBSERVATION[insight.type])
+    : DEEP_OBSERVATION[insight.type];
 }

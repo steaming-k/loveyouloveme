@@ -13,6 +13,19 @@ export const ROUTES = {
   past: (step: number) => `/profile/past/${step}`,
   pastAdaptive: '/profile/past/adaptive',
   pastNone: '/profile/past/none',
+  /**
+   * S30 · Current Relationship Me (v1.41 · §39.5).
+   *
+   * ⚠️ **Core Funnel 경로가 아니다.** `profile/` 아래에 두는 이유는 이것이
+   * `Relationship Me`와 같은 층의 **자기 근거 레이어**이기 때문이고, 퍼널 순서상
+   * S14~S17 뒤에 오는 화면이라는 뜻이 아니다. 실제 진입은 궁합/Mirror 결과에서
+   * 한 줄 링크로만 일어난다.
+   *
+   * `from=mirror`면 뒤로가기·완료가 `/mirror`로 간다 — 결과를 보다 들어온 사용자를
+   * 다른 화면으로 떨어뜨리지 않는다(v1.19 §29와 같은 판단).
+   */
+  currentRelationship: (from?: 'mirror') =>
+    from ? '/profile/current?from=mirror' : '/profile/current',
   profileResult: '/profile/result',
   target: '/target',
   compatibilityAnalyzing: '/compatibility/analyzing',

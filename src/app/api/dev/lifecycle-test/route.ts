@@ -4,12 +4,19 @@ import { HARDEST_OPTIONS, SELF_GAP_OPTIONS } from '@/data/pastQuestions';
 import { buildCompatibility } from '@/lib/logic/compatibility';
 import { buildCrossSourceInsights } from '@/lib/logic/crossSourceInsights';
 import { buildHistoryReport, findRepeatedRelationshipSignals } from '@/lib/logic/history';
+import { buildHistoryEntry } from '@/lib/logic/history';
 import { buildMirrorReport } from '@/lib/logic/mirror';
+import { selectDeepQuestions } from '@/data/deepQuestions';
+import { NO_CURRENT_RELATIONSHIP, scopeCaptionOf } from '@/lib/logic/relationshipEvidence';
+import { CURRENT_SIGNAL_VALUES } from '@/data/currentRelationship';
+import { MIRROR_AXES } from '@/data/axes';
 import {
   deepReportJobContext,
   JOB_ACTION_KINDS,
   jobAllowsOutwardAction,
   jobAllowsOutwardQuestions,
+  jobInvitesCurrentEvidence,
+  relationshipTenseOf,
   resolveRelationshipContext,
 } from '@/lib/logic/relationshipStage';
 import { buildApproachHints } from '@/lib/logic/approachHints';
@@ -19,6 +26,8 @@ import { hasDeepConnection } from '@/services/premiumConnections';
 import { buildRelationshipDeepReport, premiumFeatureState } from '@/services/premiumService';
 import { createEmptyAnswers, createEmptyTargetProfile } from '@/state/defaultAnswers';
 import type {
+  CurrentRelationshipEvidence,
+  MirrorAxisKey,
   DeclaredPreference,
   RelationshipExperience,
   RelationshipHistoryEntry,
@@ -75,6 +84,9 @@ const ENUM_VALUES = {
   hardest: HARDEST_OPTIONS.map((option) => option.value as string),
   important: PAST_FACTOR_ORDER.map((factor) => factor as string),
   status: Object.keys(STATUS_LABEL),
+  // v1.41 — 현재 근거도 같은 게이트를 받는다. 허용값은 화면이 쓰는 모듈에서 읽는다.
+  currentSignal: CURRENT_SIGNAL_VALUES.map((value) => value as string),
+  currentAxis: MIRROR_AXES.map((axis) => axis.key as string),
 } as const;
 
 /** @returns 문제가 있으면 설명, 없으면 null */
@@ -108,6 +120,29 @@ function findEnumViolation(body: LifecycleTestRequest): string | null {
     return `status='${String(body.status)}' — 허용: ${ENUM_VALUES.status.join('|')}`;
   }
 
+  /**
+   * v1.41 — 현재 근거의 **축 키와 값 둘 다** 검사한다.
+   *
+   * 축 키를 검사하는 이유: `signals`는 `Partial<Record<MirrorAxisKey, …>>`라 오타 키가
+   * 들어와도 Mirror가 `MIRROR_AXES`만 조회하므로 **조용히 무시된다.** v1.40의
+   * `selfGap: 'more_expressive'`와 완전히 같은 실패 형태다 — fixture는 근거를 넣었다고
+   * 믿고, 판정은 근거 없이 계산되고, 아무도 실패하지 않는다.
+   */
+  const signals = body.currentRelationship?.signals;
+  if (signals != null) {
+    if (typeof signals !== 'object' || Array.isArray(signals)) {
+      return 'currentRelationship.signals는 객체여야 한다';
+    }
+    for (const [axis, value] of Object.entries(signals)) {
+      if (!ENUM_VALUES.currentAxis.includes(axis)) {
+        return `currentRelationship.signals에 축 '${axis}' — 허용: ${ENUM_VALUES.currentAxis.join('|')}`;
+      }
+      if (value != null && !ENUM_VALUES.currentSignal.includes(value as string)) {
+        return `currentRelationship.signals.${axis}='${String(value)}' — 허용: ${ENUM_VALUES.currentSignal.join('|')}`;
+      }
+    }
+  }
+
   return null;
 }
 
@@ -120,6 +155,8 @@ interface LifecycleTestRequest {
   entries?: RelationshipHistoryEntry[];
   /** legacy 세션 재현용 — 알 수 없는 값이 들어와도 죽지 않는지 본다 */
   rawStatus?: unknown;
+  /** v1.41 §39.4 — 지금 관계 근거. 넣지 않으면 v1.40.1과 동일 동작이어야 한다 */
+  currentRelationship?: Partial<CurrentRelationshipEvidence>;
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -144,22 +181,37 @@ export async function POST(request: Request): Promise<Response> {
   const experience: RelationshipExperience = { ...base.experience, ...body.experience };
   const target: TargetProfile = { ...createEmptyTargetProfile(), ...body.target };
   const entries = Array.isArray(body.entries) ? body.entries : [];
+  const currentRelationship: CurrentRelationshipEvidence = {
+    ...NO_CURRENT_RELATIONSHIP,
+    ...body.currentRelationship,
+    signals: { ...(body.currentRelationship?.signals ?? {}) },
+  };
 
   // legacy/unknown 값도 그대로 넣어본다 — 도출 함수가 던지지 않아야 한다.
   const status = (
     'rawStatus' in body ? body.rawStatus : (body.status ?? null)
   ) as RelationshipStatus | null;
 
-  const answers: SessionAnswers = { ...base, status, declared, experience, target };
+  const answers: SessionAnswers = {
+    ...base,
+    status,
+    declared,
+    experience,
+    target,
+    currentRelationship,
+  };
 
   const { stage, sufficiency, job } = resolveRelationshipContext(answers);
 
   /* ── ① 불변이어야 하는 것 ─────────────────────────────────────────────── */
   const compatibility = buildCompatibility(declared, target);
-  const mirror = buildMirrorReport(declared, experience);
+  const tense = relationshipTenseOf(job);
+  const mirror = buildMirrorReport(declared, experience, currentRelationship, tense);
   const insights = buildCrossSourceInsights({
     declared,
     experience,
+    current: currentRelationship,
+    tense,
     target,
     mirror,
     compatibility,
@@ -227,10 +279,90 @@ export async function POST(request: Request): Promise<Response> {
       premiumDeepConnection: hasDeepConnection(insights),
       crossSourceCount: insights.length,
     },
+
+    /* ── ④ Relationship Evidence (v1.41 · §39) ─────────────────────────────
+       ⚠️ 여기서도 판정을 만들지 않는다. 화면·리포트가 이미 계산한 값을 **셀 수 있는
+       형태로** 낸다 — fixture가 문장을 파싱해 시점을 추측하면 문구가 바뀔 때마다
+       테스트가 거짓 통과하거나 거짓 실패한다. */
+    evidence: {
+      /** 축별 근거 시점 — `resolveAxisEvidence`의 결과 그대로 */
+      axes: mirror.insights.map((insight) => ({
+        axis: insight.key,
+        scope: insight.evidenceScope,
+        strength: insight.evidenceStrength,
+        state: insight.state,
+        signal: insight.relationshipSignal,
+      })),
+      scopeSummary: mirror.scopeSummary,
+      mirrorAvailable: mirror.available,
+      /**
+       * v1.41 — **화면이 실제로 그리는 Mirror 헤더 캡션.** 페이지 인라인 문자열이던
+       * 것을 `scopeCaptionOf()`로 옮겨 여기서 내보낸다 — 인라인으로 두면 브라우저를
+       * 열어야만 보이고, `ended`에서 `지금 N · 이전 M`이 실제로 그렇게 새어 나갔다.
+       */
+      scopeCaption: scopeCaptionOf({
+        summary: mirror.scopeSummary,
+        tense,
+        fallback: copy.mirrorUse,
+      }),
+      /** 연결별 source 목록 — ⑨(Current × Past)이 실제로 생겼는지 확인용 */
+      connections: insights.map((insight) => ({
+        id: insight.id,
+        type: insight.type,
+        axis: insight.axis,
+        sources: insight.sources,
+        refSources: insight.evidenceRefs.map((ref) => ref.source),
+        ruleSummary: insight.ruleSummary,
+      })),
+      /**
+       * History Snapshot에 시점이 함께 얼려지는가 (§39.14 · E13).
+       * Mirror를 만들 수 없으면 `buildHistoryEntry`가 null이다 — 그것도 사실이므로
+       * 억지로 만들지 않고 null을 낸다.
+       */
+      snapshot: (() => {
+        const entry = buildHistoryEntry({
+          answers,
+          mirror,
+          coverage: compatibility.confidence,
+          id: 'fixture-entry',
+          createdAt: '2026-09-08T00:00:00.000Z',
+        });
+        return entry
+          ? entry.mirrorSnapshot.insights.map((insight) => ({
+              axis: insight.axis,
+              state: insight.state,
+              scope: insight.evidenceScope ?? null,
+            }))
+          : null;
+      })(),
+      /** Deep Question 문장 (§38.11 항목 ④ · 시제 확인용) */
+      deepQuestionPrompts: selectDeepQuestions(
+        insights
+          .map((insight) => insight.axis)
+          .filter((axis): axis is MirrorAxisKey => Boolean(axis))
+          .slice(0, 2),
+        tense,
+      ).map((template) => template.prompt),
+      tense,
+    },
     context: {
       actionKinds: JOB_ACTION_KINDS[job],
       allowsOutwardAction: jobAllowsOutwardAction(job),
       allowsOutwardQuestions: jobAllowsOutwardQuestions(job),
+      /**
+       * v1.41 §39.7 — **stage와 evidence가 독립임을 fixture가 직접 볼 수 있게** 낸다.
+       * `job`이 `dating`인데 `scopeSummary.currentCount === 0`인 상태가 정상이라는 것,
+       * 그리고 `job`이 `talking`이어도 근거를 넣으면 current가 쓰인다는 것 — 두 방향
+       * 모두 이 값으로 검사한다.
+       */
+      evidenceScopes: mirror.insights.map((insight) => ({
+        axis: insight.key,
+        scope: insight.evidenceScope,
+        state: insight.state,
+        signal: insight.relationshipSignal,
+      })),
+      scopeSummary: mirror.scopeSummary,
+      invitesCurrentEvidence: jobInvitesCurrentEvidence(job),
       copy,
       /** 화면이 실제로 그리는 문자열 묶음 — 안전 검사(금지 어휘)는 이 배열을 훑는다 */
       renderedStrings: [
@@ -308,9 +440,34 @@ export async function POST(request: Request): Promise<Response> {
         ...(deepReport.approachInsight
           ? [deepReport.approachInsight.title, deepReport.approachInsight.text]
           : []),
-        ...(deepReport.corePattern ? [deepReport.corePattern.connection.ruleSummary] : []),
-        ...deepReport.connections.map((connection) => connection.ruleSummary),
-        ...deepReport.singleSourceNotes.map((note) => note.ruleSummary),
+        /**
+         * ⚠️ v1.41 — **`limitation`과 `sourceLabels`를 여기 더했다.**
+         *
+         * v1.40.1은 `ruleSummary`만 훑었다. 그래서 브라우저 실측(J7)에서 `ended`
+         * 리포트의 연결 카드가 `지금 관계` 칩과 `과거 경험이 지금 이 관계를 그렇게
+         * 만들었다는 뜻은 아니야`를 그대로 띄우고 있는데도 fixture는 통과했다 —
+         * 이 배열에 없는 자리는 검사되지 않는 자리라는 것이 그대로 증명됐다.
+         *
+         * 두 값 모두 **화면에 실제로 그려진다**(`DeepConnectionCard`의 칩과 경계
+         * 문장). 렌더되는 문자열은 예외 없이 이 배열에 들어와야 한다.
+         */
+        ...(deepReport.corePattern
+          ? [
+              deepReport.corePattern.connection.ruleSummary,
+              deepReport.corePattern.connection.limitation,
+              ...deepReport.corePattern.connection.sourceLabels,
+            ]
+          : []),
+        ...deepReport.connections.flatMap((connection) => [
+          connection.ruleSummary,
+          connection.limitation,
+          ...connection.sourceLabels,
+        ]),
+        ...deepReport.singleSourceNotes.flatMap((note) => [
+          note.ruleSummary,
+          note.limitation,
+          ...note.sourceLabels,
+        ]),
         ...(deepReport.lovyObservation
           ? [deepReport.lovyObservation.observation, deepReport.lovyObservation.question]
           : []),

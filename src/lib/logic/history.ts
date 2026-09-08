@@ -106,6 +106,19 @@ export function buildHistoryEntry(input: {
     state: insight.state as SavedState,
     declaredText: insight.declaredPhrase,
     relationshipSignal: insight.relationshipSignal,
+    /**
+     * v1.41 §39.14 — **의도적으로 함께 얼린다.**
+     *
+     * `relationshipSignal` 문장에는 이미 시점이 들어 있지만(`지금 관계에서 …` /
+     * `이전 관계에서 …`), 문장에서 시점을 **파싱해 읽는 코드를 만들지 않는다** —
+     * 문구가 한 번 바뀌면 과거 기록의 해석이 조용히 달라진다. 구조화된 값으로
+     * 저장해 두면 나중에 문구가 바뀌어도 그때 그 근거가 무엇이었는지가 남는다.
+     *
+     * ⚠️ 이 값은 **변화 판정에 쓰지 않는다.** `compareMirrorSnapshots`는 `state`만
+     * 본다 — scope가 달라졌다는 이유로 SHIFT를 만들면, 사용자가 S30에 답한 것만으로
+     * '관계가 변했다'고 판정하는 셈이다. scope는 기록용 metadata다(MBTI와 같은 위계).
+     */
+    evidenceScope: insight.evidenceScope,
   }));
 
   return {
@@ -179,6 +192,31 @@ const STATE_PHRASE: Record<SavedState, string> = {
   CHANGE: '경험 후 우선순위가 옮겨짐',
 };
 
+/**
+ * v1.41 §39.11 — 근거가 **지금 관계**에서 온 스냅샷의 CHANGE 문구.
+ *
+ * `경험 후 우선순위가 옮겨짐`은 과거 경험 근거일 때 성립하는 해석이다. 근거가 지금
+ * 관계 답변이면 확인된 것은 **동시점의 불일치**뿐이므로, 관찰하지 않은 시간적 변화를
+ * 주장하지 않는다(`mirror.ts` `noteFor`·`crossSourceInsights` CHANGE 분기와 같은 판단).
+ *
+ * ⚠️ **`evidenceScope`가 실제로 `'current'`인 스냅샷에만 적용된다.** v1.40 이전에
+ * 저장된 기록에는 이 필드가 없으므로 문장이 **글자 하나 달라지지 않는다** —
+ * `test:history` 100건이 그대로 회귀 기준으로 남는다.
+ */
+const CURRENT_SCOPE_STATE_PHRASE: Partial<Record<SavedState, string>> = {
+  CHANGE: '말한 기준만큼은 드러나지 않음',
+};
+
+function statePhraseOf(
+  state: SavedState,
+  snapshot: HistoryMirrorInsightSnapshot | undefined,
+): string {
+  if (snapshot?.evidenceScope === 'current') {
+    return CURRENT_SCOPE_STATE_PHRASE[state] ?? STATE_PHRASE[state];
+  }
+  return STATE_PHRASE[state];
+}
+
 function changeStateOf(
   pastState: SavedState | null,
   nowState: SavedState | null,
@@ -199,8 +237,19 @@ function noteFor(change: {
   previousState: SavedState | null;
   currentState: SavedState | null;
   declaredDelta: { past: number; now: number } | null;
+  /** v1.41 — 두 스냅샷의 근거 시점. 문구만 고르고 **판정에는 쓰지 않는다** */
+  previousSnapshot?: HistoryMirrorInsightSnapshot;
+  currentSnapshot?: HistoryMirrorInsightSnapshot;
 }): string {
-  const { label, state, previousState, currentState, declaredDelta } = change;
+  const {
+    label,
+    state,
+    previousState,
+    currentState,
+    declaredDelta,
+    previousSnapshot,
+    currentSnapshot,
+  } = change;
 
   switch (state) {
     case 'STABLE':
@@ -214,7 +263,7 @@ function noteFor(change: {
         return `지난번보다 ${label}에 대한 기준을 ${direction} 중요하게 보고 있어. (${declaredDelta.past}/5 → ${declaredDelta.now}/5)`;
       }
       if (previousState && currentState) {
-        return `이전에는 "${STATE_PHRASE[previousState]}"였고, 이번에는 "${STATE_PHRASE[currentState]}"로 기록됐어. 어느 쪽이 맞다고 판단하진 않을게.`;
+        return `이전에는 "${statePhraseOf(previousState, previousSnapshot)}"였고, 이번에는 "${statePhraseOf(currentState, currentSnapshot)}"로 기록됐어. 어느 쪽이 맞다고 판단하진 않을게.`;
       }
       return `${label}에 대한 신호가 지난 관찰과 다르게 나타났어.`;
     }
@@ -259,7 +308,15 @@ export function buildHistoryChanges(
       currentText:
         current.mirrorSnapshot.insights.find((i) => i.axis === key)?.relationshipSignal ?? null,
       declaredDelta,
-      note: noteFor({ label, state, previousState: states.past, currentState: states.now, declaredDelta }),
+      note: noteFor({
+        label,
+        state,
+        previousState: states.past,
+        currentState: states.now,
+        declaredDelta,
+        previousSnapshot: previous.mirrorSnapshot.insights.find((i) => i.axis === key),
+        currentSnapshot: current.mirrorSnapshot.insights.find((i) => i.axis === key),
+      }),
     };
   });
 }

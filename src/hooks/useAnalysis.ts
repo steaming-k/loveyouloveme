@@ -19,6 +19,10 @@ import {
 } from '@/lib/logic/soloHistory';
 import { aiSelectors } from '@/services/aiService';
 import { useHistory } from '@/state/HistoryProvider';
+import {
+  relationshipTenseOf,
+  resolveRelationshipContext,
+} from '@/lib/logic/relationshipStage';
 import { useSession } from '@/state/SessionProvider';
 import type {
   ApproachHint,
@@ -163,9 +167,17 @@ export function useFirstContact(): FirstContactReport | null {
 
 export function useMirror(): MirrorReport {
   const { answers } = useSession();
+  /**
+   * v1.41 — **memo 밖에서 계산한다.** 안에서 `resolveRelationshipContext(answers)`를
+   * 부르면 memo가 `answers` 전체에 의존하게 되고, deps에는 일부 필드만 적혀 있어서
+   * 값이 낡을 수 있다(eslint가 정확히 이걸 경고했다). `tense`는 두 값짜리 문자열이라
+   * deps로 쓰면 참조 비교 문제도 없다.
+   */
+  const tense = relationshipTenseOf(resolveRelationshipContext(answers).job);
   return useMemo(
-    () => aiSelectors.mirror(answers.declared, answers.experience),
-    [answers.declared, answers.experience],
+    () =>
+      aiSelectors.mirror(answers.declared, answers.experience, answers.currentRelationship, tense),
+    [answers.declared, answers.experience, answers.currentRelationship, tense],
   );
 }
 
@@ -280,8 +292,15 @@ export function useRelationshipProfile(): RelationshipProfile {
 
 export function useHomeHighlights(): { key: string; value: string }[] {
   const { answers } = useSession();
+  const tense = relationshipTenseOf(resolveRelationshipContext(answers).job);
   return useMemo(
-    () => aiSelectors.homeHighlights(answers.declared, answers.experience),
-    [answers.declared, answers.experience],
+    () =>
+      aiSelectors.homeHighlights(
+        answers.declared,
+        answers.experience,
+        answers.currentRelationship,
+        tense,
+      ),
+    [answers.declared, answers.experience, answers.currentRelationship, tense],
   );
 }

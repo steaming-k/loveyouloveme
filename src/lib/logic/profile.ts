@@ -10,6 +10,7 @@ import {
 import type {
   AiObservedTrait,
   Confidence,
+  CurrentRelationshipEvidence,
   DeclaredPreference,
   HardestMoment,
   ObservationFeedback,
@@ -18,6 +19,7 @@ import type {
   RelationshipProfile,
 } from '@/types';
 import { buildMirrorReport } from './mirror';
+import type { RelationshipTense } from './relationshipEvidence';
 
 /**
  * Relationship Profile (S18)
@@ -228,12 +230,20 @@ export function buildRelationshipProfile(
   };
 }
 
-/** 홈(S29)의 '최근 관찰' 3줄 — Mirror 판정(S26 이후)을 그대로 재사용한다 */
+/**
+ * 홈(S29)의 '최근 관찰' 3줄 — Mirror 판정(S26 이후)을 그대로 재사용한다
+ *
+ * ⚠️ v1.41 — Mirror와 **같은 입력**을 받는다. 여기만 현재 근거를 빼면 Home 카드가
+ * `/mirror` 본문과 다른 판정을 보여준다 — v1.36이 Teaser에서 고친 것과 같은 종류의
+ * 결함(같은 데이터에 두 화면이 다른 말을 하는 것)이다.
+ */
 export function buildHomeHighlights(
   declared: DeclaredPreference,
   experience: RelationshipExperience,
+  current: CurrentRelationshipEvidence,
+  tense: RelationshipTense,
 ): { key: string; value: string }[] {
-  const report = buildMirrorReport(declared, experience);
+  const report = buildMirrorReport(declared, experience, current, tense);
   const byKey = new Map(report.insights.map((insight) => [insight.key, insight]));
 
   const contact = byKey.get('contact');

@@ -13,6 +13,10 @@ import { selectDeepQuestions, type DeepQuestionTemplate } from '@/data/deepQuest
 import { PREMIUM_PREVIEW } from '@/lib/env';
 import { cn } from '@/lib/cn';
 import { trackEvent } from '@/lib/analytics';
+import {
+  relationshipTenseOf,
+  resolveRelationshipContext,
+} from '@/lib/logic/relationshipStage';
 import { ROUTES } from '@/lib/routes';
 import { useCrossSourceInsights } from '@/hooks/useAiNarrative';
 import { useSession } from '@/state/SessionProvider';
@@ -60,7 +64,11 @@ function DeepQuestionsView() {
     return picked;
   }, [insights]);
   const focusAxes = useMemo(() => focusInsights.map((insight) => insight.axis!), [focusInsights]);
-  const questions = useMemo(() => selectDeepQuestions(focusAxes), [focusAxes]);
+  /**
+   * v1.41 §39.13 — 질문 문장이 관계 단계를 반영한다. 축 선정·개수는 그대로다.
+   */
+  const tense = relationshipTenseOf(resolveRelationshipContext(answers).job);
+  const questions = useMemo(() => selectDeepQuestions(focusAxes, tense), [focusAxes, tense]);
 
   const [drafts, setDrafts] = useState<Record<string, { optionId: string; text: string }>>({});
   const startSent = useRef(false);

@@ -9,6 +9,7 @@ import {
 } from '@/data/labels';
 import { resolveEvidenceRef, type EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
 import { limitationFor } from '@/services/premiumConnections';
+import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import { sanitizeFreeText } from './safety';
 import type {
   CompatibilityResult,
@@ -299,6 +300,20 @@ export interface DeepReportContext {
 export function buildDeepReportContext(
   insights: readonly CrossSourceInsight[],
   resolverContext: EvidenceResolverContext,
+  /**
+   * v1.41 §39.13 — **화면과 같은 경계 문장을 모델에게 준다.**
+   *
+   * v1.27이 세운 규칙 그대로다: `limitation`은 화면에 이미 보이는 것과 **같은
+   * 문자열**이어야 하고, 사용자가 보는 경계와 모델이 받는 경계가 다르면 그건
+   * 경계가 아니다. `limitationFor`가 시점을 말하게 됐으므로 이 자리도 같은
+   * 시점을 받아야 한다 — 안 받으면 `ended` 사용자의 프롬프트에만
+   * `지금 이 관계`가 남는다.
+   *
+   * ⚠️ **context의 모양(필드 목록)은 바뀌지 않는다.** 프롬프트 템플릿·스키마·
+   * `promptVersion` 전부 그대로이고, 기존 필드의 **값**이 정확해질 뿐이다
+   * (v1.36이 `declaredPhrase` 값을 고친 것과 같은 종류의 변경).
+   */
+  tense: RelationshipTense,
 ): DeepReportContext {
   const built: DeepReportContext['insights'] = [];
 
@@ -332,7 +347,7 @@ export function buildDeepReportContext(
        * 모델이 받는 경계가 다르면 안 된다.
        */
       allowedConnection: insight.ruleSummary,
-      limitation: limitationFor(insight.sources),
+      limitation: limitationFor(insight.sources, tense),
       evidence,
       strength: insight.strength,
     });

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 import { cn } from '@/lib/cn';
 import { valueToPercent } from '@/lib/logic/mirror';
+import { scopeLabelOf, type RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import type { MirrorInsight, MirrorState } from '@/types';
 
 const STATE_TAG: Record<MirrorState, string> = {
@@ -28,6 +29,23 @@ const STATE_TEXT: Record<MirrorState, string> = {
 };
 
 /**
+ * v1.41 §39.11 — 근거가 **지금 관계**에서 온 행의 스크린리더 문구.
+ *
+ * 위 표의 CHANGE는 `경험 후 낮아짐`인데, 그건 근거가 과거 경험일 때만 맞는 말이다.
+ * 화면 본문(`insight.note`)은 이미 시점을 갈랐으므로 **보이지 않는 문구만 남으면
+ * 스크린리더 사용자에게만 틀린 말이 간다** — 그건 더 나쁘다.
+ */
+const CURRENT_STATE_TEXT: Partial<Record<MirrorState, string>> = {
+  CHANGE: '지금은 크게 드러나지 않음',
+};
+
+function stateTextOf(insight: MirrorInsight): string {
+  return insight.evidenceScope === 'current'
+    ? (CURRENT_STATE_TEXT[insight.state] ?? STATE_TEXT[insight.state])
+    : STATE_TEXT[insight.state];
+}
+
+/**
  * Mirror Gap Map — 항목별 대조 행 (S27)
  *
  * ⚠️ 트랙 위에는 '말한 나'(Declared) 점 하나만 정확한 위치로 찍는다. Relationship Me는
@@ -38,10 +56,20 @@ const STATE_TEXT: Record<MirrorState, string> = {
 export function MirrorComparisonRow({
   insight,
   index,
+  tense,
   footer,
 }: {
   insight: MirrorInsight;
   index: number;
+  /**
+   * v1.41 §39.9~§39.10 — 이 행의 근거를 **어느 시점의 이름으로 부르는가**.
+   *
+   * ⚠️ **카드를 추가하지 않았다.** 축별로 source가 섞일 수 있으므로 화면이 전체를
+   * `지금 관계 속의 나`라고 부르면 거짓인데, 그걸 해결하려고 섹션이나 카드를 새로
+   * 만들면 정보 밀도만 늘고 읽기 깊이가 무너진다(§39.10). 그래서 **이미 있는 근거
+   * 칸의 라벨 한 조각**으로만 표시한다.
+   */
+  tense: RelationshipTense;
   /**
    * v1.7 — AI 설명 1~2줄을 붙이는 슬롯(§21).
    * 규칙이 만든 `insight.note` **뒤**에 온다. 이 행의 주인공은 대조 자체다.
@@ -79,25 +107,36 @@ export function MirrorComparisonRow({
         </div>
       </div>
 
-      <div className="flex items-start gap-2 rounded-[10px] bg-sunken px-3 py-2.5">
-        <span
-          className={cn(
-            'mt-0.5 flex h-4 w-4 flex-none items-center justify-center rounded-full text-white',
-            STATE_DOT[insight.state],
-          )}
-          aria-hidden
-        >
-          {insight.state === 'GAP' ? <ChevronUp size={11} strokeWidth={3} /> : null}
-          {insight.state === 'CHANGE' ? <ChevronDown size={11} strokeWidth={3} /> : null}
-          {insight.state === 'MATCH' ? <Check size={10} strokeWidth={3} /> : null}
+      <div className="flex flex-col gap-1.5 rounded-[10px] bg-sunken px-3 py-2.5">
+        {/*
+          v1.41 — 근거의 **시점**을 근거 문장 위에 한 조각으로 붙인다.
+          `relationshipSignal` 문장에도 시점이 들어 있지만(`지금 관계에서 …`), 다섯 행을
+          훑을 때 어느 행이 어느 시점인지 한눈에 보이는 것이 이 화면의 정직성이다.
+        */}
+        <span className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
+          {scopeLabelOf(insight.evidenceScope, tense)}
         </span>
-        <p className="text-[12.5px] keep-all leading-relaxed text-[#555]">
-          {insight.relationshipSignal}
-        </p>
+        <div className="flex items-start gap-2">
+          <span
+            className={cn(
+              'mt-0.5 flex h-4 w-4 flex-none items-center justify-center rounded-full text-white',
+              STATE_DOT[insight.state],
+            )}
+            aria-hidden
+          >
+            {insight.state === 'GAP' ? <ChevronUp size={11} strokeWidth={3} /> : null}
+            {insight.state === 'CHANGE' ? <ChevronDown size={11} strokeWidth={3} /> : null}
+            {insight.state === 'MATCH' ? <Check size={10} strokeWidth={3} /> : null}
+          </span>
+          <p className="text-[12.5px] keep-all leading-relaxed text-[#555]">
+            {insight.relationshipSignal}
+          </p>
+        </div>
       </div>
 
       <p className="sr-only">
-        {insight.label}: 말한 나 {insight.declared}점. {STATE_TEXT[insight.state]}.
+        {insight.label}: 말한 나 {insight.declared}점. {stateTextOf(insight)}. 근거 시점:{' '}
+        {scopeLabelOf(insight.evidenceScope, tense)}.
       </p>
 
       <p className="text-[12.5px] keep-all leading-relaxed text-[#555]">{insight.note}</p>

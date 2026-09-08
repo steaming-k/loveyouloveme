@@ -2,9 +2,18 @@ import { MIRROR_AXES } from '@/data/axes';
 import { soloModeOfTarget } from './soloMode';
 import type { SoloAxisChange, SoloHistoryReport } from './soloHistory';
 import { withTopicParticle } from '@/lib/korean';
-import { HARDEST_TO_AXIS } from './mirror';
+// v1.41 — 순환 import를 피해 표 자체를 별도 모듈에서 읽는다(mirror.ts도 re-export한다).
+import { HARDEST_TO_AXIS } from './mirrorAxisMap';
+import {
+  NO_CURRENT_RELATIONSHIP,
+  resolveAxisEvidence,
+  type RelationshipTense,
+} from './relationshipEvidence';
 import { toTargetValues } from './values';
 import type {
+  CrossSourceEvidenceSource,
+  CurrentRelationshipEvidence,
+  EvidenceStrength,
   CompatibilityDimension,
   CompatibilityResult,
   CrossSourceInsight,
@@ -131,15 +140,51 @@ function strengthOf(sourceCount: number, hasHardestEvidence: boolean): InsightSt
 /* ------------------------------------------- ① Declared ↔ Relationship */
 
 /**
- * 이 axis의 relationshipSignal이 실제로 어떤 필드에서 나왔는지(§ mirror.ts `evidenceStrengthOf`).
+ * 이 axis의 relationshipSignal이 실제로 **어디서** 나왔는지.
+ *
  * ⚠️ 'hardest'를 모든 축에 고정으로 붙이면 안 된다 — 예를 들어 갈등 해결 축의 MATCH가
  * '연락 감소가 가장 힘들었음'을 근거로 보여주는 것처럼 틀린 근거가 붙는다. 'absent'(=CHANGE)는
  * 애초에 관계 경험 근거가 없다는 뜻이라 evidenceRef를 만들지 않는다 — 근거를 지어내지 않는다.
+ *
+ * ══ v1.41 §39.8 — **scope를 먼저 본다** ═══════════════════════════════════
+ *
+ * v1.40까지 이 함수는 강도만 보고 `{source:'relationship'}`(과거 경험)을 만들었다.
+ * 근거가 현재 관계에서 온 축에 그 ref를 붙이면 resolver가 `이전 관계에서 …` 문장을
+ * 돌려준다 — **근거를 지목하는 자리에서 시점을 거짓으로 만드는 것**이다. 시제 문제가
+ * 카피가 아니라 데이터 문제인 지점이 정확히 여기다.
+ *
+ * ⚠️ `absent + current`는 **ref를 만든다.** `지금 관계에서는 거의 드러나지 않아`는
+ * 사용자가 실제로 고른 답이고, 그건 근거의 부재가 아니라 **부재의 근거**다.
+ * `absent + none`(아무 답도 없음)만 null이다.
  */
 function relationshipRefFor(insight: MirrorInsight): EvidenceRef | null {
+  if (insight.evidenceScope === 'current') {
+    return { source: 'current_relationship', field: insight.key };
+  }
+  if (insight.evidenceScope === 'none') return null;
   if (insight.evidenceStrength === 'hardest') return { source: 'relationship', field: 'hardest' };
   if (insight.evidenceStrength === 'important') return { source: 'relationship', field: 'important' };
   return null;
+}
+
+/** 이 근거가 `sources`에서 어느 종류로 세어지는가 — ref와 **같은 판정**을 쓴다 */
+function relationshipSourceOf(insight: MirrorInsight): CrossSourceEvidenceSource {
+  return insight.evidenceScope === 'current' ? 'current_relationship' : 'relationship';
+}
+
+/**
+ * v1.41 — `ruleSummary`가 근거를 부를 때 쓰는 시점 표현.
+ *
+ * ⚠️ **판정을 바꾸지 않는다.** 같은 MATCH를 `실제 관계에서`라고 부르던 자리에
+ * `지금 관계에서` / `이전 관계에서`를 넣는 것뿐이다. v1.40까지의 문장은
+ * `실제 관계에서`로 **시점을 말하지 않았고**, 그래서 과거 근거를 현재로도 읽을 수
+ * 있었다 — 이 함수가 그 모호함을 없앤다.
+ */
+function scopePhrase(insight: MirrorInsight, tense: RelationshipTense): string {
+  if (insight.evidenceScope === 'current') {
+    return tense === 'former' ? '그때 이 관계에서' : '지금 관계에서';
+  }
+  return '이전 관계에서';
 }
 
 /**
@@ -152,18 +197,27 @@ function fromMirrorInsight(
   input: {
     experience: RelationshipExperience;
     validated: readonly ValidatedObservation[];
+    tense: RelationshipTense;
   },
 ): CrossSourceInsight | null {
-  const { experience, validated } = input;
+  const { experience, validated, tense } = input;
   if (insight.state === 'UNKNOWN') return null;
 
   const declaredRef: EvidenceRef = { source: 'declared', field: insight.key };
   const relationshipRef = relationshipRefFor(insight);
+  const relationshipSource = relationshipSourceOf(insight);
   const alreadyExplained = experience.adaptive?.axis === insight.key;
+  const when = scopePhrase(insight, tense);
 
   if (insight.state === 'MATCH') {
-    // MATCH는 항상 evidenceStrength가 'hardest'|'important'다(mirror.ts stateFor) — null이면
-    // Mirror 판정과 이 함수의 가정이 어긋난 것이니 억지로 만들지 않는다.
+    /**
+     * 과거 근거의 MATCH는 항상 `hardest`|`important`다(mirror.ts `stateFor`) — null이면
+     * Mirror 판정과 이 함수의 가정이 어긋난 것이니 억지로 만들지 않는다.
+     *
+     * ⚠️ v1.41 — **현재 근거의 MATCH는 `absent`일 수 있다**(`rarely` + declared 낮음 =
+     * 두 답이 같은 방향). 그 경우에도 `relationshipRefFor`가 ref를 만들어 주므로 이
+     * 가드는 그대로 통과한다 — scope가 `'none'`인 경우만 null이다.
+     */
     if (!relationshipRef) return null;
 
     const strength: InsightStrength = insight.evidenceStrength === 'hardest' ? 'strong' : 'medium';
@@ -171,27 +225,44 @@ function fromMirrorInsight(
       id: insightId('mirror', insight.key),
       type: 'MATCH',
       axis: insight.key,
-      sources: ['declared', 'relationship'],
+      sources: ['declared', relationshipSource],
       evidenceRefs: [declaredRef, relationshipRef],
       strength,
-      confidenceReason: `mirror:${insight.evidenceStrength}`,
-      ruleSummary: `${insight.label}에 대해 네가 말한 기준과 실제 관계에서 나타난 신호가 같은 방향이었어.`,
+      confidenceReason: `mirror:${insight.evidenceStrength}:${insight.evidenceScope}`,
+      // v1.41 — `실제 관계에서`(시점 없음) → 근거의 실제 시점을 말한다.
+      ruleSummary: `${insight.label}에 대해 네가 말한 기준과 ${when} 나타난 신호가 같은 방향이었어.`,
       eligibleForNarrative: true,
     };
   }
 
   if (insight.state === 'CHANGE') {
-    // CHANGE는 evidenceStrength가 항상 'absent'다 — 관계 경험 근거가 원래 없다는 뜻이라
-    // relationshipRef를 만들지 않는다. declared 하나로만 남는 게 사실에 더 가깝다.
+    /**
+     * v1.41 §39.11 — CHANGE는 **두 가지 서로 다른 상태**를 가리킨다.
+     *
+     * ```
+     * scope none      관계 근거가 아예 없다        → declared 하나. 예전 그대로
+     * scope current   지금은 안 드러난다고 답했다  → 근거가 둘이다 (declared + 지금 관계)
+     * ```
+     *
+     * v1.40까지는 전자만 존재했으므로 `sources: ['declared']`가 사실이었다. 후자에서
+     * 같은 코드를 쓰면 **사용자가 실제로 답한 근거를 리포트에서 지우는 것**이 된다.
+     *
+     * ⚠️ 문장도 갈랐다. `경험 후 우선순위가 옮겨간`은 **시간적 변화를 주장**하는데,
+     * `rarely`를 고른 사용자에게 확인된 것은 동시점의 불일치뿐이다 — 우리가 관찰하지
+     * 않은 변화를 말하지 않는다(§39.11 Audit · `mirror.ts` `noteFor`와 같은 판단).
+     */
+    const fromCurrent = insight.evidenceScope === 'current' && relationshipRef !== null;
     return {
       id: insightId('mirror', insight.key),
       type: 'CHANGE',
       axis: insight.key,
-      sources: ['declared'],
-      evidenceRefs: [declaredRef],
-      strength: 'weak',
-      confidenceReason: 'mirror:absent',
-      ruleSummary: `${withTopicParticle(insight.label)} 중요하다고 말했지만 경험 후 우선순위가 옮겨간 축이야.`,
+      sources: fromCurrent ? ['declared', relationshipSource] : ['declared'],
+      evidenceRefs: fromCurrent ? [declaredRef, relationshipRef!] : [declaredRef],
+      strength: fromCurrent ? 'medium' : 'weak',
+      confidenceReason: `mirror:absent:${insight.evidenceScope}`,
+      ruleSummary: fromCurrent
+        ? `${withTopicParticle(insight.label)} 중요하다고 말했는데, ${when}는 그 장면이 크게 드러나지 않는다고 답했어.`
+        : `${withTopicParticle(insight.label)} 중요하다고 말했지만 경험 후 우선순위가 옮겨간 축이야.`,
       eligibleForNarrative: true,
     };
   }
@@ -203,8 +274,8 @@ function fromMirrorInsight(
   const escalateToContradiction = Boolean(corroborating) && !alreadyExplained;
 
   const sources: CrossSourceInsight['sources'] = escalateToContradiction
-    ? ['declared', 'relationship', 'observed']
-    : ['declared', 'relationship'];
+    ? ['declared', relationshipSource, 'observed']
+    : ['declared', relationshipSource];
 
   const evidenceRefs: EvidenceRef[] = [declaredRef, relationshipRef];
   if (escalateToContradiction && corroborating) {
@@ -218,8 +289,8 @@ function fromMirrorInsight(
   const ruleSummary =
     type === 'CONTRADICTION'
       // §6 — '생활 패턴'이라고 부르지 않는다. 사진에서 확인한 것은 반복해서 보인 활동까지다.
-      ? `${insight.label}에서 네가 말한 기준, 실제 관계 경험, 그리고 사진에서 반복해서 보인 활동까지 서로 다른 방향을 가리키고 있어.`
-      : `${withTopicParticle(insight.label)} 말한 기준보다 실제 관계에서 더 크게 반응한 축이야.`;
+      ? `${insight.label}에서 네가 말한 기준, ${when} 나타난 신호, 그리고 사진에서 반복해서 보인 활동까지 서로 다른 방향을 가리키고 있어.`
+      : `${withTopicParticle(insight.label)} 말한 기준보다 ${when} 더 크게 반응한 축이야.`;
 
   return {
     id: insightId('mirror', insight.key),
@@ -228,7 +299,7 @@ function fromMirrorInsight(
     sources,
     evidenceRefs,
     strength,
-    confidenceReason: `mirror:${insight.evidenceStrength}${escalateToContradiction ? '+observed' : ''}`,
+    confidenceReason: `mirror:${insight.evidenceStrength}:${insight.evidenceScope}${escalateToContradiction ? '+observed' : ''}`,
     ruleSummary,
     eligibleForNarrative: true,
   };
@@ -246,8 +317,9 @@ const TARGET_SHARED_AXES: readonly MirrorAxisKey[] = ['contact', 'conflict', 'al
 function fromRelationshipVsTarget(input: {
   experience: RelationshipExperience;
   target: TargetProfile;
+  tense: RelationshipTense;
 }): CrossSourceInsight | null {
-  const { experience, target } = input;
+  const { experience, target, tense } = input;
   if (!experience.hardest) return null;
 
   const axis = HARDEST_TO_AXIS[experience.hardest];
@@ -269,7 +341,17 @@ function fromRelationshipVsTarget(input: {
     ],
     strength: 'strong',
     confidenceReason: 'hardest_matches_target_level',
-    ruleSummary: `과거 관계에서 가장 힘들었던 지점과, 지금 상대에 대해 네가 이미 알고 있다고 입력한 특성이 같은 축을 가리키고 있어.`,
+    /**
+     * v1.41 §39.13 — `ended`에서 `지금 상대`라고 부르지 않는다.
+     *
+     * ⚠️ **근거는 그대로다.** 사용자가 S19에 입력한 값이고, 관계가 끝났다는 사실이
+     * 그 입력을 없던 일로 만들지 않는다 — 회고에 그 맥락이 필요해서 v1.40이
+     * `dating → ended`에서 target을 자동 삭제하지 않기로 정했다. 바뀌는 것은 호칭뿐.
+     */
+    ruleSummary:
+      tense === 'former'
+        ? `과거 관계에서 가장 힘들었던 지점과, 그 상대에 대해 네가 알고 있다고 입력한 특성이 같은 축을 가리키고 있어.`
+        : `과거 관계에서 가장 힘들었던 지점과, 지금 상대에 대해 네가 이미 알고 있다고 입력한 특성이 같은 축을 가리키고 있어.`,
     eligibleForNarrative: true,
   };
 }
@@ -367,8 +449,10 @@ function fromCompatibilityLink(input: {
   historyChanges: readonly HistoryAxisChange[];
   repeatedSignals: readonly RepeatedRelationshipSignal[];
   latestHistoryEntryId: string | null;
+  tense: RelationshipTense;
 }): CrossSourceInsight | null {
-  const { dimension, mirror, historyChanges, repeatedSignals, latestHistoryEntryId } = input;
+  const { dimension, mirror, historyChanges, repeatedSignals, latestHistoryEntryId, tense } =
+    input;
 
   // 비교 자체가 없었던 축('모름')은 연결하지 않는다 — 없는 판정을 이어 붙이지 않는다.
   if (dimension.alignment === null || dimension.tone === 'unknown') return null;
@@ -402,7 +486,8 @@ function fromCompatibilityLink(input: {
     const relationshipRef = relationshipRefFor(mirrorInsight);
     if (relationshipRef) {
       evidenceRefs.push({ source: 'declared', field: axis }, relationshipRef);
-      sources.push('declared', 'relationship');
+      // v1.41 — 근거가 현재 관계에서 왔으면 source도 그렇게 센다(ref와 같은 판정).
+      sources.push('declared', relationshipSourceOf(mirrorInsight));
     }
   }
   if (repeated && latestHistoryEntryId) {
@@ -431,16 +516,40 @@ function fromCompatibilityLink(input: {
    * 문장은 **연결의 사실**까지만 말한다. '왜'는 AI Narrative가 맥락을 붙이고,
    * 그것도 인과가 아니라 '같은 방향으로 보인다'까지다.
    */
+  /**
+   * v1.41 §39.13 — **§38.11이 남긴 시제 항목 ①이 여기다.**
+   *
+   * v1.40.1의 Remaining Risk 첫 줄은 `ended` 리포트에 남은 `지금 상대와 연락 방식에서
+   * 차이가 보이는데…`였다. 그 문장은 행동 제안이 아니라 사실 서술이라 `audience`
+   * 게이트에 걸리지 않았고, 고치려면 이 `ruleSummary` 생성 규칙을 건드려야 했다.
+   *
+   * 두 곳을 갈랐다.
+   *
+   * | 무엇 | v1.40.1 | v1.41 |
+   * |---|---|---|
+   * | 상대 호칭 | `지금 상대와` (ended에도) | `tense === 'former'`면 `그때 상대와` |
+   * | 관계 근거 시점 | `네 관계 경험에서` (시점 없음) | 근거의 실제 scope를 말한다 |
+   *
+   * ⚠️ **판정(`type`)·강도·근거 목록·개수는 하나도 바뀌지 않는다.** `tone`은 이미
+   * 계산된 값이고 이 함수는 그것을 Cross-source 어휘로 옮기기만 한다(v1.26 원칙).
+   */
   const ruleSummary = ((): string => {
     const parts: string[] = [];
-    if (mirrorInsight) parts.push('네 관계 경험에서 신호가 있었던 축');
+    if (mirrorInsight) {
+      parts.push(
+        mirrorInsight.evidenceScope === 'current'
+          ? `${tense === 'former' ? '그때 이 관계에서' : '지금 관계에서'} 신호가 있는 축`
+          : '네 관계 경험에서 신호가 있었던 축',
+      );
+    }
     if (repeated) parts.push('이전 관찰에서도 반복해서 나온 축');
     else if (historyChange) parts.push('저장된 관찰과 비교해 달라진 축');
 
     const other = parts.join('이고, ');
+    const partner = tense === 'former' ? '그때 상대와' : '지금 상대와';
     return differs
-      ? `지금 상대와 ${dimension.label}에서 차이가 보이는데, 이 축은 ${other}이야. 서로 다른 관찰이 같은 축을 가리키고 있어.`
-      : `지금 상대와 ${dimension.label}에 대한 기대는 비슷한데, 이 축은 ${other}이야. 비슷하게 답한 축이라도 네게는 계속 신호가 있던 자리야.`;
+      ? `${partner} ${dimension.label}에서 차이가 보이는데, 이 축은 ${other}이야. 서로 다른 관찰이 같은 축을 가리키고 있어.`
+      : `${partner} ${dimension.label}에 대한 기대는 비슷한데, 이 축은 ${other}이야. 비슷하게 답한 축이라도 네게는 계속 신호가 있던 자리야.`;
   })();
 
   return {
@@ -498,7 +607,8 @@ function fromMbtiBridge(input: {
     id: insightId('mbti_link', axis),
     type: 'GAP',
     axis,
-    sources: ['mbti_lens', 'compatibility', 'relationship'],
+    // v1.41 — 근거가 현재 관계에서 왔으면 source도 그렇게 센다.
+    sources: ['mbti_lens', 'compatibility', relationshipSourceOf(mirrorInsight!)],
     evidenceRefs: [
       { source: 'mbti_lens', field: differing.mbtiAxisKey },
       { source: 'compatibility', field: differing.signalAxisKey },
@@ -507,10 +617,113 @@ function fromMbtiBridge(input: {
     strength: strengthOf(3, mirrorInsight?.evidenceStrength === 'hardest'),
     confidenceReason: 'mbti_bridge:differs+relationship',
     ruleSummary:
-      `성향 렌즈와 실제 답변이 다른 방향을 가리킨 ${differing.signalAxisLabel}은, 네 관계 경험에서도 신호가 있던 축이야. 성향으로 설명되지 않는 자리에 네 경험이 놓여 있어.`,
+      mirrorInsight!.evidenceScope === 'current'
+        ? `성향 렌즈와 실제 답변이 다른 방향을 가리킨 ${differing.signalAxisLabel}은, 지금 관계에서도 신호가 있는 축이야. 성향으로 설명되지 않는 자리에 네 답이 놓여 있어.`
+        : `성향 렌즈와 실제 답변이 다른 방향을 가리킨 ${differing.signalAxisLabel}은, 네 관계 경험에서도 신호가 있던 축이야. 성향으로 설명되지 않는 자리에 네 경험이 놓여 있어.`,
     eligibleForNarrative: true,
   };
 }
+
+/* ------------------------------------------- ⑨ Current × Past Relationship */
+
+/**
+ * ⑨ **지금 관계 × 이전 관계** — v1.41이 추가한 유일한 연결 (§39.18)
+ *
+ * ══ 왜 이것이 Premium이고 무료의 반복이 아닌가 ═══════════════════════════
+ *
+ * 무료 Mirror는 축마다 **한 시점만** 보여준다. `resolveAxisEvidence`가 현재 근거를
+ * 먼저 쓰기 때문에, 두 시점 모두 답한 사용자에게도 화면에는 현재 것만 보인다
+ * (과거 근거는 버려지지 않고 여기 온다 — Resolver 주석 참고).
+ *
+ * ```
+ * FREE     이 축에서 지금 나는 어떤가                (한 시점)
+ * PREMIUM  같은 축에서 지금의 나와 이전의 나가 다르다  (두 시점)
+ * ```
+ *
+ * 두 source는 **실제로 독립적이다.** 서로 다른 질문이고(S15~S17 vs S30), 서로 다른
+ * 시점에 입력됐고, 어느 쪽도 다른 쪽을 참조하지 않는다. v1.35의 ⑧(Solo History ×
+ * Declared)과 같은 종류의 독립성이다.
+ *
+ * ⚠️ **두 시점이 다를 때만 만든다.** 같은 강도로 나온 축은 `이전에도 지금도 비슷하다`는
+ * 관찰인데, 그건 무료 Mirror의 MATCH가 이미 말하는 것과 사용자에게 같은 정보다
+ * (§22 같은 역할을 두 번 보여주지 않는다). 다를 때만 무료가 구조적으로 보여줄 수
+ * 없는 것이 된다.
+ *
+ * ⚠️ **인과를 만들지 않는다.** `과거에 힘들었기 때문에 지금 민감하다`로 넘어가지
+ * 않는다 — `limitationFor`의 `current_relationship + relationship` 분기가 그 경계를
+ * 항상 붙인다. 문장은 `두 시점의 답이 다른 방향을 가리킨다`까지다.
+ *
+ * ⚠️ **어느 쪽이 진짜 너인지 정하지 않는다.** 이건 v1.0부터 Mirror가 지켜 온 규칙이고,
+ * 시점이 둘이 되어도 달라지지 않는다.
+ */
+function fromCurrentVsPast(input: {
+  axis: MirrorAxisKey;
+  label: string;
+  experience: RelationshipExperience;
+  current: CurrentRelationshipEvidence;
+  tense: RelationshipTense;
+}): CrossSourceInsight | null {
+  const { axis, label, experience, current, tense } = input;
+
+  // 지금 관계 근거가 실제로 있어야 한다 (`unsure`는 근거가 아니다 — Resolver가 판정한다)
+  const currentResolution = resolveAxisEvidence({ axis, experience, current });
+  if (currentResolution.scope !== 'current') return null;
+
+  /**
+   * 과거 근거를 **Resolver와 같은 규칙으로** 다시 읽는다. 현재 근거를 지운 상태로
+   * 같은 함수를 부르면 그 축의 과거 강도가 나온다 — 여기서 과거 판정 규칙을
+   * 복제하지 않기 위한 방법이다(판정은 한 벌만 존재해야 한다).
+   */
+  const pastResolution = resolveAxisEvidence({
+    axis,
+    experience,
+    current: NO_CURRENT_RELATIONSHIP,
+  });
+  if (pastResolution.scope !== 'past') return null;
+
+  // 두 시점이 같은 강도면 무료 MATCH가 이미 말한 것과 같다 — 만들지 않는다.
+  if (pastResolution.strength === currentResolution.strength) return null;
+
+  const currentPhrase = tense === 'former' ? '그때 이 관계에서' : '지금 관계에서';
+  const strongerNow =
+    STRENGTH_ORDER[currentResolution.strength] > STRENGTH_ORDER[pastResolution.strength];
+
+  return {
+    id: insightId('curpast', axis),
+    /**
+     * ⚠️ `CHANGE`로 둔다. 두 **시점**의 답이 다르다는 관찰이고, 그게 이 타입이
+     * 뜻하는 것이다. `GAP`(말한 기준 vs 실제)이나 `CONTRADICTION`(세 근거가 어긋남)은
+     * 다른 판정이므로 빌려 쓰지 않는다.
+     */
+    type: 'CHANGE',
+    axis,
+    sources: ['current_relationship', 'relationship'],
+    evidenceRefs: [
+      { source: 'current_relationship', field: axis },
+      pastResolution.strength === 'hardest'
+        ? { source: 'relationship', field: 'hardest' }
+        : { source: 'relationship', field: 'important' },
+    ],
+    /**
+     * ⚠️ `strong`을 주지 않는다. 두 시점의 답이 다르다는 관찰이고 **왜인지는 이
+     * 데이터로 알 수 없다** — 강도를 올리면 시간축 비교가 판정처럼 읽힌다(v1.35 ⑧과
+     * 같은 판단).
+     */
+    strength: 'medium',
+    confidenceReason: `curpast:${pastResolution.strength}->${currentResolution.strength}`,
+    ruleSummary: strongerNow
+      ? `${withTopicParticle(label)} 이전 관계보다 ${currentPhrase} 더 크게 드러난다고 답했어. 두 시점의 답이 다른 방향을 가리키고 있어 — 어느 쪽이 진짜 너인지는 정하지 않을게.`
+      : `${withTopicParticle(label)} 이전 관계에서는 신호가 있던 축인데, ${currentPhrase}는 그만큼 드러나지 않는다고 답했어. 어느 쪽이 진짜 너인지는 정하지 않을게.`,
+    eligibleForNarrative: true,
+  };
+}
+
+/** 강도 비교 전용 순서. **점수가 아니다** — `>` 비교 한 곳에서만 쓴다 */
+const STRENGTH_ORDER: Record<EvidenceStrength, number> = {
+  absent: 0,
+  important: 1,
+  hardest: 2,
+};
 
 /* --------------------------------------------------------- 우선순위 (§6) */
 
@@ -541,6 +754,21 @@ export function rankInsights(insights: readonly CrossSourceInsight[]): CrossSour
 export interface CrossSourceInsightInput {
   declared: DeclaredPreference;
   experience: RelationshipExperience;
+  /**
+   * v1.41 §39.4 — 지금 관계 근거. **필수다.**
+   *
+   * 갖고 있지 않은 호출부는 `NO_CURRENT_RELATIONSHIP`을 명시적으로 넘긴다 —
+   * optional로 두면 새 호출부가 조용히 빼먹고, 그러면 같은 세션인데 화면과 리포트가
+   * 서로 다른 근거로 판정한다. v1.40.1 §38.2가 닫은 실패 형태를 되풀이하지 않는다.
+   */
+  current: CurrentRelationshipEvidence;
+  /**
+   * v1.41 §39.13 — 관계를 **부르는 이름**(`ended`면 `'former'`).
+   *
+   * ⚠️ evidence가 아니다. 이 값은 어떤 연결이 만들어지는지·근거가 몇 개인지·강도가
+   * 무엇인지 **하나도 바꾸지 않는다.** `ruleSummary` 문장의 호칭만 바꾼다.
+   */
+  tense: RelationshipTense;
   target: TargetProfile;
   mirror: MirrorReport;
   validated: readonly ValidatedObservation[];
@@ -834,7 +1062,17 @@ export function buildCrossSourceInsights(input: CrossSourceInsightInput): CrossS
   // declared는 이 함수가 직접 쓰지 않는다 — Mirror(①)가 이미 declared를 소화해 insight로
   // 넘겨준다. 타입에는 남겨둔다: Declared↔Target 같은 조합을 추가할 때 호출부를 바꾸지
   // 않아도 되게 하기 위해서다.
-  const { declared, experience, target, mirror, validated, historyChanges, repeatedSignals } = input;
+  const {
+    declared,
+    experience,
+    current,
+    tense,
+    target,
+    mirror,
+    validated,
+    historyChanges,
+    repeatedSignals,
+  } = input;
 
   /**
    * 이 리포트를 누구를 위해 만드는가 (v1.33).
@@ -866,8 +1104,14 @@ export function buildCrossSourceInsights(input: CrossSourceInsightInput): CrossS
         historyChanges,
         repeatedSignals,
         latestHistoryEntryId: input.latestHistoryEntry?.id ?? null,
+        tense,
       });
-      if (built && built.sources.includes('relationship')) {
+      // v1.41 — 관계 근거는 두 source 중 하나로 셀 수 있다. 둘 다 확인한다.
+      if (
+        built &&
+        (built.sources.includes('relationship') ||
+          built.sources.includes('current_relationship'))
+      ) {
         supersededAxes.add(dimension.key as MirrorAxisKey);
       }
     }
@@ -875,7 +1119,7 @@ export function buildCrossSourceInsights(input: CrossSourceInsightInput): CrossS
 
   if (mirror.available) {
     for (const insight of mirror.insights) {
-      const built = fromMirrorInsight(insight, { experience, validated });
+      const built = fromMirrorInsight(insight, { experience, validated, tense });
       if (!built) continue;
       if (built.type !== 'CONTRADICTION' && supersededAxes.has(insight.key)) continue;
       insights.push(built);
@@ -883,7 +1127,7 @@ export function buildCrossSourceInsights(input: CrossSourceInsightInput): CrossS
   }
 
   // ② Relationship ↔ Target — 관계 경험 + 상대 정보가 둘 다 있어야 한다.
-  const relVsTarget = fromRelationshipVsTarget({ experience, target });
+  const relVsTarget = fromRelationshipVsTarget({ experience, target, tense });
   if (relVsTarget) insights.push(relVsTarget);
 
   // ③ Current ↔ History
@@ -918,6 +1162,7 @@ export function buildCrossSourceInsights(input: CrossSourceInsightInput): CrossS
         historyChanges,
         repeatedSignals,
         latestHistoryEntryId: input.latestHistoryEntry?.id ?? null,
+        tense,
       });
       if (built) insights.push(built);
     }
@@ -972,6 +1217,30 @@ export function buildCrossSourceInsights(input: CrossSourceInsightInput): CrossS
       const built = fromDeclaredVsMbtiSelf({ declared, selfLens: input.mbtiSelfLens });
       if (built) insights.push(built);
     }
+  }
+
+  /**
+   * ⑨ Current × Past Relationship (v1.41 §39.18)
+   *
+   * ⚠️ **⑥·⑦의 `covered` 게이트보다 앞에서 만든다.** 이 연결은 두 시점을 나란히
+   * 놓는 것이라 그 축의 '주인'에 가깝고, 뒤에 오는 두 조합은 '비어 있던 자리만'
+   * 채우는 성격이다(각 함수 주석). 순서를 뒤집으면 ⑥이 먼저 축을 덮어 ⑨가
+   * 사라질 수 있다.
+   *
+   * ⚠️ ①(declared × 지금 관계)과 **같은 축에 함께 나올 수 있다.** 중복이 아니다 —
+   * ①은 `말한 기준 vs 지금`이고 ⑨는 `이전 vs 지금`이다. 비교 쌍이 다르고 근거
+   * 목록도 다르다. 무료 화면이 보여주는 것은 ① 쪽이고, ⑨는 무료가 구조적으로
+   * 보여줄 수 없는 두 번째 쌍이다.
+   */
+  for (const axis of MIRROR_AXES) {
+    const built = fromCurrentVsPast({
+      axis: axis.key,
+      label: axis.label,
+      experience,
+      current,
+      tense,
+    });
+    if (built) insights.push(built);
   }
 
   /**

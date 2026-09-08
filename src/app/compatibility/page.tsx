@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
 
@@ -61,8 +62,10 @@ import { REFLECTION_QUESTIONS, STAGE_JOB_COPY } from '@/data/stageCopy';
 import {
   jobAllowsOutwardQuestions,
   jobAllowsOutwardAction,
+  jobInvitesCurrentEvidence,
   resolveRelationshipContext,
 } from '@/lib/logic/relationshipStage';
+import { answeredAxisCount } from '@/lib/logic/relationshipEvidence';
 import { premiumFeatureState } from '@/services/premiumService';
 import { hasDeepConnection } from '@/services/premiumConnections';
 import {
@@ -75,6 +78,7 @@ import {
   useCompatibility,
   useConversationQuestions,
   useMbtiLens,
+  useMirror,
   usePastObservation,
 } from '@/hooks/useAnalysis';
 import { useShare } from '@/hooks/useShare';
@@ -150,9 +154,23 @@ function CompatibilityView() {
     이미 계산된 결과를 감싸는 문구와, 어떤 행동 블록을 그릴지 고르는 것뿐이다.
   */
   const { job } = resolveRelationshipContext(answers);
+  /** v1.41 — 근거 시점 요약. Mirror가 계산한 값을 **읽기만** 한다 */
+  const mirrorScope = useMirror().scopeSummary;
   const jobCopy = STAGE_JOB_COPY[job];
   const showOutwardAction = jobAllowsOutwardAction(job);
   const showOutwardQuestions = jobAllowsOutwardQuestions(job);
+  /** v1.41 §39.6 — S30 권유 대상인가. **판정에는 들어가지 않는다**(화면 분기 전용) */
+  const invitesCurrent = jobInvitesCurrentEvidence(job);
+  const currentAnsweredCount = answeredAxisCount(answers.currentRelationship);
+  /**
+   * v1.41 §39.21 — Analytics로 나가는 저카디널리티 시점 값.
+   *
+   * ⚠️ **Mirror의 `scopeSummary`를 쓴다** — 이 화면이 따로 판정하지 않는다. Mirror가
+   * 이미 축별 scope를 계산했고, 두 벌이 되면 화면과 지표가 다른 말을 한다.
+   */
+  const evidenceScopeParam: 'current' | 'past' | 'mixed' | 'none' = mirrorScope.mixed
+    ? 'mixed'
+    : (mirrorScope.dominant ?? 'none');
   const reflectionQuestions =
     job === 'ended' ? REFLECTION_QUESTIONS.ended : REFLECTION_QUESTIONS.none;
 
@@ -238,6 +256,17 @@ function CompatibilityView() {
       // enum 하나만 더한다. 단계별 결과 열람/전환을 나눠 볼 수 있으면 충분하고,
       // 상대 이름·관계 기간·자유서술은 보내지 않는다.
       relationship_stage: job,
+      /**
+       * v1.41 §39.21 — **새 이벤트를 만들지 않는다.** 기존 이벤트에 저카디널리티
+       * 값 하나만 더한다(v1.40의 `relationship_stage`와 같은 방식).
+       *
+       * 보내는 것은 `current` / `past` / `mixed` / `none` 네 값뿐이다. 축별 답변,
+       * 답한 개수, 어떤 보기를 골랐는지는 **하나도 보내지 않는다** — 그건 관계에
+       * 대한 서술이고, 개수는 준식별자에 가까워진다(§26 historyCountBucket과 같은
+       * 판단). 우리가 알고 싶은 것은 애초에 '지금 관계 근거가 있는 사용자와 없는
+       * 사용자가 결과를 다르게 쓰는가'이고, 그건 이 네 구간으로 충분하다.
+       */
+      evidence_scope: evidenceScopeParam,
       score: result.score,
       result_state: 'scored',
       compared: result.comparedCount,
@@ -248,7 +277,7 @@ function CompatibilityView() {
       score: result.score,
       result_state: 'scored',
     });
-  }, [result.score, result.comparedCount, funnelAnalysisId, job]);
+  }, [result.score, result.comparedCount, funnelAnalysisId, job, evidenceScopeParam]);
 
   useEffect(() => {
     if (!mbtiLens) return;
@@ -927,6 +956,39 @@ function CompatibilityView() {
               </div>
             )}
           </div>
+
+          {/*
+            04-c — 지금 관계 근거 보강 (v1.41 §39.6)
+
+            ⚠️ **이 화면의 유일한 진입점이고, 카드가 아니라 한 줄이다.**
+            §39.10이 정한 규칙 그대로다 — 새 카드를 만들지 않고 annotation·링크로만
+            얹는다. 결과 화면의 주인공은 여전히 판정이고, 이건 그 판정을 더 정확하게
+            만들 수 있다는 안내다.
+
+            ⚠️ `dating`·`long_term`에만 보인다(`jobInvitesCurrentEvidence`). `talking`
+            에게 '지금 관계'라고 부르는 것은 관계를 확정하는 셈이고, `ended`에게는
+            끝난 관계를 다시 관찰하게 만드는 것이다.
+
+            ⚠️ 이미 다 답한 사용자에게는 **권유가 아니라 수정 링크**로 바뀐다. 같은
+            줄이 계속 '알려줄래?'라고 물으면 답한 것이 반영되지 않은 것처럼 읽힌다.
+          */}
+          {invitesCurrent ? (
+            <div className="mt-7 flex flex-col gap-2 rounded-card border border-dashed border-line-strong bg-canvas-warm p-4">
+              <p className="text-caption keep-all leading-relaxed text-ink-sub">
+                {currentAnsweredCount === 0
+                  ? '위 해석은 네가 이전 관계에서 답한 내용을 근거로 했어. 지금 관계에서는 어떤지 알려주면 그 항목은 지금 기준으로 다시 볼게.'
+                  : `지금 관계 기준으로 답한 항목이 ${currentAnsweredCount}개 있어. 언제든 고치거나 더 답할 수 있어.`}
+              </p>
+              <Link
+                href={ROUTES.currentRelationship()}
+                className="inline-flex min-h-11 items-center self-start text-[12.5px] font-medium text-brand-pressed"
+              >
+                {currentAnsweredCount === 0
+                  ? '지금 관계에서의 나 알려주기 →'
+                  : '지금 관계 답변 고치기 →'}
+              </Link>
+            </div>
+          ) : null}
         </ReportSection>
 
         <ReportSection

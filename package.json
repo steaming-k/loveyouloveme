@@ -13,6 +13,7 @@
     "test:observed": "node tests/run-observed-e2e.mjs",
     "test:history": "node tests/run-history-fixtures.mjs",
     "test:lifecycle": "node tests/run-lifecycle-fixtures.mjs",
+    "test:relationship-evidence": "node tests/run-relationship-evidence-fixtures.mjs",
     "test:ai:e2e": "node tests/run-provider-e2e.mjs"
   },
   "dependencies": {

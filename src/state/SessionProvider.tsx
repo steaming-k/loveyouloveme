@@ -23,6 +23,7 @@ import type {
   ObservedProfileResult,
   BirthProfile,
   ConversationQuestionId,
+  CurrentSignalAnswer,
   DeclaredPreference,
   DeepAnalysisAnswer,
   HardestMoment,
@@ -83,6 +84,10 @@ interface SessionContextValue {
   setSelfGap: (value: SelfGapAnswer) => void;
   setPastNote: (value: string) => void;
   setAdaptiveAnswer: (axis: MirrorAxisKey, optionId: string) => void;
+  /** v1.41 — 지금 관계 근거 (S30 · Optional) */
+  setCurrentSignal: (axis: MirrorAxisKey, value: CurrentSignalAnswer) => void;
+  clearCurrentSignal: (axis: MirrorAxisKey) => void;
+  markCurrentEvidenceAsked: () => void;
   skipExperience: () => void;
   resumeExperience: () => void;
 
@@ -186,6 +191,25 @@ function deserialize(raw: string): SessionAnswers | null {
       observedAnalysis,
       declared: { ...base.declared, ...parsed.declared },
       experience: { ...base.experience, ...parsed.experience },
+      /**
+       * v1.41 Migration (§39.14) — v1.40 이전 세션에는 이 필드가 없다.
+       *
+       * ⚠️ **소급 추정하지 않는다.** 그 세션의 사용자가 `dating`이었더라도 현재 관계
+       * 근거를 답한 적은 없으므로, 비어 있는 상태로 복원하고 Mirror는 과거 근거로
+       * 판정한다 — v1.40.1과 글자 하나 다르지 않다(fixture E0).
+       *
+       * `signals`는 축→enum 맵이라 알 수 없는 키가 들어와도 Mirror가 축 목록
+       * (`MIRROR_AXES`)만 조회하므로 조용히 무시된다. 다만 값이 객체가 아닌 경우
+       * (수동 편집·손상)에는 통째로 버린다 — 깨진 근거로 판정하지 않는다.
+       */
+      currentRelationship: {
+        signals:
+          parsed.currentRelationship?.signals &&
+          typeof parsed.currentRelationship.signals === 'object'
+            ? { ...parsed.currentRelationship.signals }
+            : {},
+        askedAt: parsed.currentRelationship?.askedAt ?? null,
+      },
       target: {
         ...base.target,
         ...parsed.target,
@@ -417,6 +441,57 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       experience: { ...prev.experience, adaptive: { axis, optionId } },
     }));
     trackEvent('relationship_adaptive_answer', { axis, option: optionId });
+  }, []);
+
+  /**
+   * v1.41 §39.4 — 지금 관계 근거 하나를 기록한다 (S30).
+   *
+   * ⚠️ `experience`를 건드리지 않는다. 두 source는 나란히 존재하고, 현재 답변이
+   * 과거 답변을 덮으면 Premium의 `Current × Past` 연결이 애초에 만들어질 수 없다.
+   *
+   * ⚠️ **Analytics 이벤트를 발생시키지 않는다**(§39.21). 새 이벤트 0건이 이 버전의
+   * 약속이고, 축별 답변은 그 자체로 관계에 대한 서술이라 외부로 보내지 않는다.
+   * 관찰이 필요한 지표(현재 근거를 가진 사용자가 결과를 보는가)는 기존
+   * `compatibility_result_view`에 붙은 저카디널리티 `evidence_scope` 하나로 본다.
+   */
+  const setCurrentSignal = useCallback((axis: MirrorAxisKey, value: CurrentSignalAnswer) => {
+    setAnswers((prev) => ({
+      ...prev,
+      currentRelationship: {
+        signals: { ...prev.currentRelationship.signals, [axis]: value },
+        askedAt: prev.currentRelationship.askedAt ?? new Date().toISOString(),
+      },
+    }));
+  }, []);
+
+  /**
+   * 사용자가 이 축의 답을 **되돌린다**(선택 해제). 축 하나를 지우면 Mirror는 그 축만
+   * 과거 근거로 되돌아간다 — 전체를 초기화하지 않는다.
+   */
+  const clearCurrentSignal = useCallback((axis: MirrorAxisKey) => {
+    setAnswers((prev) => {
+      const next = { ...prev.currentRelationship.signals };
+      delete next[axis];
+      return {
+        ...prev,
+        currentRelationship: { ...prev.currentRelationship, signals: next },
+      };
+    });
+  }, []);
+
+  /** S30을 열었다는 사실만 기록한다 — 답하지 않고 나가도 같은 권유를 반복하지 않는다 */
+  const markCurrentEvidenceAsked = useCallback(() => {
+    setAnswers((prev) =>
+      prev.currentRelationship.askedAt
+        ? prev
+        : {
+            ...prev,
+            currentRelationship: {
+              ...prev.currentRelationship,
+              askedAt: new Date().toISOString(),
+            },
+          },
+    );
   }, []);
 
   const skipExperience = useCallback(() => {
@@ -682,6 +757,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // v1.13 §38 — target.preferences(좋아하는 것)는 TargetProfile 안에 있어서
       // createEmptyTargetProfile() 하나로 함께 초기화된다. 별도 처리가 필요 없다.
       target: createEmptyTargetProfile(),
+      /**
+       * v1.41 §39.20 — **현재 관계 근거는 새 상대에게 따라가지 않는다.**
+       *
+       * `Ended → 새 상대`가 이 함수를 부르는 경로이고, S30의 답변은 `그 관계에서
+       * 내가 어땠는가`다. 그 값을 새 사람에게 그대로 들고 가면 **아직 한 번도
+       * 관찰하지 않은 관계에 대해 근거가 있다고 말하는 것**이 된다 — v1.41이
+       * 고치려던 결함과 정확히 같은 형태이고 방향만 반대다.
+       *
+       * ⚠️ 반대로 `dating → ended`에서는 **지우지 않는다.** 그 경로는 이 함수를
+       * 부르지 않고(단계 변경은 `setStatus` 하나다), 회고에는 그 근거가 필요하다.
+       * SELF 데이터(`declared`·`experience`)는 여기서도 그대로 유지된다 —
+       * 현재 근거만 상대에 종속된 값이다.
+       *
+       * ⚠️ **이미 저장된 History Snapshot에는 손대지 않는다.** 그때 그 관계에서
+       * 실제로 답한 값이고, 새 상대를 만났다는 사실이 과거 기록을 거짓으로
+       * 만들지 않는다.
+       */
+      currentRelationship: { signals: {}, askedAt: null },
       savedQuestions: [],
       completed: { ...prev.completed, compatibility: false },
       // v1.12 §20 — 새 상대 = 새 funnel 단위. 랜덤 UUID만 쓰고 상대 개인정보는 담지 않는다.
@@ -740,6 +833,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setSelfGap,
       setPastNote,
       setAdaptiveAnswer,
+      setCurrentSignal,
+      clearCurrentSignal,
+      markCurrentEvidenceAsked,
       skipExperience,
       resumeExperience,
       setTargetRelation,
@@ -783,6 +879,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setSelfGap,
       setPastNote,
       setAdaptiveAnswer,
+      setCurrentSignal,
+      clearCurrentSignal,
+      markCurrentEvidenceAsked,
       skipExperience,
       resumeExperience,
       setTargetRelation,

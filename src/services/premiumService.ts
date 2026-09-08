@@ -294,21 +294,29 @@ export function buildHistoryDetail(input: {
   report: HistoryReport;
   repeated: readonly RepeatedRelationshipSignal[];
   /**
-   * v1.40.1 §38.2 — 지금 **진행 중인 관계가 있는** 사용자인가
-   * (`jobAllowsOutwardAction(job)`와 같은 값).
+   * v1.40.1 §38.2 → **v1.41 §39.17에서 필수로 바꿨다** — 지금 진행 중인 관계가
+   * 있는 사용자인가(`jobAllowsOutwardAction(job)`와 같은 값).
    *
    * ⚠️ 이 값이 없던 v1.40에서 `prompts`는 항상 `다음 관계에서 …`였다. 그래서
    * `dating`·`married` 사용자가 유료 리포트에서 **지금 관계가 끝난 뒤를 전제한
    * 질문**을 받았다 — `DATING_FORBIDDEN`이 `다음 관계`를 금지 어휘로 올려둔
    * 바로 그 표현이다. Ended Safety와 **같은 종류의 결함이고 방향만 반대다.**
    *
-   * 기본값은 `false`(= `다음 관계에서`, v1.40 동작 그대로)다. 이 함수는
-   * standalone `history_detail` 상세에서도 쓰이고, 그 화면은 아직 Job을 읽지
-   * 않는다 — 읽지 않는 곳의 동작을 조용히 바꾸지 않는다(잔여 리스크로 기록).
+   * ══ v1.41에서 optional을 없앤 이유 ═══════════════════════════════════════
+   *
+   * v1.40.1은 기본값 `false`를 남기고 "standalone 화면은 아직 Job을 읽지 않는다"고
+   * 적었다. **그 진술은 그때 이미 사실이 아니었다** — standalone 경로는
+   * `app/premium-preview/[feature]/page.tsx` 하나뿐이고 그 화면은 v1.40.1부터
+   * `lifecycle.allowsOutwardAction`을 넘기고 있었다(v1.41 Audit에서 확인).
+   *
+   * 즉 남아 있던 것은 **노출된 결함이 아니라 permissive default 자체**였고, 그건
+   * v1.40.1이 `buildRelationshipDeepReport`에서 버리기로 정한 패턴이다. 같은 파일
+   * 안에 같은 패턴을 하나 남겨 두면 다음 호출부가 그것을 따라간다. Production에서
+   * 안 읽는 경로라고 영원히 방치하지 않는다(§39.17).
    */
-  hasCurrentRelationship?: boolean;
+  hasCurrentRelationship: boolean;
 }): PremiumDetailReport {
-  const { report, repeated, hasCurrentRelationship = false } = input;
+  const { report, repeated, hasCurrentRelationship } = input;
   const def = PREMIUM_FEATURES.history_detail;
 
   if (!report.comparable) {
@@ -619,7 +627,12 @@ export function buildRelationshipDeepReport(input: {
    * 기준으로 갈랐는데, 그건 사용자에게 의미 있는 구분이 아니었다. 이제는
    * **연결 여부**로 가른다 — source 2개 이상이면 연결, 1개면 단일 관찰이다(§17).
    */
-  const allConnections = buildConnections({ insights, narratives, resolverContext });
+  const allConnections = buildConnections({
+    insights,
+    narratives,
+    resolverContext,
+    tense: lifecycle.tense,
+  });
   const corePattern = selectCorePattern(allConnections);
   const connections = allConnections.filter(
     (connection) =>
@@ -647,7 +660,8 @@ export function buildRelationshipDeepReport(input: {
     actions: buildActions(corePattern, { allowsOutwardAction }),
     connectionQuestions: buildConnectionQuestions(allConnections, { allowsOutwardQuestions }),
     actionSectionTitle,
-    lovyObservation: selectDeepObservation(corePattern, insights),
+    // v1.41 §39.13 — 러비의 깊은 관찰·철학 질문도 같은 시제 게이트를 받는다.
+    lovyObservation: selectDeepObservation(corePattern, insights, lifecycle.tense),
     historyDeep,
     approachInsight: allowsOutwardAction ? approachInsightFor(target, compatibility) : null,
     limitations: deepReportLimitations({ historyReport, compatibility }),

@@ -10,6 +10,7 @@ import type {
 
 import { STAGE_JOB_COPY } from '@/data/stageCopy';
 
+import type { RelationshipTense } from './relationshipEvidence';
 import { soloModeOfTarget } from './soloMode';
 
 /**
@@ -279,6 +280,33 @@ export interface DeepReportJobContext {
   allowsOutwardQuestions: boolean;
   /** 행동·질문 섹션 제목. 무료 화면 `04 NOW WHAT`과 **같은 문구**를 쓴다 */
   actionSectionTitle: string;
+  /**
+   * v1.41 §39.13 — 이 리포트에서 **관계를 어떻게 부르는가**.
+   *
+   * v1.40.1은 `ended`의 **대상**(누구에게 하는 행동인가)을 닫고 **시제**는 남겼다.
+   * 남은 것이 §38.11의 첫 줄이었다: `지금 상대와 …` · `지금 이 관계에서도 …` ·
+   * `상대에게 미리 말해주는 방법` · `상대에게 어떻게 설명하는 편이야?`. 넷 다
+   * 행동 제안이 아니라 **끝난 관계를 진행 중인 것처럼 부르는 호칭**이었다.
+   *
+   * ⚠️ 이 값은 evidence를 바꾸지 않는다. 근거의 출처·강도·개수·판정 전부 그대로이고,
+   * 바뀌는 것은 그 근거를 문장에서 부르는 이름뿐이다 — 시제를 맞추려고 evidence
+   * source를 바꾸는 것이 §37.20이 금지한 바로 그 행위다.
+   */
+  tense: RelationshipTense;
+}
+
+/**
+ * Job → 시제. **6종을 2종으로 좁혀서 넘긴다.** (v1.41 §39.13)
+ *
+ * 좁히는 것이 요점이다. `RelationshipJob`을 그대로 하위 모듈에 흘리면 문장 생성기마다
+ * Job별 분기가 자라고, 그러면 '한 곳을 빼먹는' v1.40의 실패 형태가 되돌아온다.
+ * 문장 생성기가 알아야 하는 것은 **관계가 진행 중인가 끝났는가** 딱 하나다.
+ *
+ * ⚠️ `none`(상대가 아직 없다)은 `'current'`다. 부를 관계가 없으므로 시제 자체가
+ * 쓰이지 않고, `'former'`로 두면 없던 과거 관계를 전제하게 된다.
+ */
+export function relationshipTenseOf(job: RelationshipJob): RelationshipTense {
+  return job === 'ended' ? 'former' : 'current';
 }
 
 export function deepReportJobContext(job: RelationshipJob): DeepReportJobContext {
@@ -286,5 +314,25 @@ export function deepReportJobContext(job: RelationshipJob): DeepReportJobContext
     allowsOutwardAction: jobAllowsOutwardAction(job),
     allowsOutwardQuestions: jobAllowsOutwardQuestions(job),
     actionSectionTitle: STAGE_JOB_COPY[job].nowWhatTitle,
+    tense: relationshipTenseOf(job),
   };
+}
+
+/**
+ * v1.41 §39.6 — 이 Job에게 **지금 관계 근거(S30)를 권해도 되는가.**
+ *
+ * ⚠️ **이 값이 Resolver에 들어가지 않는다.** 여기서 false인 Job의 사용자가 이미
+ * 넣어둔 현재 근거는 그대로 쓰인다(`relationshipEvidence.ts` 상단 표). 이 함수가
+ * 정하는 것은 **화면이 권유를 띄우는가** 하나뿐이다 — 수집 정책과 해석 정책을
+ * 분리하는 것이 §39의 핵심이다.
+ *
+ * | JOB | 권유 | 왜 |
+ * |---|---|---|
+ * | `dating` `long_term` | ✅ | Job이 이미 `지금 관계에서 조율`이다. 근거가 없으면 그 Job을 할 수 없다 |
+ * | `talking` | ❌ | 아직 관계로 확정되지 않았다. `지금 관계`라고 부르는 것 자체가 관계를 확정하는 셈이다 |
+ * | `unknown` `none` | ❌ | 부를 관계가 없다 |
+ * | `ended` | ❌ | 끝난 관계에 대해 새 관찰을 시작하게 만들지 않는다(§37.13 반추 루프) |
+ */
+export function jobInvitesCurrentEvidence(job: RelationshipJob): boolean {
+  return job === 'dating' || job === 'long_term';
 }

@@ -37,6 +37,9 @@ export function createEmptyAnswers(): SessionAnswers {
       skipped: false,
       adaptive: null,
     },
+    // v1.41 — 지금 관계 근거는 **비어 있는 것이 정상 상태**다. Optional 입력이고,
+    // 비어 있으면 Mirror가 과거 근거로 판정한다(v1.40.1과 동일 동작).
+    currentRelationship: { signals: {}, askedAt: null },
     target: createEmptyTargetProfile(),
     savedQuestions: [],
     coreVerdict: null,
@@ -98,6 +101,14 @@ export function createSampleAnswers(): SessionAnswers {
       skipped: false,
       adaptive: { axis: 'contact', optionId: 'disconnect' },
     },
+    /**
+     * v1.41 — 샘플 세션에는 **현재 근거를 넣지 않는다.**
+     *
+     * 샘플은 `status: 'solo_exp'`(Job = `talking`)이고 §39.6에서 `talking`은 S30
+     * 권유 대상이 아니다. 여기에 현재 근거를 채우면 (a) 데모 시나리오의 동기화율·
+     * Mirror 판정 숫자가 v1.40.1과 달라지고 (b) 권하지도 않는 화면의 답변이 이미
+     * 들어 있는 상태가 되어 화면이 자기 모순이 된다.
+     */
     target: {
       relation: 'crush',
       contact: 'h',

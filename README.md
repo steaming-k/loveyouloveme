@@ -7,7 +7,7 @@
 론칭 프로젝트입니다. 실측 확인된 사실과 미검증 항목을 분리해서 기록합니다 — "구현했다"와
 "검증됐다"를 같은 말로 쓰지 않습니다.
 
-**기준 문서** — 현재 버전 **v1.40.1**
+**기준 문서** — 현재 버전 **v1.41**
 
 | 문서 | 담는 것 | 언제 보나 |
 |---|---|---|
@@ -47,17 +47,18 @@ http://localhost:3000 · 기준 뷰포트 **393 × 852** (360px에서도 깨지�
 | `npm run test:ai` | AI 스키마/안전 검증 Contract Test 143건 (Provider Key 불필요 · **dev 서버 필요**) |
 | `npm run test:observed` | 사진 파이프라인 E2E 10건 (`/api/ai/observed-profile` 왕복 · **dev 서버 필요**) |
 | `npm run test:lifecycle` | Lifecycle Fixture **144건** — Relationship Stage/Job · **불변 검사**(단계만 바꿔도 동기화율·Mirror·Premium 게이트 동일) · Ended/Dating/Long-term Safety · **Premium Deep Report 본문의 구조적 안전**(v1.40.1 · `audience` 카운트) · Paywall↔본문 대칭 · fixture enum guard · legacy 세션 (**dev 서버 필요**) |
+| `npm run test:relationship-evidence` | Relationship Evidence Fixture **76건** (v1.41) — **stage ≠ evidence 양방향**(`dating`인데 근거가 없으면 current 0 · `talking`인데 근거를 넣으면 current 사용) · **legacy 무변경**(현재 근거가 없는 세션의 판정이 v1.40.1과 JSON 수준에서 동일) · 점수 불변 · scope 정직성(mixed면 이름 붙이지 않음) · `ended` 시제 전수 · Premium ⑨ · Ended safety 회귀 · **Resolver가 stage를 import하지 않는지 구조 검사** (**dev 서버 필요**) |
 | `npm run test:history` | Logic Fixture 100건 — History H0~H10 + Observed 시간축 + 근거 묶음 + Solo Premium 게이트 + `네가 말한 너` 문구 무결성 + 샘플 근거 정합성 · S07 사진 게이트(v1.37) + **관찰 시퀀스 시간 예산**(v1.38) (Provider Key 불필요 · **dev 서버 필요**) |
 | `npm run test:ai:e2e` | 실제 `/api/ai/*` Route 왕복 (**dev 서버 필요** · Key 없으면 SKIPPED로 정직하게 보고) |
 | `node tests/run-observed-e2e.mjs` | `npm run test:observed`와 같은 스크립트 |
 
-> ⚠️ **테스트 4종은 모두 `http://localhost:3000`의 Route를 왕복합니다** — 스크립트가 서버를
+> ⚠️ **테스트 5종은 모두 `http://localhost:3000`의 Route를 왕복합니다** — 스크립트가 서버를
 > 직접 띄우지 않습니다(v1.39 확인). 서버 없이 실행하면 `ECONNREFUSED ::1:3000`으로 즉시
 > 실패합니다. 터미널을 두 개 씁니다.
 >
 > ```
 > 터미널 A:  npm run dev
-> 터미널 B:  npm run test:ai && npm run test:observed && npm run test:history && npm run test:lifecycle
+> 터미널 B:  npm run test:ai && npm run test:observed && npm run test:history && npm run test:lifecycle && npm run test:relationship-evidence
 > ```
 >
 > `test:history`는 검증 로직을 스크립트에 복제하지 않고 개발 전용 Route
@@ -303,6 +304,49 @@ export type DeepAudience = 'outward' | 'self';
 없애는 과필터도 실패로 잡습니다.
 
 상세는 `기능명세_현행.md` §1.7 · `기능명세서.md` §37(v1.40) · **§38(v1.40.1)**.
+
+### 관계 단계는 evidence를 결정하지 않습니다 (v1.41)
+
+v1.40이 `연애 중`인 사용자에게 `지금 관계에서 기대를 조율한다`는 답을 주기 시작했는데,
+제품이 관계에 대해 묻는 질문은 **`이전 관계에서 …` 하나**였습니다.
+`buildMirrorReport(declared, experience)` — 서명이 이미 답을 말하고 있었습니다.
+
+> **제품은 한 번도 물어본 적 없는 관계에 대해 조율을 제안하고 있었습니다.**
+
+시제만 바꾸는 것은 v1.40이 이미 금지했습니다(근거 문장을 현재형으로 고치면 그 근거의
+출처가 거짓이 됩니다). 그래서 남은 방법은 **실제로 물어보는 것**이었습니다.
+
+```
+RELATIONSHIP STAGE  ≠  RELATIONSHIP EVIDENCE TIMEFRAME
+```
+
+| | 무엇을 정하나 | 무엇을 보나 |
+|---|---|---|
+| `jobInvitesCurrentEvidence(job)` | 화면이 S30을 **권하는가** | `dating` · `long_term`만 true |
+| `resolveAxisEvidence(...)` | 근거를 **어떻게 읽는가** | **stage를 보지 않습니다** |
+
+**두 술어가 서로를 참조하지 않습니다.** `talking` 사용자가 어떤 경로로든 답해 두면 그
+답은 쓰입니다 — 권하지 않은 것과 무시하는 것은 다릅니다. `logic/relationshipEvidence.ts`는
+`RelationshipStage`·`RelationshipJob`·`RelationshipStatus`를 **import하지 않고 타입으로도
+받지 않으며**, `test:relationship-evidence`의 R1이 그 격리를 검사합니다 — 주석이 아니라
+테스트가 지킵니다.
+
+| 항목 | 내용 |
+|---|---|
+| 새 화면 | **S30 `/profile/current`** (선택) — 축마다 질문 하나·보기 4개·진행 차단 없음·자유서술 없음 |
+| Core Funnel | **변경 0.** 진입은 결과 화면의 한 줄 링크 2개뿐이고, 하나도 답하지 않아도 모든 결과가 그대로 나옵니다. Time-to-Value 불변 |
+| Evidence Scope | `current` \| `past` \| `none` — 축마다 근거의 시점을 들고 다닙니다. `legacy`는 **History Snapshot의 필드 부재**로 표현합니다(없는 것을 값으로 채우면 소급 추정입니다) |
+| 섞였을 때 | **다수결로 이름 붙이지 않습니다.** 3:2도 섞였으면 `dominant = null`이고, 화면이 `항목마다 근거 시점이 달라 (지금 2 · 이전 1)`로 먼저 말합니다 |
+| 불변 | 동기화율 · `comparedCount` · good/friction 신호 수 · MBTI · History 변화 판정 · Premium eligibility · ₩1,900 |
+| Analytics | **새 이벤트 0.** 기존 `compatibility_result_view`에 `evidence_scope` 4종 enum 하나만. 축별 답변·개수·고른 보기는 **보내지 않습니다** |
+| AI | **Job을 프롬프트에 넣지 않았습니다** — 단계를 알려주는 것은 모델에게 단계에 맞는 내용을 지어내라고 초대하는 것입니다. 대신 모델이 받는 **값**이 시제까지 정확해졌습니다(`limitation`은 v1.27 규칙대로 화면과 같은 문자열) |
+| 함께 닫은 것 | v1.40.1이 남긴 `ended` 시제 4곳 + **목록에 없던 2곳**(`limitationFor` · 연결 카드 source 칩). 후자는 브라우저 실측에서만 보였습니다 — fixture가 훑는 배열에 그 자리가 없었기 때문입니다 |
+
+**한 줄 교훈** — 안전 검증의 목록을 사람이 훑어서 만들면 목록에 없는 자리에서 샙니다.
+해법은 목록을 늘리는 것이 아니라 **화면이 실제로 렌더하는 값 전부를 그 배열에 넣는
+것**입니다.
+
+상세는 `기능명세_현행.md` §1.8 · `기능명세서.md` **§39** · 기획서 **§5.32**.
 
 ---
 

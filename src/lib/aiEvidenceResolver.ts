@@ -1,4 +1,5 @@
 import { adaptiveOptionLabel } from '@/data/adaptive';
+import { currentSignalLabel } from '@/data/currentRelationship';
 import { AXIS_DEFINITIONS, MIRROR_AXES } from '@/data/axes';
 import { DEEP_QUESTION_BANK, type DeepQuestionTemplate } from '@/data/deepQuestions';
 import {
@@ -44,6 +45,11 @@ import type {
 export type EvidenceSourceLabel =
   | '내가 답한 내용'
   | '관계 경험'
+  /**
+   * v1.41 §39.9 — `관계 경험`(S15~S17 · 과거)과 **다른 라벨**이다. 같은 이름을 쓰면
+   * 근거 목록에서 두 시점이 한 출처로 보이고, 그러면 `정보 N종`이 거짓이 된다.
+   */
+  | '지금 관계'
   | '추가 질문'
   | '사진에서 관찰'
   | '사용자 수정'
@@ -148,6 +154,29 @@ function resolveDeclared(field: string, answers: SessionAnswers): string | null 
     default:
       return null;
   }
+}
+
+/* --------------------------------------------- current relationship (v1.41) */
+
+/**
+ * 지금 관계 근거 하나를 문장으로 (v1.41 · §39.8)
+ *
+ * ⚠️ **우리가 요약하지 않는다.** 사용자가 S30 화면에서 실제로 읽고 고른 보기 문장을
+ * 그대로 인용한다 — v1.36이 `DECLARED_PHRASE` 고정값에서 배운 것과 같은 규칙이다.
+ * 답이 없으면 null이고, 그 ref는 근거 목록에서 조용히 빠진다(§35).
+ *
+ * ⚠️ `unsure`(아직 그런 상황이 없었어)도 **문장으로 만들지 않는다.** 답한 것은
+ * 사실이지만 근거가 아니고, 근거 목록에 넣으면 개수를 채우는 셈이 된다.
+ */
+function resolveCurrentRelationship(field: string, answers: SessionAnswers): string | null {
+  const axis = MIRROR_AXES.find((item) => item.key === field);
+  if (!axis) return null;
+
+  const answer = answers.currentRelationship.signals[axis.key];
+  if (answer === undefined || answer === 'unsure') return null;
+
+  const label = currentSignalLabel(axis.key, answer);
+  return label ? `${axis.label}에 대해 지금 관계에서 ${quoted(label)}라고 답했어` : null;
 }
 
 /* ----------------------------------------------------- relationship */
@@ -370,6 +399,17 @@ export function resolveEvidenceRef(
     case 'relationship': {
       const text = resolveRelationship(ref.field, context.answers);
       return text ? { key: `relationship:${ref.field}`, sourceLabel: '관계 경험', text } : null;
+    }
+    /**
+     * v1.41 — `relationship`(과거)과 **나란히 놓인 별도 case**다. 하나로 합치면
+     * `field`를 보고 시점을 추론하게 되고, 그 추론이 어긋나는 순간 근거 문장의
+     * 시제가 거짓이 된다.
+     */
+    case 'current_relationship': {
+      const text = resolveCurrentRelationship(ref.field, context.answers);
+      return text
+        ? { key: `current_relationship:${ref.field}`, sourceLabel: '지금 관계', text }
+        : null;
     }
     case 'adaptive': {
       const text = resolveAdaptive(context.answers);

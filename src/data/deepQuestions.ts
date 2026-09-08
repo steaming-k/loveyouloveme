@@ -1,3 +1,4 @@
+import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import type { DeepAnswerType, DeepQuestionOption, MirrorAxisKey } from '@/types';
 
 /**
@@ -15,6 +16,18 @@ interface DeepQuestionTemplate {
   id: string;
   axis: MirrorAxisKey;
   prompt: string;
+  /**
+   * v1.41 §39.13 — 관계가 **끝난** 사용자에게 쓸 문장 (§38.11 항목 ④)
+   *
+   * ⚠️ **필요한 항목에만 붙인다.** 이 은행의 질문은 대부분 이미 과거형
+   * (`… 들었던 생각은 뭐였어?` · `… 괜찮았어?`)이라 두 단계 모두에서 성립한다.
+   * 시제를 고칠 곳은 **현재 진행 중인 상대를 전제하는 문장**뿐이고, 실측하면
+   * `alone_explain` 하나다(`… 상대에게 어떻게 설명하는 편이야?`).
+   *
+   * 전부에 변형을 만들지 않은 이유: 고칠 이유가 없는 문장을 이 버전 때문에 바꾸면
+   * 그만큼 검토해야 할 문구가 늘고, 늘어난 문구 중 한 곳이 틀린다.
+   */
+  formerPrompt?: string;
   reason: string;
   answerType: DeepAnswerType;
   options?: readonly DeepQuestionOption[];
@@ -72,6 +85,8 @@ export const DEEP_QUESTION_BANK: Record<MirrorAxisKey, readonly DeepQuestionTemp
       id: 'alone_explain',
       axis: 'alone',
       prompt: '혼자 있는 시간이 필요할 때 상대에게 어떻게 설명하는 편이야?',
+      // 주어를 나로 두고 시제를 과거로 — 끝난 관계에 대해 지금 설명하라고 하지 않는다.
+      formerPrompt: '혼자 있는 시간이 필요할 때 그걸 어떻게 설명했던 것 같아?',
       reason: '개인 시간 기준과 실제 경험 사이에 연결해볼 지점이 보여서.',
       answerType: 'text',
       allowCustomText: true,
@@ -148,6 +163,14 @@ export const DEEP_QUESTION_BANK: Record<MirrorAxisKey, readonly DeepQuestionTemp
  */
 export function selectDeepQuestions(
   focusAxes: readonly MirrorAxisKey[],
+  /**
+   * v1.41 — 관계를 부르는 이름. **필수다.** 기본값을 두면 `ended` 화면이 빼먹은
+   * 순간 §38.11 항목 ④가 그대로 돌아온다.
+   *
+   * ⚠️ 질문의 **개수·순서·축 선정은 하나도 바뀌지 않는다.** `formerPrompt`가 있는
+   * 항목의 문장만 교체된다.
+   */
+  tense: RelationshipTense,
 ): DeepQuestionTemplate[] {
   const MAX_PER_AXIS = 2;
   const MAX_TOTAL = 5;
@@ -159,7 +182,11 @@ export function selectDeepQuestions(
     if (selected.length >= MAX_TOTAL) break;
   }
 
-  return selected.slice(0, MAX_TOTAL);
+  return selected.slice(0, MAX_TOTAL).map((template) =>
+    tense === 'former' && template.formerPrompt
+      ? { ...template, prompt: template.formerPrompt }
+      : template,
+  );
 }
 
 export type { DeepQuestionTemplate };
