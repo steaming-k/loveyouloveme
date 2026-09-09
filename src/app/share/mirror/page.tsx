@@ -10,6 +10,8 @@ import { useToast } from '@/components/common/ToastProvider';
 import { Lovy } from '@/components/lovy/Lovy';
 import { BRAND, PRIVACY } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
+import { withObjectParticle } from '@/lib/korean';
+import { hasTemporalComparison } from '@/lib/logic/relationshipEvidence';
 import { ROUTES } from '@/lib/routes';
 import { downloadShareCard } from '@/lib/shareCard';
 import { useMirror } from '@/hooks/useAnalysis';
@@ -40,11 +42,36 @@ export default function ShareMirrorPage() {
 
   if (!focus) return null;
 
+  /**
+   * ⚠️ v1.44 R-9 — **이 카드가 가장 공개적인 표면이다.**
+   *
+   * `나는 관계를 지나며 {축}의 기준이 달라진 사람이었다.`는 완전한 시간적 변화 주장이다.
+   * 그런데 이 화면에는 v1.41이 만든 scope 분기가 **아예 없었다** — CHANGE면 무조건 이
+   * 문장이었다. 실측(`declared 5축 높음` · 과거 근거 1축만):
+   *
+   * ```
+   * 나는 관계를 지나며 / 연락의 기준이 / 달라진 사람이었다.        ← 카드 헤드라인
+   * 관계 경험에서는 연락을 특별히 중요한 요소로 꼽지는 않았어      ← 바로 아래 근거
+   * ```
+   *
+   * 카드가 자기 근거를 반박하고, 그 상태로 밖으로 나간다.
+   *
+   * ⚠️ **여기서는 `hasTemporalComparison`(= `'past'`만)을 쓴다.** 다른 자리에서는
+   * `'current'`에 v1.41이 만들어 둔 비시간 표현이 있어서 그것을 유지하면 됐지만, 이
+   * 카드에는 그 표현이 존재하지 않는다. 없는 것을 유지할 수는 없고, `달라진`은 근거가
+   * `'current'`여도 관찰하지 않은 변화를 주장한다 — v1.41 §39.11이 정확히 그 이유로
+   * 본문 문장을 갈랐다.
+   *
+   * 대체 문구는 **새로 만들지 않았다.** `declaredHighlight()`가 이미 쓰는 관형형
+   * (`개인 시간을 중요하게 여기는`)을 그대로 쓴다 — 사용자가 답한 사실 하나뿐이다.
+   */
   const headlineLines =
     focus.key === 'contact' && focus.state === 'GAP'
       ? ['나는 생각보다', '연결감을 중요하게', '보는 사람이었다.']
       : focus.state === 'CHANGE'
-        ? ['나는 관계를 지나며', `${focus.label}의 기준이`, '달라진 사람이었다.']
+        ? hasTemporalComparison(focus.evidenceScope)
+          ? ['나는 관계를 지나며', `${focus.label}의 기준이`, '달라진 사람이었다.']
+          : ['나는', `${withObjectParticle(focus.label)} 중요하게`, '여기는 사람이다.']
         : [`나는 ${focus.label}에`, '생각보다 민감한', '사람이었다.'];
 
   // '말한 나'만 실제 1~5 척도 값이다. '관계 속 나'는 숫자로 수집된 값이 아니므로

@@ -26,8 +26,10 @@ const MESSAGE: Record<AiFailureReason, { title: string; body: string }> = {
     body: '다른 사진으로 바꿔서 다시 시도해볼 수 있어.',
   },
   NO_USABLE_IMAGE: {
+    // v1.44 — '샘플 타일 말고'를 뺐다. S07에서 고를 수 있는 사진이 업로드뿐이라
+    // 사용자가 볼 수 없는 것을 이유로 대면 안내가 아니라 혼란이 된다.
     title: '분석에 쓸 수 있는 사진이 없었어.',
-    body: '샘플 타일 말고 실제 사진을 올려주면 관찰해볼 수 있어.',
+    body: '앨범에서 사진을 다시 올려주면 관찰해볼 수 있어.',
   },
   RATE_LIMIT: {
     title: '요청이 조금 몰렸어.',

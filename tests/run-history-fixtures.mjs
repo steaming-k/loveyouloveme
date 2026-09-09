@@ -636,7 +636,16 @@ console.log('\nSO — 샘플 세션 근거가 샘플 타일과 맞는다');
   check('한 장짜리 근거에 high confidence를 붙이지 않는다', movie?.confidence !== 'high', movie);
 }
 
-console.log('\nSO — S07이 샘플 타일로 분석을 열지 않는다');
+/**
+ * v1.44 — S07에서 **샘플 타일을 고르는 기능이 사라졌다.** 그런데 이 절은 그대로 둔다.
+ *
+ * 검사하는 것은 UI가 아니라 `usablePhotoCount()`/`isPhotoSelectionValid()`의 불변식이고,
+ * 비-upload 사진은 여전히 세션에 들어올 수 있다 — 데모 세션(`loadSampleSession()`)과
+ * 이 변경 이전에 저장된 localStorage 세션(`deserialize()`가 비-upload 사진을 복원한다).
+ * **오히려 지금이 더 중요하다**: 화면에서 고를 수 없게 된 뒤로 그 사진들은 조용히만
+ * 들어오므로, 개수를 잘못 세면 아무도 못 본다.
+ */
+console.log('\nSO — 업로드가 아닌 사진은 분석을 열지 않는다 (데모·구세션 경로)');
 {
   const r = await run({ entries: [] });
   const at = (uploads, samples) =>

@@ -9,6 +9,11 @@ import {
   relationshipNarrativeFingerprint,
 } from '@/lib/aiFingerprint';
 import type { EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
+/**
+ * v1.44 BUG-003 — `meta`가 없는 응답을 방어하는 순수 helper. 이 훅 안에 두면 fixture가
+ * 그 분기를 호출할 수 없어 `@/lib/aiMeta`로 옮겼다(이유는 그 파일 주석에 있다).
+ */
+import { aiModeOf } from '@/lib/aiMeta';
 import { buildCrossSourceInsights } from '@/lib/logic/crossSourceInsights';
 import {
   jobAllowsOutwardQuestions,
@@ -109,7 +114,7 @@ function useNarrativeTask<T extends { meta: { mode: AiMode } }>(input: {
         status: hasItems(cached) ? 'ready' : 'unavailable',
         data: cached,
         reason: null,
-        mode: cached.meta.mode,
+        mode: aiModeOf(cached),
         retry,
       });
       return;
@@ -132,7 +137,7 @@ function useNarrativeTask<T extends { meta: { mode: AiMode } }>(input: {
         status: hasItems(result.data) ? 'ready' : 'unavailable',
         data: result.data,
         reason: null,
-        mode: result.data.meta.mode,
+        mode: aiModeOf(result.data),
         retry,
       });
     });

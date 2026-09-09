@@ -1,3 +1,4 @@
+import { NO_EVIDENCE_COPY } from '@/data/copy';
 import { OBSERVED_SHORT_LABEL } from '@/data/observations';
 import {
   AFFECTION_LABEL,
@@ -13,13 +14,14 @@ import type {
   CurrentRelationshipEvidence,
   DeclaredPreference,
   HardestMoment,
+  MirrorInsight,
   ObservationFeedback,
   ProfileLayer,
   RelationshipExperience,
   RelationshipProfile,
 } from '@/types';
 import { buildMirrorReport } from './mirror';
-import type { RelationshipTense } from './relationshipEvidence';
+import { hasTemporalComparison, type RelationshipTense } from './relationshipEvidence';
 
 /**
  * Relationship Profile (S18)
@@ -178,7 +180,46 @@ export function buildProfileSummary(
   if (d && r) return `${d.chain} ${r}`;
   if (d) return d.alone;
   if (r) return r;
-  return '아직 뚜렷한 특징을 관찰하기엔 정보가 조금 더 필요해.';
+  return NO_EVIDENCE_COPY.summary;
+}
+
+/**
+ * Home(S29) Hero 한 줄 — v1.44 NEW-002
+ *
+ * ══ 왜 함수로 빼는가 ══════════════════════════════════════════════════════
+ *
+ * 예전에는 `home/page.tsx` 안의 삼항 한 줄이었다:
+ *
+ * ```
+ * answers.coreCorrection.trim() ||
+ *   (completed.profile ? (mirror.core?.summary ?? fallbackProfile) : fallbackProfile)
+ * ```
+ *
+ * 두 갈래가 **같은 문장으로 수렴**하는데도 서로 다른 조건 아래 있어서, 그 문장이
+ * 근거 없는 성격 단정이라는 사실이 읽히지 않았다. 우선순위를 한 곳에 세워 두면
+ * 마지막 줄이 '근거가 없을 때 무엇을 말하는가'라는 질문 그 자체가 된다.
+ *
+ * ══ 우선순위 ══════════════════════════════════════════════════════════════
+ *
+ * ```
+ * ① 사용자 수정문(coreCorrection)   — 사용자가 직접 고친 문장이 언제나 이긴다
+ * ② Mirror Core 요약                — 단, 프로필을 완료해 그 화면에 도달했을 때만
+ * ③ 근거 없음                       — 관찰을 발명하지 않는다
+ * ```
+ *
+ * ⚠️ ②의 `completed.profile` 조건은 v1.44에서도 그대로다. 프로필을 완료하지 않은
+ * 사용자에게 Mirror 요약을 앞당겨 보여주지 않는다.
+ */
+export function homeHeroSummary(input: {
+  coreCorrection: string;
+  profileCompleted: boolean;
+  mirrorSummary: string | null;
+}): string {
+  const correction = input.coreCorrection.trim();
+  if (correction) return correction;
+  // 빈 문자열도 '근거 없음'이다 — `?? fallback`은 `''`를 통과시켰다
+  if (input.profileCompleted && input.mirrorSummary?.trim()) return input.mirrorSummary;
+  return NO_EVIDENCE_COPY.summary;
 }
 
 export function buildRelationshipProfile(
@@ -237,6 +278,41 @@ export function buildRelationshipProfile(
  * `/mirror` 본문과 다른 판정을 보여준다 — v1.36이 Teaser에서 고친 것과 같은 종류의
  * 결함(같은 데이터에 두 화면이 다른 말을 하는 것)이다.
  */
+/**
+ * CHANGE 판정의 축 칩 한 칸 — v1.44 NEW-003
+ *
+ * ══ 무엇이 문제였나 ═══════════════════════════════════════════════════════
+ *
+ * 연락 칩의 CHANGE 문구는 `경험 후 기준이 낮아짐`이었다. `stateFor`는
+ * `declared >= 4` + 근거 없음도 CHANGE로 판정하므로(계산은 v1.0부터 그대로),
+ * **관계 경험을 하나도 답하지 않은 사용자에게 시간적 변화를 주장했다** —
+ * `declared.contact=5`만 답한 세션에서 실측됐다(NEW-003).
+ *
+ * v1.41은 이 문장 계열을 `scope`별로 갈랐지만 **Home 칩은 그 작업에서 빠져 있었다.**
+ * 그래서 이 칩은 `'past'`가 아닌 두 scope에서 모두 틀린 말을 하고 있었다.
+ *
+ * ══ 세 갈래 ═══════════════════════════════════════════════════════════════
+ *
+ * ```
+ * scope 'past'     비교할 두 시점이 실제로 있다   → 기존 문구 그대로 (변경 0)
+ * scope 'current'  지금은 안 드러난다고 답했다     → v1.41이 이미 쓰던 문구 재사용
+ * scope 'none'     관계 신호를 확인한 적이 없다   → NO_EVIDENCE_COPY.axis (NEW-002와 같은 규칙)
+ * ```
+ *
+ * ⚠️ **새 카피를 만들지 않았다.** `'current'` 문구는 v1.41이 같은 상태·같은 scope에
+ * 이미 쓰고 있는 것(`MirrorComparisonRow`의 `CURRENT_STATE_TEXT`)이고, `'none'`은
+ * NEW-002가 이 세 축에 세운 중립 문구다.
+ *
+ * ⚠️ **Mirror 본문에서는 이 판정이 그대로 남는다.** 거기에는 근거 칸과 노트가 있어
+ * '무엇을 답했고 왜 비교할 수 없는지'를 말할 수 있다. 칩은 한 칸이라 그 말을 담을
+ * 자리가 없으므로, **담을 수 없는 말을 하지 않는 것**이다 — 판정을 지우는 것이 아니다.
+ */
+function changeChipOf(insight: MirrorInsight, pastText: string): string {
+  if (hasTemporalComparison(insight.evidenceScope)) return pastText;
+  if (insight.evidenceScope === 'current') return '지금은 크게 드러나지 않음';
+  return NO_EVIDENCE_COPY.axis;
+}
+
 export function buildHomeHighlights(
   declared: DeclaredPreference,
   experience: RelationshipExperience,
@@ -257,11 +333,26 @@ export function buildHomeHighlights(
         contact?.state === 'GAP'
           ? '생각보다 중요한 신호'
           : contact?.state === 'CHANGE'
-            ? '경험 후 기준이 낮아짐'
+            ? changeChipOf(contact, '경험 후 기준이 낮아짐')
             : contact?.state === 'MATCH'
               ? '기준이 비슷하게 유지됨'
-              : '아직 뚜렷한 신호 없음',
+              : NO_EVIDENCE_COPY.axis,
     },
+    /**
+     * ⚠️ v1.44 NEW-002 — **마지막 갈래가 답을 발명하고 있었다.**
+     *
+     * `ConflictStyle`은 `now`·`soon`·`space` 셋이고 미입력은 `null`이다. 예전 코드는
+     * `now`·`space`·GAP만 열거하고 **나머지 전부**에 `잠깐 뒤 대화 선호`를 붙였다.
+     * 그 '나머지'에는 실제 답인 `soon`과 **답이 없는 `null`이 같이** 들어 있었다.
+     * 그래서 아무것도 답하지 않은 신규 사용자의 Home에 `갈등 · 잠깐 뒤 대화 선호`가
+     * 떴고(HOME-EMPTY-01), 손상 세션의 `conflict:99`도 같은 문장을 만들었다(BUG-002).
+     *
+     * `soon`을 **명시적으로** 적어 원래 의미를 지키고, 남은 자리는 연락·취미 축과
+     * 같은 중립 문구로 돌린다 — 세 축 중 갈등만 빠져 있었던 것이 결함의 전부다.
+     *
+     * ⚠️ GAP 검사가 `soon`보다 **앞**인 순서는 그대로다. `soon`이면서 GAP인 사용자는
+     * v1.43과 같이 `멈춘 대화에 민감`을 본다.
+     */
     {
       key: '갈등',
       value:
@@ -271,18 +362,20 @@ export function buildHomeHighlights(
             ? '혼자 정리할 시간 필요'
             : conflict?.state === 'GAP'
               ? '멈춘 대화에 민감'
-              : '잠깐 뒤 대화 선호',
+              : declared.conflict === 'soon'
+                ? '잠깐 뒤 대화 선호'
+                : NO_EVIDENCE_COPY.axis,
     },
     {
       key: '취미',
       value:
         hobby?.state === 'CHANGE'
-          ? '관계의 핵심 기준은 아님'
+          ? changeChipOf(hobby, '관계의 핵심 기준은 아님')
           : hobby?.state === 'GAP'
             ? '함께하는 시간이 중요'
             : hobby?.state === 'MATCH'
               ? '기준이 그대로 유지됨'
-              : '아직 뚜렷한 신호 없음',
+              : NO_EVIDENCE_COPY.axis,
     },
   ];
 }

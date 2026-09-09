@@ -25,6 +25,7 @@ import type {
   MbtiLensReport,
   MbtiSelfLens,
   MirrorAxisKey,
+  RelationshipEvidenceScope,
   RelationshipHistoryEntry,
   SessionAnswers,
   TargetAxisKey,
@@ -414,7 +415,7 @@ function resolveHistory(
      * §13 — 문장에 없는 정보가 판정이다. 판정이 다르면 다른 관찰이므로 묶지 않는다.
      * 라벨은 History 화면이 이미 쓰는 어휘와 같다.
      */
-    variant: { key: snapshot.state, label: HISTORY_STATE_PHRASE[snapshot.state] },
+    variant: { key: snapshot.state, label: historyStatePhraseOf(snapshot) },
   };
 }
 
@@ -429,6 +430,29 @@ const HISTORY_STATE_PHRASE: Record<'MATCH' | 'GAP' | 'CHANGE', string> = {
   GAP: '말한 기준보다 크게 반응함',
   CHANGE: '경험 후 우선순위가 옮겨짐',
 };
+
+/**
+ * v1.44 NEW-003 — `history.ts`의 `statePhraseOf`와 **같은 분기를 갖는다.**
+ *
+ * 위 주석이 경고한 그대로다: 같은 것을 두 어휘로 부르면 사용자가 두 개의 다른 판정으로
+ * 읽는다. `history.ts`에 `'none'` 갈래를 추가했으므로 여기도 함께 추가한다 — 한쪽만
+ * 고치면 History 화면과 Premium 근거 목록이 같은 스냅샷을 다르게 부른다.
+ *
+ * ⚠️ `variant.key`는 `snapshot.state` 그대로다. 묶음 기준(판정)은 바뀌지 않고
+ * **부르는 이름만** 바뀐다.
+ */
+function historyStatePhraseOf(snapshot: {
+  state: 'MATCH' | 'GAP' | 'CHANGE';
+  evidenceScope?: RelationshipEvidenceScope;
+}): string {
+  if (snapshot.evidenceScope === 'current' && snapshot.state === 'CHANGE') {
+    return '말한 기준만큼은 드러나지 않음';
+  }
+  if (snapshot.evidenceScope === 'none' && snapshot.state === 'CHANGE') {
+    return '비교할 관계 근거 없음';
+  }
+  return HISTORY_STATE_PHRASE[snapshot.state];
+}
 
 /* ------------------------------------------------------------- target */
 

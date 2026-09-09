@@ -25,6 +25,7 @@ import {
 import { trackEvent } from '@/lib/analytics';
 import { formatEntryDate } from '@/lib/historyFormat';
 import { buildHistoryChanges } from '@/lib/logic/history';
+import { displayStateOf } from '@/lib/logic/mirror';
 import { ROUTES } from '@/lib/routes';
 import { useHistory } from '@/state/HistoryProvider';
 import type { RelationshipHistoryEntry } from '@/types';
@@ -208,7 +209,15 @@ function HistoryEntryView() {
           <section className="flex flex-col gap-2.5">
             <SectionLabel>이때의 Mirror 판정</SectionLabel>
             <ul className="flex flex-col gap-2">
-              {entry.mirrorSnapshot.insights.map((snapshot) => (
+              {entry.mirrorSnapshot.insights.map((snapshot) => {
+                /**
+                 * ⚠️ v1.44 R-9 — 저장된 데이터(`snapshot.state`)는 그대로 두고
+                 * **부르는 이름만** 표시 정책을 통과시킨다. legacy 스냅샷은
+                 * `evidenceScope`가 없어 `displayStateOf`가 판정을 그대로 돌려준다 —
+                 * 기존 기록의 화면이 소급해서 달라지지 않는다.
+                 */
+                const shownState = displayStateOf(snapshot.state, snapshot.evidenceScope);
+                return (
                 <li
                   key={snapshot.axis}
                   className="flex flex-col gap-1.5 rounded-row border border-line bg-surface p-3.5"
@@ -218,15 +227,26 @@ function HistoryEntryView() {
                       {MIRROR_AXES.find((axis) => axis.key === snapshot.axis)?.label ??
                         snapshot.axis}
                     </span>
-                    <Tag tone={snapshot.state === 'GAP' ? 'friction' : snapshot.state === 'MATCH' ? 'mint' : 'brand'}>
-                      {snapshot.state}
+                    <Tag
+                      tone={
+                        shownState === 'GAP'
+                          ? 'friction'
+                          : shownState === 'MATCH'
+                            ? 'mint'
+                            : shownState === 'UNKNOWN'
+                              ? 'neutral'
+                              : 'brand'
+                      }
+                    >
+                      {shownState}
                     </Tag>
                   </div>
                   <p className="text-[12.5px] keep-all leading-relaxed text-ink-sub">
                     {snapshot.relationshipSignal}
                   </p>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </section>
           )}

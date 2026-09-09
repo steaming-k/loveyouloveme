@@ -16,6 +16,8 @@ import { UT_MODE } from '@/lib/env';
 import { clearPreviewUnlocks } from '@/lib/premiumAccess';
 import { clearPremiumIntents } from '@/lib/premiumIntentStore';
 import { revisitHref } from '@/lib/resultView';
+import { displayStateOf } from '@/lib/logic/mirror';
+import { homeHeroSummary } from '@/lib/logic/profile';
 import { resolveRelationshipStage } from '@/lib/logic/relationshipStage';
 import { soloModeOf } from '@/lib/logic/soloMode';
 import { ROUTES } from '@/lib/routes';
@@ -167,9 +169,15 @@ export default function HomePage() {
     };
   })();
 
-  const summary =
-    answers.coreCorrection.trim() ||
-    (answers.completed.profile ? (mirror.core?.summary ?? HOME_COPY.fallbackProfile) : HOME_COPY.fallbackProfile);
+  /**
+   * v1.44 NEW-002 — 우선순위 판단은 `homeHeroSummary()` 한 곳에 있다.
+   * 근거가 없으면 성격을 단정하지 않고 '아직 근거가 부족하다'고 말한다.
+   */
+  const summary = homeHeroSummary({
+    coreCorrection: answers.coreCorrection,
+    profileCompleted: answers.completed.profile,
+    mirrorSummary: mirror.core?.summary ?? null,
+  });
 
   const answeredDeclared = Object.values(answers.declared).filter((value) => value !== null).length;
   const experienceCount = answers.experience.skipped
@@ -201,7 +209,17 @@ export default function HomePage() {
     answers.completed.mirror && mirror.available && mirror.teaser
       ? {
           axisLabel: mirror.teaser.axisLabel,
-          state: mirror.insights.find((insight) => insight.key === mirror.teaser?.axisKey)?.state ?? null,
+          /**
+           * ⚠️ v1.44 R-9 — 비교 근거가 없는 판정을 `CHANGE`라고 부르지 않는다.
+           * 이 슬롯에는 **이미 중립 fallback이 있다**(아래 `?? '관찰'`) — 새 문구를
+           * 만들지 않고 그 자리로 흘려보낸다.
+           */
+          state: (() => {
+            const focus = mirror.insights.find((insight) => insight.key === mirror.teaser?.axisKey);
+            if (!focus) return null;
+            const shown = displayStateOf(focus.state, focus.evidenceScope);
+            return shown === 'UNKNOWN' ? null : shown;
+          })(),
           note: mirror.core?.summary ?? '',
         }
       : null;

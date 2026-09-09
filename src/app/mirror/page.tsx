@@ -39,6 +39,7 @@ import { STAGE_JOB_COPY } from '@/data/stageCopy';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { isRevisit, revisitSource } from '@/lib/resultView';
 import { RESULT_ANCHORS, ROUTES } from '@/lib/routes';
+import { canUseAiAxisNarrative, canUseAiHeadline } from '@/lib/logic/mirror';
 import { isLowData } from '@/lib/validation';
 import { premiumFeatureState } from '@/services/premiumService';
 import { hasDeepConnection } from '@/services/premiumConnections';
@@ -127,12 +128,80 @@ function MirrorView() {
     itemCount: narrative.data?.narratives.length ?? 0,
   });
 
+  /**
+   * Core headline로 쓸 AI 문장 — **소비 게이트** (v1.44 · R-11)
+   *
+   * ══ 왜 여기인가 ═══════════════════════════════════════════════════════════
+   *
+   * NEW-003은 결정론 headline(`buildHeadline`)의 시제 주장을 닫았다. 그런데 이 화면의
+   * 우선순위는 `coreCorrection || aiHeadline || mirror.core.headline`이라
+   * **AI가 성공하면 그 수정이 가려진다.** 실측(`mode: 'real'`):
+   *
+   * ```
+   * focus 축   contact · state CHANGE · scope 'none'
+   * AI headline  연락의 중요성이 가장 두드러진 변화로 보여      ← 비교 근거 0
+   * ```
+   *
+   * 그리고 이 문장은 `handleSave()`에서 `coreInsightOriginal`로 **History에 저장되고**,
+   * `/home`의 RELATIONSHIP HISTORY 카드에 미리보기로 다시 나온다. 한 번 새면 기록에
+   * 남는다.
+   *
+   * ══ 규칙 ═════════════════════════════════════════════════════════════════
+   *
+   * > **AI_OUTPUT은 deterministic evidence boundary를 넘을 수 없다.**
+   *
+   * 이미 이 memo가 그 규칙의 절반을 지키고 있었다 — `evidenceRefs`가 하나도 resolve되지
+   * 않으면 문장을 버린다(v1.27 `AI_OUTPUT ⊆ DETERMINISTIC_EVIDENCE`). R-11이 드러낸
+   * 것은 **경계에 시제 축이 빠져 있었다**는 것이다: 근거를 정확히 지목해도, 그 근거로
+   * 시간적 변화를 주장할 수 없으면 그 문장은 경계 밖이다.
+   *
+   * 그래서 `CHANGE` focus에 시간 비교 근거가 없으면 **소비하지 않고** NEW-003에서
+   * 안전해진 결정론 headline으로 폴백한다.
+   *
+   * ══ 무엇을 바꾸지 않는가 ══════════════════════════════════════════════════
+   *
+   * ```
+   * AI 요청 · 프롬프트 · promptVersion · 스캐너 · 캐시   변경 0
+   * 내부 CHANGE state · SavedState                       변경 0
+   * ```
+   *
+   * **모델은 계속 같은 요청을 받고 같은 답을 만든다.** 바뀌는 것은 **소비자가 그 답을
+   * 쓸지**뿐이다 — v1.44 BUG-003이 `meta` 계약 위반에 대해 내린 것과 같은 종류의 판단이다.
+   *
+   * ⚠️ `MATCH`·`GAP` focus는 **손대지 않는다.** 그 판정의 문장은 시제를 주장하지 않으므로
+   * 시간 비교 근거를 요구할 이유가 없다(TEMP-AI-03).
+   *
+   * ⚠️ `'current'`도 함께 막힌다. `hasTemporalComparison`이 참인 scope는 `'past'`뿐이고,
+   * 프롬프트는 CHANGE를 `경험에서는 우선순위가 옮겨감`으로 정의해 **모델을 시제 해석으로
+   * 유도**한다 — v1.41 §39.11이 `'current'`에 대해 결정론 문장을 가른 것과 같은 이유다.
+   */
   const aiHeadline = useMemo(() => {
     const core = narrative.data?.core;
     if (!core) return null;
     if (resolveEvidenceRefs(core.evidenceRefs, evidenceContext).length === 0) return null;
+
+    const focus = mirror.insights.find((insight) => insight.key === mirror.teaser?.axisKey);
+    if (!canUseAiHeadline(focus)) return null;
+
     return core.headline;
-  }, [narrative.data, evidenceContext]);
+  }, [narrative.data, evidenceContext, mirror.insights, mirror.teaser]);
+
+  /**
+   * ⚠️ v1.44 R-12 — Core AI **서술 본문**도 같은 경계를 따른다.
+   *
+   * R-11은 `aiHeadline`(= `core.headline`)을 닫았지만, 그 아래 `CoreInsightNarrativeView`가
+   * 렌더하는 것은 **같은 객체의 다른 필드**(`core.summary`)이고 게이트를 받지 않았다.
+   * 실측에서 축 서술을 막은 뒤에도 Core 카드에
+   * `연락에 대한 중요성이 이전 관계와 비교해 변화한 것으로 나타나.`가 남았다 —
+   * focus 축은 `CHANGE`·`scope 'none'`이었다.
+   *
+   * 술어는 축 서술과 **같다.** Core 서술은 focus 축을 설명하는 문장이므로 그 축의
+   * 근거 경계를 그대로 따른다.
+   */
+  const focusInsight = useMemo(
+    () => mirror.insights.find((insight) => insight.key === mirror.teaser?.axisKey),
+    [mirror.insights, mirror.teaser],
+  );
 
   const lowData = isLowData(answers);
 
@@ -359,12 +428,23 @@ function MirrorView() {
                   insight={insight}
                   index={index}
                   tense={tense}
+                  /**
+                   * ⚠️ v1.44 R-12 — 축별 AI 서술도 **결정론 근거 경계를 따른다.**
+                   *
+                   * 비교 근거가 없는 `CHANGE` 축에서는 AI 문장을 소비하지 않는다. 지우는
+                   * 것은 이 블록 하나이고, 위의 결정론 노트(`insight.note`)는 그대로
+                   * 남는다 — 그 행이 무엇을 답했고 왜 비교할 수 없는지는 계속 말해야 한다.
+                   *
+                   * 규칙은 R-11의 Core headline과 **같은 술어**를 쓴다(`aiMayClaimChange`).
+                   */
                   footer={
-                    <MirrorAxisNarrative
-                      axis={insight.key}
-                      narratives={narrative.data?.narratives}
-                      status={narrative.status}
-                    />
+                    canUseAiAxisNarrative(insight) ? (
+                      <MirrorAxisNarrative
+                        axis={insight.key}
+                        narratives={narrative.data?.narratives}
+                        status={narrative.status}
+                      />
+                    ) : null
                   }
                 />
               ))}
@@ -403,7 +483,10 @@ function MirrorView() {
             ) : null}
           </section>
 
-          <CoreInsightNarrativeView core={narrative.data?.core} status={narrative.status} />
+          <CoreInsightNarrativeView
+            core={canUseAiAxisNarrative(focusInsight) ? narrative.data?.core : undefined}
+            status={narrative.status}
+          />
 
           <EvidenceList items={evidence} label="이렇게 생각한 이유" />
 

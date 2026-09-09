@@ -1913,10 +1913,28 @@ async function main() {
       offenders.length === 0,
       offenders,
     );
+    /**
+     * ⚠️ v1.44 R-12 — **패턴을 넓혔다. 불변식은 그대로다.**
+     *
+     * 이 검사가 지키는 것은 `narrative.data.core`를 렌더 컴포넌트로 넘기는 자리가
+     * **하나뿐**이라는 것이다(게이트가 한 지점에 있어야 화면과 기록이 갈리지 않는다).
+     *
+     * v1.43은 그것을 리터럴 `core={narrative.data?.core}`로 고정했는데, R-12에서 그 자리에
+     * **소비 게이트가 붙었다**:
+     *
+     * ```
+     * core={canUseAiAxisNarrative(focusInsight) ? narrative.data?.core : undefined}
+     * ```
+     *
+     * 리터럴은 깨지고 불변식은 유지된다 — 여전히 넘기는 자리는 한 곳이다. 그래서
+     * `core=` prop 안에서 `narrative.data?.core`를 넘기는 횟수를 센다(게이트 래퍼 허용).
+     * 게이트 자체는 `test:trust` TEMP-AI-AXIS-06이 별도로 고정한다.
+     */
+    const corePropCount = countOf(mirrorPage, /core=\{[^}]*narrative\.data\?\.core/g);
     check(
       'CC7 — narrative.data.core를 렌더 컴포넌트로 넘기는 곳이 Core 렌더러 하나뿐이다',
-      countOf(mirrorPage, /core=\{narrative\.data\?\.core\}/g) === 1,
-      `${countOf(mirrorPage, /core=\{narrative\.data\?\.core\}/g)}건`,
+      corePropCount === 1,
+      `${corePropCount}건`,
     );
     /** §7 — raw stage/job/status가 이 작업으로 재유입되지 않았다 */
     for (const [label, source] of [

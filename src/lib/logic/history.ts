@@ -207,12 +207,30 @@ const CURRENT_SCOPE_STATE_PHRASE: Partial<Record<SavedState, string>> = {
   CHANGE: '말한 기준만큼은 드러나지 않음',
 };
 
+/**
+ * v1.44 NEW-003 — 비교할 관계 근거가 **아예 없던** 스냅샷의 CHANGE 문구.
+ *
+ * `evidenceScope: 'none'`으로 저장된 스냅샷도 위 `STATE_PHRASE`의
+ * `경험 후 우선순위가 옮겨짐`을 쓰고 있었다. 그 스냅샷이 기록한 사실은 '말한 기준은
+ * 높은데 비교할 관계 근거가 없었다'이므로, 기록을 다시 읽을 때도 그 사실대로 부른다.
+ *
+ * ⚠️ **v1.40 이전 스냅샷은 글자 하나 달라지지 않는다.** 그 기록에는 `evidenceScope`
+ * 필드가 아예 없어 `undefined`이고, 아래 분기는 값이 `'none'`인 경우만 잡는다 —
+ * `test:history` 100건이 그대로 회귀 기준으로 남는 근거다.
+ */
+const NO_EVIDENCE_SCOPE_STATE_PHRASE: Partial<Record<SavedState, string>> = {
+  CHANGE: '비교할 관계 근거 없음',
+};
+
 function statePhraseOf(
   state: SavedState,
   snapshot: HistoryMirrorInsightSnapshot | undefined,
 ): string {
   if (snapshot?.evidenceScope === 'current') {
     return CURRENT_SCOPE_STATE_PHRASE[state] ?? STATE_PHRASE[state];
+  }
+  if (snapshot?.evidenceScope === 'none') {
+    return NO_EVIDENCE_SCOPE_STATE_PHRASE[state] ?? STATE_PHRASE[state];
   }
   return STATE_PHRASE[state];
 }

@@ -4,6 +4,7 @@ import {
   MIRROR_NOTE,
 } from '@/data/axes';
 import { adaptiveOptionLabel } from '@/data/adaptive';
+import { NO_EVIDENCE_COPY } from '@/data/copy';
 import { selfLevelOf } from './firstContact';
 import { withObjectParticle } from '@/lib/korean';
 import type {
@@ -22,6 +23,8 @@ import type {
 } from '@/types';
 import {
   hasCurrentEvidence,
+  hasRelationshipEvidence,
+  hasTemporalComparison,
   NO_CURRENT_RELATIONSHIP,
   relationshipSignalTextOf,
   resolveAxisEvidence,
@@ -194,6 +197,27 @@ function noteFor(input: {
       : `${label}에 대해 말한 기준과 ${when} 답한 내용이 같은 방향이야.`;
   }
 
+  /**
+   * ⚠️ v1.44 NEW-003 — **`scope === 'none'`이 여기로 떨어지고 있었다.**
+   *
+   * `MIRROR_NOTE[*].CHANGE`는 전부 `경험 후 …` 계열이고, 그건 `scope === 'past'`
+   * (이전 관계에서 이 항목을 꼽았다)일 때만 성립하는 해석이다. 관계 신호를 확인한
+   * 적이 없는 축에 그 문장을 붙이면 **일어났는지 확인하지 못한 변화를 주장한다** —
+   * v1.41이 `'current'`에 대해 내린 것과 같은 판단인데, 그때 `'none'`은 함께 보지
+   * 않았다.
+   *
+   * 실측(`declared.contact=5` · 관계 경험 0):
+   * `연락에 대한 기준이 경험 후 낮아졌어.` ← 같은 행의 근거 칸은
+   * `이전 관계에서 연락을 특별히 중요한 요소로 꼽지는 않았어`였다. **한 행이 서로
+   * 반대되는 말을 했다.**
+   *
+   * ⚠️ `scope === 'past'`의 문장은 **한 글자도 바꾸지 않는다** — 그 사용자에게는
+   * 비교할 두 시점이 실제로 있다(fixture E0 · TEMP-04).
+   */
+  if (!hasTemporalComparison(scope)) {
+    return `${withObjectParticle(label)} 중요하게 여긴다고 답했어. 이 항목에서는 관계 신호를 아직 확인하지 못했으니, 비교는 하지 않을게.`;
+  }
+
   return MIRROR_NOTE[axis][state];
 }
 
@@ -264,9 +288,18 @@ function buildHeadline(focus: MirrorInsight): string {
      * 근거가 지금 관계 답변이면 확인된 것은 동시점의 불일치뿐이므로, 관찰하지 않은
      * 변화를 헤드라인으로 만들지 않는다. 과거 근거 사용자의 문장은 그대로다.
      */
-    return focus.evidenceScope === 'current'
-      ? `너는 ${withObjectParticle(focus.label)} 중요하게 여긴다고 말하지만, 지금 관계에서는 그 장면이 잘 드러나지 않는 사람일지도 몰라.`
-      : `너는 ${withObjectParticle(focus.label)} 중요하게 여긴다고 말했지만, 경험 후에는 우선순위가 옮겨간 사람일지도 몰라.`;
+    if (focus.evidenceScope === 'current') {
+      return `너는 ${withObjectParticle(focus.label)} 중요하게 여긴다고 말하지만, 지금 관계에서는 그 장면이 잘 드러나지 않는 사람일지도 몰라.`;
+    }
+    /**
+     * ⚠️ v1.44 NEW-003 — `'none'`도 아래 과거형 headline을 쓰고 있었다.
+     * 비교할 근거가 없으면 **관찰 자체가 없다.** 성격을 추측하는 대신 답한 사실과
+     * 아직 비교할 수 없다는 상태를 그대로 말한다.
+     */
+    if (!hasTemporalComparison(focus.evidenceScope)) {
+      return `너는 ${withObjectParticle(focus.label)} 중요하게 여긴다고 답했어. 그게 관계에서 어떻게 나타나는지는 아직 비교할 근거가 없어.`;
+    }
+    return `너는 ${withObjectParticle(focus.label)} 중요하게 여긴다고 말했지만, 경험 후에는 우선순위가 옮겨간 사람일지도 몰라.`;
   }
   return `너는 ${focus.label}에 대해 말한 기준과 관계에서의 반응이 꽤 겹치는 사람일지도 몰라.`;
 }
@@ -278,6 +311,22 @@ function buildSummary(focus: MirrorInsight): string {
   if (focus.state === 'MATCH') {
     return `${focus.label}에 대해 말한 기준이 실제 관계에서도 비슷하게 나타났어.`;
   }
+  /**
+   * ⚠️ v1.44 NEW-003 — **이 한 줄이 Home Hero로 나간다.**
+   *
+   * `실제 관계에서의 반응이 조금 달랐어`는 반응이 관찰됐다고 전제한다. 관계 신호가
+   * 없는 축에서는 사실이 아니고, 더 나쁘게는 `mirror.core`가 non-null이 되면서
+   * **NEW-002가 세운 Home Hero의 neutral 상태를 우회했다** — 아무 관계 경험도 답하지
+   * 않은 사용자의 Hero에 근거 없는 비교 서술이 다시 떴다(실측).
+   *
+   * 새 카피를 만들지 않는다. NEW-002가 같은 자리에 쓰기로 한 문장을 그대로 쓴다.
+   *
+   * ⚠️ 술어는 `hasRelationshipEvidence`다 — `hasTemporalComparison`이 아니다. 이 문장이
+   * 주장하는 것은 시제가 아니라 **반응의 존재**이므로, `지금 관계에서 자주 그런다`고
+   * 직접 답한 사용자(scope `'current'`)의 GAP 요약은 그대로 남아야 한다. 처음에 전자를
+   * 썼다가 그 회귀를 실측으로 잡았다.
+   */
+  if (!hasRelationshipEvidence(focus.evidenceScope)) return NO_EVIDENCE_COPY.summary;
   return `${focus.label}에 대해 말한 기준과 실제 관계에서의 반응이 조금 달랐어.`;
 }
 
@@ -332,6 +381,123 @@ export function declaredPhraseOf(
  * 갖고 있지 않은 호출부(과거 fixture·`profile.ts`)는 `NO_CURRENT_RELATIONSHIP`을
  * **명시적으로** 넘긴다 — 코드에 "여기는 현재 근거가 없다"가 보이게 하려는 것이다.
  */
+/**
+ * **내부 판정 이름 → 사용자에게 보여줄 상태 이름** (v1.44 · R-9)
+ *
+ * ══ 무엇이 남아 있었나 ═══════════════════════════════════════════════════
+ *
+ * NEW-003은 시제 **문장**을 전부 scope 술어 뒤로 보냈다. 그런데 화면에는 문장 말고
+ * **상태 이름 자체**가 그대로 찍히는 자리가 네 곳 있었다(Mirror 행 배지 · Home 최근
+ * 분석 카드 · History 스냅샷 배지 · Mirror 공유 카드). 실측하면 이렇게 나왔다:
+ *
+ * ```
+ * 연락   [CHANGE]                                    ← 배지
+ *        이전 관계에서 연락을 특별히 중요한 요소로 꼽지는 않았어   ← 근거
+ *        연락: 말한 나 5점. 비교할 관계 근거 없음.              ← 스크린리더(NEW-003)
+ * ```
+ *
+ * **한 행 안에서 배지가 근거와 스크린리더 문구를 반박했다.** `CHANGE`라는 단어 자체가
+ * temporal change claim이므로, 문장만 중립화한 것은 절반이었다.
+ *
+ * ══ 무엇을 바꾸고 무엇을 안 바꾸는가 ═════════════════════════════════════
+ *
+ * > **내부 state는 언제나 `CHANGE`다. 바뀌는 것은 그것을 부르는 이름뿐이다.**
+ *
+ * `stateFor`·`resolveAxisEvidence`·`MirrorInsight.state`·History `SavedState`·저장된
+ * 스냅샷 데이터는 **한 줄도 손대지 않는다.** v1.41이 이름과 계산을 그대로 두고 문장만
+ * 가른 것과 같은 이유다 — 이름을 바꾸면 저장된 기록의 의미가 소급해서 달라진다.
+ *
+ * **새 enum을 만들지 않았다.** 돌려주는 값은 이미 있는 `MirrorState` 멤버
+ * `'UNKNOWN'`이고, `STATE_TAG`·`STATE_DOT`·`STATE_TEXT`에 이미 자리가 있다
+ * (`STATE_TEXT.UNKNOWN`은 `관측 정보 부족` — `/history/[id]`가 이미 화면에서 쓰는
+ * 어휘다). 아이콘도 자연히 사라진다: 아래 화살표(`ChevronDown` = 낮아짐)는
+ * `CHANGE`에만 붙어 있었고, 그 화살표 자체가 방향 주장이었다.
+ *
+ * ⚠️ **legacy 스냅샷은 글자 하나 달라지지 않는다.** v1.40 이전 기록에는
+ * `evidenceScope` 필드가 없어 `undefined`이고, 그 경우 판정 이름을 그대로 돌려준다 —
+ * `test:history` 100건이 그대로 회귀 기준으로 남는 근거다.
+ */
+export function displayStateOf(
+  state: MirrorState,
+  scope: RelationshipEvidenceScope | undefined,
+): MirrorState {
+  if (scope === undefined) return state;
+  return state === 'CHANGE' && !hasRelationshipEvidence(scope) ? 'UNKNOWN' : state;
+}
+
+/**
+ * 이 focus 축에서 **AI headline을 소비해도 되는가** (v1.44 · R-11)
+ *
+ * ══ 규칙 ═════════════════════════════════════════════════════════════════
+ *
+ * > **AI_OUTPUT은 deterministic evidence boundary를 넘을 수 없다.**
+ *
+ * v1.27이 세운 `AI_OUTPUT ⊆ DETERMINISTIC_EVIDENCE`는 '모델이 지목한 근거가 실재하는가'
+ * 를 검사했다. R-11이 드러낸 것은 그 경계에 **시제 축이 빠져 있었다**는 것이다 —
+ * 근거를 정확히 지목해도, 그 근거로 시간적 변화를 주장할 수 없으면 경계 밖이다.
+ *
+ * 실측(`mode: 'real'`): focus 축이 `CHANGE` · `scope 'none'`인데 모델이
+ * `연락의 중요성이 가장 두드러진 변화로 보여`를 냈고, 그 문장이 화면의 결정론 headline을
+ * 가리고 History `coreInsightOriginal`로 저장돼 `/home`에 다시 나왔다.
+ *
+ * ══ 왜 순수 함수인가 ══════════════════════════════════════════════════════
+ *
+ * 게이트가 `mirror/page.tsx`(`'use client'`)의 `useMemo` 안에만 있으면 fixture가 그
+ * 분기를 호출할 수 없다 — v1.44 BUG-003에서 `aiModeOf`를 옮긴 것과 같은 이유다.
+ * 판정이 없는 술어 하나만 옮긴다.
+ *
+ * ⚠️ **`MATCH`·`GAP`은 언제나 허용이다.** 그 판정의 문장은 시제를 주장하지 않으므로
+ * 시간 비교 근거를 요구할 이유가 없다 — 기존 AI headline에 회귀를 만들지 않는다.
+ *
+ * ⚠️ **AI 요청·프롬프트·promptVersion·스캐너·캐시는 이 함수와 무관하다.** 모델은 계속
+ * 같은 요청을 받고 같은 답을 만든다. 바뀌는 것은 **소비자가 그 답을 쓸지**뿐이다.
+ */
+export function canUseAiHeadline(focus: MirrorInsight | undefined): boolean {
+  return aiMayClaimChange(focus);
+}
+
+/**
+ * 이 축의 **AI 축별 서술**(`러비가 이렇게 봤어`)을 소비해도 되는가 (v1.44 · R-12)
+ *
+ * ══ 왜 필요한가 ═══════════════════════════════════════════════════════════
+ *
+ * R-9는 배지를, R-11은 Core headline을 닫았다. 그런데 **같은 행 안에** 하나가 더 남아
+ * 있었다 — 축 서술이다. `scope 'none'` 행의 실측:
+ *
+ * ```
+ * 연락  [UNKNOWN]  아직 확인 전                                   ← R-9가 닫았다
+ *       연락을 중요하게 여긴다고 답했어. … 비교는 하지 않을게.      ← 결정론(NEW-003)
+ *       러비가 이렇게 봤어
+ *       이 부분에서 변화가 있을 수 있어.                          ← ❌ 남아 있었다
+ * ```
+ *
+ * **한 행이 스스로를 반박한다** — 결정론 노트는 '비교하지 않는다'고 말하고, 바로 아래
+ * AI 문장은 변화가 있을 수 있다고 말한다. R-9가 배지에서 닫은 것과 같은 형태의 불일치다.
+ *
+ * ⚠️ **결정론 노트는 그대로 보여준다.** 지우는 것은 AI 문장 하나뿐이다 — 그 행이 무엇을
+ * 답했고 왜 비교할 수 없는지는 계속 말해야 한다.
+ */
+export function canUseAiAxisNarrative(insight: MirrorInsight | undefined): boolean {
+  return aiMayClaimChange(insight);
+}
+
+/**
+ * **규칙은 하나다** (v1.44 · R-11 · R-12)
+ *
+ * > 시간적 변화를 주장하는 AI 문장은 시간 비교 근거가 있을 때만 소비한다.
+ *
+ * Core headline과 축별 서술이 같은 규칙을 쓴다. 두 곳에 각각 조건을 적으면 언젠가
+ * 한쪽만 고쳐지고, 그때 **같은 화면이 두 기준으로 판단**한다 — v1.44가 반복해서 만난
+ * 실패 형태다(NEW-002의 세 축 중 하나, NEW-003의 scope 하나, R-9의 배지 하나).
+ *
+ * ⚠️ `MATCH`·`GAP`은 상태만으로 통과한다. 그 판정의 문장은 시제를 주장하지 않으므로
+ * 시간 비교 근거를 요구할 이유가 없다 — 요구하면 기능 삭제가 된다.
+ */
+function aiMayClaimChange(insight: MirrorInsight | undefined): boolean {
+  if (!insight) return true;
+  return insight.state !== 'CHANGE' || hasTemporalComparison(insight.evidenceScope);
+}
+
 export function buildMirrorReport(
   declared: DeclaredPreference,
   experience: RelationshipExperience,

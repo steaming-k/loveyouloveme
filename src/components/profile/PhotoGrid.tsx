@@ -8,29 +8,37 @@ import {
   PHOTO_ACCEPTED_TYPES,
   PHOTO_MAX_BYTES,
   PHOTO_MAX_COUNT,
-  SAMPLE_PHOTOS,
 } from '@/data/samplePhotos';
-import { cn } from '@/lib/cn';
 import { useSession } from '@/state/SessionProvider';
 import type { PhotoAsset } from '@/types';
 
 /**
- * 사진 입력 (S07)
- * 실제 브라우저 file input으로 업로드하고, 업로드 없이도 흐름을 진행할 수 있게
- * 샘플 타일을 함께 제공한다.
+ * 사진 입력 (S07) — **실제 업로드 사진만 다룬다.**
  *
  * ⚠️ v1.6부터 실제 AI Vision이 붙었다 — 업로드한 사진은 **분석을 위해 전송된다.**
  * 다만 분석 후 앱에는 관찰 결과와 근거만 남고 사진 원본은 저장하지 않는다(§31).
- * 샘플 타일은 실제 이미지 파일이 아니라 색 타일이므로 전송 대상이 아니다.
+ *
+ * ⚠️ **v1.44 — 고를 수 있는 샘플 타일을 없앴다.** 예전에는 색 타일 8개를 격자에 함께 그려
+ * 선택하게 했는데, 그 타일은 실제 이미지가 아니라 `prepareImagesForAnalysis()`가 전부
+ * 걸러냈다. 즉 **고를 수 있지만 분석에는 들어가지 않는 입력**이었고, v1.37은 그 모순을
+ * 없애는 대신 설명(배지 · `N개는 분석 제외` · 전용 에러 문구)으로 덮었다. 고를 수 있는
+ * 것은 분석되는 것이어야 한다 — 설명을 늘리는 대신 선택 기능 자체를 뺐다.
+ *
+ * `SAMPLE_PHOTOS` 자체는 남아 있다. 데모 세션(`loadSampleSession()`)과 dev fixture가
+ * 쓰는 데이터이고, 그 둘은 S07의 사용자 입력 경로가 아니다.
  */
 export function PhotoGrid() {
-  const { answers, toggleSamplePhoto, addUploadedPhotos, removePhoto } = useSession();
+  const { answers, addUploadedPhotos, removePhoto } = useSession();
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const selectedIds = new Set(answers.photos.map((photo) => photo.id));
   const uploads = answers.photos.filter((photo) => photo.source === 'upload');
-  const remaining = PHOTO_MAX_COUNT - answers.photos.length;
+  /**
+   * 상한은 **업로드 사진 기준**이다. 세션에 비-upload 사진이 남아 있을 수 있는데
+   * (데모 세션 · 이 변경 이전에 저장된 localStorage), 전체 길이로 세면 화면에 보이지도
+   * 않는 사진이 업로드 칸을 잡아먹는다.
+   */
+  const remaining = PHOTO_MAX_COUNT - uploads.length;
 
   const handleFiles = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
@@ -110,59 +118,40 @@ export function PhotoGrid() {
                 </div>
               )}
             </div>
+            {/*
+              v1.44 NEW-001 — **보이는 원(28px)은 그대로, 탭 영역만 44×44로 넓혔다.**
+
+              QA 기준은 터치 타깃 ≥44px인데 이 버튼만 `h-7`(28px)이었다. 아이콘을 키우면
+              썸네일을 가리므로 hit area만 키운다.
+
+              ⚠️ 바깥으로 넓히지 않는다. 격자 `gap`이 7px이라 44px 상자를 원 중심에 맞춰
+              키우면 옆 칸 썸네일 위로 14px 넘어간다 — 옆 사진 모서리를 누르면 이 사진이
+              지워진다. 그래서 상자를 `-top-1 -right-1`(-4px)에 걸고 **안쪽으로** 넓혀
+              gutter(7px) 안에 머무르게 했다. 원은 4px만 걸쳐 나오고 위치는 2px 이동한다.
+            */}
             <button
               type="button"
               onClick={() => removePhoto(photo.id)}
               aria-label={`${photo.label} 사진 제거`}
-              className="absolute -top-1.5 -right-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-ink text-white shadow-md"
+              className="absolute -top-1 -right-1 flex h-11 w-11 items-start justify-end"
             >
-              <X size={13} aria-hidden />
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-ink text-white shadow-md">
+                <X size={13} aria-hidden />
+              </span>
             </button>
           </div>
         ))}
 
-        {SAMPLE_PHOTOS.map((photo) => {
-          const selected = selectedIds.has(photo.id);
-          return (
-            <button
-              key={photo.id}
-              type="button"
-              role="checkbox"
-              aria-checked={selected}
-              onClick={() => {
-                if (!selected && remaining <= 0) {
-                  showToast(`사진은 최대 ${PHOTO_MAX_COUNT}장까지 고를 수 있어`, 'warning');
-                  return;
-                }
-                toggleSamplePhoto(photo.id);
-              }}
-              style={{ backgroundColor: photo.tone }}
-              className={cn(
-                'relative flex aspect-square items-end rounded-[10px] border-2 p-[7px] text-left text-[10px] text-[#8C877D] transition-colors',
-                selected ? 'border-brand' : 'border-transparent',
-              )}
-            >
-              {photo.label}
-              {selected ? (
-                <span
-                  className="absolute top-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-brand text-[9px] font-bold text-white"
-                  aria-hidden
-                >
-                  ✓
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
-
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          className="flex aspect-square flex-col items-center justify-center gap-1 rounded-[10px] border border-dashed border-line-strong text-[11px] text-ink-muted active:bg-sunken"
-        >
-          <Plus size={17} aria-hidden />
-          앨범
-        </button>
+        {remaining > 0 ? (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex aspect-square flex-col items-center justify-center gap-1 rounded-[10px] border border-dashed border-line-strong text-[11px] text-ink-muted active:bg-sunken"
+          >
+            <Plus size={17} aria-hidden />
+            앨범
+          </button>
+        ) : null}
       </div>
     </div>
   );

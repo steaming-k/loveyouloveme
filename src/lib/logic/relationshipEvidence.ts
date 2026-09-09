@@ -102,6 +102,66 @@ export const NO_CURRENT_RELATIONSHIP: CurrentRelationshipEvidence = {
   askedAt: null,
 };
 
+/**
+ * 이 근거로 **서로 다른 시점을 비교할 수 있는가** (v1.44 · NEW-003)
+ *
+ * ══ 왜 필요한가 ═══════════════════════════════════════════════════════════
+ *
+ * `경험 후`·`예전보다`·`낮아졌어`처럼 Before/After를 주장하는 문장은 **두 시점의 실제
+ * 근거가 있을 때만** 성립한다. 그런데 v1.41이 시제 문장을 가를 때 쓴 조건은
+ * `scope === 'current'`였고, 그 **else 쪽에 `'none'`이 함께 들어 있었다**:
+ *
+ * ```
+ * scope 'past'     이전 관계에서 이 항목을 꼽았다        → 비교할 두 시점이 있다
+ * scope 'current'  지금 관계에 대해 답했다               → v1.41이 갈랐다 (동시점 불일치)
+ * scope 'none'     관계 신호를 확인한 적이 없다          → ❌ 과거형 문장으로 떨어졌다
+ * ```
+ *
+ * 그래서 관계 경험을 하나도 답하지 않고 `declared.contact = 5`만 답한 세션에서
+ * `연락에 대한 기준이 경험 후 낮아졌어.` · `경험 후에는 우선순위가 옮겨간 사람일지도
+ * 몰라.`가 나왔다(v1.44 QA · NEW-003). **같은 행의 근거 칸은 이미 사실을 말하고 있었다**
+ * — `이전 관계에서 연락을 특별히 중요한 요소로 꼽지는 않았어`. 근거와 해석이 서로
+ * 반대되는 말을 했다.
+ *
+ * ══ 왜 술어로 빼는가 ══════════════════════════════════════════════════════
+ *
+ * `scope !== 'current'`는 **blocklist**다 — scope가 하나 늘어날 때마다 조용히 과거형
+ * 쪽으로 떨어진다. v1.41에 `'current'`가 추가됐을 때 실제로 그렇게 됐고, 이번에
+ * `'none'`에서 같은 일이 드러났다. allowlist로 뒤집으면 새 scope는 **기본이 안전**이다.
+ *
+ * > v1.41 §39.13의 교훈 그대로다 — 목록을 늘리는 것이 아니라 목록을 만드는 방법을 바꾼다.
+ *
+ * ⚠️ **판정은 바뀌지 않는다.** `stateFor`·`MIRROR_AXES`·`gapCount`·focus 축 선택은
+ * 한 줄도 손대지 않았다. 이 술어는 **문장을 고르는 데만** 쓴다 — v1.41이 CHANGE라는
+ * 이름과 계산을 그대로 두고 문장만 가른 것과 같은 이유다(History Snapshot의
+ * `SavedState`가 소급해서 달라지면 안 된다).
+ */
+export function hasTemporalComparison(scope: RelationshipEvidenceScope): boolean {
+  return scope === 'past';
+}
+
+/**
+ * 이 축에 **관계 근거가 하나라도 있는가** (v1.44 · NEW-003)
+ *
+ * ⚠️ `hasTemporalComparison`과 **다른 질문이다.** 섞으면 조용히 회귀가 난다 —
+ * 실제로 이번 수정 중에 한 번 났고 실측으로 잡았다:
+ *
+ * ```
+ * hasTemporalComparison   Before/After를 주장해도 되는가   'past'만
+ * hasRelationshipEvidence 관계에서의 반응을 말해도 되는가   'past' + 'current'
+ * ```
+ *
+ * `buildSummary`에 전자를 쓰면 `지금 관계에서 자주 그런다`고 **직접 답한** 사용자의
+ * GAP 요약까지 `정보가 조금 더 필요해`로 바뀐다. 사용자가 답한 것을 없는 것으로
+ * 취급하는 것이고, v1.41 §39.8이 거부한 방향이다(있으면 쓴다).
+ *
+ * 문장을 고를 때는 **그 문장이 무엇을 주장하는지**로 술어를 고른다:
+ * 시제를 주장하면 전자, 반응의 존재를 주장하면 후자다.
+ */
+export function hasRelationshipEvidence(scope: RelationshipEvidenceScope): boolean {
+  return scope !== 'none';
+}
+
 /** 이 세션에 현재 관계 근거가 **하나라도** 있는가 (`unsure`는 근거가 아니다) */
 export function hasCurrentEvidence(current: CurrentRelationshipEvidence): boolean {
   return Object.values(current.signals).some(

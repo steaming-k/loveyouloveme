@@ -10,6 +10,7 @@ import { relationshipRefFor } from './allowedEvidence';
 // v1.41 — 순환 import를 피해 표 자체를 별도 모듈에서 읽는다(mirror.ts도 re-export한다).
 import { HARDEST_TO_AXIS } from './mirrorAxisMap';
 import {
+  hasRelationshipEvidence,
   NO_CURRENT_RELATIONSHIP,
   resolveAxisEvidence,
   type RelationshipTense,
@@ -247,9 +248,16 @@ function fromMirrorInsight(
       evidenceRefs: fromCurrent ? [declaredRef, relationshipRef!] : [declaredRef],
       strength: fromCurrent ? 'medium' : 'weak',
       confidenceReason: `mirror:absent:${insight.evidenceScope}`,
+      /**
+       * ⚠️ v1.44 NEW-003 — 아래 else가 `'past'`와 `'none'`을 함께 받고 있었다.
+       * `경험 후 우선순위가 옮겨간`은 이전 관계에서 이 항목을 꼽았을 때만 성립한다 —
+       * 관계 신호를 확인한 적이 없는 축에는 확인하지 못한 변화를 주장하지 않는다.
+       */
       ruleSummary: fromCurrent
         ? `${withTopicParticle(insight.label)} 중요하다고 말했는데, ${when}는 그 장면이 크게 드러나지 않는다고 답했어.`
-        : `${withTopicParticle(insight.label)} 중요하다고 말했지만 경험 후 우선순위가 옮겨간 축이야.`,
+        : hasRelationshipEvidence(insight.evidenceScope)
+          ? `${withTopicParticle(insight.label)} 중요하다고 말했지만 경험 후 우선순위가 옮겨간 축이야.`
+          : `${withTopicParticle(insight.label)} 중요하다고 말했는데, 이 항목에서는 관계 신호를 아직 확인하지 못했어.`,
       eligibleForNarrative: true,
     };
   }

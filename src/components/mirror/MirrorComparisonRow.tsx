@@ -2,8 +2,12 @@ import { Check, ChevronDown, ChevronUp } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { cn } from '@/lib/cn';
-import { valueToPercent } from '@/lib/logic/mirror';
-import { scopeLabelOf, type RelationshipTense } from '@/lib/logic/relationshipEvidence';
+import { displayStateOf, valueToPercent } from '@/lib/logic/mirror';
+import {
+  hasTemporalComparison,
+  scopeLabelOf,
+  type RelationshipTense,
+} from '@/lib/logic/relationshipEvidence';
 import type { MirrorInsight, MirrorState } from '@/types';
 
 const STATE_TAG: Record<MirrorState, string> = {
@@ -39,10 +43,26 @@ const CURRENT_STATE_TEXT: Partial<Record<MirrorState, string>> = {
   CHANGE: '지금은 크게 드러나지 않음',
 };
 
+/**
+ * v1.44 NEW-003 — 비교할 관계 근거가 **아예 없는** 행의 스크린리더 문구.
+ *
+ * v1.41은 위 `'current'` 갈래만 만들었고 `'none'`은 `STATE_TEXT`의 `경험 후 낮아짐`으로
+ * 떨어졌다. 그 행의 근거 칸은 `이전 관계에서 …꼽지는 않았어`라고 말하고 있으므로,
+ * **보이는 근거와 들리는 판정이 서로 반대**였다 — v1.41이 "보이지 않는 문구만 남으면
+ * 스크린리더 사용자에게만 틀린 말이 간다"고 적어둔 것과 같은 종류의 실패다.
+ */
+const NO_EVIDENCE_STATE_TEXT: Partial<Record<MirrorState, string>> = {
+  CHANGE: '비교할 관계 근거 없음',
+};
+
 function stateTextOf(insight: MirrorInsight): string {
-  return insight.evidenceScope === 'current'
-    ? (CURRENT_STATE_TEXT[insight.state] ?? STATE_TEXT[insight.state])
-    : STATE_TEXT[insight.state];
+  if (insight.evidenceScope === 'current') {
+    return CURRENT_STATE_TEXT[insight.state] ?? STATE_TEXT[insight.state];
+  }
+  if (!hasTemporalComparison(insight.evidenceScope)) {
+    return NO_EVIDENCE_STATE_TEXT[insight.state] ?? STATE_TEXT[insight.state];
+  }
+  return STATE_TEXT[insight.state];
 }
 
 /**
@@ -76,6 +96,13 @@ export function MirrorComparisonRow({
    */
   footer?: ReactNode;
 }) {
+  /**
+   * ⚠️ v1.44 R-9 — **배지·점·아이콘은 표시용 이름을 쓴다.** `insight.state`는 내부
+   * 판정이라 언제나 `CHANGE`이고, 비교 근거가 없으면 그것을 `CHANGE`라고 **부르지**
+   * 않는다(`displayStateOf`). 스크린리더 문구는 `stateTextOf`가 따로 정한다.
+   */
+  const shownState = displayStateOf(insight.state, insight.evidenceScope);
+
   return (
     <li
       className="reveal-up flex flex-col gap-3 rounded-row border border-line bg-surface px-[15px] py-3.5"
@@ -86,10 +113,10 @@ export function MirrorComparisonRow({
         <span
           className={cn(
             'flex-none rounded-[6px] px-2 py-1 text-label tracking-[0.06em]',
-            STATE_TAG[insight.state],
+            STATE_TAG[shownState],
           )}
         >
-          {insight.state}
+          {shownState}
         </span>
       </div>
 
@@ -120,13 +147,14 @@ export function MirrorComparisonRow({
           <span
             className={cn(
               'mt-0.5 flex h-4 w-4 flex-none items-center justify-center rounded-full text-white',
-              STATE_DOT[insight.state],
+              STATE_DOT[shownState],
             )}
             aria-hidden
           >
-            {insight.state === 'GAP' ? <ChevronUp size={11} strokeWidth={3} /> : null}
-            {insight.state === 'CHANGE' ? <ChevronDown size={11} strokeWidth={3} /> : null}
-            {insight.state === 'MATCH' ? <Check size={10} strokeWidth={3} /> : null}
+            {shownState === 'GAP' ? <ChevronUp size={11} strokeWidth={3} /> : null}
+            {/* 아래 화살표는 '낮아짐'이라는 방향 주장이다 — 근거가 없으면 붙이지 않는다 */}
+            {shownState === 'CHANGE' ? <ChevronDown size={11} strokeWidth={3} /> : null}
+            {shownState === 'MATCH' ? <Check size={10} strokeWidth={3} /> : null}
           </span>
           <p className="text-[12.5px] keep-all leading-relaxed text-[#555]">
             {insight.relationshipSignal}

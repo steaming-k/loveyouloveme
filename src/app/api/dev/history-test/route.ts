@@ -243,7 +243,13 @@ export async function POST(request: Request): Promise<Response> {
         evidence: trait.evidence,
       })),
     },
-    /** S07 게이트 — 샘플 타일이 분석 조건을 대신 채우지 못한다 */
+    /**
+     * 분석 게이트 — 비-upload 사진이 분석 조건을 대신 채우지 못한다.
+     *
+     * v1.44에서 S07의 샘플 타일 선택 UI는 사라졌지만, 이 조합은 여전히 만들어진다
+     * (데모 세션 · 이 변경 이전에 저장된 세션). 화면에서 고를 수 없게 된 뒤로는
+     * 조용히만 들어오므로 fixture로 고정해 둔다.
+     */
     photoGate: photoGateCases(),
 
     /**

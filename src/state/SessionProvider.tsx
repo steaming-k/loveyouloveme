@@ -12,11 +12,25 @@ import {
 } from 'react';
 
 import { MAX_PAST_FACTORS } from '@/data/labels';
-import { PHOTO_MAX_COUNT, SAMPLE_PHOTOS, DEMO_PHOTO_IDS } from '@/data/samplePhotos';
+import { PHOTO_MAX_COUNT } from '@/data/samplePhotos';
 import { TARGET_INTEREST_MAX, TARGET_CUSTOM_INTEREST_MAX_LENGTH } from '@/data/targetPreferences';
 import { clearSessionDedup, trackEvent } from '@/lib/analytics';
 import { createEmptyBirthProfile } from '@/lib/logic/birth';
+import { sameAnalysisFingerprint } from '@/lib/aiMeta';
 import { clearPreviewUnlocks } from '@/lib/premiumAccess';
+import {
+  sanitizeAffection,
+  sanitizeConflict,
+  sanitizeCurrentSignals,
+  sanitizeHardest,
+  sanitizeHobby,
+  sanitizePastFactors,
+  sanitizeScale,
+  sanitizeSelfGap,
+  sanitizeStatus,
+  sanitizeTargetLevels,
+  sanitizeTargetRelation,
+} from '@/lib/sessionSanitize';
 import { clearPremiumIntents } from '@/lib/premiumIntentStore';
 import { buildDemoObservedResult } from '@/services/ai/fallback';
 import type {
@@ -58,10 +72,8 @@ interface SessionContextValue {
 
   setStatus: (status: RelationshipStatus) => void;
 
-  toggleSamplePhoto: (id: string) => void;
   addUploadedPhotos: (photos: PhotoAsset[]) => void;
   removePhoto: (id: string) => void;
-  applyDemoPhotos: () => void;
   clearPhotos: () => void;
 
   /**
@@ -189,8 +201,29 @@ function deserialize(raw: string): SessionAnswers | null {
       ...base,
       ...parsed,
       observedAnalysis,
-      declared: { ...base.declared, ...parsed.declared },
-      experience: { ...base.experience, ...parsed.experience },
+      /**
+       * v1.44 BUG-002 — **값까지 검사한다.** 예전에는 `...parsed.declared`로 그대로
+       * 펼쳐서 `contact:'abc'`·`conflict:99` 같은 값이 판정 경로로 흘렀다. 유효하지
+       * 않으면 추정하지 않고 **미입력(null)으로 강등**한다(`@/lib/sessionSanitize`).
+       */
+      status: sanitizeStatus(parsed.status),
+      declared: {
+        contact: sanitizeScale(parsed.declared?.contact),
+        conflict: sanitizeConflict(parsed.declared?.conflict),
+        alone: sanitizeScale(parsed.declared?.alone),
+        affection: sanitizeAffection(parsed.declared?.affection),
+        hobby: sanitizeHobby(parsed.declared?.hobby),
+      },
+      experience: {
+        ...base.experience,
+        ...parsed.experience,
+        // `'notanarray'`가 들어오면 `.length`가 문자열 길이로 읽혀 '관계 경험 11'이 된다
+        important: sanitizePastFactors(parsed.experience?.important),
+        hardest: sanitizeHardest(parsed.experience?.hardest),
+        selfGap: sanitizeSelfGap(parsed.experience?.selfGap),
+        note: typeof parsed.experience?.note === 'string' ? parsed.experience.note : '',
+        skipped: parsed.experience?.skipped === true,
+      },
       /**
        * v1.41 Migration (§39.14) — v1.40 이전 세션에는 이 필드가 없다.
        *
@@ -198,21 +231,23 @@ function deserialize(raw: string): SessionAnswers | null {
        * 근거를 답한 적은 없으므로, 비어 있는 상태로 복원하고 Mirror는 과거 근거로
        * 판정한다 — v1.40.1과 글자 하나 다르지 않다(fixture E0).
        *
-       * `signals`는 축→enum 맵이라 알 수 없는 키가 들어와도 Mirror가 축 목록
-       * (`MIRROR_AXES`)만 조회하므로 조용히 무시된다. 다만 값이 객체가 아닌 경우
-       * (수동 편집·손상)에는 통째로 버린다 — 깨진 근거로 판정하지 않는다.
+       * ⚠️ v1.44 BUG-002 — 예전 주석은 "알 수 없는 키가 들어와도 `MIRROR_AXES`만
+       * 조회하므로 조용히 무시된다"고 적었는데 그건 **축**에만 해당했다. 값이
+       * `'BOGUS'`면 축은 조회되고 답만 이상한 상태가 된다. 이제 축과 답을 모두 검사한다.
        */
       currentRelationship: {
-        signals:
-          parsed.currentRelationship?.signals &&
-          typeof parsed.currentRelationship.signals === 'object'
-            ? { ...parsed.currentRelationship.signals }
-            : {},
-        askedAt: parsed.currentRelationship?.askedAt ?? null,
+        signals: sanitizeCurrentSignals(parsed.currentRelationship?.signals),
+        askedAt:
+          typeof parsed.currentRelationship?.askedAt === 'string'
+            ? parsed.currentRelationship.askedAt
+            : null,
       },
       target: {
         ...base.target,
         ...parsed.target,
+        // v1.44 BUG-002 — relation은 enum, 4축은 `'x'`(모름)로 강등한다
+        relation: sanitizeTargetRelation(parsed.target?.relation),
+        ...sanitizeTargetLevels(parsed.target as Record<string, unknown> | undefined),
         birthProfile: { ...base.target.birthProfile, ...parsed.target?.birthProfile },
         // v1.13 이전 세션에는 preferences가 없다 — 빈 값으로 안전 복원한다(§57).
         preferences: {
@@ -295,28 +330,31 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setAnswers((prev) => ({ ...prev, status }));
   }, []);
 
-  const toggleSamplePhoto = useCallback((id: string) => {
-    setAnswers((prev) => {
-      const exists = prev.photos.some((photo) => photo.id === id);
-      if (exists) {
-        return { ...prev, photos: prev.photos.filter((photo) => photo.id !== id) };
-      }
-      if (prev.photos.length >= PHOTO_MAX_COUNT) return prev;
-
-      const sample = SAMPLE_PHOTOS.find((photo) => photo.id === id);
-      if (!sample) return prev;
-      return { ...prev, photos: [...prev.photos, { ...sample }] };
-    });
-  }, []);
-
+  /**
+   * ⚠️ **상한은 업로드 사진만 센다.**
+   *
+   * 예전에는 `photos` 전체를 `PHOTO_MAX_COUNT`로 잘랐다. S07에서 샘플 타일을 직접 고를 수
+   * 있던 동안에는 그게 맞았지만, 지금 세션에 남아 있을 수 있는 비-upload 사진은 두 경로뿐이고
+   * 둘 다 **사용자가 S07에서 고른 것이 아니다**: ① `loadSampleSession()`의 데모 세션,
+   * ② 이 변경 이전에 샘플 타일을 골라둔 채 저장된 localStorage 세션(`deserialize()`가
+   * 비-upload 사진을 그대로 복원한다).
+   *
+   * 전체 길이로 자르면 그 사진들이 **보이지도 않는 채 업로드 칸을 잡아먹는다** — 화면에는
+   * 0장인데 6장까지만 올라가는 상태가 된다. 상한의 단위를 실제 분석 대상(`usablePhotoCount`)과
+   * 맞춘다.
+   */
   const addUploadedPhotos = useCallback((photos: PhotoAsset[]) => {
     photos.forEach((photo) => {
       if (photo.objectUrl) objectUrls.current.push(photo.objectUrl);
     });
-    setAnswers((prev) => ({
-      ...prev,
-      photos: [...prev.photos, ...photos].slice(0, PHOTO_MAX_COUNT),
-    }));
+    setAnswers((prev) => {
+      const others = prev.photos.filter((photo) => photo.source !== 'upload');
+      const uploads = [
+        ...prev.photos.filter((photo) => photo.source === 'upload'),
+        ...photos,
+      ].slice(0, PHOTO_MAX_COUNT);
+      return { ...prev, photos: [...others, ...uploads] };
+    });
   }, []);
 
   const removePhoto = useCallback((id: string) => {
@@ -328,15 +366,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
       return { ...prev, photos: prev.photos.filter((photo) => photo.id !== id) };
     });
-  }, []);
-
-  const applyDemoPhotos = useCallback(() => {
-    setAnswers((prev) => ({
-      ...prev,
-      photos: SAMPLE_PHOTOS.filter((photo) =>
-        (DEMO_PHOTO_IDS as readonly string[]).includes(photo.id),
-      ).map((photo) => ({ ...photo })),
-    }));
   }, []);
 
   const clearPhotos = useCallback(() => {
@@ -351,9 +380,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const setObservedAnalysis = useCallback((result: ObservedProfileResult | null) => {
     setAnswers((prev) => {
-      // 분석이 바뀌면 이전 관찰에 대한 피드백은 의미가 없다 — trait id가 달라지기 때문이다.
-      const sameFingerprint =
-        prev.observedAnalysis?.meta.inputFingerprint === result?.meta.inputFingerprint;
+      /**
+       * 분석이 바뀌면 이전 관찰에 대한 피드백은 의미가 없다 — trait id가 달라지기 때문이다.
+       *
+       * ⚠️ v1.44 BUG-003 — `?.meta.inputFingerprint`는 `observedAnalysis`만 방어하고
+       * `meta`는 방어하지 않았다. 이 객체는 **세션 스토리지에서도 복원된다**(손상된
+       * 세션이면 `meta`가 없을 수 있다). 둘 다 없으면 `undefined === undefined`가
+       * true가 되어 '같은 분석'으로 오판하므로, 지문을 못 읽으면 **다른 분석으로
+       * 취급**해 피드백을 비운다 — 남은 피드백을 새 trait에 잘못 붙이는 것보다 낫다.
+       */
+      const sameFingerprint = sameAnalysisFingerprint(prev.observedAnalysis, result);
       return {
         ...prev,
         observedAnalysis: result,
@@ -613,8 +649,45 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return saved;
   }, []);
 
+  /**
+   * v1.44 BUG-001 — **`ok`는 `coreCorrection`을 함께 비운다.**
+   *
+   * ══ 무엇이 모순이었나 ═══════════════════════════════════════════════════
+   *
+   * 화면의 headline은 `coreCorrection`**만** 보고 정해진다
+   * (`mirror/page.tsx` — `coreCorrection.trim() || aiHeadline || core.headline`).
+   * 그런데 `맞는 것 같아`는 `coreVerdict`만 바꿨다. 그래서 수정을 저장한 뒤 동의를
+   * 누르면 이런 상태가 됐다:
+   *
+   * ```
+   * coreVerdict     'ok'          ← 사용자의 최신 명시적 행동
+   * coreCorrection  '연락보다…'    ← 그 이전 행동
+   * 화면            사용자 수정문 + '네가 고친 문장이야' + AI 요약 숨김
+   * ```
+   *
+   * 두 값이 서로 다른 말을 하고, 화면은 **오래된 쪽**을 따랐다.
+   *
+   * ══ 왜 setter 안에서 처리하나 ════════════════════════════════════════════
+   *
+   * 호출부에서 `setCoreCorrection('')` + `setCoreVerdict('ok')`를 연달아 부르는 방법도
+   * 있지만, `setCoreCorrection`이 verdict를 `'no'`로 되돌리므로 **호출 순서에 정답이
+   * 하나뿐인** 코드가 된다. 순서에 의존하는 두 번의 상태 갱신이 정확히 이 버그를 만든
+   * 구조다. 불변식("동의했다면 남아 있는 수정문은 없다")을 Source of Truth 한 곳에
+   * 두면 이후 어떤 호출부도 모순을 다시 만들 수 없다.
+   *
+   * ⚠️ `'no'`·`null`에는 손대지 않는다. `원래 관찰로 되돌리기`(verdict `null` + 수정문
+   * 비움)와 `맞는 것 같아`(verdict `'ok'` + 수정문 비움)는 **다른 의미**이고, 그 구분을
+   * 합치지 않는다.
+   *
+   * ⚠️ 이미 저장된 History Snapshot은 건드리지 않는다 — 스냅샷은 저장 시점의 값을 복사해
+   * 둔 것이고, 이후 저장분만 `verdict:'ok' / userCorrection:null`로 남는다.
+   */
   const setCoreVerdict = useCallback((verdict: Verdict) => {
-    setAnswers((prev) => ({ ...prev, coreVerdict: verdict }));
+    setAnswers((prev) =>
+      verdict === 'ok'
+        ? { ...prev, coreVerdict: 'ok', coreCorrection: '' }
+        : { ...prev, coreVerdict: verdict },
+    );
   }, []);
 
   const setCoreCorrection = useCallback((text: string) => {
@@ -818,10 +891,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       answers,
       hydrated,
       setStatus,
-      toggleSamplePhoto,
       addUploadedPhotos,
       removePhoto,
-      applyDemoPhotos,
       clearPhotos,
       setObservedAnalysis,
       setObservationVerdict,
@@ -864,10 +935,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       answers,
       hydrated,
       setStatus,
-      toggleSamplePhoto,
       addUploadedPhotos,
       removePhoto,
-      applyDemoPhotos,
       clearPhotos,
       setObservedAnalysis,
       setObservationVerdict,

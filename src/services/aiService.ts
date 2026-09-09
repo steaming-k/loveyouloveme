@@ -112,7 +112,10 @@ export async function analyzeObservedProfile(photos: PhotoAsset[]): Promise<
           ...result.data,
           limitations: [
             ...result.data.limitations,
-            `${skipped}장은 분석에 쓰지 못했어(샘플 타일이거나 읽을 수 없는 파일).`,
+            // v1.44 — '샘플 타일이거나'를 뺐다. S07에서 고를 수 있는 사진이 업로드뿐이므로
+            // 사용자가 이제 볼 수 없는 것을 이유로 대지 않는다. 데모·구세션에 남아 있는
+            // 색 타일도 '읽을 수 있는 이미지가 아니다'에 그대로 포함된다.
+            `${skipped}장은 러비가 읽을 수 있는 이미지가 아니라서 분석에 쓰지 못했어.`,
           ],
         },
       };
