@@ -49,15 +49,57 @@ function declaredParts(declared: DeclaredPreference): (string | number | null)[]
 /**
  * Compatibility Narrative — Declared + Target + **계산된 dimensions**가 기준이다.
  * 계산 결과를 넣는 이유: 같은 입력이라도 규칙이 바뀌면 설명도 다시 만들어야 한다.
+ *
+ * ══ v1.43 — policy input 2개 추가 · dead input 1개 제거 (§47.4) ═══════════════
+ *
+ * ```
+ * 추가   tense                   AI가 받고(§47.1) 서버 스캐너가 읽는다
+ * 추가   allowsOutwardQuestions  서버가 응답에서 conversationQuestion을 지운다(§47.2)
+ * 제거   target.relation         AI context에서 **항상 null**이었다(§47.6)
+ * ```
+ *
+ * ⚠️ **v1.42 §8.13과 같은 결함이 여기 있었다.** 캐시가 저장하는 것은 provider raw가
+ * 아니라 **후처리까지 끝난 최종 응답**이고(`aiClient`의 `cache.set(key, json.data)`),
+ * 캐시 히트에는 응답이 없다 — 히트의 정의가 '서버에 가지 않는 것'이다. 그래서 게이트
+ * 입력이 다르면 재사용해도 되는 응답이 아니다.
+ *
+ * 겹치던 조합:
+ *
+ * ```
+ * ① dating  + 상대 4축   job dating   tense current  allow true    fp X
+ * ② ended   + 상대 4축   job ended    tense former   allow FALSE   → tense가 이미 갈랐다
+ * ③ solo_exp+ 상대 4축   job talking  tense current  allow true    fp X (①과 같다 · 정당)
+ * ```
+ *
+ * `ended`는 `tense`가 갈라주므로 이 Task의 실제 위험은 relationship보다 작았다. 그래도
+ * 넣는 이유는 **게이트가 있는 Task는 게이트 입력이 캐시 identity의 일부**라는 계약을
+ * Task별 예외 없이 세우는 것이 v1.43의 목적이기 때문이다(TC6이 강제한다).
+ *
+ * ⚠️ **`target.relation`을 뺀 것은 정리가 아니라 계약이다.** v1.42 §40.5가 `status`를
+ * 뺀 근거(`AI가 받지 않는 값은 캐시 키도 아니다`)를 그대로 적용했다. 그 값은
+ * `buildCompatibilityContext`에서 항상 `null`로 나갔고 프롬프트는 한 번도 언급하지
+ * 않았다. 부수 효과는 `crush` ↔ `friend`처럼 **relation만 다른 세션이 같은 지문**이
+ * 되는 것이고, 그게 맞다 — 모델이 받는 것도 최종 응답도 같다.
+ *
+ * ⚠️ `relation`이 `null` ↔ 값 있음으로 바뀌는 경우는 `hasTargetSignal`을 통해
+ * SUFFICIENCY → JOB을 바꿀 수 있는데, 그 영향은 **`allowsOutwardQuestions`가 이미
+ * 표현한다**(`job none`↔`unknown`은 둘 다 질문 금지/허용이 갈리는 경계다). 즉 정책
+ * 영향은 boolean으로 남고 raw 값만 빠진다.
  */
-export function compatibilityNarrativeFingerprint(
-  declared: DeclaredPreference,
-  target: TargetProfile,
-  result: CompatibilityResult,
-): string {
+export function compatibilityNarrativeFingerprint(input: {
+  tense: RelationshipTense;
+  allowsOutwardQuestions: boolean;
+  declared: DeclaredPreference;
+  target: TargetProfile;
+  result: CompatibilityResult;
+}): string {
+  const { tense, allowsOutwardQuestions, declared, target, result } = input;
+
   return `cmp_${digest([
+    tense,
+    // 문자열로 고정한다 — boolean이 `digest`의 `-`(null 표기)와 섞이지 않게 한다
+    allowsOutwardQuestions ? 'q:on' : 'q:off',
     ...declaredParts(declared),
-    target.relation,
     target.contact,
     target.conflict,
     target.alone,
@@ -236,15 +278,29 @@ export function historyNarrativeFingerprint(
  * 넣어야 "같은 근거인데 내용이 달라졌다"를 지문이 알 수 있다(§40 Evidence Revision).
  */
 export function deepReportFingerprint(input: {
+  /**
+   * v1.43 §47.5 — **최종 응답을 바꾸므로 지문에 들어간다.**
+   *
+   * `tense`는 v1.41부터 이 Task에 전달됐지만(`buildDeepReportContext`) 지문에는 없었다.
+   * v1.43부터 두 가지가 그 값에 달라진다:
+   *   ① 프롬프트 `[시제]` 블록이 모델이 쓸 시제를 지시한다
+   *   ② `scanDeepNarrativeWithTense`가 `former`에서 현재형 항목을 버린다
+   *
+   * ⚠️ `tense`가 없으면 `dating` → `ended`로 바뀐 사용자가 **현재형으로 쓰인 캐시 문장**을
+   * 그대로 받는다. `insights`가 함께 바뀔 가능성이 높지만 그건 우연이고, 우연에
+   * 의존하는 것이 v1.42 §8.13이 닫은 실패 형태다.
+   */
+  tense: RelationshipTense;
   insights: readonly CrossSourceInsight[];
   declared: DeclaredPreference;
   target: TargetProfile;
   validated: readonly ValidatedObservation[];
   deepAnswers: readonly DeepAnalysisAnswer[];
 }): string {
-  const { insights, declared, target, validated, deepAnswers } = input;
+  const { tense, insights, declared, target, validated, deepAnswers } = input;
 
   return `dr_${digest([
+    tense,
     ...insights.map((insight) => `${insight.id}:${insight.type}:${insight.strength}`),
     ...declaredParts(declared),
     target.contact,

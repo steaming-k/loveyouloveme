@@ -1,0 +1,69 @@
+{
+  "name": "compatibility_c7_current_not_overfiltered",
+  "description": "C7 (v1.43 §47.3) — **과필터 방지 대조군.** tense=current에서는 scanRelationshipTense가 아무것도 막지 않는다(v1.42 §40.14: 비대칭이 옳다). C6과 같은 어휘가 들어간 문장이 여기서는 통과해야 한다 — 통과하지 않으면 진행 중인 관계 사용자의 설명이 대량으로 사라진다.",
+  "task": "compatibility-narrative",
+  "tense": "current",
+  "allowsOutwardQuestions": true,
+  "allowed": [
+    {
+      "key": "contact",
+      "kind": "friction"
+    },
+    {
+      "key": "alone",
+      "kind": "good"
+    }
+  ],
+  "allowedEvidenceRefs": {
+    "contact": [
+      {
+        "source": "compatibility",
+        "field": "contact"
+      },
+      {
+        "source": "declared",
+        "field": "contact"
+      },
+      {
+        "source": "target",
+        "field": "contact"
+      }
+    ],
+    "alone": [
+      {
+        "source": "compatibility",
+        "field": "alone"
+      },
+      {
+        "source": "declared",
+        "field": "alone"
+      },
+      {
+        "source": "target",
+        "field": "alone"
+      }
+    ]
+  },
+  "raw": {
+    "narratives": [
+      {
+        "dimensionKey": "contact",
+        "kind": "friction",
+        "explanation": "지금 이 관계에서는 연락 기준이 서로 다르게 입력됐어.",
+        "scenario": "앞으로 둘이 이야기해볼 수 있는 지점이야.",
+        "evidenceRefs": [
+          {
+            "source": "compatibility",
+            "field": "contact"
+          }
+        ],
+        "conversationQuestion": "연락이 줄어들면 어떤 의미로 받아들이는 편이야?"
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 1,
+    "questionCount": 1,
+    "violations": []
+  }
+}

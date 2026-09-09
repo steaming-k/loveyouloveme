@@ -207,6 +207,18 @@ export function buildRelationshipContext(input: {
 /* ----------------------------------------------------- Compatibility */
 
 export interface CompatibilityContext {
+  /**
+   * v1.43 §47.1 — **`relationship-insight`와 같은 계약**. 모델이 알아야 하는 것은
+   * 하나다: 이 설명을 진행 중인 관계로 써야 하는가, 끝난 관계로 써야 하는가.
+   *
+   * ⚠️ raw `status`/`job`/`stage`를 넣지 않는다. v1.42 §40.7이 relationship Task에서
+   * 지운 것을 여기에 새로 만들지 않는다 — AI에게 Job을 알려주는 것은 단계에 맞는
+   * 내용을 지어내라고 초대하는 것이다.
+   *
+   * ⚠️ **evidence가 아니다.** 근거를 만들지도, 고르지도, 강도를 바꾸지도 않는다.
+   * `dimensions[]`가 실어 보내는 값은 이 필드와 무관하게 그대로다.
+   */
+  tense: RelationshipTense;
   /** 점수는 참고로만 보낸다 — AI가 새 점수를 만들지 못하게 프롬프트에서 막는다 */
   computedScore: number | null;
   comparedCount: number;
@@ -239,14 +251,46 @@ export interface CompatibilityContext {
      */
     ref: EvidenceRef;
   }>;
-  targetRelation: string | null;
+  /**
+   * v1.43 §47.6 — **`targetRelation: string | null`을 제거했다.**
+   *
+   * v1.13부터 이 필드가 있었고 `buildCompatibilityContext`는 **항상 `null`을 넣었다**
+   * (`// 상대는 '관계 맥락'만. 이름·출생정보 등은 보내지 않는다`). 즉 모델은 이 키를
+   * 언제나 `null`로 받았고 프롬프트는 이 필드를 한 번도 언급하지 않았다.
+   *
+   * 그런데 `compatibilityNarrativeFingerprint`에는 `target.relation`이 **들어가 있었다.**
+   * 모델이 받지 않는 값이 그 Task의 캐시 키에 있는 상태이고, v1.42 §40.5가
+   * `status`를 지문에서 뺀 근거(`AI가 받지 않는 값은 캐시 키도 아니다`)의 반대 사례다.
+   *
+   * 실패 방향이 무해했다는 점만 다르다 — 과도 무효화(요청 한 번 더)일 뿐 틀린 응답이
+   * 나오지는 않았다. 그래도 남겨두면 "이 값이 AI에 영향을 준다"는 잘못된 신호가 되고,
+   * v1.43이 캐시 identity를 계약으로 만드는 버전이므로 여기서 정리한다.
+   *
+   * ⚠️ `target.relation` 자체는 그대로 쓰인다 — `soloModeOfTarget`의 SUFFICIENCY 판정
+   * (→ JOB → 안전 게이트)과 History 스냅샷에 들어간다. 지운 것은 **AI context의 죽은
+   * 필드**와 **그 Task의 지문 항목**뿐이다.
+   */
 }
 
-export function buildCompatibilityContext(result: CompatibilityResult): CompatibilityContext {
+export function buildCompatibilityContext(input: {
+  result: CompatibilityResult;
+  /**
+   * v1.43 §47.1 — **필수다. optional + 기본값을 두지 않았다.**
+   *
+   * v1.40.1 §38.2와 v1.42 §40.8이 같은 이유로 같은 결정을 했다: 안전 게이트에
+   * 관용적인 기본값을 주면 값을 빼먹은 호출부가 조용히 가장 위험한 쪽으로 간다.
+   * `'current'`가 기본값이면 관계가 끝난 사용자의 요청이 시제 검사를 통과한다.
+   *
+   * ⚠️ 반드시 `relationshipTenseOf(job)`에서 온 값을 넘긴다 — 판정 source는 하나다.
+   */
+  tense: RelationshipTense;
+}): CompatibilityContext {
+  const { result, tense } = input;
   const goodKeys = new Set(result.goodSignals.map((signal) => signal.key));
   const frictionKeys = new Set(result.frictionSignals.map((signal) => signal.key));
 
   return {
+    tense,
     computedScore: result.score,
     comparedCount: result.comparedCount,
     dimensions: result.dimensions
@@ -264,8 +308,6 @@ export function buildCompatibilityContext(result: CompatibilityResult): Compatib
         // ⚠️ 여기서 새 값을 만들지 않는다 — 이미 계산된 dimension.key를 가리킬 뿐이다.
         ref: { source: 'compatibility', field: dimension.key },
       })),
-    // 상대는 '관계 맥락'만. 이름·출생정보 등은 보내지 않는다.
-    targetRelation: null,
   };
 }
 
@@ -282,6 +324,41 @@ export function compatibilityAllowList(
 /* ---------------------------------------------------------- History */
 
 export interface HistoryContext {
+  /**
+   * v1.43 §45.3 — **이 리포트가 비교한 두 기록의 id.**
+   *
+   * ══ 왜 없으면 계약이 성립하지 않는가 ═══════════════════════════════════
+   *
+   * v1.42까지 history 프롬프트는 근거 source로 `declared|relationship|history`를
+   * 허용했다. 그런데 `history` ref는 `{ source, entryId, axis }` 세 개를 요구하고
+   * (`parseEvidenceRef`), 이 context는 **`entryId`를 보내지 않았다** —
+   * `{axis,label,state,previousText,currentText,declaredDelta}`뿐이었다.
+   *
+   * 그래서 모델이 `history`를 고르면 그 ref는 항상 `null`로 떨어졌고, 근거 0개가 된
+   * 항목은 `uncertainty`가 있으면 살아남고 없으면 버려졌다. v1.43 §44 BEFORE 실측:
+   * `/history/report`의 AI narrative 2개 모두 **근거 0개 · uncertainty로만 생존**.
+   *
+   * 즉 이 Task는 "두 기록 사이의 변화"를 설명하면서 **그 두 기록 중 어느 쪽도 가리킬
+   * 수 없었다.** 결정을 두 개 중에서 골라야 했다.
+   *
+   * | | 무엇을 하나 | 판단 |
+   * |---|---|---|
+   * | A | entryId를 context에 실어 보내 계약을 성립시킨다 | **채택** |
+   * | B | 프롬프트 enum에서 `history`를 지운다 | 아래 |
+   *
+   * **A를 고른 이유는 이 Task의 주제 자체다.** `resolveHistory`는 이미
+   * `2026.08.01 기록에서도 연락 축에 …`라는 근거 문장을 만들 수 있고,
+   * `HistoryAxisNarrative`는 이미 그 근거를 화면에 그린다. 즉 렌더링 쪽은 v1.26부터
+   * 준비돼 있었고 **입력만 빠져 있었다.** B를 고르면 변화 리포트의 AI 설명이
+   * `declared`만 가리킬 수 있게 되는데, 그러면 '변화'의 근거로 지목할 수 있는 것이
+   * 두 기록 중 하나도 없다.
+   *
+   * ⚠️ **새 id를 만들지 않는다.** `RelationshipHistoryEntry.id`를 그대로 보낸다.
+   *
+   * ⚠️ Privacy — id는 세션 로컬 값이고 상대 개인정보를 담지 않는다(§29). 다만 우리
+   * enum이 아니므로 **dev 로그에는 넣지 않는다**(§44).
+   */
+  comparedEntries: { previousEntryId: string; currentEntryId: string } | null;
   changes: Array<{
     axis: string;
     label: string;
@@ -292,8 +369,16 @@ export interface HistoryContext {
   }>;
 }
 
-export function buildHistoryContext(changes: readonly HistoryAxisChange[]): HistoryContext {
+export function buildHistoryContext(
+  changes: readonly HistoryAxisChange[],
+  /**
+   * v1.43 — 비교한 두 기록. 하나뿐이거나 없으면 `null`이고, 그때 이 Task는 애초에
+   * 호출되지 않는다(`allowed.length === 0` → 빈 결과 · §79 CASE O).
+   */
+  comparedEntries: { previousEntryId: string; currentEntryId: string } | null = null,
+): HistoryContext {
   return {
+    comparedEntries,
     changes: changes
       .filter((change) => change.state !== 'INSUFFICIENT')
       .map((change) => ({
@@ -310,6 +395,15 @@ export function buildHistoryContext(changes: readonly HistoryAxisChange[]): Hist
 /* ------------------------------------------------------- Deep Report */
 
 export interface DeepReportContext {
+  /**
+   * v1.43 §47.5 — **`[시제]` 블록이 읽는 값.**
+   *
+   * v1.41부터 `tense`는 이미 이 builder의 인자였지만 `limitationFor(sources, tense)`를
+   * 부르는 데만 쓰였다 — 즉 모델은 시제를 **경계 문장에서 눈치채야** 했고, 프롬프트는
+   * 시제를 한 번도 언급하지 않았다. v1.42가 relationship Task에서 지적한 것과 같은
+   * 형태다: 계약 없이 값만 흘려보내면 모델이 무엇을 하든 그건 우리가 정한 게 아니다.
+   */
+  tense: RelationshipTense;
   insights: Array<{
     id: string;
     type: string;
@@ -398,7 +492,7 @@ export function buildDeepReportContext(
     });
   }
 
-  return { insights: built };
+  return { tense, insights: built };
 }
 
 /** Mirror 축 라벨 — 화면·프롬프트에서 공통으로 쓴다 */

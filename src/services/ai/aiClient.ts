@@ -1,7 +1,7 @@
 'use client';
 
 import { trackEvent } from '@/lib/analytics';
-import { PROMPT_VERSIONS } from './promptVersions';
+import { TASK_CONTRACT } from './taskContract';
 import type { AiFailureReason, AiTask } from '@/types';
 
 /**
@@ -72,20 +72,25 @@ export function clearAiDebugLog(): void {
 }
 
 /**
- * Task → 그 Task가 쓰는 Prompt 버전. (v1.42 · §40.12)
+ * Task → 그 Task가 쓰는 Prompt 버전. (v1.42 · §40.12 → v1.43 · §43)
  *
  * ⚠️ **새 source of truth가 아니다.** 값은 전부 `PROMPT_VERSIONS`에서 읽는다. 이 표가
  * 하는 일은 `AiTask`(라우트 단위)와 `PROMPT_VERSIONS`(프롬프트 단위)의 이름이 하나만
  * 다르다는 것(`observed-profile` ↔ `observed`)을 메우는 것뿐이고, `Record<AiTask, …>`라
  * Task가 늘면 `tsc`가 채우라고 막는다.
+ *
+ * ══ v1.43 — `TASK_CONTRACT`에서 읽는다 ══════════════════════════════════
+ *
+ * v1.42는 같은 표를 **두 곳에** 갖고 있었다: 여기(캐시 키용)와, v1.43이 만든
+ * `taskContract.ts`(계약 선언용). 두 벌이면 언젠가 갈리고, 갈리면 **캐시 키가
+ * 실제로 쓰인 프롬프트와 다른 버전을 담는다** — v1.42가 이 키에 promptVersion을
+ * 넣어서 막으려던 결함이 그대로 되살아난다.
+ *
+ * 그래서 표를 지우고 계약에서 읽는다. 부수 효과가 하나 있고 그게 의도한 것이다:
+ * `TASK_CONTRACT`가 **선언만 하고 아무도 안 쓰는 문서**가 아니라 **캐시 키를 만드는
+ * 실제 코드 경로**가 된다. 선언이 실행되지 않으면 그 선언은 언젠가 사실이 아니게 된다.
  */
-const TASK_PROMPT_VERSION: Record<AiTask, string> = {
-  'observed-profile': PROMPT_VERSIONS.observed,
-  'relationship-insight': PROMPT_VERSIONS.relationship,
-  'compatibility-narrative': PROMPT_VERSIONS.compatibility,
-  'history-insight': PROMPT_VERSIONS.history,
-  'deep-report-narrative': PROMPT_VERSIONS.deepReport,
-};
+const promptVersionOf = (task: AiTask): string => TASK_CONTRACT[task].promptVersion;
 
 /**
  * 캐시 키. (v1.42 — `promptVersion`이 들어왔다 · §40.12)
@@ -109,7 +114,7 @@ const TASK_PROMPT_VERSION: Record<AiTask, string> = {
  * 세 함수가 같은 키를 만든다는 성질도 유지된다(한 곳만 바뀌면 재시도가 캐시를 못 지운다).
  */
 function cacheKey(task: AiTask, fingerprint: string): string {
-  return `${task}::${TASK_PROMPT_VERSION[task]}::${fingerprint}`;
+  return `${task}::${promptVersionOf(task)}::${fingerprint}`;
 }
 
 /** 클라이언트 타임아웃 — 서버보다 약간 길게 둬서 서버 분류를 우선한다 */

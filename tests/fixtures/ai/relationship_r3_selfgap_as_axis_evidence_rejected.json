@@ -1,0 +1,95 @@
+{
+  "name": "relationship_r3_selfgap_as_axis_evidence_rejected",
+  "description": "R3 (v1.43 §46.2 · §9) — selfGap(S17)은 **어느 축의 판정에도 들어가지 않는다.** 그 값의 실제 역할은 Confidence(profile.ts hasStructure)와 AI 서술 맥락이고, 축 근거가 아니다. 그래서 어떤 축의 허용집합에도 없다. AI가 '꽤 달랐어'를 특정 축 GAP의 근거로 붙이면 축과 무관한 답이 축 근거로 읽힌다.",
+  "task": "relationship-insight",
+  "tense": "current",
+  "allowsOutwardQuestions": true,
+  "judgements": [
+    {
+      "axis": "contact",
+      "state": "GAP"
+    },
+    {
+      "axis": "alone",
+      "state": "MATCH"
+    },
+    {
+      "axis": "conflict",
+      "state": "CHANGE"
+    }
+  ],
+  "focusAxis": "contact",
+  "allowedEvidenceRefs": {
+    "contact": [
+      {
+        "source": "declared",
+        "field": "contact"
+      },
+      {
+        "source": "current_relationship",
+        "field": "contact"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ],
+    "alone": [
+      {
+        "source": "declared",
+        "field": "alone"
+      },
+      {
+        "source": "relationship",
+        "field": "important"
+      },
+      {
+        "source": "adaptive",
+        "field": "alone"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ],
+    "conflict": [
+      {
+        "source": "declared",
+        "field": "conflict"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ]
+  },
+  "raw": {
+    "narratives": [
+      {
+        "axis": "alone",
+        "state": "GAP",
+        "headline": "개인 시간은 말한 기준과 비슷했어",
+        "explanation": "혼자 있는 시간을 중요하게 답했고 관계에서도 그랬어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "alone"
+          },
+          {
+            "source": "relationship",
+            "field": "selfGap"
+          }
+        ]
+      }
+    ],
+    "core": null
+  },
+  "expect": {
+    "narrativeCount": 0,
+    "refChecked": 0,
+    "rejectedRefSources": [
+      "relationship"
+    ],
+    "violations": []
+  }
+}

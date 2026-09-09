@@ -17,16 +17,25 @@ import {
 } from './promptTemplates';
 import {
   applyOutwardQuestionGate,
-  evidenceRefsAreSubsetOf,
   filterSafeItems,
   isRedundantNarrative,
-  scanCoreNarrative,
-  scanDeepNarrative,
+  scanCompatibilityNarrative,
+  scanDeepNarrativeWithTense,
   scanHistoryNarrative,
   scanPhotoObservation,
   scanRelationshipNarrative,
   wrapUserData,
 } from './safety';
+import {
+  logAiFilter,
+  rawNarrativeCount,
+  rawNarrativeIdentifiers,
+} from './observability';
+/**
+ * v1.43 §46 — 근거 귀속 검사. `evidenceRefsAreSubsetOf`(v1.27 · Task 전체 집합)를
+ * **항목 단위**로 좁힌 것이고, deep-report도 이제 같은 술어를 쓴다.
+ */
+import { refsWithinAllowed, rejectedRefSources } from '@/lib/logic/allowedEvidence';
 import {
   attachRuleStates,
   parseCompatibilityResponse,
@@ -56,6 +65,7 @@ import type {
   HistoryNarrative,
   HistoryNarrativeBundle,
   MirrorAxisKey,
+  EvidenceRef,
   MirrorState,
   ObservedCategory,
   ObservedLabel,
@@ -394,6 +404,24 @@ export interface RelationshipRequest {
    * 검사가 조용히 망가진다.
    */
   tense: RelationshipTense;
+  /**
+   * v1.43 §46.2 — **axis별 허용 근거.** `allowedRelationshipRefsByAxis()`가 만든다.
+   *
+   * ══ 왜 v1.42까지 이 자리가 비어 있었나 ═════════════════════════════════
+   *
+   * v1.27이 deep-report에 세운 `AI_OUTPUT ⊆ DETERMINISTIC_EVIDENCE`는 이 Task에
+   * 없었다. `parseEvidenceRef`가 **모양만** 보고 통과시켰으므로 모델이
+   * `{source:'relationship', field:'hardest'}`를 아무 축에나 붙일 수 있었다.
+   *
+   * ```
+   * hardest = value_gap  →  HARDEST_TO_AXIS에 없다  →  결정론 엔진은 ref를 만들지 않는다
+   *                      →  그런데 resolveRelationship('hardest')는 정상 문장을 돌려준다
+   *                      →  '기준 차이가 가장 힘들었음'이 연락 축 근거로 화면에 붙는다
+   * ```
+   *
+   * v1.40.1·v1.41이 두 번 "매핑하지 않는다"고 확정한 판단이 AI 경로에서만 무효였다.
+   */
+  allowedRefsByAxis: Record<string, EvidenceRef[]>;
 }
 
 export async function runRelationshipTask(
@@ -427,6 +455,15 @@ export async function runRelationshipTask(
         context: request.context,
         judgements: request.judgements,
         focusAxis: request.focusAxis,
+        /**
+         * v1.43 §46.2 — **모델이 인용할 수 있는 근거를 그대로 보여준다.**
+         *
+         * v1.30이 compatibility에서 배운 방식이다: 파서에 별칭을 늘리지 않고 **모델이
+         * 받는 어휘를 canonical ref로 맞춘다.** 목록을 주지 않고 검사만 조이면
+         * v1.42 v5에서 실제로 일어난 `parsed=0`(모델이 판단 못 하고 refs를 비움)이
+         * 재현된다 — 규칙에 빈 칸을 두면 모델이 그 칸을 침묵으로 채운다.
+         */
+        allowedEvidenceRefs: request.allowedRefsByAxis,
       }),
     });
 
@@ -439,22 +476,34 @@ export async function runRelationshipTask(
      *
      * ⚠️ 세는 것은 **개수와 축 키**뿐이다. 축 키는 우리 enum이고 사용자 데이터가
      * 아니다 — 문장·필드값은 넣지 않는다(§34 Privacy).
+     *
+     * ⚠️ v1.43 — 인라인 `console.info`를 `logAiFilter`로 옮겼다. 출력 형태는 그대로이고
+     * (`raw=N[axis|axis] allowed=[…] parsed=N safe=N …`) 나머지 3개 Task가 **같은
+     * 헬퍼**를 쓴다 — Task마다 다른 모양의 로그를 손으로 쓰던 것이 compatibility·
+     * history에 로그가 아예 없던 이유였다(§44).
      */
-    const rawNarratives =
-      raw !== null && typeof raw === 'object' && Array.isArray((raw as { narratives?: unknown }).narratives)
-        ? ((raw as { narratives: unknown[] }).narratives)
-        : [];
-    const rawAxes = rawNarratives
-      .map((item) =>
-        item !== null && typeof item === 'object' ? String((item as { axis?: unknown }).axis) : '?',
-      )
-      .join('|');
-
     const parsed = parseRelationshipResponse(raw, allowedAxes);
     if (!parsed) return { ok: false, reason: 'INVALID_OUTPUT' };
 
     // state는 규칙 값으로 덮어쓴다 — AI가 판정을 바꿀 수 없다(§18).
     const withStates = attachRuleStates(parsed.narratives, stateByAxis);
+
+    /**
+     * v1.43 §46.2 — **axis별 근거 귀속 검사.** deep-report가 v1.27부터 갖고 있던 검사를
+     * 이 Task에도 세운다. 단위는 Task가 아니라 **항목(축)**이다 — Task 전체 집합으로
+     * 검사하면 `contact` 설명이 `conflict`의 근거를 인용해도 통과한다.
+     *
+     * ⚠️ 게이트보다 **앞**에 둔다. 이 검사는 항목을 버리므로, 버릴 항목의 질문을 먼저
+     * 지우는 것은 낭비다. 그리고 `questionsStripped` 카운터가 '살아남은 항목 중 질문이
+     * 지워진 수'를 세게 된다 — 그게 관측하고 싶은 숫자다.
+     */
+    const rejectedRefs: string[] = [];
+    const refChecked = withStates.filter((item) => {
+      const allowed = request.allowedRefsByAxis[item.axis] ?? [];
+      if (refsWithinAllowed(item.evidenceRefs, allowed)) return true;
+      rejectedRefs.push(...rejectedRefSources(item.evidenceRefs, allowed));
+      return false;
+    });
 
     /**
      * 금지 추론 + Lens 누출(MBTI·사주·별자리) + **관계 시제**(v1.42 §40.13).
@@ -480,7 +529,7 @@ export async function runRelationshipTask(
      * ⚠️ 허용 Job에서는 **아무것도 바뀌지 않는다** — `question`이 그대로 남아 스캔에
      * 들어가고, 시제 위반이면 v1.42 초기 동작대로 항목이 떨어진다.
      */
-    const gated = applyOutwardQuestionGate(withStates, request.allowsOutwardQuestions);
+    const gated = applyOutwardQuestionGate(refChecked, request.allowsOutwardQuestions, 'question');
 
     const scan = filterSafeItems(
       gated,
@@ -508,16 +557,24 @@ export async function runRelationshipTask(
      * ⚠️ Production에서는 남기지 않고, **문장 원문은 절대 로그에 넣지 않는다** —
      * 개수와 위반 라벨만이다(§34 Privacy).
      */
-    if (process.env.NODE_ENV !== 'production') {
-      console.info(
-        `[ai] relationship filter tense=${request.tense} ` +
-          `outwardQ=${request.allowsOutwardQuestions ? 'on' : 'off'} ` +
-          `raw=${rawNarratives.length}[${rawAxes}] allowed=[${allowedAxes.join('|')}] ` +
-          `parsed=${parsed.narratives.length} safe=${scan.items.length} core=${core ? 1 : 0}` +
-          `${request.allowsOutwardQuestions ? '' : ` questionsStripped=${withStates.filter((item) => item.question !== undefined).length}`}` +
-          `${scan.violations.length > 0 ? ` violations=${scan.violations.join(',')}` : ''}`,
-      );
-    }
+    logAiFilter({
+      task: 'relationship-insight',
+      policy: { tense: request.tense, outwardQ: request.allowsOutwardQuestions ? 'on' : 'off' },
+      raw: rawNarrativeCount(raw),
+      rawIdentifiers: rawNarrativeIdentifiers(raw, 'axis'),
+      allowedIdentifiers: allowedAxes,
+      parsed: parsed.narratives.length,
+      refChecked: refChecked.length,
+      rejectedRefSources: rejectedRefs,
+      safe: scan.items.length,
+      violations: scan.violations,
+      extra: {
+        core: core ? 1 : 0,
+        ...(request.allowsOutwardQuestions
+          ? {}
+          : { questionsStripped: refChecked.filter((item) => item.question !== undefined).length }),
+      },
+    });
 
     return {
       ok: true,
@@ -539,6 +596,23 @@ export interface CompatibilityRequest {
   inputFingerprint: string;
   context: unknown;
   allowed: Array<{ key: CompatibilityNarrative['dimensionKey']; kind: 'good' | 'friction' }>;
+  /**
+   * v1.43 §47.1 — **필수.** `relationshipTenseOf(job)`이 만든 값. 기본값을 두지 않는다.
+   * 라우트가 `'current'|'former'`가 아니면 **400**이다 — v1.42 §40.8과 같은 규칙이다.
+   */
+  tense: RelationshipTense;
+  /**
+   * v1.43 §47.2 — **필수.** `jobAllowsOutwardQuestions(job)`에서 온 값.
+   *
+   * ⚠️ 프롬프트·context에 들어가지 않는다. AI에게 Job을 알려주지 않는다는 v1.42의
+   * 결정 그대로이고, 이건 응답 후처리 안전 문맥이다.
+   */
+  allowsOutwardQuestions: boolean;
+  /**
+   * v1.43 §46.3 — dimension별 허용 근거. `allowedCompatibilityRefsByDimension()`이
+   * 만든 표를 그대로 받는다. 여기 없는 ref를 인용한 항목은 버려진다.
+   */
+  allowedRefsByDimension: Record<string, EvidenceRef[]>;
 }
 
 export async function runCompatibilityTask(
@@ -564,15 +638,61 @@ export async function runCompatibilityTask(
     const raw = await provider.generateStructured({
       task: 'compatibility-narrative',
       systemPrompt: COMPATIBILITY_SYSTEM_PROMPT,
-      userPayload: wrapUserData({ context: request.context, allowed: request.allowed }),
+      userPayload: wrapUserData({
+        context: request.context,
+        allowed: request.allowed,
+        allowedEvidenceRefs: request.allowedRefsByDimension,
+      }),
     });
 
     const parsed = parseCompatibilityResponse(raw, request.allowed);
+
+    /**
+     * v1.43 §46.3 — **dimension별 근거 귀속 검사.**
+     *
+     * Task 전체 집합으로 검사하면 `contact` 설명이 `conflict`의 ref를 인용해도 통과한다
+     * (둘 다 Task 안에 있으므로). 근거 귀속의 단위는 항목이므로 검사도 항목 단위다.
+     */
+    const rejectedRefs: string[] = [];
+    const refChecked = parsed.filter((item) => {
+      const allowed = request.allowedRefsByDimension[item.dimensionKey] ?? [];
+      if (refsWithinAllowed(item.evidenceRefs, allowed)) return true;
+      rejectedRefs.push(...rejectedRefSources(item.evidenceRefs, allowed));
+      return false;
+    });
+
+    /**
+     * v1.43 §47.2 — **게이트를 안전 검사 앞에 둔다.** v1.42 §41.9가 relationship에서
+     * 정한 순서 그대로이고, 이유도 같다: 지워진 질문이 스캔 문자열에 들어가면 화면에
+     * 가지도 않는 문장 때문에 설명이 떨어질 수 있다(과필터).
+     *
+     * ⚠️ UI에 `if (ended) hide`를 만들지 않는다. `CompatibilityAxisNarrative`는
+     * v1.42와 글자 하나 다르지 않게 `narrative.conversationQuestion`을 그리고, 그 값이
+     * `undefined`가 되는 것은 **서버 경계 한 곳**에서만 일어난다.
+     */
+    const gated = applyOutwardQuestionGate(refChecked, request.allowsOutwardQuestions, 'conversationQuestion');
+
     const scan = filterSafeItems(
-      parsed,
+      gated,
       (item) => `${item.explanation} ${item.scenario} ${item.conversationQuestion ?? ''}`,
-      scanCoreNarrative,
+      (text) => scanCompatibilityNarrative(text, request.tense),
     );
+
+    logAiFilter({
+      task: 'compatibility-narrative',
+      policy: { tense: request.tense, outwardQ: request.allowsOutwardQuestions ? 'on' : 'off' },
+      raw: rawNarrativeCount(raw),
+      rawIdentifiers: rawNarrativeIdentifiers(raw, 'dimensionKey'),
+      allowedIdentifiers: request.allowed.map((item) => item.key),
+      parsed: parsed.length,
+      refChecked: refChecked.length,
+      rejectedRefSources: rejectedRefs,
+      safe: scan.items.length,
+      violations: scan.violations,
+      extra: request.allowsOutwardQuestions
+        ? {}
+        : { questionsStripped: refChecked.filter((item) => item.conversationQuestion).length },
+    });
 
     return { ok: true, data: { narratives: scan.items, meta: metaFor(config.mode === 'mock' ? 'mock' : 'real', provider.model) } };
   } catch (error) {
@@ -586,6 +706,17 @@ export interface HistoryRequest {
   inputFingerprint: string;
   context: unknown;
   allowed: Array<{ axis: MirrorAxisKey; state: HistoryNarrative['state'] }>;
+  /**
+   * v1.43 §46.4 — **axis별 허용 근거.** `allowedHistoryRefsByAxis()`가 만든다.
+   *
+   * 이 Task의 허용 근거는 **비교한 두 기록**(`history:<entryId>:<axis>`)과 **그 축의
+   * declared 답변** 두 종류뿐이다. `relationship`(S15~S17)은 두 기록 사이에서 달라지지
+   * 않는 값이라 변화의 근거가 될 수 없으므로 목록과 프롬프트 enum에서 빠졌다.
+   *
+   * ⚠️ 기록이 1개 이하면 빈 표다 — 그때 이 Task는 애초에 호출되지 않는다
+   * (`allowed.length === 0` → 빈 결과).
+   */
+  allowedRefsByAxis: Record<string, EvidenceRef[]>;
 }
 
 export async function runHistoryTask(
@@ -616,16 +747,48 @@ export async function runHistoryTask(
     const raw = await provider.generateStructured({
       task: 'history-insight',
       systemPrompt: HISTORY_SYSTEM_PROMPT,
-      userPayload: wrapUserData({ context: request.context, allowed: request.allowed }),
+      userPayload: wrapUserData({
+        context: request.context,
+        allowed: request.allowed,
+        allowedEvidenceRefs: request.allowedRefsByAxis,
+      }),
     });
 
     const parsed = parseHistoryResponse(raw, request.allowed);
+
+    /** v1.43 §46.4 — axis별 근거 귀속 검사. 나머지 Task와 **같은 술어**를 쓴다 */
+    const rejectedRefs: string[] = [];
+    const refChecked = parsed.filter((item) => {
+      const allowed = request.allowedRefsByAxis[item.axis] ?? [];
+      if (refsWithinAllowed(item.evidenceRefs, allowed)) return true;
+      rejectedRefs.push(...rejectedRefSources(item.evidenceRefs, allowed));
+      return false;
+    });
+
     // History는 성장 서사·가치 판정까지 추가로 막는다(§27).
     const scan = filterSafeItems(
-      parsed,
+      refChecked,
       (item) => `${item.explanation} ${item.uncertainty ?? ''}`,
       scanHistoryNarrative,
     );
+
+    /**
+     * v1.43 §44 — **이 Task에 처음 붙는 로그다.** BEFORE 실측에서 `history-insight ok
+     * 2185ms`(라우트 로그)뿐이었고, 그래서 AI narrative의 근거가 0개라는 사실을
+     * 브라우저 DOM을 열어서야 알 수 있었다.
+     */
+    logAiFilter({
+      task: 'history-insight',
+      raw: rawNarrativeCount(raw),
+      rawIdentifiers: rawNarrativeIdentifiers(raw, 'axis'),
+      allowedIdentifiers: request.allowed.map((item) => item.axis),
+      parsed: parsed.length,
+      refChecked: refChecked.length,
+      rejectedRefSources: rejectedRefs,
+      safe: scan.items.length,
+      violations: scan.violations,
+      extra: { withEvidence: scan.items.filter((item) => item.evidenceRefs.length > 0).length },
+    });
 
     return { ok: true, data: { narratives: scan.items, meta: metaFor(config.mode === 'mock' ? 'mock' : 'real', provider.model) } };
   } catch (error) {
@@ -647,6 +810,17 @@ export interface DeepReportRequest {
    * 이 타입 있는 허용목록에서 읽는다** — 두 게이트가 서로 다른 곳을 보면 어긋난다.
    */
   insights: readonly Pick<CrossSourceInsight, 'id' | 'evidenceRefs' | 'ruleSummary'>[];
+  /**
+   * v1.43 §47.5 — **필수.** 이 Task의 시제 검사 기준.
+   *
+   * v1.41부터 `tense`는 `buildDeepReportContext`의 인자였지만 `limitationFor`를 부르는
+   * 데만 쓰였다 — 즉 **경계 문장의 시제는 맞았고 그 위 AI 본문에는 검사가 없었다.**
+   * `DeepNarrative.headline`/`interpretation`은 실제로 화면에 그려진다.
+   *
+   * ⚠️ `context` 안에도 같은 값이 들어가지만(프롬프트 `[시제]` 블록이 읽는다) 검사용
+   * 값은 요청 최상위에서 따로 받는다 — `context: unknown`의 계약 그대로다(v1.42 §40.13).
+   */
+  tense: RelationshipTense;
 }
 
 export async function runDeepReportTask(
@@ -689,17 +863,33 @@ export async function runDeepReportTask(
 
     const parsed = parseDeepReportResponse(raw, allowedIds);
 
-    // Quality Gate (E) — 원래 Insight에 없던 evidenceRef를 들고 오면 그 항목 전체를 버린다.
-    const refChecked = parsed.filter((item) =>
-      evidenceRefsAreSubsetOf(item.evidenceRefs, evidenceByInsight.get(item.insightId) ?? []),
-    );
+    /**
+     * Quality Gate (E) — 원래 Insight에 없던 evidenceRef를 들고 오면 그 항목 전체를 버린다.
+     *
+     * ⚠️ v1.43 — `evidenceRefsAreSubsetOf`(`JSON.stringify` 비교)를 `refsWithinAllowed`로
+     * 바꿨다. **판정은 같고** 두 가지가 좋아진다: (a) 키 순서에 민감하지 않고
+     * (b) declared/relationship field 별칭을 canonical로 맞춘 뒤 비교한다 — 모델이
+     * `contactImportance`(context가 실제로 보내는 이름)를 정확히 인용했는데 허용집합에는
+     * `contact`가 있어서 떨어지는 과필터를 막는다. 그리고 네 Task가 **같은 술어**를 쓴다.
+     */
+    const rejectedRefs: string[] = [];
+    const refChecked = parsed.filter((item) => {
+      const allowed = evidenceByInsight.get(item.insightId) ?? [];
+      if (refsWithinAllowed(item.evidenceRefs, allowed)) return true;
+      rejectedRefs.push(...rejectedRefSources(item.evidenceRefs, allowed));
+      return false;
+    });
 
-    // Quality Gate (B)(C) — 일반론·근거 없는 확정 표현은 scanDeepNarrative가 걸러낸다.
+    /**
+     * Quality Gate (B)(C) — 일반론·근거 없는 확정 표현은 scanDeepNarrative가 걸러낸다.
+     * v1.43 — **시제 검사를 합성했다**(§47.5). `tense === 'current'`에서는 결과가
+     * v1.42와 완전히 같다.
+     */
     const scan = filterSafeItems(
       refChecked,
       (item) =>
         `${item.headline} ${item.interpretation} ${item.situation ?? ''} ${item.conversationQuestion ?? ''}`,
-      scanDeepNarrative,
+      (text) => scanDeepNarrativeWithTense(text, request.tense),
     );
 
     /**
@@ -730,13 +920,22 @@ export async function runDeepReportTask(
      * ⚠️ Production에서는 남기지 않는다. 그리고 **문장 원문은 절대 로그에 넣지 않는다** —
      * 개수와 위반 라벨만이다(§34 Privacy).
      */
-    if (process.env.NODE_ENV !== 'production') {
-      console.info(
-        `[ai] deep-report filter parsed=${parsed.length} refChecked=${refChecked.length} ` +
-          `safe=${scan.items.length} novel=${novel.length}` +
-          `${scan.violations.length > 0 ? ` violations=${scan.violations.join(',')}` : ''}`,
-      );
-    }
+    logAiFilter({
+      task: 'deep-report-narrative',
+      /** v1.43 — `tense`가 로그에 들어온다. 그 전에는 이 Task의 시제를 관측할 수 없었다 */
+      policy: { tense: request.tense },
+      /**
+       * ⚠️ `rawIdentifiers`를 넣지 않는다. 이 Task의 식별자는 `insightId`이고, 그건
+       * 우리 enum이 아니라 세션 데이터에서 파생된 id다(§44 Privacy). 개수만 센다.
+       */
+      raw: rawNarrativeCount(raw),
+      parsed: parsed.length,
+      refChecked: refChecked.length,
+      rejectedRefSources: rejectedRefs,
+      safe: scan.items.length,
+      violations: scan.violations,
+      extra: { novel: novel.length },
+    });
 
     const narratives: DeepNarrative[] = novel.map((item) => ({
       insightId: item.insightId,

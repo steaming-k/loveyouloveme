@@ -221,6 +221,22 @@ async function testRelationshipInsight(persona) {
     },
     judgements,
     focusAxis: 'contact',
+    /**
+     * v1.43 §46.2 — **라우트가 이 값을 필수로 받는다(없으면 400).**
+     *
+     * 실제 앱은 `allowedRelationshipRefsByAxis()`가 만든 표를 보낸다. 이 하네스의
+     * persona는 `hardest: 'contact_drop'`(→ contact 축) 계열이므로 contact 축의 허용
+     * 근거는 declared + relationship:hardest 두 개다.
+     *
+     * ⚠️ 여기에 있는 것만 모델이 인용할 수 있다. 이 목록을 실제 앱보다 넓게 두면
+     * **검사가 없는 것과 같아지고**, 좁게 두면 정상 응답이 떨어져 과필터를 재현한다.
+     */
+    allowedEvidenceRefs: {
+      contact: [
+        { source: 'declared', field: 'contact' },
+        { source: 'relationship', field: 'hardest' },
+      ],
+    },
   });
   if (!json?.ok) {
     reportRealMode({ task: `relationship-insight (${persona.label})`, json, durationMs });
@@ -279,9 +295,29 @@ async function testRelationshipInsight(persona) {
 /* ------------------------------------------------ compatibility-narrative */
 async function testCompatibilityNarrative() {
   const allowed = [{ key: 'contact', kind: 'friction' }];
+  /**
+   * v1.43 §47.1~§47.4 — 이 Task도 relationship과 **같은 계약**을 받는다. 라우트가
+   * `tense`·`allowsOutwardQuestions`·`allowedEvidenceRefs` 세 개를 필수로 검증한다.
+   *
+   * `former` + 질문 금지로 돌린다 — v1.43이 닫은 결함이 정확히 그 조합이었고
+   * (`ended` 사용자의 `/compatibility`에 AI 질문 2개), 실제 Provider에서 게이트가
+   * 동작하는지는 그 조합에서만 확인된다.
+   */
+  const tense = 'former';
+  const allowsOutwardQuestions = false;
   const { json, durationMs } = await callTask('compatibility-narrative', {
     inputFingerprint: 'e2e_compatibility_1',
+    tense,
+    allowsOutwardQuestions,
+    allowedEvidenceRefs: {
+      contact: [
+        { source: 'compatibility', field: 'contact' },
+        { source: 'declared', field: 'contact' },
+        { source: 'target', field: 'contact' },
+      ],
+    },
     context: {
+      tense,
       computedScore: 55,
       comparedCount: 4,
       dimensions: [
@@ -298,7 +334,7 @@ async function testCompatibilityNarrative() {
           ref: { source: 'compatibility', field: 'contact' },
         },
       ],
-      targetRelation: null,
+      /** ⚠️ v1.43 §47.6 — `targetRelation`을 지웠다. 항상 null이던 죽은 필드다 */
     },
     allowed,
   });
@@ -319,20 +355,70 @@ async function testCompatibilityNarrative() {
   const withEvidence = narratives.filter((n) => (n.evidenceRefs?.length ?? 0) > 0).length;
   const evidenceNote =
     narratives.length > 0 && withEvidence === 0 ? ' · ⚠️ 근거 0 — 화면에는 안 보인다' : '';
+
+  /**
+   * v1.43 §47.2 — **게이트가 실제 Provider 응답에서 동작하는가.**
+   *
+   * fixture(C1)는 우리가 쓴 응답으로 게이트를 검사한다. 여기서는 모델이 실제로 만든
+   * 질문이 지워지는지를 본다 — v1.42가 relationship에서 `questionsStripped=1`로
+   * 확인한 것과 같은 종류의 증거다.
+   */
+  const questionCount = narratives.filter((n) => n.conversationQuestion !== undefined).length;
+  if (!allowsOutwardQuestions && questionCount > 0) {
+    log(`  duration: ${durationMs}ms · tense=${tense} · JOB GATE LEAK question ${questionCount}건`);
+    verdict('compatibility-narrative', 'FAIL — outward 금지 Job에 질문이 남았다');
+    return;
+  }
+
+  /** v1.43 §47.3 — former 응답에 현재형 호칭이 남았는가 */
+  const tenseLeaks =
+    tense === 'former'
+      ? narratives.flatMap((n) =>
+          FORMER_FORBIDDEN.filter((phrase) =>
+            `${n.explanation ?? ''} ${n.scenario ?? ''}`.includes(phrase),
+          ),
+        )
+      : [];
+  if (tenseLeaks.length > 0) {
+    log(`  duration: ${durationMs}ms · tense=${tense} · TENSE LEAK ${tenseLeaks.length}건`);
+    verdict('compatibility-narrative', 'FAIL — former 응답에 현재형 호칭');
+    return;
+  }
+
   reportRealMode({
     task: 'compatibility-narrative',
     json,
     durationMs,
-    extra: `· narratives: ${narratives.length} · with-evidence: ${withEvidence} · score-leak: ${scoreLeak}${evidenceNote}`,
+    extra:
+      `· narratives: ${narratives.length} · with-evidence: ${withEvidence} ` +
+      `· score-leak: ${scoreLeak} · tense: ${tense} ` +
+      `· outwardQ: ${allowsOutwardQuestions ? 'on' : 'off'} · questions: ${questionCount}` +
+      `${evidenceNote}`,
   });
 }
 
 /* ----------------------------------------------------- history-insight */
 async function testHistoryInsight() {
   const allowed = [{ axis: 'contact', state: 'SHIFT' }];
+  /**
+   * v1.43 §45.3 — **`comparedEntries`가 없으면 `history` ref를 구성할 수 없다.**
+   *
+   * v1.42까지 이 하네스는 그 값을 보내지 않았고 실제 앱도 보내지 않았다 — 그래서
+   * history AI narrative의 근거는 실측에서 0개였다. 하네스가 실제 요청과 같아지려면
+   * 이 값이 있어야 하고, 그러면 `with-evidence`가 그 계약을 실제로 검사한다.
+   */
+  const comparedEntries = { previousEntryId: 'e2e_h1', currentEntryId: 'e2e_h2' };
   const { json, durationMs } = await callTask('history-insight', {
     inputFingerprint: 'e2e_history_1',
+    allowedEvidenceRefs: {
+      contact: [
+        { source: 'history', entryId: comparedEntries.previousEntryId, axis: 'contact' },
+        { source: 'history', entryId: comparedEntries.currentEntryId, axis: 'contact' },
+        { source: 'declared', field: 'contact' },
+      ],
+    },
     context: {
+      comparedEntries,
       changes: [
         {
           axis: 'contact',
@@ -351,7 +437,27 @@ async function testHistoryInsight() {
     return;
   }
   const narratives = json.data.narratives ?? [];
-  reportRealMode({ task: 'history-insight', json, durationMs, extra: `· narratives: ${narratives.length}` });
+  /**
+   * v1.43 §45.3 — **근거가 붙었는지 반드시 본다.** 개수만 세면 v1.42 상태
+   * (narratives는 있고 근거는 0개 · uncertainty로만 생존)를 구분할 수 없다 —
+   * v1.30이 compatibility에서 배운 것과 같은 이유다.
+   */
+  const withEvidence = narratives.filter((n) => (n.evidenceRefs?.length ?? 0) > 0).length;
+  const historyRefs = narratives.filter((n) =>
+    (n.evidenceRefs ?? []).some((ref) => ref.source === 'history'),
+  ).length;
+  const evidenceNote =
+    narratives.length > 0 && withEvidence === 0
+      ? ' · ⚠️ 근거 0 — 화면에는 근거 목록이 안 보인다'
+      : '';
+  reportRealMode({
+    task: 'history-insight',
+    json,
+    durationMs,
+    extra:
+      `· narratives: ${narratives.length} · with-evidence: ${withEvidence} ` +
+      `· history-ref: ${historyRefs}${evidenceNote}`,
+  });
 }
 
 /* -------------------------------------------------- deep-report-narrative */
@@ -370,9 +476,17 @@ async function testDeepReportNarrative() {
       { source: 'relationship', field: 'hardest' },
     ],
   };
+  /**
+   * v1.43 §47.5 — 라우트가 `tense`를 필수로 검증한다(없으면 400). `former`로 돌려서
+   * 새 시제 스캐너가 실제 Provider 응답에 적용되는지 확인한다 — 이 Task의
+   * `headline`/`interpretation`은 유료 리포트 화면에 그대로 그려진다.
+   */
+  const tense = 'former';
   const { json, durationMs } = await callTask('deep-report-narrative', {
     inputFingerprint: 'e2e_deep_report_1',
+    tense,
     context: {
+      tense,
       insights: [
         {
           id: insight.id,
@@ -386,7 +500,9 @@ async function testDeepReportNarrative() {
           strength: 'strong',
           // v1.27 프롬프트가 실제로 읽는 두 칸 — 없으면 모델이 다른 지시를 받는다
           allowedConnection: '네가 말한 연락 기준과 실제 관계에서 가장 힘들었던 지점이 같은 축을 가리키고 있어.',
-          limitation: '네가 말한 기준과 관계 경험을 나란히 놓은 것까지야. 어느 쪽이 진짜 너인지는 정하지 않아.',
+          /** ⚠️ v1.43 — tense=former이므로 화면과 **같은 시제**의 경계 문장을 준다 */
+          limitation:
+            '네가 말한 기준과 그때 이 관계의 경험을 나란히 놓은 것까지야. 어느 쪽이 진짜 너인지는 정하지 않아.',
         },
       ],
     },

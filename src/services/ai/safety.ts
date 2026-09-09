@@ -1,5 +1,4 @@
 import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
-import type { EvidenceRef } from '@/types';
 
 /**
  * AI Safety (§43 · §69 · §89 · §90)
@@ -284,12 +283,22 @@ export function scanRelationshipTense(text: string, tense: RelationshipTense): S
  * ⚠️ `allows`는 **프롬프트에 들어가지 않는다.** AI에게 Job을 알려주지 않는다는 v1.42의
  * 결정 그대로이고, 이건 응답 후처리 안전 문맥이다.
  */
-export function applyOutwardQuestionGate<T extends { question?: string }>(
+/**
+ * @param questionKey 그 Task에서 **상대를 향한 질문을 담는 필드 이름**.
+ *
+ * ⚠️ v1.43 — 기본값을 두지 않고 호출부가 명시한다. Task마다 이름이 다르다
+ * (`RelationshipNarrative.question` · `CompatibilityNarrative.conversationQuestion`)
+ * 이고, 기본값 `'question'`을 두면 compatibility 호출부가 값을 빼먹었을 때
+ * **아무 필드도 지우지 않고 조용히 통과한다** — 게이트가 가장 필요한 경우다.
+ * v1.40.1 §38.2가 닫은 permissive-default 실패 형태 그대로다.
+ */
+export function applyOutwardQuestionGate<K extends string, T extends Partial<Record<K, string>>>(
   items: readonly T[],
   allows: boolean,
+  questionKey: K,
 ): T[] {
   if (allows) return [...items];
-  return items.map((item) => ({ ...item, question: undefined }));
+  return items.map((item) => ({ ...item, [questionKey]: undefined }));
 }
 
 /**
@@ -299,6 +308,30 @@ export function applyOutwardQuestionGate<T extends { question?: string }>(
  * 새 파이프라인을 만들지 않고 기존 `filterSafeItems`에 그대로 들어간다.
  */
 export function scanRelationshipNarrative(
+  text: string,
+  tense: RelationshipTense,
+): SafetyScanResult {
+  const core = scanCoreNarrative(text);
+  const tenseScan = scanRelationshipTense(text, tense);
+  const violations = [...core.violations, ...tenseScan.violations];
+  return { safe: violations.length === 0, violations };
+}
+
+/**
+ * Compatibility Narrative 전용 — Core 검사 + **시제 검사**. (v1.43 · §47.3)
+ *
+ * ══ 왜 v1.43에서 필요해졌는가 ═════════════════════════════════════════════
+ *
+ * `ended` 사용자도 `/compatibility`를 정상적으로 본다(v1.40에서 지원으로 올렸다).
+ * 결정론 문구는 그때 시제를 맞췄다 — `이 숫자는 관계가 왜 끝났는지 설명하지 않아` ·
+ * `당시 어떤 기대가 달랐는지 보는 참고값이야`. 그런데 그 아래 축별 AI 설명
+ * (`CompatibilityAxisNarrative`)에는 **아무 시제 방어가 없었다.**
+ *
+ * `scanRelationshipNarrative`와 **같은 조합**이다. 다른 함수로 두는 이유는 Task마다
+ * 붙는 Core 검사가 다를 수 있고(history는 성장 서사, deep-report는 claim boundary),
+ * 조합을 Task별로 명시해두면 어느 Task에 무엇이 붙었는지 한 줄로 보인다.
+ */
+export function scanCompatibilityNarrative(
   text: string,
   tense: RelationshipTense,
 ): SafetyScanResult {
@@ -491,19 +524,50 @@ export function scanDeepNarrative(text: string): SafetyScanResult {
 }
 
 /**
+ * Deep Report Narrative + **시제 검사**. (v1.43 · §47.5)
+ *
+ * ══ 왜 v1.43에서 필요해졌는가 ═════════════════════════════════════════════
+ *
+ * `DeepNarrative.headline`과 `interpretation`은 **실제로 화면에 그려진다**
+ * (`overview.topSummaries` · `connection.narrativeText`). v1.41은 그 카드의
+ * `limitation`·`sourceLabels`를 `그때 이 관계`로 힘들게 맞췄는데, 그 위에 놓이는 AI
+ * 본문에는 계약이 없었다 — 모델이 시제를 맞춘다면 그건 `limitation` 문자열을 눈치챈
+ * 결과이고, **우연이지 보증이 아니다.**
+ *
+ * ⚠️ `scanDeepNarrative`를 대체하지 않고 **감싼다.** 기존 4개 검사(금지 추론 · 성장
+ * 서사 · generic · claim boundary)는 한 글자도 바뀌지 않고, `tense === 'current'`에서는
+ * 결과가 v1.42와 완전히 같다(`scanRelationshipTense`가 그때 아무것도 막지 않는다).
+ */
+export function scanDeepNarrativeWithTense(
+  text: string,
+  tense: RelationshipTense,
+): SafetyScanResult {
+  const base = scanDeepNarrative(text);
+  const tenseScan = scanRelationshipTense(text, tense);
+  const violations = [...base.violations, ...tenseScan.violations];
+  return { safe: violations.length === 0, violations };
+}
+
+/**
  * §26-E Evidence Mismatch — Narrative가 참조한 evidenceRef가 원래 Insight의
  * evidenceRefs에 실제로 있었는지 확인한다. AI가 있지도 않은 근거를 새로 지어내 붙이면
  * 걸린다. 하나라도 없으면 전체 Narrative를 버린다(부분 통과시키지 않는다 — 그러면
  * '어떤 근거가 진짜인지' 사용자가 구분할 방법이 없다).
+ *
+ * ⚠️ **v1.43에서 `logic/allowedEvidence.ts`의 `refsWithinAllowed`로 대체됐다.**
+ *
+ * 판정은 같지만 두 가지가 달라졌고, 둘 다 이 함수로는 할 수 없었다:
+ *
+ * ```
+ * ① 키 순서    JSON.stringify는 {source,field}와 {field,source}를 다르게 본다
+ * ② field 별칭  모델이 context가 보낸 이름(contactImportance)을 정확히 인용해도
+ *              허용집합에는 canonical(contact)이 있어서 떨어졌다 — 과필터
+ * ```
+ *
+ * 그리고 v1.43은 **네 Task가 같은 술어를 쓴다.** 이 함수를 남겨두면 어느 Task는
+ * 별칭을 알고 어느 Task는 모르는 상태가 되므로 지운다 — v1.27의 계약
+ * (`AI_OUTPUT ⊆ DETERMINISTIC_EVIDENCE`)은 그대로이고 구현 위치만 옮겼다.
  */
-export function evidenceRefsAreSubsetOf(
-  narrativeRefs: readonly EvidenceRef[],
-  insightRefs: readonly EvidenceRef[],
-): boolean {
-  const key = (ref: EvidenceRef): string => JSON.stringify(ref);
-  const allowed = new Set(insightRefs.map(key));
-  return narrativeRefs.every((ref) => allowed.has(key(ref)));
-}
 
 /* ------------------------- Quality Gate (F) 중복 (v1.27 · §24) */
 

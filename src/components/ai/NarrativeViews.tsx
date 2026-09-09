@@ -2,7 +2,11 @@
 
 import { AiNarrativeBlock, AiNarrativeSkeleton } from '@/components/ai/AiNarrativeBlock';
 import { useEvidenceContext } from '@/hooks/useAiNarrative';
-import { narrativeIsShowable, resolveEvidenceRefs } from '@/lib/aiEvidenceResolver';
+import {
+  coreNarrativeForRender,
+  narrativeIsShowable,
+  resolveEvidenceRefs,
+} from '@/lib/aiEvidenceResolver';
 import type {
   AiNarrativeStatus,
   CompatibilityNarrative,
@@ -97,13 +101,26 @@ export function MirrorAxisNarrative({
  * deterministic 근거 목록은 화면이 그대로 유지하고(§22), 이 블록은 설명만 담당한다.
  */
 export function CoreInsightNarrativeView({
-  core,
+  core: rawCore,
   status,
 }: {
   core: CoreInsightNarrative | null | undefined;
   status: AiNarrativeStatus;
 }) {
   const context = useEvidenceContext();
+
+  /**
+   * v1.43 §48 — **USER CORRECTION TRUST BOUNDARY.**
+   *
+   * 사용자가 Core 판정을 직접 고쳤으면 AI의 Core 서술은 화면에 오지 않는다. 화면의
+   * headline이 사용자 문장으로 교체되므로, 그 아래 남은 AI summary는 **화면에 없는
+   * 문장을 설명하는 문장**이 된다(실측 재현: §48.2).
+   *
+   * ⚠️ 판정을 여기서 쓰지 않고 `coreNarrativeForRender`를 부른다 — 이 컴포넌트가
+   * 유일한 렌더 지점이지만, 규칙을 컴포넌트 안에 인라인으로 쓰면 **다음 렌더 지점이
+   * 그것을 물려받지 못한다.** v1.43 §8.14가 compatibility 질문 누출에서 배운 형태다.
+   */
+  const core = coreNarrativeForRender(rawCore, context.answers);
 
   if (status === 'loading') return <AiNarrativeSkeleton label="러비가 근거를 정리하고 있어…" />;
   if (!core) return null;

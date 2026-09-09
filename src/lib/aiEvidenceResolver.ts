@@ -152,30 +152,112 @@ function copula(word: string): string {
   return (code - 0xac00) % 28 !== 0 ? '이야' : '야';
 }
 
+/* ------------------------------------------------- field alias (v1.43) */
+
+/**
+ * `declared` source의 field 별칭 → canonical key. (v1.43 · §46.2)
+ *
+ * ══ 왜 표로 빼는가 ═══════════════════════════════════════════════════════
+ *
+ * v1.42까지 이 별칭들은 `resolveDeclared`의 `switch` 안에 `case` 두 줄로만 있었다.
+ * 별칭이 존재하는 이유는 `buildRelationshipContext`가 AI에게 `contactImportance` ·
+ * `aloneNeed` 같은 이름으로 보내기 때문이고(`declaredForContext`), 모델은 자기가 본
+ * 이름을 그대로 쓴다.
+ *
+ * v1.43이 근거 귀속 검사(`axis-subset`)를 켜면서 **같은 별칭 지식이 두 곳에 필요해졌다**:
+ * resolve할 때와, 허용집합과 대조할 때. `switch`에만 있으면 대조 쪽이 별칭을 모르고,
+ * 그러면 모델이 `contactImportance`를 정확히 인용했는데 검사가 떨어뜨린다 —
+ * **정상 근거를 버리는 과필터**이고, v1.30이 "파서에 별칭을 늘리지 않고 모델이 받는
+ * 어휘를 canonical key로 맞춘다"고 정한 방향과도 반대다.
+ *
+ * 그래서 표를 단일 source로 두고 `switch`가 이 표를 읽는다. 받는 값과 돌려주는 문장은
+ * **v1.42와 글자 하나 다르지 않다** — 별칭 목록도 그대로다.
+ */
+const DECLARED_FIELD_ALIAS: Record<string, keyof SessionAnswers['declared']> = {
+  contact: 'contact',
+  contactImportance: 'contact',
+  alone: 'alone',
+  aloneNeed: 'alone',
+  conflict: 'conflict',
+  conflictStyle: 'conflict',
+  affection: 'affection',
+  affectionStyle: 'affection',
+  hobby: 'hobby',
+  hobbySharing: 'hobby',
+};
+
+/** `relationship` source의 field 별칭 → canonical key. `DECLARED_FIELD_ALIAS`와 같은 이유 */
+const RELATIONSHIP_FIELD_ALIAS: Record<string, 'important' | 'hardest' | 'selfGap' | 'note'> = {
+  important: 'important',
+  importantFactors: 'important',
+  hardest: 'hardest',
+  hardestMoment: 'hardest',
+  selfGap: 'selfGap',
+  note: 'note',
+};
+
+/**
+ * ref를 **비교 가능한 형태**로 정규화한다. (v1.43 · §46.2)
+ *
+ * ⚠️ **화면에 보이는 것을 바꾸지 않는다.** `resolveEvidenceRef`는 원본 ref를 그대로
+ * 받고, 이 함수는 허용집합 대조(`evidenceRefKey`)에서만 쓰인다.
+ *
+ * ⚠️ 별칭을 모르는 source(`observed`·`history`·`compatibility` 등)는 **그대로 돌려준다** —
+ * 모르는 값을 canonical로 만들어내지 않는다.
+ */
+export function canonicalEvidenceRef(ref: EvidenceRef): EvidenceRef {
+  if (ref.source === 'declared') {
+    const canonical = DECLARED_FIELD_ALIAS[ref.field];
+    return canonical ? { source: 'declared', field: canonical } : ref;
+  }
+  if (ref.source === 'relationship') {
+    const canonical = RELATIONSHIP_FIELD_ALIAS[ref.field];
+    return canonical ? { source: 'relationship', field: canonical } : ref;
+  }
+  return ref;
+}
+
+/**
+ * 허용집합 대조용 **키 순서에 무관한** 식별자. (v1.43 · §46.2)
+ *
+ * ⚠️ v1.42의 `evidenceRefsAreSubsetOf`는 `JSON.stringify(ref)`를 썼다. 그건 **키 순서에
+ * 민감하다** — `{source,field}`와 `{field,source}`가 다른 키가 된다. 지금은 양쪽 다
+ * `parseEvidenceRef`/우리 코드가 같은 순서로 만들어서 우연히 맞고 있었지만, 필드를 하나
+ * 더 읽는 순간 조용히 깨지는 종류의 계약이다.
+ */
+export function evidenceRefKey(ref: EvidenceRef): string {
+  const canonical = canonicalEvidenceRef(ref);
+  switch (canonical.source) {
+    case 'observed':
+      return `observed:${canonical.traitId}`;
+    case 'history':
+      return `history:${canonical.entryId}:${canonical.axis}`;
+    case 'deep_followup':
+      return `deep_followup:${canonical.questionId}`;
+    default:
+      return `${canonical.source}:${canonical.field}`;
+  }
+}
+
 /* --------------------------------------------------------- declared */
 
 function resolveDeclared(field: string, answers: SessionAnswers): string | null {
   const { declared } = answers;
 
-  switch (field) {
+  switch (DECLARED_FIELD_ALIAS[field]) {
     case 'contact':
-    case 'contactImportance':
       return declared.contact === null ? null : `연락 중요도를 5점 중 ${declared.contact}로 답했어`;
     case 'alone':
-    case 'aloneNeed':
       return declared.alone === null
         ? null
         : `혼자 있는 시간의 필요를 5점 중 ${declared.alone}로 답했어`;
     case 'conflict':
-    case 'conflictStyle':
       return declared.conflict ? `갈등이 생기면 ${quoted(CONFLICT_LABEL[declared.conflict])} 골랐어` : null;
     case 'affection':
-    case 'affectionStyle':
       return declared.affection
         ? `애정 표현은 ${quoted(AFFECTION_LABEL[declared.affection])} 골랐어`
         : null;
     case 'hobby':
-    case 'hobbySharing':
       return declared.hobby ? `취미는 ${quoted(HOBBY_LABEL[declared.hobby])} 골랐어` : null;
     default:
       return null;
@@ -228,15 +310,13 @@ function resolveCurrentRelationship(
 function resolveRelationship(field: string, answers: SessionAnswers): string | null {
   const { experience } = answers;
 
-  switch (field) {
-    case 'important':
-    case 'importantFactors': {
+  switch (RELATIONSHIP_FIELD_ALIAS[field]) {
+    case 'important': {
       if (experience.important.length === 0) return null;
       const labels = experience.important.map((factor) => PAST_FACTOR_LABEL[factor]).join(' · ');
       return `실제 관계에서 중요했던 것으로 ${withObjectParticle(labels)} 골랐어`;
     }
     case 'hardest':
-    case 'hardestMoment':
       return experience.hardest ? HARDEST_LABEL[experience.hardest] : null;
     case 'selfGap':
       return experience.selfGap
@@ -616,6 +696,90 @@ export function narrativeIsShowable(
 ): boolean {
   if (resolveEvidenceRefs(narrative.evidenceRefs, context).length > 0) return true;
   return Boolean(narrative.uncertainty?.trim());
+}
+
+/* ────────────── USER CORRECTION TRUST BOUNDARY (v1.43 · §48) ────────────── */
+
+/**
+ * 사용자가 Core 판정을 직접 고쳤을 때, **AI의 Core 서술은 화면에 도달하지 않는다.**
+ *
+ * ══ 무엇이 문제였나 ═══════════════════════════════════════════════════════
+ *
+ * S28에서 사용자가 `조금 달라`를 누르고 자기 문장을 쓰면 `coreCorrection`이 저장되고,
+ * `mirror/page.tsx`가 headline을 **그 문장으로 교체**한다.
+ *
+ * ```
+ * headline = answers.coreCorrection.trim() || aiHeadline || mirror.core.headline
+ * ```
+ *
+ * 그런데 바로 아래 `CoreInsightNarrativeView`는 `core.summary`를 **그대로** 그렸다.
+ * 실측으로 재현된 화면(v1.43 §48.2):
+ *
+ * ```
+ * headline (사용자)  "연락 자체가 아니라 혼자 있는 시간이 줄어드는 게 힘들었어."
+ * 배지               "네가 고친 문장이야."
+ * AI summary         "연락은 중요하지 않다고 느꼈지만, 실제로는 연락 감소가 힘들었던
+ *                     경험이 있었어."
+ * ```
+ *
+ * 사용자가 **연락 자체가 아니라고 명시적으로 부정한 판정**을, AI가 두 줄 아래에서 다시
+ * 주장한다.
+ *
+ * ══ 왜 headline만 바꾸는 것으로 부족한가 ══════════════════════════════════
+ *
+ * `core.summary`는 독립된 관찰이 아니다 — **AI가 만든 `core.headline`을 설명하는
+ * 문장**이다. headline이 사용자 문장으로 교체되면 그 summary는 **화면에 있는 headline을
+ * 설명하지 않는다.** 다른 문장을 설명하는 문장이 근거 목록과 함께 남는 것이고, 그건
+ * §35(근거 없이 말하지 않는다)가 금지하는 상태다.
+ *
+ * > **화면의 headline과 그 아래 AI 설명은 같은 출처여야 한다.**
+ *
+ * ══ 왜 AI에게 correction을 보내서 다시 쓰게 하지 않는가 ═══════════════════
+ *
+ * 두 가지 이유이고, 둘 다 편의가 아니다.
+ *
+ *  ① **Privacy.** `coreCorrection`은 자유서술이다(textarea · 120자). 현재 Provider로
+ *    가는 자유서술은 셋뿐이고(`experience.note` 300자 · `observations[].correctedText`
+ *    120자 · Deep Followup `custom` 120자) 전부 **그 답 자체가 근거**인 경우다. Core
+ *    correction은 근거가 아니라 **판정에 대한 반론**이므로 같은 예외에 해당하지 않는다.
+ *    보내지 않으면 privacy 표면이 하나도 늘지 않는다.
+ *
+ *  ② **더 중요한 이유 — 사용자 문장을 AI가 확장하게 만들지 않는다.** 한 문장을 주고
+ *    "이걸 설명해라"고 하면 모델은 반드시 그 문장 **밖으로** 나간다. 사용자가 쓴
+ *    범위만 authoritative인데, AI가 그것을 새 심리 판정으로 키우면 v1.43이 닫은
+ *    `AI_OUTPUT ⊆ DETERMINISTIC_EVIDENCE`가 정확히 반대 방향으로 뚫린다 —
+ *    **사용자 입력을 근거 삼아 없던 해석을 만드는 것**이다.
+ *
+ * ══ 왜 서버에서 지우지 않는가 ═════════════════════════════════════════════
+ *
+ * 응답에서 `core`를 지우면 `aiHeadline`이 `null`이 되고, 그러면 History가 기록하는
+ * `coreInsightOriginal`이 **결정론 headline으로 떨어진다**(`aiHeadline ?? mirror.core.headline`).
+ * 즉 **사용자가 실제로 거부한 문장이 기록에서 사라진다.** History는 `original`과
+ * `userCorrection`을 나란히 남기는 자리이므로(§5.2) 그 충실성이 이 게이트보다 먼저다.
+ *
+ * 그래서 payload는 그대로 두고 **렌더 경로만** 막는다.
+ *
+ * ══ 게이트를 화면에 두지 않는다 ═══════════════════════════════════════════
+ *
+ * v1.43 §8.14가 세운 규칙 그대로다 — 페이지에 `if (correction) hide`를 만들면
+ * **게이트를 통과하지 않는 렌더 지점**이 생기고, 그게 compatibility 질문 누출의 형태였다.
+ * 이 함수가 **유일한 통로**이고, `core.summary`가 이 함수를 거치지 않고 화면에 닿는지는
+ * 구조 검사 CC7이 확인한다.
+ *
+ * ⚠️ **축별 narrative는 건드리지 않는다.** 사용자가 부정한 것은 Core 판정 하나이고,
+ * 축별 설명은 각자의 결정론 판정을 설명한다 — 함께 지우면 과필터다(§27 AI는 augmentation).
+ *
+ * ⚠️ **`coreVerdict === 'no'`만으로는 막지 않는다.** 사용자가 `조금 달라`를 누르고
+ * 아무것도 쓰지 않으면 headline은 여전히 AI 문장이다. 그때 summary만 지우면 **설명 없는
+ * headline**이 남는다 — headline과 설명이 같은 출처여야 한다는 규칙을 그 방향으로도
+ * 어긴다. 기준은 **headline이 교체되었는가**, 즉 correction의 존재다.
+ */
+export function coreNarrativeForRender<T extends { summary: string }>(
+  core: T | null | undefined,
+  answers: SessionAnswers,
+): T | null {
+  if (!core) return null;
+  return answers.coreCorrection.trim().length > 0 ? null : core;
 }
 
 /**

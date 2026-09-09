@@ -1,0 +1,82 @@
+{
+  "name": "history_h1_korean_label_axis_rejected",
+  "description": "H1 (v1.43 §45.2) — **v1.42가 relationship v6에서 고친 실패가 이 Task에 남아 있었다.** v2 프롬프트는 '\"axis\": \"주어진 axis 그대로\"'라고만 했고, 같은 change 객체에 label('연락')이 함께 들어 있어서 지시가 모호했다. 모델이 한국어 label을 넣으면 oneOf가 걸러 narrative가 조용히 사라지는데, 이 Task에는 raw/parsed 로그도 없어서 **실패하고 있어도 알 수 없었다.** v3에서 [축 식별자] 블록으로 닫았고 이 fixture가 파서 쪽을 고정한다.",
+  "task": "history-insight",
+  "allowed": [
+    {
+      "axis": "contact",
+      "state": "SHIFT"
+    },
+    {
+      "axis": "alone",
+      "state": "STABLE"
+    }
+  ],
+  "allowedEvidenceRefs": {
+    "contact": [
+      {
+        "source": "history",
+        "entryId": "h1",
+        "axis": "contact"
+      },
+      {
+        "source": "history",
+        "entryId": "h2",
+        "axis": "contact"
+      },
+      {
+        "source": "declared",
+        "field": "contact"
+      }
+    ],
+    "alone": [
+      {
+        "source": "history",
+        "entryId": "h1",
+        "axis": "alone"
+      },
+      {
+        "source": "history",
+        "entryId": "h2",
+        "axis": "alone"
+      },
+      {
+        "source": "declared",
+        "field": "alone"
+      }
+    ]
+  },
+  "raw": {
+    "narratives": [
+      {
+        "axis": "연락",
+        "state": "SHIFT",
+        "explanation": "지난번보다 연락 중요도를 더 높게 답했어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "contact"
+          }
+        ]
+      },
+      {
+        "axis": "alone",
+        "state": "STABLE",
+        "explanation": "개인 시간에 대한 기준은 이전 기록과 비슷하게 유지됐어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "alone"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 1,
+    "axes": [
+      "alone"
+    ],
+    "refChecked": 1
+  }
+}

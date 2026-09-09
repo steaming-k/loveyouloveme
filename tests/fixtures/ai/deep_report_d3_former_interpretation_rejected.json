@@ -1,0 +1,47 @@
+{
+  "name": "deep_report_d3_former_interpretation_rejected",
+  "description": "D3 (v1.43 §47.5) — **interpretation은 connection.narrativeText로 그려진다.** DeepConnectionCard가 렌더하는 유일한 AI 문장이고, 그 바로 아래에 시제가 맞춰진 limitation이 놓인다. 한 카드 안에서 두 문장이 서로 다른 시점을 말하는 상태를 막는다.",
+  "task": "deep-report-narrative",
+  "tense": "former",
+  "allowed": [
+    {
+      "id": "ins1",
+      "evidenceRefs": [
+        {
+          "source": "declared",
+          "field": "contact"
+        },
+        {
+          "source": "current_relationship",
+          "field": "contact"
+        }
+      ],
+      "ruleSummary": "서로 다른 두 관찰이 같은 축을 가리키고 있어."
+    }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "insightId": "ins1",
+        "headline": "그때 연락 기준이 두 곳에서 같은 방향을 가리켰을지도 몰라",
+        "interpretation": "지금 상대와 연락 기준이 다르다는 점이 두 관찰에서 같은 축으로 나타나고 있어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "contact"
+          },
+          {
+            "source": "current_relationship",
+            "field": "contact"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 0,
+    "violationsInclude": [
+      "present_partner"
+    ]
+  }
+}

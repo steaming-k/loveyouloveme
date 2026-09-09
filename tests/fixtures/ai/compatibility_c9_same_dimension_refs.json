@@ -1,0 +1,85 @@
+{
+  "name": "compatibility_c9_same_dimension_refs",
+  "description": "C9 (v1.43 §46.3) — 같은 축의 세 출처(compatibility·declared·target)는 전부 허용이다. 화면의 SignalCard가 이미 '나: … · 상대: …'로 그 세 값을 나란히 보여주므로 좁힐 이유가 없다. C8과 짝이다 — 막는 것은 **다른 축**이고 같은 축의 출처 다양성이 아니다.",
+  "task": "compatibility-narrative",
+  "tense": "current",
+  "allowsOutwardQuestions": true,
+  "allowed": [
+    {
+      "key": "contact",
+      "kind": "friction"
+    },
+    {
+      "key": "alone",
+      "kind": "good"
+    }
+  ],
+  "allowedEvidenceRefs": {
+    "contact": [
+      {
+        "source": "compatibility",
+        "field": "contact"
+      },
+      {
+        "source": "declared",
+        "field": "contact"
+      },
+      {
+        "source": "target",
+        "field": "contact"
+      }
+    ],
+    "alone": [
+      {
+        "source": "compatibility",
+        "field": "alone"
+      },
+      {
+        "source": "declared",
+        "field": "alone"
+      },
+      {
+        "source": "target",
+        "field": "alone"
+      }
+    ]
+  },
+  "raw": {
+    "narratives": [
+      {
+        "dimensionKey": "contact",
+        "kind": "friction",
+        "explanation": "연락 빈도에 대한 기준이 서로 다르게 입력됐어.",
+        "scenario": "한쪽은 충분하다고 느끼는 상황에서 다른 쪽은 연결감이 줄었다고 느낄 수 있어.",
+        "evidenceRefs": [
+          {
+            "source": "compatibility",
+            "field": "contact"
+          },
+          {
+            "source": "declared",
+            "field": "contact"
+          },
+          {
+            "source": "target",
+            "field": "contact"
+          }
+        ],
+        "conversationQuestion": "연락이 줄어들면 어떤 의미로 받아들이는 편이야?"
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 1,
+    "refChecked": 1,
+    "rejectedRefSources": [],
+    "evidenceSources": [
+      [
+        "compatibility",
+        "declared",
+        "target"
+      ]
+    ],
+    "violations": []
+  }
+}

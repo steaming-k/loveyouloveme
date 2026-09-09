@@ -1,0 +1,89 @@
+{
+  "name": "relationship_r5_declared_alias_kept",
+  "description": "R5 (v1.43 §46.2) — **field 별칭이 과필터를 만들지 않는다.** AI context는 declared를 contactImportance·aloneNeed 같은 이름으로 보내므로(declaredForContext) 모델은 그 이름을 그대로 쓴다. 허용집합에는 canonical(contact)이 있는데, canonicalEvidenceRef가 별칭을 맞춰주지 않으면 **모델이 정확히 인용한 근거가 거부된다.** v1.42의 evidenceRefsAreSubsetOf(JSON.stringify 비교)로는 이 케이스가 통과할 수 없었다.",
+  "task": "relationship-insight",
+  "tense": "current",
+  "allowsOutwardQuestions": true,
+  "judgements": [
+    {
+      "axis": "contact",
+      "state": "GAP"
+    },
+    {
+      "axis": "alone",
+      "state": "MATCH"
+    },
+    {
+      "axis": "conflict",
+      "state": "CHANGE"
+    }
+  ],
+  "focusAxis": "contact",
+  "allowedEvidenceRefs": {
+    "contact": [
+      {
+        "source": "declared",
+        "field": "contact"
+      },
+      {
+        "source": "current_relationship",
+        "field": "contact"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ],
+    "alone": [
+      {
+        "source": "declared",
+        "field": "alone"
+      },
+      {
+        "source": "relationship",
+        "field": "important"
+      },
+      {
+        "source": "adaptive",
+        "field": "alone"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ],
+    "conflict": [
+      {
+        "source": "declared",
+        "field": "conflict"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ]
+  },
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "GAP",
+        "headline": "연락에서 말한 기준과 실제 신호가 갈렸어",
+        "explanation": "연락 중요도로 답한 값과 지금 관계에서 답한 내용이 달랐어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "contactImportance"
+          }
+        ]
+      }
+    ],
+    "core": null
+  },
+  "expect": {
+    "narrativeCount": 1,
+    "refChecked": 1,
+    "rejectedRefSources": [],
+    "violations": []
+  }
+}

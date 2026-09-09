@@ -1,0 +1,83 @@
+{
+  "name": "compatibility_c6_former_unsafe_wording",
+  "description": "C6 (v1.43 §47.3) — tense=former에서 **현재형 호칭**을 쓴 항목은 떨어진다. '지금 이 관계에서는'과 '지금 상대'가 각각 ongoing_relation · present_partner로 잡힌다. v1.42까지 compatibility Task에는 scanCoreNarrative만 붙어 있어서 이 두 문장이 그대로 통과했다.",
+  "task": "compatibility-narrative",
+  "tense": "former",
+  "allowsOutwardQuestions": false,
+  "allowed": [
+    {
+      "key": "contact",
+      "kind": "friction"
+    },
+    {
+      "key": "alone",
+      "kind": "good"
+    }
+  ],
+  "allowedEvidenceRefs": {
+    "contact": [
+      {
+        "source": "compatibility",
+        "field": "contact"
+      },
+      {
+        "source": "declared",
+        "field": "contact"
+      },
+      {
+        "source": "target",
+        "field": "contact"
+      }
+    ],
+    "alone": [
+      {
+        "source": "compatibility",
+        "field": "alone"
+      },
+      {
+        "source": "declared",
+        "field": "alone"
+      },
+      {
+        "source": "target",
+        "field": "alone"
+      }
+    ]
+  },
+  "raw": {
+    "narratives": [
+      {
+        "dimensionKey": "contact",
+        "kind": "friction",
+        "explanation": "지금 이 관계에서는 연락 기준이 서로 달라.",
+        "scenario": "앞으로 둘이 같은 기준을 맞춰가면 좋아질 수 있어.",
+        "evidenceRefs": [
+          {
+            "source": "compatibility",
+            "field": "contact"
+          }
+        ]
+      },
+      {
+        "dimensionKey": "alone",
+        "kind": "good",
+        "explanation": "지금 상대는 개인 시간을 존중하는 편으로 입력했어.",
+        "scenario": "각자 시간을 보내는 데 큰 문제는 없었을 수 있어.",
+        "evidenceRefs": [
+          {
+            "source": "compatibility",
+            "field": "alone"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 0,
+    "refChecked": 2,
+    "violationsInclude": [
+      "ongoing_relation",
+      "present_partner"
+    ]
+  }
+}

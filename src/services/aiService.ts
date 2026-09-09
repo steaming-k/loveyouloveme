@@ -4,6 +4,15 @@ import { buildMbtiLens, buildMbtiSelfLens, buildMbtiQuestions } from '@/lib/logi
 import { buildFirstContactReport } from '@/lib/logic/firstContact';
 import { buildMbtiPattern } from '@/lib/logic/mbtiPattern';
 import { buildMirrorReport } from '@/lib/logic/mirror';
+/**
+ * v1.43 §46 — 축/dimension별 허용 근거. **결정론 엔진에서 파생된 표**이고 여기서 새
+ * 판정을 만들지 않는다.
+ */
+import {
+  allowedCompatibilityRefsByDimension,
+  allowedHistoryRefsByAxis,
+  allowedRelationshipRefsByAxis,
+} from '@/lib/logic/allowedEvidence';
 import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import { buildHomeHighlights, buildRelationshipProfile } from '@/lib/logic/profile';
 import { callAiTask } from '@/services/ai/aiClient';
@@ -185,18 +194,45 @@ async function requestNarrative<T>(
  * S22/S23/S24/S25 — 이미 계산된 궁합 결과의 축별 차이를 설명한다.
  * 점수·good/friction 판정은 이 호출 **이전에** 이미 확정돼 있다.
  */
-export function requestCompatibilityNarrative(
-  result: CompatibilityResult,
-  fingerprint: string,
-): Promise<
+export function requestCompatibilityNarrative(input: {
+  result: CompatibilityResult;
+  /**
+   * v1.43 §47.1 — 필수. `relationshipTenseOf(job)`이 만든 값을 그대로 넘긴다.
+   *
+   * ⚠️ 여기서 `answers.status`로 다시 도출하지 않는다 — 판정 source는
+   * `relationshipStage.ts` 하나다(v1.42 §40.10).
+   */
+  tense: RelationshipTense;
+  /**
+   * v1.43 §47.2 — 필수. `jobAllowsOutwardQuestions(job)`에서 온 값.
+   *
+   * ⚠️ **프롬프트 입력이 아니다.** 응답을 받은 뒤 `conversationQuestion`을 남길지
+   * 정하는 post-processing 안전 문맥이고, 그래서 `buildCompatibilityContext`에
+   * 넘기지 않고 요청 최상위로만 보낸다.
+   */
+  allowsOutwardQuestions: boolean;
+  fingerprint: string;
+}): Promise<
   { ok: true; data: CompatibilityNarrativeBundle } | { ok: false; reason: AiFailureReason }
 > {
+  const { result, tense, allowsOutwardQuestions, fingerprint } = input;
+
   return requestNarrative<CompatibilityNarrativeBundle>(
     'compatibility-narrative',
     fingerprint,
     {
-      context: buildCompatibilityContext(result),
+      context: buildCompatibilityContext({ result, tense }),
       allowed: compatibilityAllowList(result),
+      /**
+       * v1.43 §46.3 — **설명 대상 dimension만** 허용집합을 만든다.
+       * `compatibilityAllowList`가 good/friction으로 이미 좁힌 목록과 같은 축이다 —
+       * 두 목록이 갈리면 모델이 설명해도 되는 축인데 근거가 없는 상태가 생긴다.
+       */
+      allowedEvidenceRefs: allowedCompatibilityRefsByDimension(
+        compatibilityAllowList(result).map((item) => item.key),
+      ),
+      tense,
+      allowsOutwardQuestions,
     },
   );
 }
@@ -254,6 +290,19 @@ export function requestRelationshipNarrative(input: {
     }),
     judgements: mirror.insights.map((insight) => ({ axis: insight.key, state: insight.state })),
     focusAxis: mirror.teaser?.axisKey ?? null,
+    /**
+     * v1.43 §46.2 — **축별 허용 근거.** 결정론 엔진이 그 축에 실제로 만들 수 있는 ref만
+     * 모은 표다(`relationshipRefFor`를 포함해 전부 기존 판정에서 파생된다).
+     *
+     * ⚠️ `analysisReadyObservations`를 쓴다 — context에 실어 보내는 관찰과 **같은
+     * 집합**이어야 한다. 두 곳이 갈리면 AI가 못 본 관찰을 인용해도 검사를 통과한다.
+     */
+    allowedEvidenceRefs: allowedRelationshipRefsByAxis({
+      insights: mirror.insights,
+      experience: answers.experience,
+      validated: analysisReadyObservations(validated),
+      pastObservations,
+    }),
     /** v1.42 §41.8 — 서버가 응답 후처리에서만 읽는다. 프롬프트에 들어가지 않는다 */
     allowsOutwardQuestions,
     /**
@@ -269,15 +318,37 @@ export function requestRelationshipNarrative(input: {
  * F2 — 규칙이 판정한 변화를 설명한다.
  * INSUFFICIENT 축은 Context Builder가 이미 제외한다 — 판정하지 않은 것을 설명하지 않는다.
  */
-export function requestHistoryNarrative(
-  changes: readonly HistoryAxisChange[],
-  fingerprint: string,
-): Promise<{ ok: true; data: HistoryNarrativeBundle } | { ok: false; reason: AiFailureReason }> {
+export function requestHistoryNarrative(input: {
+  changes: readonly HistoryAxisChange[];
+  /**
+   * v1.43 §45.3 — 비교한 두 기록의 id. **`history` evidenceRef를 성립시키는 값**이다.
+   *
+   * v1.42까지 이 자리가 없어서 모델은 `history` source를 프롬프트에서 허용받고도
+   * `entryId`를 알 수 없었고, 그 결과 history AI narrative의 근거는 실측에서 **0개**였다.
+   *
+   * ⚠️ `null`이면 근거 허용집합이 비어 이 Task가 호출되지 않는다(기록 1개 이하).
+   */
+  comparedEntries: { previousEntryId: string; currentEntryId: string } | null;
+  fingerprint: string;
+}): Promise<{ ok: true; data: HistoryNarrativeBundle } | { ok: false; reason: AiFailureReason }> {
+  const { changes, comparedEntries, fingerprint } = input;
   const judged = changes.filter((change) => change.state !== 'INSUFFICIENT');
 
   return requestNarrative<HistoryNarrativeBundle>('history-insight', fingerprint, {
-    context: buildHistoryContext(changes),
+    context: buildHistoryContext(changes, comparedEntries),
     allowed: judged.map((change) => ({ axis: change.axis, state: change.state })),
+    /**
+     * v1.43 §46.4 — 축별 허용 근거. 비교한 두 기록과 그 축의 declared 답변뿐이다.
+     * `comparedEntries`가 없으면 **빈 표**이고, 그러면 모든 근거가 거부된다 —
+     * 근거를 만들 수 없는 상태에서 근거를 허용하는 것보다 정직하다.
+     */
+    allowedEvidenceRefs: comparedEntries
+      ? allowedHistoryRefsByAxis({
+          axes: judged.map((change) => change.axis),
+          previousEntryId: comparedEntries.previousEntryId,
+          currentEntryId: comparedEntries.currentEntryId,
+        })
+      : {},
   });
 }
 
@@ -319,6 +390,8 @@ export function requestDeepReportNarrative(
       // allowedConnection은 ruleSummary를 그대로 담은 것이다(contextBuilders).
       ruleSummary: item.allowedConnection,
     })),
+    /** v1.43 §47.5 — 서버의 시제 스캐너가 읽는다. context 안에도 같은 값이 있다 */
+    tense,
   });
 }
 

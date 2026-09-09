@@ -1,0 +1,104 @@
+{
+  "name": "relationship_r6_mixed_valid_refs_kept",
+  "description": "R6 (v1.43 §46.2) — 한 축의 허용 근거를 여러 종류 섞어 인용해도 통과한다. alone은 declared·relationship(important)·adaptive·observed 네 종을 갖고 있고, **relationship:important가 alone 축에서는 허용**이다(alone은 PastFactor이자 Mirror 축이고 scope=past다). R2와 짝이다 — 같은 ref가 축에 따라 허용/거부로 갈리는 것이 이 계약의 요점이다.",
+  "task": "relationship-insight",
+  "tense": "current",
+  "allowsOutwardQuestions": true,
+  "judgements": [
+    {
+      "axis": "contact",
+      "state": "GAP"
+    },
+    {
+      "axis": "alone",
+      "state": "MATCH"
+    },
+    {
+      "axis": "conflict",
+      "state": "CHANGE"
+    }
+  ],
+  "focusAxis": "contact",
+  "allowedEvidenceRefs": {
+    "contact": [
+      {
+        "source": "declared",
+        "field": "contact"
+      },
+      {
+        "source": "current_relationship",
+        "field": "contact"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ],
+    "alone": [
+      {
+        "source": "declared",
+        "field": "alone"
+      },
+      {
+        "source": "relationship",
+        "field": "important"
+      },
+      {
+        "source": "adaptive",
+        "field": "alone"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ],
+    "conflict": [
+      {
+        "source": "declared",
+        "field": "conflict"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ]
+  },
+  "raw": {
+    "narratives": [
+      {
+        "axis": "alone",
+        "state": "GAP",
+        "headline": "개인 시간은 말한 기준과 비슷하게 나타났어",
+        "explanation": "혼자 있는 시간을 중요하게 답했고, 관계에서 중요했던 요소로도 골랐어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "alone"
+          },
+          {
+            "source": "relationship",
+            "field": "important"
+          },
+          {
+            "source": "adaptive",
+            "field": "alone"
+          }
+        ]
+      }
+    ],
+    "core": null
+  },
+  "expect": {
+    "narrativeCount": 1,
+    "refChecked": 1,
+    "rejectedRefSources": [],
+    "evidenceSources": [
+      [
+        "declared",
+        "relationship",
+        "adaptive"
+      ]
+    ],
+    "violations": []
+  }
+}

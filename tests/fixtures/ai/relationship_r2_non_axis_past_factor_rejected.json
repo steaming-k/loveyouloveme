@@ -1,0 +1,91 @@
+{
+  "name": "relationship_r2_non_axis_past_factor_rejected",
+  "description": "R2 (v1.43 §46.2 · §8) — PastFactor 12종 중 **Mirror 축이 아닌 7개**(talk·rhythm·money·touch·future·care·stable)의 처리다. relationship:important ref가 만드는 문장은 '실제 관계에서 중요했던 것으로 경제관념 · 미래 계획을 골랐어'이고 **축 정보가 없다** — 그래서 AI가 어느 축에 붙여도 문장 자체는 사실이고 화면에서 오귀속을 확인할 방법이 없다. contact 축은 important에 들어 있지만(축이므로) 여기서는 scope가 current라 결정론 엔진이 그 ref를 만들지 않았고, 따라서 허용집합에도 없다.",
+  "task": "relationship-insight",
+  "tense": "current",
+  "allowsOutwardQuestions": true,
+  "judgements": [
+    {
+      "axis": "contact",
+      "state": "GAP"
+    },
+    {
+      "axis": "alone",
+      "state": "MATCH"
+    },
+    {
+      "axis": "conflict",
+      "state": "CHANGE"
+    }
+  ],
+  "focusAxis": "contact",
+  "allowedEvidenceRefs": {
+    "contact": [
+      {
+        "source": "declared",
+        "field": "contact"
+      },
+      {
+        "source": "current_relationship",
+        "field": "contact"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ],
+    "alone": [
+      {
+        "source": "declared",
+        "field": "alone"
+      },
+      {
+        "source": "relationship",
+        "field": "important"
+      },
+      {
+        "source": "adaptive",
+        "field": "alone"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ],
+    "conflict": [
+      {
+        "source": "declared",
+        "field": "conflict"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ]
+  },
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "GAP",
+        "headline": "연락에서 말한 기준과 실제 신호가 갈렸어",
+        "explanation": "연락 중요도는 낮게 골랐는데 관계에서 중요했던 요소와는 방향이 달랐어.",
+        "evidenceRefs": [
+          {
+            "source": "relationship",
+            "field": "important"
+          }
+        ]
+      }
+    ],
+    "core": null
+  },
+  "expect": {
+    "narrativeCount": 0,
+    "refChecked": 0,
+    "rejectedRefSources": [
+      "relationship"
+    ],
+    "violations": []
+  }
+}

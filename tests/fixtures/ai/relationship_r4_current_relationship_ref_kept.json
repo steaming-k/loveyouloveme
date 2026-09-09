@@ -1,0 +1,94 @@
+{
+  "name": "relationship_r4_current_relationship_ref_kept",
+  "description": "R4 (v1.43 §46.2) — scope=current인 축에서는 current_relationship ref가 허용이다. v1.42 §41.2가 EVIDENCE_SOURCES에 이 값을 추가했고, v1.43은 그것을 **축 단위로** 좁힌다: contact는 S30에 답했으므로 허용, conflict는 답하지 않았으므로 그 축의 허용집합에 없다.",
+  "task": "relationship-insight",
+  "tense": "current",
+  "allowsOutwardQuestions": true,
+  "judgements": [
+    {
+      "axis": "contact",
+      "state": "GAP"
+    },
+    {
+      "axis": "alone",
+      "state": "MATCH"
+    },
+    {
+      "axis": "conflict",
+      "state": "CHANGE"
+    }
+  ],
+  "focusAxis": "contact",
+  "allowedEvidenceRefs": {
+    "contact": [
+      {
+        "source": "declared",
+        "field": "contact"
+      },
+      {
+        "source": "current_relationship",
+        "field": "contact"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ],
+    "alone": [
+      {
+        "source": "declared",
+        "field": "alone"
+      },
+      {
+        "source": "relationship",
+        "field": "important"
+      },
+      {
+        "source": "adaptive",
+        "field": "alone"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ],
+    "conflict": [
+      {
+        "source": "declared",
+        "field": "conflict"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ]
+  },
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "GAP",
+        "headline": "지금 관계에서 답한 내용이 기준과 달랐어",
+        "explanation": "연락 중요도는 낮게 골랐는데 지금 관계에 대해서는 뚜렷하게 드러난다고 답했어.",
+        "evidenceRefs": [
+          {
+            "source": "current_relationship",
+            "field": "contact"
+          }
+        ]
+      }
+    ],
+    "core": null
+  },
+  "expect": {
+    "narrativeCount": 1,
+    "refChecked": 1,
+    "rejectedRefSources": [],
+    "evidenceSources": [
+      [
+        "current_relationship"
+      ]
+    ],
+    "violations": []
+  }
+}

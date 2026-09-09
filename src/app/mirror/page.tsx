@@ -383,9 +383,22 @@ function MirrorView() {
             <h2 className="text-[21px] font-semibold leading-[1.5] tracking-[-0.5px] keep-all text-brand-ink">
               {headline}
             </h2>
+            {/*
+              v1.43 §48.6 — **카피를 화면 사실에 맞췄다.**
+
+              이전 문구는 `러비의 원래 관찰은 아래 근거와 함께 남겨뒀어`였다. §48의
+              게이트가 Core AI 서술을 렌더에서 빼면 **아래에 남는 것은 결정론 근거
+              목록뿐**이고, 러비의 원래 관찰 문장은 화면에 없다. 원래 관찰이 실제로
+              남는 곳은 **저장을 눌렀을 때의 관찰 기록**이다
+              (`coreInsight.original` — `buildHistoryEntry`).
+
+              ⚠️ 문구를 그대로 두는 것이 더 작은 변경이지만, 그러면 화면이 없는 것을
+              있다고 말한다. v1.43이 닫는 것이 정확히 그 종류의 거짓이다.
+            */}
             {edited ? (
               <p className="text-[11.5px] text-brand-pressed">
-                네가 고친 문장이야. 러비의 원래 관찰은 아래 근거와 함께 남겨뒀어.
+                네가 고친 문장이야. 러비의 원래 관찰도 기록에 함께 저장할게 — 아래 근거는
+                그대로야.
               </p>
             ) : null}
           </section>

@@ -1,0 +1,48 @@
+{
+  "name": "deep_report_d1_former_safe",
+  "description": "D1 (v1.43 §47.5) — tense=former에서 과거형으로 쓴 본문은 통과한다. D2·D3이 '검사가 생겼다'를 보이고 이 fixture가 '과필터가 아니다'를 보인다.",
+  "task": "deep-report-narrative",
+  "tense": "former",
+  "allowed": [
+    {
+      "id": "ins1",
+      "evidenceRefs": [
+        {
+          "source": "declared",
+          "field": "contact"
+        },
+        {
+          "source": "current_relationship",
+          "field": "contact"
+        }
+      ],
+      "ruleSummary": "서로 다른 두 관찰이 같은 축을 가리키고 있어."
+    }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "insightId": "ins1",
+        "headline": "그때 연락 기준이 두 곳에서 같은 방향을 가리켰을지도 몰라",
+        "interpretation": "그때 이 관계에서 답한 내용과 네가 직접 답한 기준이 같은 축을 가리키고 있어. 두 관찰이 같은 지점을 짚는다는 것까지야.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "contact"
+          },
+          {
+            "source": "current_relationship",
+            "field": "contact"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 1,
+    "insightIds": [
+      "ins1"
+    ],
+    "violations": []
+  }
+}

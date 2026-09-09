@@ -1,0 +1,72 @@
+{
+  "name": "history_h4_wrong_entry_id_rejected",
+  "description": "H4 (v1.43 §45.3) — 비교하지 않은 기록의 id를 인용하면 거부된다. useHistoryNarrative는 report.compared(buildHistoryReport가 실제로 비교한 두 커플 기록)를 넘기므로, 목록에 없는 id는 **화면이 비교한 기록과 다른 기록**을 가리킨다 — v1.35 P4-B가 Mixed History에서 실측한 버그와 같은 형태다.",
+  "task": "history-insight",
+  "allowed": [
+    {
+      "axis": "contact",
+      "state": "SHIFT"
+    },
+    {
+      "axis": "alone",
+      "state": "STABLE"
+    }
+  ],
+  "allowedEvidenceRefs": {
+    "contact": [
+      {
+        "source": "history",
+        "entryId": "h1",
+        "axis": "contact"
+      },
+      {
+        "source": "history",
+        "entryId": "h2",
+        "axis": "contact"
+      },
+      {
+        "source": "declared",
+        "field": "contact"
+      }
+    ],
+    "alone": [
+      {
+        "source": "history",
+        "entryId": "h1",
+        "axis": "alone"
+      },
+      {
+        "source": "history",
+        "entryId": "h2",
+        "axis": "alone"
+      },
+      {
+        "source": "declared",
+        "field": "alone"
+      }
+    ]
+  },
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "SHIFT",
+        "explanation": "이전 기록과 이번 기록에서 연락에 대한 답이 달라졌어.",
+        "evidenceRefs": [
+          {
+            "source": "history",
+            "entryId": "h9",
+            "axis": "contact"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 0,
+    "refChecked": 0,
+    "rejectedRefSources": [
+      "history"
+    ]
+  }
+}

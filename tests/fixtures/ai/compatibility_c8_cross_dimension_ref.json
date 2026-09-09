@@ -1,0 +1,88 @@
+{
+  "name": "compatibility_c8_cross_dimension_ref",
+  "description": "C8 (v1.43 §46.3) — **dimension별 허용집합이 필요한 이유.** contact 설명이 alone dimension의 ref를 인용한다. v1.30이 파서에 넣은 검사(compatibility ref의 field가 실제 축인지)는 **Task 전체 집합(allowedMap)** 기준이라 여기서는 통과한다 — alone도 이 궁합 결과의 축이기 때문이다. 그러면 화면에는 '연락 방식' 설명 아래 '개인 시간' 근거가 붙는다. 근거 귀속의 단위는 Task가 아니라 항목이고, 그래서 dimension별 검사가 따로 필요하다. ⚠️ 다른 축을 conflict(궁합 결과에 없는 축)로 두면 v1.30 파서 검사에 먼저 걸려서 **이 검사가 검증되지 않는다** — 실제로 첫 시도에서 그렇게 됐고, rejectedRefSources가 비어 있는 것으로 드러났다. alone은 정상이라 살아남는다: 항목 단위로 버린다는 것도 함께 고정한다.",
+  "task": "compatibility-narrative",
+  "tense": "current",
+  "allowsOutwardQuestions": true,
+  "allowed": [
+    {
+      "key": "contact",
+      "kind": "friction"
+    },
+    {
+      "key": "alone",
+      "kind": "good"
+    }
+  ],
+  "allowedEvidenceRefs": {
+    "contact": [
+      {
+        "source": "compatibility",
+        "field": "contact"
+      },
+      {
+        "source": "declared",
+        "field": "contact"
+      },
+      {
+        "source": "target",
+        "field": "contact"
+      }
+    ],
+    "alone": [
+      {
+        "source": "compatibility",
+        "field": "alone"
+      },
+      {
+        "source": "declared",
+        "field": "alone"
+      },
+      {
+        "source": "target",
+        "field": "alone"
+      }
+    ]
+  },
+  "raw": {
+    "narratives": [
+      {
+        "dimensionKey": "contact",
+        "kind": "friction",
+        "explanation": "연락 빈도에 대한 기준이 서로 다르게 입력됐어.",
+        "scenario": "한쪽은 충분하다고 느끼는 상황에서 다른 쪽은 연결감이 줄었다고 느낄 수 있어.",
+        "evidenceRefs": [
+          {
+            "source": "compatibility",
+            "field": "alone"
+          }
+        ],
+        "conversationQuestion": "연락이 줄어들면 어떤 의미로 받아들이는 편이야?"
+      },
+      {
+        "dimensionKey": "alone",
+        "kind": "good",
+        "explanation": "개인 시간에 대한 기준이 비슷한 구간으로 입력됐어.",
+        "scenario": "각자 시간을 보내는 걸 거절로 받아들일 가능성은 낮아 보여.",
+        "evidenceRefs": [
+          {
+            "source": "compatibility",
+            "field": "alone"
+          }
+        ],
+        "conversationQuestion": "혼자 있고 싶을 때 상대에게 어떻게 알려주는 게 편해?"
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 1,
+    "keys": [
+      "alone"
+    ],
+    "refChecked": 1,
+    "rejectedRefSources": [
+      "compatibility"
+    ],
+    "violations": []
+  }
+}

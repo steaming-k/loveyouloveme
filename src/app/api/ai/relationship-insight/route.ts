@@ -29,8 +29,15 @@ export async function POST(request: Request): Promise<Response> {
     return failureResponse('INVALID_OUTPUT', requestId, 400);
   }
 
-  const { inputFingerprint, context, judgements, focusAxis, tense, allowsOutwardQuestions } =
-    body as Record<string, unknown>;
+  const {
+    inputFingerprint,
+    context,
+    judgements,
+    focusAxis,
+    tense,
+    allowsOutwardQuestions,
+    allowedEvidenceRefs,
+  } = body as Record<string, unknown>;
 
   if (typeof inputFingerprint !== 'string' || !Array.isArray(judgements)) {
     return failureResponse('INVALID_OUTPUT', requestId, 400);
@@ -59,9 +66,21 @@ export async function POST(request: Request): Promise<Response> {
     return failureResponse('INVALID_OUTPUT', requestId, 400);
   }
 
+  /**
+   * v1.43 §46.2 — 근거 허용집합. **없으면 400이다.**
+   *
+   * 이 Task에는 v1.42까지 근거 검사가 아예 없었으므로, 검사를 새로 켜면서 허용집합이
+   * 빠진 요청을 조용히 통과시키면 v1.42와 같은 상태가 된다 — 검사가 있다고 적어두고
+   * 실제로는 없는 상태가 가장 나쁘다.
+   */
+  if (allowedEvidenceRefs === null || typeof allowedEvidenceRefs !== 'object') {
+    return failureResponse('INVALID_OUTPUT', requestId, 400);
+  }
+
   const result = await runRelationshipTask({
     inputFingerprint,
     context,
+    allowedRefsByAxis: allowedEvidenceRefs as never,
     judgements: judgements as never,
     focusAxis: (typeof focusAxis === 'string' ? focusAxis : null) as never,
     tense,

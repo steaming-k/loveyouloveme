@@ -29,15 +29,29 @@ export async function POST(request: Request): Promise<Response> {
     return failureResponse('INVALID_OUTPUT', requestId, 400);
   }
 
-  const { inputFingerprint, context, allowed } = body as Record<string, unknown>;
+  const { inputFingerprint, context, allowed, allowedEvidenceRefs } = body as Record<
+    string,
+    unknown
+  >;
 
   if (typeof inputFingerprint !== 'string' || !Array.isArray(allowed)) {
+    return failureResponse('INVALID_OUTPUT', requestId, 400);
+  }
+
+  /**
+   * v1.43 §46.4 — 근거 허용집합. **없으면 400이다.**
+   *
+   * `?? {}`로 떨어뜨리면 모든 축의 허용집합이 비고 모델이 정확히 인용한 근거까지
+   * 거부된다. `?? 검사 통과`로 두면 검사가 무의미해진다. 둘 다 조용한 실패다.
+   */
+  if (allowedEvidenceRefs === null || typeof allowedEvidenceRefs !== 'object') {
     return failureResponse('INVALID_OUTPUT', requestId, 400);
   }
 
   const result = await runHistoryTask({
     inputFingerprint,
     context,
+    allowedRefsByAxis: allowedEvidenceRefs as never,
     allowed: allowed as never,
   });
 

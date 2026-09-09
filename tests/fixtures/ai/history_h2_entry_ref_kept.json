@@ -1,0 +1,81 @@
+{
+  "name": "history_h2_entry_ref_kept",
+  "description": "H2 (v1.43 §45.3 · 결정 A) — **history ref가 처음으로 성립한다.** v1.42까지 이 Task의 프롬프트는 history source를 허용했지만 buildHistoryContext가 entryId를 보내지 않아 모델이 구성할 수 없었고, 그 결과 실측에서 history AI narrative의 근거는 **0개**였다(uncertainty로만 생존). context.comparedEntries가 두 id를 실어 보내면서 '변화를 설명하는 문장이 그 변화의 양쪽 기록을 가리킬 수 있다'는 계약이 성립한다.",
+  "task": "history-insight",
+  "allowed": [
+    {
+      "axis": "contact",
+      "state": "SHIFT"
+    },
+    {
+      "axis": "alone",
+      "state": "STABLE"
+    }
+  ],
+  "allowedEvidenceRefs": {
+    "contact": [
+      {
+        "source": "history",
+        "entryId": "h1",
+        "axis": "contact"
+      },
+      {
+        "source": "history",
+        "entryId": "h2",
+        "axis": "contact"
+      },
+      {
+        "source": "declared",
+        "field": "contact"
+      }
+    ],
+    "alone": [
+      {
+        "source": "history",
+        "entryId": "h1",
+        "axis": "alone"
+      },
+      {
+        "source": "history",
+        "entryId": "h2",
+        "axis": "alone"
+      },
+      {
+        "source": "declared",
+        "field": "alone"
+      }
+    ]
+  },
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "SHIFT",
+        "explanation": "이전 기록과 이번 기록에서 연락에 대한 답이 달라졌어.",
+        "evidenceRefs": [
+          {
+            "source": "history",
+            "entryId": "h1",
+            "axis": "contact"
+          },
+          {
+            "source": "history",
+            "entryId": "h2",
+            "axis": "contact"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 1,
+    "refChecked": 1,
+    "rejectedRefSources": [],
+    "evidenceSources": [
+      [
+        "history",
+        "history"
+      ]
+    ]
+  }
+}

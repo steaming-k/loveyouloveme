@@ -1,0 +1,74 @@
+{
+  "name": "history_h0_canonical_axis",
+  "description": "H0 (v1.43 §45.2) — canonical axis(영문 키)는 파싱된다. H1의 대조군이다.",
+  "task": "history-insight",
+  "allowed": [
+    {
+      "axis": "contact",
+      "state": "SHIFT"
+    },
+    {
+      "axis": "alone",
+      "state": "STABLE"
+    }
+  ],
+  "allowedEvidenceRefs": {
+    "contact": [
+      {
+        "source": "history",
+        "entryId": "h1",
+        "axis": "contact"
+      },
+      {
+        "source": "history",
+        "entryId": "h2",
+        "axis": "contact"
+      },
+      {
+        "source": "declared",
+        "field": "contact"
+      }
+    ],
+    "alone": [
+      {
+        "source": "history",
+        "entryId": "h1",
+        "axis": "alone"
+      },
+      {
+        "source": "history",
+        "entryId": "h2",
+        "axis": "alone"
+      },
+      {
+        "source": "declared",
+        "field": "alone"
+      }
+    ]
+  },
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "STABLE",
+        "explanation": "지난번보다 연락 중요도를 더 높게 답했어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "contact"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 1,
+    "axes": [
+      "contact"
+    ],
+    "states": [
+      "SHIFT"
+    ],
+    "refChecked": 1
+  }
+}

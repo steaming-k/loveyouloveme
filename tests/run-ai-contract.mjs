@@ -54,6 +54,12 @@ async function run(fixture) {
       tense: fixture.tense,
       // v1.42 §41.11 — Ended Job Safety fixture. 없으면 라우트가 true로 본다
       allowsOutwardQuestions: fixture.allowsOutwardQuestions,
+      /**
+       * v1.43 §46 — 근거 귀속 fixture. **없으면 dev 라우트가 그 검사를 건너뛴다**
+       * (`evidenceContract: 'skipped'`). v1.42까지의 fixture 30여 개는 이 값을 갖고
+       * 있지 않고 그것들이 검증하는 것은 시제·게이트·스키마다.
+       */
+      allowedEvidenceRefs: fixture.allowedEvidenceRefs,
     }),
   });
 
@@ -254,6 +260,44 @@ async function run(fixture) {
       check(name, `근거 또는 한계 동반 (${item.key})`,
         item.evidenceCount > 0 || item.hasUncertainty);
     }
+
+    /* ── v1.43 §47 — relationship과 **같은 계약**을 같은 방식으로 검사한다 ────
+       v1.42까지 compatibility fixture에는 시제도 질문도 근거 귀속도 없었다. 없는
+       fixture는 실패하지 않으므로, `ended` 사용자에게 AI 질문 2개가 나가는 상태가
+       290건 PASS 안에서 조용히 유지됐다. */
+    if (fixture.tense !== undefined) {
+      check(name, `tense ${fixture.tense}로 실행됨`, result.tense === fixture.tense,
+        `실제 ${result.tense}`);
+    }
+    if (fixture.allowsOutwardQuestions !== undefined) {
+      check(name, `allowsOutwardQuestions=${fixture.allowsOutwardQuestions}로 실행됨`,
+        result.allowsOutwardQuestions === fixture.allowsOutwardQuestions,
+        `실제 ${result.allowsOutwardQuestions}`);
+    }
+    if (expect.questionCount !== undefined) {
+      check(name, `AI question ${expect.questionCount}개`,
+        result.questionCount === expect.questionCount, `실제 ${result.questionCount}`);
+    }
+    if (expect.hasQuestion) {
+      check(name, `축별 question 유무 [${expect.hasQuestion.join(',')}]`,
+        eq(narratives.map((n) => n.hasQuestion === true), expect.hasQuestion),
+        `실제 [${narratives.map((n) => n.hasQuestion === true).join(',')}]`);
+    }
+    if (expect.evidenceSources) {
+      check(name, `근거 source ${JSON.stringify(expect.evidenceSources)}`,
+        eq(narratives.map((n) => n.evidenceSources ?? []), expect.evidenceSources),
+        `실제 ${JSON.stringify(narratives.map((n) => n.evidenceSources ?? []))}`);
+    }
+    if (expect.violations) {
+      const actual = result.violations ?? [];
+      for (const label of expect.violations) {
+        check(name, `위반 라벨 '${label}' 감지`, actual.includes(label),
+          `실제 [${actual.join(',')}]`);
+      }
+      if (expect.violations.length === 0) {
+        check(name, '위반 없음', actual.length === 0, `실제 [${actual.join(',')}]`);
+      }
+    }
   }
 
   /* ----------------------------------------------- History */
@@ -278,6 +322,28 @@ async function run(fixture) {
       check(name, `근거 또는 한계 동반 (${item.axis})`,
         item.evidenceCount > 0 || item.hasUncertainty);
     }
+    /**
+     * v1.43 §45.3 — **`history` source가 실제로 살아남는지 본다.**
+     *
+     * v1.42까지 이 Task의 근거는 실측에서 0개였다 — `history` ref는 `entryId`가 없어
+     * 항상 null로 떨어졌고, 그래도 `uncertainty`가 있으면 narrative는 통과했으므로
+     * fixture는 전부 PASS였다. 개수만 세면 이 상태를 구분할 수 없다.
+     */
+    if (expect.evidenceSources) {
+      check(name, `근거 source ${JSON.stringify(expect.evidenceSources)}`,
+        eq(narratives.map((n) => n.evidenceSources ?? []), expect.evidenceSources),
+        `실제 ${JSON.stringify(narratives.map((n) => n.evidenceSources ?? []))}`);
+    }
+    if (expect.violations) {
+      const actual = result.violations ?? [];
+      for (const label of expect.violations) {
+        check(name, `위반 라벨 '${label}' 감지`, actual.includes(label),
+          `실제 [${actual.join(',')}]`);
+      }
+      if (expect.violations.length === 0) {
+        check(name, '위반 없음', actual.length === 0, `실제 [${actual.join(',')}]`);
+      }
+    }
   }
 
   /* -------------------------------------------- Deep Report (v1.9) */
@@ -298,6 +364,21 @@ async function run(fixture) {
         eq(narratives.map((n) => n.insightId), expect.insightIds),
         `실제 ${narratives.map((n) => n.insightId).join(',')}`);
     }
+    /* v1.43 §47.5 — 시제 계약. relationship과 같은 방식으로 먼저 실행 값을 본다 */
+    if (fixture.tense !== undefined) {
+      check(name, `tense ${fixture.tense}로 실행됨`, result.tense === fixture.tense,
+        `실제 ${result.tense}`);
+    }
+    if (expect.violations) {
+      const actual = result.violations ?? [];
+      for (const label of expect.violations) {
+        check(name, `위반 라벨 '${label}' 감지`, actual.includes(label),
+          `실제 [${actual.join(',')}]`);
+      }
+      if (expect.violations.length === 0) {
+        check(name, '위반 없음', actual.length === 0, `실제 [${actual.join(',')}]`);
+      }
+    }
     for (const item of narratives) {
       check(name, `headline ≤ 70 (${item.insightId})`, item.headlineLength <= 70,
         `실제 ${item.headlineLength}`);
@@ -306,6 +387,25 @@ async function run(fixture) {
       check(name, `근거 또는 한계 동반 (${item.insightId})`,
         item.evidenceCount > 0 || item.hasUncertainty);
     }
+  }
+
+  /* ─────────────── 공통: 근거 귀속 계약 (v1.43 · §46) ─────────────────
+     ⚠️ **`evidenceContract`를 먼저 본다.** fixture가 `allowedEvidenceRefs`를 빼먹으면
+     라우트는 검사를 건너뛰고, 그러면 `rejectedCount: 2`를 기대한 fixture가 **0을 받고도
+     조용히 통과**할 수 있다 — v1.42가 tense fixture에서 같은 이유로 `result.tense`를
+     먼저 확인하기로 정한 것과 같은 규칙이다(기본값이 조용히 다르면 나머지가 거짓 통과). */
+  if (fixture.allowedEvidenceRefs !== undefined) {
+    check(name, '근거 귀속 검사가 실제로 돌았다', result.evidenceContract !== 'skipped',
+      `실제 ${result.evidenceContract}`);
+  }
+  if (expect.refChecked !== undefined) {
+    check(name, `근거 검사 통과 ${expect.refChecked}개`, result.refChecked === expect.refChecked,
+      `실제 ${result.refChecked}`);
+  }
+  if (expect.rejectedRefSources) {
+    check(name, `거부된 근거 source [${expect.rejectedRefSources.join(',')}]`,
+      eq((result.rejectedRefSources ?? []).slice().sort(), expect.rejectedRefSources.slice().sort()),
+      `실제 [${(result.rejectedRefSources ?? []).join(',')}]`);
   }
 
   /* ------------------------------------------- 공통: 위반 라벨 */

@@ -7,7 +7,7 @@
 론칭 프로젝트입니다. 실측 확인된 사실과 미검증 항목을 분리해서 기록합니다 — "구현했다"와
 "검증됐다"를 같은 말로 쓰지 않습니다.
 
-**기준 문서** — 현재 버전 **v1.42**
+**기준 문서** — 현재 버전 **v1.43**
 
 | 문서 | 담는 것 | 언제 보나 |
 |---|---|---|
@@ -44,10 +44,10 @@ http://localhost:3000 · 기준 뷰포트 **393 × 852** (360px에서도 깨지�
 | `npm run build` | 프로덕션 빌드 (타입 체크 + 린트 포함) |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | ESLint |
-| `npm run test:ai` | AI 스키마/안전 검증 Contract Test **290건** (Provider Key 불필요 · **dev 서버 필요**) — v1.42에서 **시제 fixture 3종**(`former` 안전 문장 통과 · `former` 현재형 호칭 드롭 · `current` 과필터 방지) + **근거 귀속 CA0~CA4** + **질문 Job Safety AQ0~AQ6** 추가 |
+| `npm run test:ai` | AI 스키마/안전 검증 Contract Test **508건** (Provider Key 불필요 · **dev 서버 필요**) — v1.42의 시제 fixture 3종 + 근거 귀속 CA0~CA4 + 질문 Job Safety AQ0~AQ6에, v1.43에서 **Compatibility 계약 C0~C9**(질문 게이트 · 시제 · dimension별 근거) + **Relationship 근거 귀속 R0~R7**(`value_gap`·PastFactor 7개·`selfGap`의 축 오귀속 차단 + 별칭 과필터 방지) + **History 계약 H0~H4**(canonical axis · `history` ref 성립) + **Deep Report 시제 D0~D5** 추가 |
 | `npm run test:observed` | 사진 파이프라인 E2E 10건 (`/api/ai/observed-profile` 왕복 · **dev 서버 필요**) |
 | `npm run test:lifecycle` | Lifecycle Fixture **144건** — Relationship Stage/Job · **불변 검사**(단계만 바꿔도 동기화율·Mirror·Premium 게이트 동일) · Ended/Dating/Long-term Safety · **Premium Deep Report 본문의 구조적 안전**(v1.40.1 · `audience` 카운트) · Paywall↔본문 대칭 · fixture enum guard · legacy 세션 (**dev 서버 필요**) |
-| `npm run test:relationship-evidence` | Relationship Evidence Fixture **154건** (v1.41 80 → v1.42 154) — **stage ≠ evidence 양방향**(`dating`인데 근거가 없으면 current 0 · `talking`인데 근거를 넣으면 current 사용) · **legacy 무변경**(현재 근거가 없는 세션의 판정이 v1.40.1과 JSON 수준에서 동일) · 점수 불변 · scope 정직성(mixed면 이름 붙이지 않음) · `ended` 시제 전수 · Premium ⑨ · Ended safety 회귀 · **Resolver가 stage를 import하지 않는지 구조 검사**(R1) · **v1.42 A0~A15** — AI 지문이 S30을 보는가 · stage가 달라도 근거·시제가 같으면 같은 지문인가 · AI context에 raw status 0건인가(R2) · AI가 없어도 결정론 결과가 완결되는가 · **CA4b**(근거의 source는 유지되고 시제만 바뀌는가) · **AQ-D**(AI 질문 게이트가 결정론 질문과 같은 술어를 쓰는가) · **CF0~CF6 · CF-R**(같은 시제에서 질문 정책만 달라도 캐시 identity가 갈리는가) (**dev 서버 필요**) |
+| `npm run test:relationship-evidence` | Relationship Evidence Fixture **280건** (v1.41 80 → v1.42 154 → v1.43 280) — v1.43에서 **AI Task Contract 구조 검사 TC0~TC6**(Task 5종 × 차원 7개가 전부 채워졌는가 · 시제·게이트 source가 각각 하나인가 · 축 enum이 프롬프트·파서에서 같은 상수인가 · 지문에 policy input이 들어갔는가) + **C4~C5 · CMP-CTX · D-CACHE**(compatibility·deep-report 캐시 identity) + **CC0~CC7**(User Correction Trust Boundary — 사용자 수정이 AI 서술·기록과 모순되지 않는가 · **correction은 cache identity에 들어가지 않는다**는 것과 그 커플링까지) 추가 — **stage ≠ evidence 양방향**(`dating`인데 근거가 없으면 current 0 · `talking`인데 근거를 넣으면 current 사용) · **legacy 무변경**(현재 근거가 없는 세션의 판정이 v1.40.1과 JSON 수준에서 동일) · 점수 불변 · scope 정직성(mixed면 이름 붙이지 않음) · `ended` 시제 전수 · Premium ⑨ · Ended safety 회귀 · **Resolver가 stage를 import하지 않는지 구조 검사**(R1) · **v1.42 A0~A15** — AI 지문이 S30을 보는가 · stage가 달라도 근거·시제가 같으면 같은 지문인가 · AI context에 raw status 0건인가(R2) · AI가 없어도 결정론 결과가 완결되는가 · **CA4b**(근거의 source는 유지되고 시제만 바뀌는가) · **AQ-D**(AI 질문 게이트가 결정론 질문과 같은 술어를 쓰는가) · **CF0~CF6 · CF-R**(같은 시제에서 질문 정책만 달라도 캐시 identity가 갈리는가) (**dev 서버 필요**) |
 | `npm run test:history` | Logic Fixture 100건 — History H0~H10 + Observed 시간축 + 근거 묶음 + Solo Premium 게이트 + `네가 말한 너` 문구 무결성 + 샘플 근거 정합성 · S07 사진 게이트(v1.37) + **관찰 시퀀스 시간 예산**(v1.38) (Provider Key 불필요 · **dev 서버 필요**) |
 | `npm run test:ai:e2e` | 실제 `/api/ai/*` Route 왕복 (**dev 서버 필요** · Key 없으면 SKIPPED로 정직하게 보고) |
 | `node tests/run-observed-e2e.mjs` | `npm run test:observed`와 같은 스크립트 |
@@ -523,6 +523,166 @@ cache.set(key, json.data);     // provider raw가 아니라 게이트·안전검
 
 ---
 
+### 같은 약속을 모든 AI 경로에 (v1.43 AI Task Contract Uniformity)
+
+v1.42 보고를 검토하며 물어본 것은 "이 계약이 지켜지는가"가 아니라 **"이 계약이 어디에
+있는가"**였습니다. 답은 `relationship-insight` **한 Task**였고, 같은 세션에서 이렇게
+나왔습니다.
+
+```
+status = ended · 상대 4축 입력  →  job = ended · allowsOutwardQuestions = false
+
+/mirror         AI 질문 0    ← 게이트 있음
+/compatibility  AI 질문 2    ← 게이트 없음
+   '서로의 개인 시간에 대한 생각은 어떤지 이야기해볼까?'
+   '갈등 상황에서 어떻게 대처하는 것이 좋을지 이야기해볼까?'
+```
+
+관계가 끝났다고 답한 사람에게 **한 화면에서는 "이제 내가 말할 자리가 아닌 것 같아"라고
+하고, 다른 화면에서는 "상대와 이야기해볼까?"라고 물었습니다.**
+
+원인이 두 겹이었습니다.
+
+| 층 | 상태 |
+|---|---|
+| 서버 | `runCompatibilityTask`에 `applyOutwardQuestionGate`가 없었습니다 |
+| 화면 | 질문 섹션은 게이트를 지켰는데, GOOD/FRICTION 카드 footer의 `CompatibilityAxisNarrative`가 **그 분기 밖**에서 `conversationQuestion`을 그렸습니다 |
+
+두 번째가 v1.42가 세운 **`UI 분기 금지 — 서버 경계에서 한 번만`** 규칙이 왜 필요한지
+보여줍니다. 화면에 게이트를 두면 **게이트를 통과하지 않는 렌더 지점**이 남고, 그 지점은
+사람이 목록을 훑어야 찾습니다.
+
+#### 왜 fixture가 잡지 못했나
+
+```
+v1.42 test:ai   290건 PASS
+그 안에 compatibility 시제 fixture 0건 · 질문 게이트 fixture 0건 · 근거 귀속 fixture 0건
+```
+
+> **없는 fixture는 실패하지 않습니다.**
+
+그래서 v1.43은 fixture를 늘리는 것과 **별도로**, `TASK_CONTRACT`(Task 5종 × 차원 7개)를
+선언하고 **빈칸을 구조 검사가 세게** 했습니다(TC0~TC6). `'not-applicable'`도 값으로
+적습니다 — 그 구분이 없으면 **'여기엔 필요 없다'와 '아직 안 했다'가 같은 빈칸**으로 보입니다.
+
+⚠️ 이 선언은 문서가 아닙니다. `aiClient.cacheKey`가 `TASK_CONTRACT[task].promptVersion`을
+읽습니다(v1.42의 중복 표를 지웠습니다) — **선언만 하고 아무도 안 쓰는 계약은 언젠가 사실이
+아니게 됩니다.**
+
+#### 근거 귀속을 항목 단위로 좁혔습니다
+
+v1.27이 deep-report에 세운 `AI_OUTPUT ⊆ DETERMINISTIC_EVIDENCE`가 나머지 3개 Task에는
+없었습니다. 그리고 Task 전체 집합으로는 부족합니다.
+
+```
+contact narrative가 conflict의 ref를 인용한다
+  → Task 전체 집합에는 둘 다 있으므로 통과
+  → 화면에는 '연락' 설명 아래 '갈등 해결' 근거가 붙는다
+```
+
+이것이 오래된 비대칭 세 개를 **AI 경로에서** 닫았습니다.
+
+| 사용자 답 | v1.42까지 |
+|---|---|
+| `hardest = value_gap`(돈·미래) | 결정론 엔진은 어느 축에도 그 ref를 만들지 않는데, AI가 붙이면 resolver가 **정상 문장**을 돌려줘 화면에 도달했습니다 |
+| Mirror 축이 아닌 PastFactor 7개 | ref 문장에 축 정보가 없어 어느 축에 붙여도 사실이고, 화면에서 오귀속을 확인할 방법이 없었습니다 |
+| `selfGap` | 축 판정에 들어가지 않는 값인데 축 근거로 붙을 수 있었습니다 |
+
+⚠️ **`value_gap`을 매핑하지 않는 결정은 그대로입니다.** 돈·미래를 갈등 해결 근거로 바꿔
+쓰는 건 비대칭을 없애는 게 아니라 근거를 왜곡하는 것입니다. 고친 것은 **그 결정이 AI
+경로에서만 무효였던 것**이고, 그건 판정 규칙의 문제가 아니라 계약의 문제였습니다.
+
+#### enforcement보다 로그를 먼저 넣었습니다
+
+v1.42가 `relationship`을 v3 → v6까지 올리며 배운 것을 순서로 만들었습니다.
+
+```
+① logAiFilter를 4개 Task에 넣는다   (compatibility·history에는 아예 없었습니다)
+② 실제 Provider로 BEFORE를 기록한다
+③ 허용집합을 계산해 rejectedRefs를 관측한다
+④ 거부가 정당한지 확인한다          ← 판단이 필요한 지점
+⑤ enforcement를 켠다
+```
+
+④에서 실제로 판단이 필요했습니다. `/mirror`에서 1건이 거부됐고, 그 축이 `hobby`이며 그
+축의 결정론 신호가 `이전 관계에서 취미 공유를 특별히 중요한 요소로 꼽지는 않았어`인 것을
+확인한 뒤에야 "정당한 거부"라고 말할 수 있었습니다 — 모델이 붙인 근거
+(`실제 관계에서 중요했던 것으로 대화 · 연락 · 갈등 해결 · 개인 시간을 골랐어`)에는
+**취미가 없었습니다.** 개수만 보면 **과필터와 오귀속 차단을 구분할 수 없습니다.**
+
+#### History — 허용했지만 만들 수 없던 계약
+
+프롬프트는 `history` 근거 source를 허용했고, 파서는 `{entryId, axis}`를 요구했고,
+context는 **`entryId`를 보내지 않았습니다.** 세 조각이 서로 다른 것을 전제했고 결과는
+조용했습니다 — 실측에서 History AI 근거는 **0개**였고(uncertainty로만 생존) fixture는
+전부 PASS였습니다(개수만 셌으니까요).
+
+> **'허용한다'와 '만들 수 있다'는 다른 명제입니다.**
+
+`comparedEntries`로 계약을 성립시켰습니다. 렌더링(`resolveHistory` ·
+`HistoryAxisNarrative`)은 **v1.26부터 준비돼 있었고 입력만 빠져 있었습니다.**
+
+| 검증 | 결과 |
+|---|---|
+| `test:ai` | 290 → **508건** |
+| `test:relationship-evidence` | 154 → **259건** |
+| lifecycle · history · observed | 144 · 100 · 10 **전부 유지** |
+| 실제 Provider E2E | **6/6 PASS · SKIPPED 0 · FAIL 0** (4개 Task 새 promptVersion) |
+| 브라우저 `ended` `/compatibility` | AI 질문 **2 → 0** · 본문 2개 유지 · `questionsStripped=4` |
+| 브라우저 `dating` `/compatibility` | 같은 근거에서 질문 **2개 유지** (과필터 아님) |
+| 브라우저 History | 근거 chip **0 → 3** · 실제 `history` ref 6건 |
+| Production 가드 | dev 라우트 3종 404 · **관측 로그 0건** · 새 필수 파라미터 누락 시 400 (6종) |
+
+**사용자가 보는 것 중 달라지는 것은 하나뿐입니다** — 관계가 끝났다고 답한 사람이 궁합
+화면에서 더 이상 상대에게 물어볼 질문을 받지 않습니다.
+
+**한 줄 교훈** — **한 경로에만 있는 안전 규칙은 사용자에게 안전 규칙이 없는 것과 같습니다.**
+오히려 더 나쁩니다: 한 번 맞는 말을 듣고 나면 다음 말도 믿기 때문입니다.
+
+#### Final Closure — 사용자가 고친 것을 두 줄 아래에서 반박하지 않습니다
+
+Audit이 남긴 Remaining Risk 12건 중 **지금 사용자에게 모순된 화면을 보여주는 것 하나**를
+닫았습니다. 실측 재현:
+
+```
+사용자가 고친 문장   "연락 자체가 아니라 혼자 있는 시간이 줄어드는 게 힘들었어."
+바로 아래 AI         "연락은 중요하지 않다고 느꼈지만, 실제로는 연락 감소가
+                      힘들었던 경험이 있었어."
+```
+
+`core.summary`는 독립된 관찰이 아니라 **AI가 만든 `core.headline`을 설명하는 문장**입니다.
+headline이 사용자 문장으로 교체되면 그 summary는 **화면에 없는 문장을 설명하는 문장**이
+됩니다.
+
+세 가지 선택지 중 **렌더 경로 단일 게이트**를 골랐습니다.
+
+| | 왜 아닌가 / 왜 맞나 |
+|---|---|
+| A · correction을 AI에 보내 다시 쓰게 한다 | 한 문장을 주고 설명하라고 하면 모델은 그 문장 **밖으로** 나갑니다 — 사용자 입력을 근거 삼아 없던 해석을 만드는 것이고, v1.43이 닫은 경계가 반대 방향으로 뚫립니다 |
+| C · 서버가 응답에서 `core`를 지운다 | History `coreInsightOriginal`이 결정론 headline으로 떨어져 **사용자가 실제로 거부한 문장이 기록에서 사라집니다** |
+| **B · 렌더 경로에서 막는다** | **채택.** 게이트를 페이지가 아니라 `coreNarrativeForRender` 한 곳에 둡니다 — v1.43이 방금 진단한 "게이트를 통과하지 않는 렌더 지점" 형태를 반복하지 않기 위해서입니다 |
+
+⚠️ **지문에는 넣지 않았습니다.** 응답을 바꾸지 않으므로 대상이 아니고, 넣으면
+`원래 관찰로 되돌리기`가 **다른 문장**을 가져옵니다. 실측(J3)에서 복원된 문장이
+correction 이전과 글자 하나 같았습니다. 커플링은 구조 검사 CC4가 강제합니다 —
+누군가 나중에 correction을 AI context에 넣으면 그때 실패합니다.
+
+| 검증 | 결과 |
+|---|---|
+| `test:relationship-evidence` | 259 → **280건** (CC0~CC7) |
+| J1 correction 추가 | Core AI 설명 **있음 → 없음** · 축별 설명 유지 · **AI 요청 증가 0** |
+| J2 correction 변경 | 계속 없음 · **AI 요청 증가 0** |
+| J3 correction 제거 | **원문 그대로 복원** · **AI 요청 증가 0** |
+| Core Fallback | Core 섹션 · 사용자 문장 · 결정론 행 · 근거 목록 · 축별 AI 설명 **전부 잔존** |
+
+**한 줄 교훈** — **고칠 수 있게 해놓고 고친 것을 무시하면, 그 입력창은 의견을 듣는 자리가
+아니라 의견을 흘려보내는 자리입니다.**
+
+상세는 `기능명세_현행.md` **§8.14 · §8.15** · `기능명세서.md` **§43 · §44** ·
+기획서 **§5.32.7**.
+
+---
+
 ## 데이터 모델
 
 기획서 §5.2 구조를 그대로 따릅니다.
@@ -823,7 +983,10 @@ semantic HTML · 실제 `button`/`input[type=radio]`/`checkbox` 사용 · 모든
 ## 현재 범위 밖 (의도적 제외)
 
 - **Supabase 미연동.** 세션은 `localStorage`에만 저장됩니다. `docs/supabase-info.md`의 자격 증명은 아직 쓰지 않습니다. 붙일 때는 `services/aiService.ts`와 `state/SessionProvider.tsx` 두 경계만 건드리면 됩니다.
-- **실제 AI Provider end-to-end는 2026-09-04(v1.17) · 2026-09-07(v1.39) · 2026-09-08(v1.41 · v1.42)에 실제 Key로 6/6 PASS를 확인했습니다.** 상시 CI 검증은 아니라 "이 실행 기준"입니다 — API Key 없이도 스키마/안전 검증(`test:ai`)은 항상 실측합니다.
+- **실제 AI Provider end-to-end는 2026-09-04(v1.17) · 2026-09-07(v1.39) · 2026-09-08(v1.41 · v1.42 · v1.43)에 실제 Key로 6/6 PASS를 확인했습니다.** 상시 CI 검증은 아니라 "이 실행 기준"입니다 — API Key 없이도 스키마/안전 검증(`test:ai`)은 항상 실측합니다.
+- **v1.43에서 그 조치가 실제로 작동했습니다.** 하네스를 새 계약(필수 파라미터 4종)으로
+  고치기 **전** 실행에서 5개 Task가 라우트의 400을 받았고, reporter는 그것을 **FAIL 5**로
+  보고했습니다 — SKIPPED로 숨기지 않았습니다. v1.42가 고친 것이 v1.43에서 검증된 셈입니다.
 - **v1.42에서 이 검증 도구 자체의 결함을 고쳤습니다.** `run-provider-e2e.mjs`가 `mode !== 'real'`인 응답을 전부 `SKIPPED — KEY NOT AVAILABLE`로 보고하고 있어서, 라우트가 400을 돌려줘도 "키가 없어 건너뜀"으로 찍혔습니다(v1.42 작업 중 실제로 발생 — 같은 키로 다른 4개 Task는 PASS였습니다). 이제 `CONFIG_ERROR`/demo만 SKIPPED이고 나머지 `ok:false`는 **FAIL**입니다. **검증 도구가 실패를 부재로 보고하면 통과 자체가 증거가 되지 않습니다.**
 - **Production의 실제 사진 분석은 아직 켜지지 않았습니다(v1.39 실측).** Production 응답이 `meta.mode: "demo"`라서, 배포된 앱에서 사진을 올리면 관찰이 **0개**로 정직하게 비어 있습니다(거짓 관찰을 만들지는 않습니다 — 이 점은 Production에서 직접 확인했습니다). 코드는 정상이고 남은 것은 Vercel Production 환경변수 설정 + Redeploy입니다(USER ACTION REQUIRED · `기능명세서.md` §36.9).
 - **사주 명식 계산 엔진 미연결.** 절입 시각·진태양시 등 정밀 계산이 필요해 `NEXT_PUBLIC_SAJU_ENGINE_READY=false`로 정직하게 "준비 중" 상태를 보여줍니다.

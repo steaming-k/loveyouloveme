@@ -1,0 +1,44 @@
+{
+  "name": "deep_report_d5_evidence_subset_unchanged",
+  "description": "D5 (v1.43 §46.1) — **v1.27의 근거 계약이 그대로다.** 술어가 evidenceRefsAreSubsetOf에서 refsWithinAllowed로 바뀌었지만 판정은 같다: 원래 Insight에 없던 ref를 들고 오면 항목 전체가 버려진다. 이 fixture는 그 회귀를 고정한다 — 술어 교체가 계약을 느슨하게 하지 않았다.",
+  "task": "deep-report-narrative",
+  "tense": "current",
+  "allowed": [
+    {
+      "id": "ins1",
+      "evidenceRefs": [
+        {
+          "source": "declared",
+          "field": "contact"
+        },
+        {
+          "source": "current_relationship",
+          "field": "contact"
+        }
+      ],
+      "ruleSummary": "서로 다른 두 관찰이 같은 축을 가리키고 있어."
+    }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "insightId": "ins1",
+        "headline": "연락 기준이 두 곳에서 같은 방향을 가리킬지도 몰라",
+        "interpretation": "두 관찰이 같은 축을 가리키고 있어. 원인이라고 말할 수는 없어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "contact"
+          },
+          {
+            "source": "target",
+            "field": "contact"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 0
+  }
+}

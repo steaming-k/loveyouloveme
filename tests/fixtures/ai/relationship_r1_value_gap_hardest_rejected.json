@@ -1,0 +1,95 @@
+{
+  "name": "relationship_r1_value_gap_hardest_rejected",
+  "description": "R1 (v1.43 §46.2) — **v1.43 근거 계약의 핵심 fixture다.** 사용자의 hardest가 value_gap(기준 차이 — 돈·미래·생활 방식)이면 HARDEST_TO_AXIS에 없으므로 결정론 엔진은 어느 축에도 relationship:hardest ref를 만들지 않는다(v1.40.1·v1.41이 두 번 확정). 그런데 v1.42까지 이 Task에는 근거 검사가 없어서, AI가 그 ref를 contact 축에 붙이면 resolveRelationship이 '기준 차이가 가장 힘들었음'이라는 **정상 문장**을 돌려주고 화면에 도달했다 — 판정층이 거부한 귀속을 AI가 우회한 것이다.",
+  "task": "relationship-insight",
+  "tense": "current",
+  "allowsOutwardQuestions": true,
+  "judgements": [
+    {
+      "axis": "contact",
+      "state": "GAP"
+    },
+    {
+      "axis": "alone",
+      "state": "MATCH"
+    },
+    {
+      "axis": "conflict",
+      "state": "CHANGE"
+    }
+  ],
+  "focusAxis": "contact",
+  "allowedEvidenceRefs": {
+    "contact": [
+      {
+        "source": "declared",
+        "field": "contact"
+      },
+      {
+        "source": "current_relationship",
+        "field": "contact"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ],
+    "alone": [
+      {
+        "source": "declared",
+        "field": "alone"
+      },
+      {
+        "source": "relationship",
+        "field": "important"
+      },
+      {
+        "source": "adaptive",
+        "field": "alone"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ],
+    "conflict": [
+      {
+        "source": "declared",
+        "field": "conflict"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ]
+  },
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "GAP",
+        "headline": "연락에서 말한 기준과 실제 신호가 갈렸어",
+        "explanation": "연락 중요도는 낮게 골랐지만 가장 힘들었던 순간과 같은 방향은 아니었어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "contact"
+          },
+          {
+            "source": "relationship",
+            "field": "hardest"
+          }
+        ]
+      }
+    ],
+    "core": null
+  },
+  "expect": {
+    "narrativeCount": 0,
+    "refChecked": 0,
+    "rejectedRefSources": [
+      "relationship"
+    ],
+    "violations": []
+  }
+}

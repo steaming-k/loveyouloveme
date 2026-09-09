@@ -21,9 +21,19 @@ import {
 } from '@/lib/logic/relationshipStage';
 import { buildApproachHints } from '@/lib/logic/approachHints';
 import { buildConversationQuestions } from '@/lib/logic/compatibility';
-import { relationshipNarrativeFingerprint } from '@/lib/aiFingerprint';
+import {
+  compatibilityNarrativeFingerprint,
+  deepReportFingerprint,
+  relationshipNarrativeFingerprint,
+} from '@/lib/aiFingerprint';
 import { resolveEvidenceRefs } from '@/lib/aiEvidenceResolver';
-import { buildRelationshipContext } from '@/services/ai/contextBuilders';
+/** v1.43 §46.3 — dimension별 허용 근거를 fixture가 볼 수 있게 낸다 */
+import { allowedCompatibilityRefsByDimension } from '@/lib/logic/allowedEvidence';
+import {
+  buildCompatibilityContext,
+  buildRelationshipContext,
+  compatibilityAllowList,
+} from '@/services/ai/contextBuilders';
 import { resolvePrice } from '@/lib/premiumVariant';
 import { hasDeepConnection } from '@/services/premiumConnections';
 import { buildRelationshipDeepReport, premiumFeatureState } from '@/services/premiumService';
@@ -274,6 +284,33 @@ export async function POST(request: Request): Promise<Response> {
     tense,
   });
   const relationshipContextJson = JSON.stringify(relationshipContext);
+
+  /**
+   * v1.43 §47 — **compatibility·deep-report 경계도 같은 방식으로 내보낸다.**
+   *
+   * v1.42의 `aiBoundary`는 relationship Task 하나만 담았고, 그래서 compatibility의
+   * 시제·게이트·지문을 fixture가 볼 방법이 없었다 — **없는 관측치는 실패하지 않는다.**
+   * v1.43이 세 Task에 같은 계약을 세우므로 같은 자리에서 셋을 다 낸다.
+   *
+   * ⚠️ 새 판정을 만들지 않는다. 화면이 쓰는 것과 **같은 함수**를 부른다.
+   */
+  const compatibilityContext = buildCompatibilityContext({ result: compatibility, tense });
+  const compatibilityContextJson = JSON.stringify(compatibilityContext);
+  const compatibilityFingerprint = compatibilityNarrativeFingerprint({
+    tense,
+    allowsOutwardQuestions: jobAllowsOutwardQuestions(job),
+    declared,
+    target: answers.target,
+    result: compatibility,
+  });
+  const deepReportFp = deepReportFingerprint({
+    tense,
+    insights,
+    declared,
+    target: answers.target,
+    validated: [],
+    deepAnswers: [],
+  });
   const narrativeFingerprint = relationshipNarrativeFingerprint({
     tense,
     // v1.42 §42 — 화면이 넘기는 것과 **같은 술어**에서 온다
@@ -374,6 +411,35 @@ export async function POST(request: Request): Promise<Response> {
           .slice(0, 2),
         tense,
       ).map((template) => template.prompt),
+      tense,
+    },
+
+    /* ── ⑤-b Compatibility · Deep Report AI 경계 (v1.43 · §47) ─────
+       relationship 하나만 관측 가능하던 상태를 끝낸다. C4·C5·D-CACHE가 이 값을 본다. */
+    compatibilityBoundary: {
+      fingerprint: compatibilityFingerprint,
+      tense,
+      allowsOutwardQuestions: jobAllowsOutwardQuestions(job),
+      /** context에 실제로 실린 시제. 위 `tense`와 **항상 같아야 한다** */
+      contextTense: compatibilityContext.tense,
+      /** AI가 받는 context의 키 목록. `targetRelation`이 여기 없는 것이 §47.6이다 */
+      contextKeys: Object.keys(compatibilityContext).sort(),
+      /** raw status enum이 하나라도 새어 들어갔는가 — relationship과 같은 검사 */
+      rawStatusTokens: Object.keys(STATUS_LABEL).filter((value) =>
+        compatibilityContextJson.includes(`"${value}"`),
+      ),
+      /** dimension별 허용 근거 — 축 밖 근거가 허용집합에 없다는 것을 fixture가 본다 */
+      allowedRefsByDimension: Object.fromEntries(
+        Object.entries(
+          allowedCompatibilityRefsByDimension(
+            compatibilityAllowList(compatibility).map((item) => item.key),
+          ),
+        ).map(([key, refs]) => [key, refs.map((ref) => `${ref.source}:${'field' in ref ? ref.field : ''}`)]),
+      ),
+    },
+
+    deepReportBoundary: {
+      fingerprint: deepReportFp,
       tense,
     },
 

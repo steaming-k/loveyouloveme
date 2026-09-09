@@ -30,15 +30,28 @@ export async function POST(request: Request): Promise<Response> {
     return failureResponse('INVALID_OUTPUT', requestId, 400);
   }
 
-  const { inputFingerprint, context, insights } = body as Record<string, unknown>;
+  const { inputFingerprint, context, insights, tense } = body as Record<string, unknown>;
 
   if (typeof inputFingerprint !== 'string' || !Array.isArray(insights)) {
+    return failureResponse('INVALID_OUTPUT', requestId, 400);
+  }
+
+  /**
+   * v1.43 §47.5 — **`tense`는 필수이고 기본값이 없다.**
+   *
+   * 이 Task의 `headline`/`interpretation`은 실제로 화면에 그려지고, 그 카드의
+   * `limitation`은 v1.41부터 시제가 맞춰져 있다. `?? 'current'`로 떨어뜨리면 끝난
+   * 관계 사용자의 유료 리포트에서 **경계 문장만 과거형이고 본문은 검사받지 않는**
+   * v1.42 상태로 조용히 되돌아간다.
+   */
+  if (tense !== 'current' && tense !== 'former') {
     return failureResponse('INVALID_OUTPUT', requestId, 400);
   }
 
   const result = await runDeepReportTask({
     inputFingerprint,
     context,
+    tense,
     insights: insights as never,
   });
 

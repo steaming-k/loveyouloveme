@@ -1,0 +1,99 @@
+{
+  "name": "relationship_r0_axis_ref_kept",
+  "description": "R0 (v1.43 §46.2) — 축별 허용집합 안의 근거는 그대로 남는다. R1~R3의 '거부'가 검사 때문인지 파서 때문인지 구분하려면 **허용 쪽 대조군**이 있어야 한다. contact는 declared + current_relationship 두 개를 인용하고 둘 다 그 축의 근거다.",
+  "task": "relationship-insight",
+  "tense": "current",
+  "allowsOutwardQuestions": true,
+  "judgements": [
+    {
+      "axis": "contact",
+      "state": "GAP"
+    },
+    {
+      "axis": "alone",
+      "state": "MATCH"
+    },
+    {
+      "axis": "conflict",
+      "state": "CHANGE"
+    }
+  ],
+  "focusAxis": "contact",
+  "allowedEvidenceRefs": {
+    "contact": [
+      {
+        "source": "declared",
+        "field": "contact"
+      },
+      {
+        "source": "current_relationship",
+        "field": "contact"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ],
+    "alone": [
+      {
+        "source": "declared",
+        "field": "alone"
+      },
+      {
+        "source": "relationship",
+        "field": "important"
+      },
+      {
+        "source": "adaptive",
+        "field": "alone"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ],
+    "conflict": [
+      {
+        "source": "declared",
+        "field": "conflict"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ]
+  },
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "GAP",
+        "headline": "연락에서 말한 기준과 실제 신호가 갈렸어",
+        "explanation": "연락 중요도는 낮게 골랐는데, 지금 관계에 대해서는 다르게 답했어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "contact"
+          },
+          {
+            "source": "current_relationship",
+            "field": "contact"
+          }
+        ]
+      }
+    ],
+    "core": null
+  },
+  "expect": {
+    "narrativeCount": 1,
+    "refChecked": 1,
+    "rejectedRefSources": [],
+    "evidenceSources": [
+      [
+        "declared",
+        "current_relationship"
+      ]
+    ],
+    "violations": []
+  }
+}

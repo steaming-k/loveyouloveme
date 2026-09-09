@@ -1,0 +1,71 @@
+{
+  "name": "history_h3_relationship_ref_rejected",
+  "description": "H3 (v1.43 §46.4) — **relationship(S15~S17)은 변화의 근거가 될 수 없다.** 그 답은 두 기록 사이에서 달라지지 않은 값이므로, 그것으로 변화를 설명하면 '변하지 않은 것으로 변화를 설명'하는 문장이 된다. v1.42 프롬프트 enum에는 이 source가 있었고 검사도 없었다.",
+  "task": "history-insight",
+  "allowed": [
+    {
+      "axis": "contact",
+      "state": "SHIFT"
+    },
+    {
+      "axis": "alone",
+      "state": "STABLE"
+    }
+  ],
+  "allowedEvidenceRefs": {
+    "contact": [
+      {
+        "source": "history",
+        "entryId": "h1",
+        "axis": "contact"
+      },
+      {
+        "source": "history",
+        "entryId": "h2",
+        "axis": "contact"
+      },
+      {
+        "source": "declared",
+        "field": "contact"
+      }
+    ],
+    "alone": [
+      {
+        "source": "history",
+        "entryId": "h1",
+        "axis": "alone"
+      },
+      {
+        "source": "history",
+        "entryId": "h2",
+        "axis": "alone"
+      },
+      {
+        "source": "declared",
+        "field": "alone"
+      }
+    ]
+  },
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "SHIFT",
+        "explanation": "연락에 대한 기준이 달라진 건 이전 관계에서 힘들었던 지점과 이어질 수도 있어.",
+        "evidenceRefs": [
+          {
+            "source": "relationship",
+            "field": "hardest"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 0,
+    "refChecked": 0,
+    "rejectedRefSources": [
+      "relationship"
+    ]
+  }
+}

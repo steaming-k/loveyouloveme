@@ -1,0 +1,47 @@
+{
+  "name": "deep_report_d2_former_headline_rejected",
+  "description": "D2 (v1.43 §47.5) — **headline은 실제로 화면에 그려진다**(overview.topSummaries). v1.41이 이 카드의 limitation·sourceLabels를 '그때 이 관계'로 힘들게 맞췄는데 그 위 AI 본문에는 검사가 없었다 — 모델이 시제를 맞춘다면 limitation 문자열을 눈치챈 결과이고 우연이지 보증이 아니다.",
+  "task": "deep-report-narrative",
+  "tense": "former",
+  "allowed": [
+    {
+      "id": "ins1",
+      "evidenceRefs": [
+        {
+          "source": "declared",
+          "field": "contact"
+        },
+        {
+          "source": "current_relationship",
+          "field": "contact"
+        }
+      ],
+      "ruleSummary": "서로 다른 두 관찰이 같은 축을 가리키고 있어."
+    }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "insightId": "ins1",
+        "headline": "지금 이 관계에서 연락 기준이 갈리고 있어",
+        "interpretation": "그때 이 관계에서 답한 내용과 네가 직접 답한 기준이 같은 축을 가리키고 있어.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "contact"
+          },
+          {
+            "source": "current_relationship",
+            "field": "contact"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 0,
+    "violationsInclude": [
+      "ongoing_relation"
+    ]
+  }
+}

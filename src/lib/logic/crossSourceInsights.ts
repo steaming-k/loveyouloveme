@@ -2,6 +2,11 @@ import { MIRROR_AXES } from '@/data/axes';
 import { soloModeOfTarget } from './soloMode';
 import type { SoloAxisChange, SoloHistoryReport } from './soloHistory';
 import { withTopicParticle } from '@/lib/korean';
+/**
+ * v1.43 — `relationshipRefFor`의 **단일 source**. 이 파일에 있던 private 함수를
+ * 옮긴 것이고 동작은 같다(§46.1).
+ */
+import { relationshipRefFor } from './allowedEvidence';
 // v1.41 — 순환 import를 피해 표 자체를 별도 모듈에서 읽는다(mirror.ts도 re-export한다).
 import { HARDEST_TO_AXIS } from './mirrorAxisMap';
 import {
@@ -140,32 +145,14 @@ function strengthOf(sourceCount: number, hasHardestEvidence: boolean): InsightSt
 /* ------------------------------------------- ① Declared ↔ Relationship */
 
 /**
- * 이 axis의 relationshipSignal이 실제로 **어디서** 나왔는지.
+ * ⚠️ v1.43 — `relationshipRefFor`가 **`logic/allowedEvidence.ts`로 옮겨갔다.**
  *
- * ⚠️ 'hardest'를 모든 축에 고정으로 붙이면 안 된다 — 예를 들어 갈등 해결 축의 MATCH가
- * '연락 감소가 가장 힘들었음'을 근거로 보여주는 것처럼 틀린 근거가 붙는다. 'absent'(=CHANGE)는
- * 애초에 관계 경험 근거가 없다는 뜻이라 evidenceRef를 만들지 않는다 — 근거를 지어내지 않는다.
- *
- * ══ v1.41 §39.8 — **scope를 먼저 본다** ═══════════════════════════════════
- *
- * v1.40까지 이 함수는 강도만 보고 `{source:'relationship'}`(과거 경험)을 만들었다.
- * 근거가 현재 관계에서 온 축에 그 ref를 붙이면 resolver가 `이전 관계에서 …` 문장을
- * 돌려준다 — **근거를 지목하는 자리에서 시점을 거짓으로 만드는 것**이다. 시제 문제가
- * 카피가 아니라 데이터 문제인 지점이 정확히 여기다.
- *
- * ⚠️ `absent + current`는 **ref를 만든다.** `지금 관계에서는 거의 드러나지 않아`는
- * 사용자가 실제로 고른 답이고, 그건 근거의 부재가 아니라 **부재의 근거**다.
- * `absent + none`(아무 답도 없음)만 null이다.
+ * 한 글자도 바뀌지 않았고 이 파일은 그것을 import해서 쓴다. 옮긴 이유는 v1.43이
+ * AI에게 허용할 근거 집합(`allowedRelationshipRefs`)을 이 판정에서 파생시키기
+ * 때문이다 — 같은 판정을 두 벌 두면 **Premium 연결이 만드는 ref**와 **AI에게 허용하는
+ * ref**가 서로 다른 집합이 되고, 그 순간 결정론이 만든 정상 근거가 AI 검사에서
+ * 거부되거나 그 반대가 된다(§46.1 판정 source 단일화).
  */
-function relationshipRefFor(insight: MirrorInsight): EvidenceRef | null {
-  if (insight.evidenceScope === 'current') {
-    return { source: 'current_relationship', field: insight.key };
-  }
-  if (insight.evidenceScope === 'none') return null;
-  if (insight.evidenceStrength === 'hardest') return { source: 'relationship', field: 'hardest' };
-  if (insight.evidenceStrength === 'important') return { source: 'relationship', field: 'important' };
-  return null;
-}
 
 /** 이 근거가 `sources`에서 어느 종류로 세어지는가 — ref와 **같은 판정**을 쓴다 */
 function relationshipSourceOf(insight: MirrorInsight): CrossSourceEvidenceSource {

@@ -1,0 +1,92 @@
+{
+  "name": "relationship_r7_unknown_source_rejected",
+  "description": "R7 (v1.43 §46.2) — 파서가 아는 source지만 이 Task의 허용집합에 없는 것(mbti_lens·compatibility)은 거부된다. EVIDENCE_SOURCES는 모든 Task가 공유하므로, 파서만으로는 'MBTI는 이 작업의 입력에 없다'는 프롬프트 규칙이 강제되지 않는다 — Core 분석과 Supporting Lens의 분리(v1.2에서 MBTI를 5번째 축에서 철회한 결정)가 근거 층에서도 성립해야 한다.",
+  "task": "relationship-insight",
+  "tense": "current",
+  "allowsOutwardQuestions": true,
+  "judgements": [
+    {
+      "axis": "contact",
+      "state": "GAP"
+    },
+    {
+      "axis": "alone",
+      "state": "MATCH"
+    },
+    {
+      "axis": "conflict",
+      "state": "CHANGE"
+    }
+  ],
+  "focusAxis": "contact",
+  "allowedEvidenceRefs": {
+    "contact": [
+      {
+        "source": "declared",
+        "field": "contact"
+      },
+      {
+        "source": "current_relationship",
+        "field": "contact"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ],
+    "alone": [
+      {
+        "source": "declared",
+        "field": "alone"
+      },
+      {
+        "source": "relationship",
+        "field": "important"
+      },
+      {
+        "source": "adaptive",
+        "field": "alone"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ],
+    "conflict": [
+      {
+        "source": "declared",
+        "field": "conflict"
+      },
+      {
+        "source": "observed",
+        "traitId": "ob1"
+      }
+    ]
+  },
+  "raw": {
+    "narratives": [
+      {
+        "axis": "conflict",
+        "state": "GAP",
+        "headline": "갈등 해결 기준이 경험 후 옮겨졌어",
+        "explanation": "갈등을 빠르게 풀고 싶다고 답했는데 경험에서는 다른 방향이었어.",
+        "evidenceRefs": [
+          {
+            "source": "mbti_lens",
+            "field": "TF"
+          }
+        ],
+        "uncertainty": "근거가 약해서 단정할 수 없어"
+      }
+    ],
+    "core": null
+  },
+  "expect": {
+    "narrativeCount": 0,
+    "refChecked": 0,
+    "rejectedRefSources": [
+      "mbti_lens"
+    ],
+    "violations": []
+  }
+}

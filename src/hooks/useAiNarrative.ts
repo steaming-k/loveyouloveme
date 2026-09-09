@@ -294,9 +294,43 @@ export function useCompatibilityNarrative(
   const { answers } = useSession();
   const result = useCompatibility();
 
+  /**
+   * v1.43 §47.1 — memo **밖에서** 계산한다. `useRelationshipNarrative`가 v1.42 §40.6에서
+   * 정한 것과 같은 이유다: memo 안에서 `resolveRelationshipContext(answers)`를 부르면
+   * memo가 `answers` 전체에 의존하는데 deps에는 일부 필드만 적히므로 값이 낡을 수 있다.
+   * `tense`·`allowsOutwardQuestions`는 문자열/boolean이라 deps로 써도 안전하다.
+   */
+  const { job } = resolveRelationshipContext(answers);
+  const tense = relationshipTenseOf(job);
+  /**
+   * v1.43 §47.2 — **결정론 질문과 같은 술어를 쓴다.** 여기서 `if (status === 'ended')`를
+   * 새로 만들지 않는다(단일 source · TC2).
+   */
+  const allowsOutwardQuestions = jobAllowsOutwardQuestions(job);
+
+  /**
+   * v1.43 §47.4 — 지문은 **같은 최종 응답을 재사용해도 되는 입력 집합**이다.
+   *
+   * ```
+   * 추가   tense                   AI가 받고, 서버 스캐너가 읽는다
+   * 추가   allowsOutwardQuestions  서버가 응답에서 conversationQuestion을 지운다
+   * 제거   target.relation         AI context에서 항상 null이었다(§47.6)
+   * ```
+   *
+   * v1.42 §8.13이 relationship에서 닫은 것과 **같은 결함**이 여기 있었다: 캐시가
+   * 저장하는 것은 provider raw가 아니라 게이트가 적용된 최종 응답이고, 캐시 히트에는
+   * 응답이 없다(히트의 정의가 '서버에 가지 않는 것'이다).
+   */
   const fingerprint = useMemo(
-    () => compatibilityNarrativeFingerprint(answers.declared, answers.target, result),
-    [answers.declared, answers.target, result],
+    () =>
+      compatibilityNarrativeFingerprint({
+        tense,
+        allowsOutwardQuestions,
+        declared: answers.declared,
+        target: answers.target,
+        result,
+      }),
+    [tense, allowsOutwardQuestions, answers.declared, answers.target, result],
   );
 
   /**
@@ -311,7 +345,8 @@ export function useCompatibilityNarrative(
     result.score !== null &&
     (result.goodSignals.length > 0 || result.frictionSignals.length > 0);
 
-  const run = () => requestCompatibilityNarrative(result, fingerprint);
+  const run = () =>
+    requestCompatibilityNarrative({ result, tense, allowsOutwardQuestions, fingerprint });
 
   return useNarrativeTask<CompatibilityNarrativeBundle>({
     task: 'compatibility-narrative',
@@ -430,7 +465,23 @@ export function useHistoryNarrative(enabled = true): AiNarrativeState<HistoryNar
     [entries, report.changes],
   );
 
-  const run = () => requestHistoryNarrative(report.changes, fingerprint);
+  /**
+   * v1.43 §45.3 — 비교한 두 기록. **`report.compared`를 그대로 읽는다.**
+   *
+   * ⚠️ `entries.slice(-2)`를 새로 쓰지 않는다. v1.35 P4-B가 이 필드를 만든 이유가
+   * 정확히 그것이다 — `buildHistoryReport`는 커플 기록만 골라 비교하므로 전체 목록의
+   * 마지막 두 개와 다를 수 있고, 그러면 **AI에게 인용을 허용한 기록이 화면이 비교한
+   * 기록과 달라진다.** `HistoryReport.compared`의 주석이 그 실측 버그를 적어두고 있다.
+   */
+  const comparedEntries = useMemo(() => {
+    const { previousId, latestId } = report.compared;
+    return previousId && latestId
+      ? { previousEntryId: previousId, currentEntryId: latestId }
+      : null;
+  }, [report.compared]);
+
+  const run = () =>
+    requestHistoryNarrative({ changes: report.changes, comparedEntries, fingerprint });
 
   return useNarrativeTask<HistoryNarrativeBundle>({
     task: 'history-insight',
@@ -458,19 +509,27 @@ export function useDeepReportNarrative(
   const validated = useValidatedObservations();
   const resolverContext = useEvidenceContext();
 
+  /**
+   * v1.43 §47.5 — memo **밖에서** 계산한다(v1.42 §40.6과 같은 이유).
+   *
+   * v1.42까지 이 값은 memo 아래에서 계산되고 지문에는 들어가지 않았다 — 즉 시제가
+   * 최종 응답을 바꾸는데 캐시 identity가 그것을 몰랐다.
+   */
+  const deepTense = relationshipTenseOf(resolveRelationshipContext(answers).job);
+
   const fingerprint = useMemo(
     () =>
       deepReportFingerprint({
+        tense: deepTense,
         insights,
         declared: answers.declared,
         target: answers.target,
         validated,
         deepAnswers: answers.deepAnswers,
       }),
-    [insights, answers.declared, answers.target, validated, answers.deepAnswers],
+    [deepTense, insights, answers.declared, answers.target, validated, answers.deepAnswers],
   );
 
-  const deepTense = relationshipTenseOf(resolveRelationshipContext(answers).job);
   const run = () => requestDeepReportNarrative(insights, resolverContext, fingerprint, deepTense);
 
   return useNarrativeTask<DeepNarrativeBundle>({

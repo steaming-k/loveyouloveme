@@ -1,0 +1,96 @@
+{
+  "name": "compatibility_c0_dating_question_kept",
+  "description": "C0 (v1.43 §47.2) — job=dating이면 tense=current · allowsOutwardQuestions=true다. AI가 만든 conversationQuestion이 **그대로 남는다.** 이 fixture가 없으면 C1~C2의 '질문 0'이 게이트 때문인지 모델이 안 만들어서인지 구분할 수 없다 — 허용 쪽 대조군이 있어야 게이트가 실제로 검사된다.",
+  "task": "compatibility-narrative",
+  "tense": "current",
+  "allowsOutwardQuestions": true,
+  "allowed": [
+    {
+      "key": "contact",
+      "kind": "friction"
+    },
+    {
+      "key": "alone",
+      "kind": "good"
+    }
+  ],
+  "allowedEvidenceRefs": {
+    "contact": [
+      {
+        "source": "compatibility",
+        "field": "contact"
+      },
+      {
+        "source": "declared",
+        "field": "contact"
+      },
+      {
+        "source": "target",
+        "field": "contact"
+      }
+    ],
+    "alone": [
+      {
+        "source": "compatibility",
+        "field": "alone"
+      },
+      {
+        "source": "declared",
+        "field": "alone"
+      },
+      {
+        "source": "target",
+        "field": "alone"
+      }
+    ]
+  },
+  "raw": {
+    "narratives": [
+      {
+        "dimensionKey": "contact",
+        "kind": "good",
+        "explanation": "연락 빈도에 대한 기준이 서로 다르게 입력됐어.",
+        "scenario": "한쪽은 충분하다고 느끼는 상황에서 다른 쪽은 연결감이 줄었다고 느낄 수 있어.",
+        "evidenceRefs": [
+          {
+            "source": "compatibility",
+            "field": "contact"
+          }
+        ],
+        "conversationQuestion": "연락이 줄어들면 어떤 의미로 받아들이는 편이야?"
+      },
+      {
+        "dimensionKey": "alone",
+        "kind": "good",
+        "explanation": "개인 시간에 대한 기준이 비슷한 구간으로 입력됐어.",
+        "scenario": "각자 시간을 보내는 걸 거절로 받아들일 가능성은 낮아 보여.",
+        "evidenceRefs": [
+          {
+            "source": "compatibility",
+            "field": "alone"
+          }
+        ],
+        "conversationQuestion": "혼자 있고 싶을 때 상대에게 어떻게 알려주는 게 편해?"
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 2,
+    "keys": [
+      "contact",
+      "alone"
+    ],
+    "kinds": [
+      "friction",
+      "good"
+    ],
+    "questionCount": 2,
+    "hasQuestion": [
+      true,
+      true
+    ],
+    "refChecked": 2,
+    "rejectedRefSources": [],
+    "violations": []
+  }
+}

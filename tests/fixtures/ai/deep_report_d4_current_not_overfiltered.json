@@ -1,0 +1,45 @@
+{
+  "name": "deep_report_d4_current_not_overfiltered",
+  "description": "D4 (v1.43 §47.5) — **과필터 방지.** D2·D3과 같은 어휘가 tense=current에서는 통과해야 한다. 이 fixture가 없으면 시제 검사를 대칭으로 넣고 싶어지는데, 그러면 진행 중인 관계 사용자의 유료 리포트 본문이 대량으로 사라진다(v1.42 §40.14).",
+  "task": "deep-report-narrative",
+  "tense": "current",
+  "allowed": [
+    {
+      "id": "ins1",
+      "evidenceRefs": [
+        {
+          "source": "declared",
+          "field": "contact"
+        },
+        {
+          "source": "current_relationship",
+          "field": "contact"
+        }
+      ],
+      "ruleSummary": "서로 다른 두 관찰이 같은 축을 가리키고 있어."
+    }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "insightId": "ins1",
+        "headline": "지금 이 관계에서 연락 기준이 갈릴지도 몰라",
+        "interpretation": "지금 상대에 대해 입력한 값과 네가 답한 기준이 같은 축을 가리키고 있어. 두 관찰이 같은 지점을 짚는다는 것까지야.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "contact"
+          },
+          {
+            "source": "current_relationship",
+            "field": "contact"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 1,
+    "violations": []
+  }
+}

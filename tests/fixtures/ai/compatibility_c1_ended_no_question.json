@@ -1,0 +1,92 @@
+{
+  "name": "compatibility_c1_ended_no_question",
+  "description": "C1 (v1.43 §47.2) — **v1.43이 닫는 결함의 fixture다.** status=ended + 상대 4축이면 job=ended이고 /compatibility는 정상 렌더된다. 그런데 v1.42까지 compatibility Task에는 질문 게이트가 없어서 GOOD/FRICTION 카드 footer(CompatibilityAxisNarrative)에 AI 질문이 그대로 그려졌다 — 브라우저 실측으로 2개 확인. questionCount는 0이어야 하고 **항목은 버려지지 않는다**(설명은 남는다 · 게이트가 스캔 앞이므로).",
+  "task": "compatibility-narrative",
+  "tense": "former",
+  "allowsOutwardQuestions": false,
+  "allowed": [
+    {
+      "key": "contact",
+      "kind": "friction"
+    },
+    {
+      "key": "alone",
+      "kind": "good"
+    }
+  ],
+  "allowedEvidenceRefs": {
+    "contact": [
+      {
+        "source": "compatibility",
+        "field": "contact"
+      },
+      {
+        "source": "declared",
+        "field": "contact"
+      },
+      {
+        "source": "target",
+        "field": "contact"
+      }
+    ],
+    "alone": [
+      {
+        "source": "compatibility",
+        "field": "alone"
+      },
+      {
+        "source": "declared",
+        "field": "alone"
+      },
+      {
+        "source": "target",
+        "field": "alone"
+      }
+    ]
+  },
+  "raw": {
+    "narratives": [
+      {
+        "dimensionKey": "contact",
+        "kind": "friction",
+        "explanation": "연락 빈도에 대한 기준이 서로 다르게 입력됐어.",
+        "scenario": "한쪽은 충분하다고 느끼는 상황에서 다른 쪽은 연결감이 줄었다고 느꼈을 수 있어.",
+        "evidenceRefs": [
+          {
+            "source": "compatibility",
+            "field": "contact"
+          }
+        ],
+        "conversationQuestion": "서로의 연락 기준에 대해 이야기해볼까?"
+      },
+      {
+        "dimensionKey": "alone",
+        "kind": "good",
+        "explanation": "개인 시간에 대한 기준이 비슷한 구간으로 입력됐어.",
+        "scenario": "각자 시간을 보내는 걸 거절로 받아들일 가능성은 낮았을 수 있어.",
+        "evidenceRefs": [
+          {
+            "source": "compatibility",
+            "field": "alone"
+          }
+        ],
+        "conversationQuestion": "혼자 있고 싶을 때 상대에게 어떻게 알려주는 게 편해?"
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 2,
+    "keys": [
+      "contact",
+      "alone"
+    ],
+    "questionCount": 0,
+    "hasQuestion": [
+      false,
+      false
+    ],
+    "refChecked": 2,
+    "rejectedRefSources": [],
+    "violations": []
+  }
+}

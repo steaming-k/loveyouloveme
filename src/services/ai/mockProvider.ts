@@ -168,6 +168,22 @@ function relationshipResponse(payload: Record<string, unknown>): unknown {
     ? [{ source: 'observed', traitId: firstTraitId }]
     : [];
 
+  /**
+   * v1.43 §46.2 — **허용 목록에서 복사한다.**
+   *
+   * v1.42까지 이 mock은 모든 축에 `{source:'relationship', field:'hardest'}`를
+   * **하드코딩**했다. 그게 정확히 새 검사가 막는 오귀속이다 — `hardest`가 `value_gap`이면
+   * 어느 축에도 속하지 않고, `contact_drop`이어도 `contact` 축 하나에만 속한다.
+   *
+   * 그래서 mock도 실제 모델과 **같은 규칙**을 따른다: 그 축의 허용 목록에서 앞의 두 개를
+   * 복사한다. mock이 검사를 통과하지 못하면 demo/mock 모드 사용자의 화면이 비므로,
+   * 이건 편의가 아니라 계약의 일부다.
+   */
+  const allowedByAxis = (typeof payload.allowedEvidenceRefs === 'object' &&
+  payload.allowedEvidenceRefs !== null
+    ? payload.allowedEvidenceRefs
+    : {}) as Record<string, unknown[]>;
+
   return {
     narratives: judgements.map((judgement) => ({
       axis: judgement.axis,
@@ -176,10 +192,7 @@ function relationshipResponse(payload: Record<string, unknown>): unknown {
       headline: '말한 기준과 실제 신호가 이 축에서 갈렸어',
       explanation:
         '직접 답한 기준과 관계 경험에서 고른 항목이 같은 방향은 아니었어. 어느 쪽이 맞다기보다 상황에 따라 달랐을 수도 있어.',
-      evidenceRefs: [
-        { source: 'declared', field: judgement.axis },
-        { source: 'relationship', field: 'hardest' },
-      ],
+      evidenceRefs: (allowedByAxis[judgement.axis] ?? []).slice(0, 2),
       question: '이 부분은 실제로 어떤 상황에서 가장 크게 느꼈어?',
     })),
     core: focusAxis
@@ -187,9 +200,16 @@ function relationshipResponse(payload: Record<string, unknown>): unknown {
           headline: '말한 기준보다 실제 반응이 컸던 축이 있어',
           summary:
             '네가 직접 답한 기준과, 관계 경험에서 가장 힘들었다고 고른 순간이 같은 축을 가리키지 않았어. 이건 판정이 아니라 관찰이야.',
+          /**
+           * v1.43 — core도 focusAxis의 허용 목록에서 가져온다. `relationship:hardest`를
+           * 무조건 붙이던 v1.42 동작은 그 축에 과거 근거가 없으면 오귀속이었다.
+           *
+           * ⚠️ core에는 axis별 검사가 없다(`parseRelationshipResponse`가 core를 따로
+           * 다룬다). 그래도 mock이 틀린 예를 만들 이유는 없다 — mock은 계약의 참조
+           * 구현이고, 여기서 편법을 쓰면 계약이 무엇인지 코드에서 읽을 수 없게 된다.
+           */
           evidenceRefs: [
-            { source: 'relationship', field: 'hardest' },
-            { source: 'declared', field: focusAxis },
+            ...(allowedByAxis[focusAxis] ?? []).slice(0, 2),
             ...observedRef,
           ],
           limitations: ['기록이 아직 적어서 반복되는 경향인지는 알 수 없어'],
@@ -202,6 +222,10 @@ function compatibilityResponse(payload: Record<string, unknown>): unknown {
   const allowed = Array.isArray(payload.allowed)
     ? (payload.allowed as { key: string; kind: string }[])
     : [];
+  const allowedByDimension = (typeof payload.allowedEvidenceRefs === 'object' &&
+  payload.allowedEvidenceRefs !== null
+    ? payload.allowedEvidenceRefs
+    : {}) as Record<string, unknown[]>;
 
   return {
     narratives: allowed.map((item) => ({
@@ -213,7 +237,12 @@ function compatibilityResponse(payload: Record<string, unknown>): unknown {
       scenario:
         '같은 상황을 서로 다른 의미로 읽을 수 있어. 한쪽은 충분하다고 느끼는데 다른 쪽은 아쉽다고 느끼는 순간이 생길 수 있어.',
       conversationQuestion: '이 부분은 어떤 방식이 제일 편해?',
-      evidenceRefs: [{ source: 'declared', field: item.key }],
+      /**
+       * v1.43 §46.3 — dimension별 허용 목록에서 복사한다. v1.42의
+       * `{source:'declared', field: item.key}`도 허용 안에 있었지만, mock이 목록을
+       * 읽게 해두면 **계약이 깨졌을 때 mock 모드에서 먼저 드러난다**(Provider 비용 0).
+       */
+      evidenceRefs: (allowedByDimension[item.key] ?? []).slice(0, 2),
     })),
   };
 }
@@ -222,6 +251,10 @@ function historyResponse(payload: Record<string, unknown>): unknown {
   const allowed = Array.isArray(payload.allowed)
     ? (payload.allowed as { axis: string; state: string }[])
     : [];
+  const allowedByAxis = (typeof payload.allowedEvidenceRefs === 'object' &&
+  payload.allowedEvidenceRefs !== null
+    ? payload.allowedEvidenceRefs
+    : {}) as Record<string, unknown[]>;
 
   // 규칙 state에 맞는 문장을 만든다 — STABLE 행에 '달라졌어'가 붙으면 QA 결과를 읽을 수 없다.
   const explanationFor: Record<string, string> = {
@@ -238,7 +271,13 @@ function historyResponse(payload: Record<string, unknown>): unknown {
       // state는 일부러 뒤집어 보낸다 — 규칙 값이 이기는지 확인하기 위해서다.
       state: item.state === 'SHIFT' ? 'STABLE' : 'SHIFT',
       explanation: explanationFor[item.state] ?? explanationFor.SHIFT,
-      evidenceRefs: [{ source: 'declared', field: item.axis }],
+      /**
+       * v1.43 §45.3 — **비교한 기록을 실제로 가리킨다.** v1.42까지 이 mock은
+       * `declared` ref만 붙였고, 그건 `history` ref를 모델이 구성할 수 없었기 때문이다
+       * (context에 `entryId`가 없었다). 이제 허용 목록에 두 기록이 들어 있으므로
+       * mock도 그것을 인용해 `resolveHistory` 경로를 실제로 지나간다.
+       */
+      evidenceRefs: (allowedByAxis[item.axis] ?? []).slice(0, 2),
       uncertainty: '이유는 네가 실제 상황을 떠올려보면 더 잘 알 수 있어',
     })),
   };
@@ -274,7 +313,7 @@ function deepReportResponse(payload: Record<string, unknown>): unknown {
           `${insight.evidence[0]?.text ?? ''} 그리고 ${insight.evidence[1]?.text ?? ''} — 이 둘을 같이 보면 하나만 볼 때와는 다른 신호로 읽혀.`,
         situation,
         conversationQuestion: `${withTopicParticle(axisLabel)} 실제로 어떻게 느꼈어?`,
-        // ref를 그대로 복사한다 — mock도 실제 evidenceRefsAreSubsetOf 검증을 통과해야 한다.
+        // ref를 그대로 복사한다 — mock도 실제 `refsWithinAllowed` 검증을 통과해야 한다.
         evidenceRefs: insight.evidence.slice(0, 2).map((item) => item.ref),
       };
     }),
