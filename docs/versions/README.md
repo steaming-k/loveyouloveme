@@ -4,12 +4,12 @@
 
 | | 위치 |
 |---|---|
-| **현재 기능명세서** (버전별 누적) | [`../기능명세서.md`](../기능명세서.md) — **v1.44** |
-| **현재 기능명세 통합본** (현행 상태만) | [`../기능명세_현행.md`](../기능명세_현행.md) — **v1.44** |
-| **현재 기획서** | [`../럽유럽미_기획서_v1.md`](../럽유럽미_기획서_v1.md) — 문서 버전 **v1.35** (제품 버전 v1.44) |
+| **현재 기능명세서** (버전별 누적) | [`../기능명세서.md`](../기능명세서.md) — **v1.45** |
+| **현재 기능명세 통합본** (현행 상태만) | [`../기능명세_현행.md`](../기능명세_현행.md) — **v1.45** |
+| **현재 기획서** | [`../럽유럽미_기획서_v1.md`](../럽유럽미_기획서_v1.md) — 문서 버전 **v1.35** (제품 버전 v1.45) |
 | 과거 버전 | 이 폴더 |
 
-> **v1.44 동결 완료.** 구현 커밋 `e2284a6`의 blob에서 추출했다 — 워킹트리 복사가 아니다.
+> **v1.45 동결 완료.** 구현 커밋 `5f3b808`의 blob에서 추출했다 — 워킹트리 복사가 아니다.
 > 이 폴더의 규칙("그 버전이 확정된 **커밋**에서 추출한다")을 그대로 지켰고, 재검증 명령은
 > 아래 표의 `추출 커밋` 칸에 있다.
 
@@ -18,7 +18,7 @@
 > 변경 내용을 그 파일에 반영하면 `5d9fa7c` byte-identical 대조가 깨지고 기록의 의미가
 > 사라진다. v1.40.1의 현행 상태는 `../기능명세_현행.md`가 담는다.
 
-> ⚠️ **동결본은 v1.6/v1.22, 그리고 v1.40·v1.41·v1.42·v1.43·v1.44가 있다.**
+> ⚠️ **동결본은 v1.6/v1.22, 그리고 v1.40·v1.41·v1.42·v1.43·v1.44·v1.45가 있다.**
 > v1.7~v1.38 구간에는 동결 단계가 실행되지 않았고, v1.39에서 표기를 사실에 맞추면서
 > **빠진 동결본을 소급 생성하지 않기로** 확정했다(이 문서 끝 참고).
 > **v1.40부터 정책대로 실제 동결을 시작한다** — 그 버전이 확정된 커밋 시점에, 그 커밋에서
@@ -47,6 +47,7 @@
 
 | 버전 | 파일 | 추출 커밋 | 범위 |
 |---|---|---|---|
+| **v1.45 동결본** | [기능명세_현행_v1.45.md](./기능명세_현행_v1.45.md) | **`5f3b808`** | Premium Deep Report v2 (Chapter Engine · 러비 캐릭터 통합 · Self-only Premium · Premium Eligibility Invariant — FREE 소비 근거를 제외한 뒤 남은 evidence로 자격 판정) |
 | **v1.44 동결본** | [기능명세_현행_v1.44.md](./기능명세_현행_v1.44.md) | **`e2284a6`** | Trust Boundaries on Untrusted Input (S07 단순화 · 세션 값 강등 · 근거 없는 단정/시제 주장 제거 · 표시 이름 분리 · AI 소비 게이트) |
 | **v1.43 동결본** | [기능명세_현행_v1.43.md](./기능명세_현행_v1.43.md) | **`f56c5f2`** | AI Task Contract Uniformity + User Correction Trust Boundary (Task별 예외 제거 · Axis-scoped Evidence · Observability · Core Correction 경계) |
 | **v1.42 동결본** | [기능명세_현행_v1.42.md](./기능명세_현행_v1.42.md) | **`7e3e2d0`** | AI Relationship Boundary Integrity (Tense Contract · Narrative Cache · Question Job Safety) |
@@ -121,6 +122,25 @@
 > `hasTemporalComparison`/`hasRelationshipEvidence` · `displayStateOf` ·
 > `canUseAiHeadline`/`canUseAiAxisNarrative`. 다음 버전이 이 상태를 기준선으로 쓴다.
 > v1.40.1(hotfix)을 동결하지 않은 것과 같은 기준이다.
+
+> **v1.45 동결본도 배너가 없다 — v1.40~v1.44와 같은 이유다.**
+>
+> 배너를 붙이면 그 순간 `5f3b808`의 문서와 byte-identical이 아니게 되므로
+> **exactness를 배너보다 우선했다.** 위 표의 `추출 커밋` 칸이 배너 역할을 한다.
+>
+> 재검증: `git show 5f3b808:docs/기능명세_현행.md | diff - docs/versions/기능명세_현행_v1.45.md`
+>
+> SHA256 `3cb6d91cd9f5872bc45ee9278ed9ef5038bf0d16d8f589df25389b97cf86f732`
+> git blob `6a80b2fef925267278d2874cc7395ed2b4ad5c11` — 양쪽 동일 확인.
+> 6561줄 · 475,607 bytes.
+>
+> v1.45를 동결한 이유: **유료 리포트의 렌더 단위와 자격 판정이 둘 다 바뀌었고** 다음
+> 버전이 이 상태를 기준선으로 쓴다 — Chapter Engine(연결 카드 → Chapter 12종) · 러비를
+> 리포트 진행자로 배치(표현 계층 분리) · Self-only Premium(cross-axis synthesis) ·
+> **Premium Eligibility Invariant 확정**(Experience/Target 상태 자체로 차단하지 않고,
+> FREE에서 이미 소비한 근거를 제외한 뒤 남은 evidence로 판정) · FREE 중복 판정을 근거
+> 단위로 전환. AI 계약은 불변이다(`deep-report-v4-tense` · Provider 1회 · promptVersion
+> 5종 전부 그대로).
 
 > ### ⚠️ 동결본 검증은 **git blob 기준으로만** 한다 (v1.40.1에서 명시)
 >
