@@ -248,7 +248,7 @@ Chapter마다 호출하지 않는다. **VERIFIED**
 
 ---
 
-## 6. Test Cases — `npm run test:premium` (173 checks, ALL PASS)
+## 6. Test Cases — `npm run test:premium` (196 checks, ALL PASS)
 
 | ID | 검사 | 결과 |
 |---|---|:-:|
@@ -907,6 +907,117 @@ reduced-motion 경로만 브라우저에서 직접 측정했다(success 541ms �
 
 ---
 
+## 9.7 Production Deep Report Unlock — Fake Door 해제 (vNext)
+
+> ⚠️ 이 절은 **v1.45 release 이후의 제품 정책 변경**이다.
+> `docs/versions/기능명세_현행_v1.45.md`(frozen snapshot)는 수정하지 않았다.
+
+### 9.7.1 사용자 캡처의 root cause
+
+```ts
+// v1.45
+const canPreviewUnlock =
+  PREMIUM_PREVIEW && isDeepReport && feature.status === 'fake-door';
+```
+
+`PREMIUM_PREVIEW`는 Production에서 `false`다. 그래서 `handlePurchaseIntent`의 첫 분기가
+**항상 건너뛰어지고** 두 번째 경로로 떨어졌다:
+
+```
+premium_fake_door_reveal → setSheetOpen(true) → '상세 분석은 지금 준비 중이야'
+```
+
+즉 **코드가 의도대로 동작한 것**이고, 그 의도가 v1.45까지의 Fake Door 정책이었다.
+
+### 9.7.2 Before / After
+
+```
+Before  CTA → premium_fake_door_reveal → '준비 중' BottomSheet        (리포트 없음)
+After   CTA → success(demo_unlock) → preparing → report              (Chapter 8개)
+```
+
+수정은 한 줄이다:
+
+```ts
+// vNext
+const canUnlockDeepReport = isDeepReport && feature.status === 'fake-door';
+```
+
+⚠️ **자격 판정을 새로 만들지 않았다.** `feature.status`는 이미 `hasPremiumEvidence(...)`의
+결과다(§9.4.1) — unlock 조건은 그 값을 **읽을 뿐**이다. 규칙이 두 벌이 되면 v1.45 Release에서
+잡은 결함('결제는 되는데 리포트는 비어 있는' 상태)이 다시 생긴다.
+
+### 9.7.3 `demo_unlock` — PG 없이 여는 것에 대한 정직성
+
+| mode | 언제 | Success 문구 | 가격 표시 |
+|---|---|---|:-:|
+| `payment` | 실제 PG 성공 (**미연결 · 진입 코드 0**) | `결제가 완료됐어` | O |
+| **`demo_unlock`** | **Production 일반 CTA** | `정밀 관찰 리포트를 열었어` + **`아직 결제는 연결 전이야 · 이번 열람은 무료야`** | **X** |
+| `preview` | `PREMIUM_PREVIEW=true` | `미리보기로 리포트를 열었어` | X |
+| `beta_ut` | Preview + `?mode=ut` | `테스트용으로 리포트를 열었어` | X |
+
+⚠️ **CTA에 `₩1,900`이 적혀 있는데 결제 없이 열린다.** Success 화면이 결제가 일어나지
+않았다는 사실을 **먼저** 말하고, `demo_unlock`에서는 **가격을 표시하지 않는다** — 금액만
+보여도 과금으로 읽힌다.
+
+실측 Success 화면:
+
+```
+PRECISION REPORT
+정밀 관찰 리포트를 열었어
+아직 결제는 연결 전이야 · 이번 열람은 무료야
+LOVY NOTE  좋아. 이제 모아둔 신호들을 조금 더 깊게 연결해볼게.
+추가 관찰 완료 · 연결된 이야기 8개
+```
+
+### 9.7.4 Production-like QA (실측)
+
+`NEXT_PUBLIC_PREMIUM_PREVIEW=false`로 `npm run build && npm start` 후 **사용자 캡처와
+같은 경로**(`/mirror` → Premium 행 `왜 나는 생각했던 나와 다르게 행동했을까?` → CTA)로
+재현했다.
+
+```
+success(demo_unlock)   63ms
+preparing             540ms
+report               1176ms     Chapter 8개 · Accordion 01/8~08/8
+```
+
+| 사용자 노출 문구 | 결과 |
+|---|:-:|
+| `상세 분석은 지금 준비 중이야` | **0건** |
+| `정밀 관찰 리포트는 지금 준비 중이야` | **0건** |
+| `출시되면 알려줘` | **0건** |
+| `관심 표시만 기록했어` | **0건** |
+| `결제가 완료` · `결제 성공` | **0건** |
+
+### 9.7.5 4개 evidence 상태 (Production flag)
+
+| 상태 | CTA | flow | Chapter |
+|---|:-:|---|--:|
+| A · Exp O + Tgt O | O | success → preparing → report | 8 |
+| B · Exp O + Tgt X | O | success → preparing → report | 3 |
+| C · Exp X + Tgt O | O | success → preparing → report | 2 |
+| D · Exp X + Tgt X (Self-only) | O | success → preparing → report | 3 |
+| E · past_experience_no_target | **X** | Paywall 자체가 열리지 않음 (`아직 연결할 수 있는 신호가 부족해`) | 0 |
+
+⚠️ E는 **v1.45 invariant 그대로**다(§9.4.3) — 이번 변경이 건드리지 않았다.
+
+### 9.7.6 다른 Premium Fake Door 영향 — 없다
+
+`fake-door` status는 **6개 feature가 공유**한다. `isDeepReport` 제한을 유지했고
+BottomSheet 컴포넌트·문구도 삭제하지 않았다.
+
+실측: `?source=mbti` → CTA(`상세 분석 열기 — 1,900원`) → `준비 중` + `출시되면 알려줘`
+BottomSheet · 리포트 미개방 · success 미진입. **Fake Door 그대로다.**
+
+### 9.7.7 바꾸지 않은 것
+
+Preparing timing(표준 ≈1.96초 · reduced ≈1.1~1.2초) · `PremiumPreparingReport` ·
+Provider **1회** · `deep-report-v4-tense` · 새 loading 화면 **0** · 새 Route **0** ·
+새 analytics 이벤트 **0**(`access_mode` 값만 하나 추가) · 새 env flag **0**.
+
+---
+
 ## 10. Production Guard
 
 | 항목 | 상태 |
@@ -967,7 +1078,7 @@ Chapter 8개를 정직하게 목차로 보여주고, 그 다음은 v1.44와 **�
 | `test:relationship-evidence` | 280 | **280** | ✅ |
 | `test:trust` | 205 | **205** | ✅ |
 | `test:ai:e2e` | 6/6 | **6/6** | ✅ |
-| `test:premium` | — | **173** (신규) | ✅ |
+| `test:premium` | — | **196** (신규) | ✅ |
 | `tsc --noEmit` | clean | **clean** | ✅ |
 | `next build` | 성공 | **성공** | ✅ |
 
@@ -1027,6 +1138,8 @@ PREM-V2-06이 MBTI가 있는 `ended` 세션으로 이 자리를 훑는다.
 | **Self-only Premium(내용 2개)이 충분히 가치 있다고 느껴지는가** | NOT VALIDATED — 정직한 상한이지만 얇다 |
 | **체크포인트의 outward 문장이 처방으로 읽히는가** | NOT VALIDATED — 우리는 '확인해볼 것'으로 썼다 |
 | **1.2~2.0초 preparing 전환이 적절한가** | NOT VALIDATED |
+| **결제 없이 리포트가 열리는 것을 사용자가 어떻게 받아들이는가** | NOT VALIDATED — CTA에 `₩1,900`이 있는데 무료로 열린다. Success 문구가 그 사실을 말하지만 **혼란을 주는지, 오히려 신뢰를 주는지는 미검증**이다 |
+| **`₩1,900` 가격 표시를 유지한 채 무료로 여는 것이 WTP 측정을 오염시키는가** | NOT VALIDATED |
 
 UT는 다음 셋을 **분리해서** 검증하는 것이 목적이다.
 
@@ -1049,6 +1162,8 @@ C. ₩1,900이면 낼 수 있다.
 | 6 | **`ended` 리포트에 하트가 그려진 이미지가 1개 남아 있다** (`together` · 40px · 종이에 그려진 하트) | §29는 '축하 캐릭터 금지 · 하트 과잉 금지'다. 축하·엄지척·컨페티는 **한 자리도 쓰지 않았고**, 하트를 가진 이미지는 `애정을 주고받는 방식` Chapter 하나뿐이며 그것도 껴안은 하트가 아니라 **기록으로 든 종이**다. 그래도 '과잉'의 경계는 판단이므로 **사용자 검토에서 뒤집힐 수 있다** — 되돌리려면 `lovyPoseFor`에 tense 분기를 추가해야 하고, 지금 10종이 다 쓰이고 있어 대체 포즈를 새로 가져와야 한다 |
 | 7 | **한 Chapter 안에서 규칙 문장과 AI 문장이 거의 같은 말을 할 수 있다** | 실측에서 잡혔다: 규칙 `지금 상대와 연락 방식에서 차이가 보이는데, 이 축은 지금 관계에서 신호가 있는 축이고…` / AI `지금 상대와 연락 방식에서 차이가 보이는데, 이 축은 지금 관계에서 신호가 있는 축이야…`. **v1.45 캐릭터 통합이 만든 것이 아니라 v1.44부터 있던 상태**이고, (F) 중복 게이트(`MIN_NARRATIVE_NOVELTY = 0.35`)를 AI가 살짝 넘겨서 통과한 경우다. **손대지 않았다** — 이번 작업은 AI schema·prompt 변경 금지이고 `0.35`는 NOT VALIDATED라 임의 튜닝 금지다. Chapter 사이 중복은 0이지만 **Chapter 안 중복은 남아 있다** |
 | 8 | **`past_experience_no_target`은 unavailable을 유지한다 (의도)** | FREE가 `hardest`를 이미 소비하고 `adaptive`는 MATCH 분기에 붙지 않아 **남은 근거가 0**이다. Experience/Target 부재 때문이 아니다 — 사진 한 장만 더해도 열린다(RELEASE-03). 여는 방법 세 가지가 모두 금지 항목(단일 그룹 connection · Trust 완화 · 무료 재포장)이라 **의도된 결과로 확정했다.** 열어야 한다면 `adaptive`를 별도 source group으로 승격하는 설계 변경이 필요하고 그건 Evidence 모델 변경이다 |
+| 10 | **Paywall이 `₩1,900`을 표시한 채 결제 없이 리포트를 연다** | Success 문구가 `아직 결제는 연결 전이야 · 이번 열람은 무료야`로 명시하고 가격도 숨기지만, **Paywall 자체의 가격 표시는 그대로다.** 이번 작업은 unlock 경로 수정 범위라 Paywall 카피를 재설계하지 않았다 — 가격을 남길지, `지금은 무료`로 바꿀지는 제품 결정이 필요하다 |
+| 11 | **`demo_unlock`이 analytics에서 유료 전환으로 오독될 수 있다** | `deep_report_view`의 `access_mode`로 구분 가능하지만 **GA4 대시보드 정의를 함께 고쳐야 한다**(이번 범위 밖). `premium_purchase_intent`는 여전히 기록되므로 그것만 보면 결제 의향으로 읽힌다 |
 | 9 | **표준 모션 경로의 전환 시간을 직접 측정하지 못했다** | 이 환경이 `prefers-reduced-motion`을 강제한다. reduced-motion 경로는 1.18초로 실측했고 표준 경로 1.96초는 **상수 합**이다 — 실제 기기에서 체감 확인이 필요하다 |
 | 5 | `historyDeep`이 리포트 본문에서 빠졌다 | `past_and_now` Chapter가 대체하지만, `buildHistoryDetail`의 `이전 기록 / 최근 기록` 쌍 표현은 Chapter의 `ruleSummary`보다 정보가 많다. **standalone `/premium-preview/history_detail`에서는 그대로 살아 있다** |
 | 6 | AI 문장 도착이 7~10초 | v1.44와 같다(Provider 특성). 규칙 리포트가 먼저 완결돼 있어 대기 중에도 읽을 수 있다 |
@@ -1073,7 +1188,7 @@ READY FOR USER REVIEW  —  RELEASE 아님
 | Sparse에서 filler 0 | ✅ Chapter 0 · omission 3 |
 | AI 실패에도 리포트가 무너지지 않는다 | ✅ Journey E 실측 |
 | Production Fake Door는 그대로 닫혀 있다 | ✅ 플래그·게이트 무변경 |
-| 기존 회귀 baseline 유지 | ✅ 1247건 + 신규 173건 |
+| 기존 회귀 baseline 유지 | ✅ 1247건 + 신규 196건 |
 
 **다음 단계 (이번 작업 범위 밖):**
 

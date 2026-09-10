@@ -40,11 +40,18 @@ export function PremiumUnlockSuccess({
   const copy =
     mode === 'payment'
       ? UNLOCK_COPY.payment
-      : mode === 'beta_ut'
-        ? UNLOCK_COPY.betaUt
-        : UNLOCK_COPY.preview;
+      : mode === 'demo_unlock'
+        ? UNLOCK_COPY.demoUnlock
+        : mode === 'beta_ut'
+          ? UNLOCK_COPY.betaUt
+          : UNLOCK_COPY.preview;
 
-  // 실제 결제일 때만 가격을 말한다. 미리보기에서 '₩1,900'을 보여주면 결제로 오해된다.
+  /**
+   * 실제 결제일 때만 가격을 말한다.
+   *
+   * ⚠️ `demo_unlock`에서도 가격을 붙이지 않는다 — 결제가 일어나지 않았는데 금액을
+   * 보여주면 그것만으로 과금으로 읽힌다. 그 mode의 note는 결제 전임을 말한다.
+   */
   const note =
     mode === 'payment' ? `${formatPrice(price)} · ${copy.noteSuffix}` : copy.noteSuffix;
 

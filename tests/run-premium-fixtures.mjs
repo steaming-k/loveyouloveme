@@ -754,9 +754,19 @@ console.log('\nPREM-V2-15 — Production Guard (정적 guard)');
     env.includes("PREMIUM_FAKE_DOOR = process.env.NEXT_PUBLIC_PREMIUM_FAKE_DOOR !== 'false'"),
   );
   const paywall = await readFile(join(ROOT, 'src/app/premium/page.tsx'), 'utf8');
+  /*
+    ⚠️ **이 검사의 기준이 vNext에서 바뀌었다.** v1.45까지는 Unlock stage가
+    `PREMIUM_PREVIEW && isDeepReport && fake-door`일 때만 열렸다 — Production은 Fake Door였다.
+    제품 결정이 바뀌어 Relationship Deep Report는 Production에서도 열린다.
+
+    바뀐 것은 **Deep Report 하나뿐**이라는 것이 지금 지켜야 하는 것이다. `fake-door` status는
+    6개 feature가 공유하므로 `isDeepReport` 제한이 사라지면 MBTI·별자리·사주까지 열린다.
+  */
   check(
-    'Unlock stage는 PREMIUM_PREVIEW + fake-door일 때만 열린다',
-    paywall.includes("PREMIUM_PREVIEW && isDeepReport && feature.status === 'fake-door'"),
+    'Deep Report Unlock은 isDeepReport + fake-door로 제한된다 (다른 feature는 Fake Door 유지)',
+    /const canUnlockDeepReport =\s*isDeepReport && feature\.status === 'fake-door';/.test(
+      stripComments(paywall),
+    ),
   );
   check(
     '새 비밀 query parameter로 게이트를 우회하지 않는다',
@@ -1359,10 +1369,16 @@ console.log('\nPOSTREV-01~18 — Eligibility 불변 · 체크포인트 · Self-o
     Preview 경로와 섞이지 않는 것이 목적이다 — Production에는 실제 결제가 없으므로
     '준비 중' 안내는 그 경로에서 계속 정확한 말이다(§4-A).
   */
+  /*
+    ⚠️ vNext — 분기 이름이 `canPreviewUnlock` → `canUnlockDeepReport`로 바뀌었고 의미도
+    넓어졌다(Production 포함). 지켜야 하는 것은 같다: **Deep Report는 Fake Door 시트에
+    닿기 전에 return한다.**
+  */
   check(
-    'POSTREV-12 · Fake Door 카피는 Preview가 아닐 때만 쓰인다 (분기 존재)',
-    paywallSource.includes('if (canPreviewUnlock)') &&
-      paywallSource.indexOf('if (canPreviewUnlock)') < paywallSource.indexOf('setSheetOpen(true)'),
+    'POSTREV-12 · Deep Report는 Fake Door 시트에 닿기 전에 return한다',
+    paywallSource.includes('if (canUnlockDeepReport)') &&
+      paywallSource.indexOf('if (canUnlockDeepReport)') <
+        paywallSource.indexOf('setSheetOpen(true)'),
   );
 
   /* ── POSTREV-13 · Production Fake Door가 결제 성공을 위조하지 않는다 ───── */
@@ -1413,9 +1429,14 @@ console.log('\nPOSTREV-01~18 — Eligibility 불변 · 체크포인트 · Self-o
     'POSTREV-14 · stage 머신에 preparing 이 있다',
     paywallSource.includes("| 'preparing'") && paywallSource.includes("stage === 'success'\n          ? 'preparing'"),
   );
+  /*
+    ⚠️ vNext — Production **Deep Report**는 이제 preparing에 진입한다(제품 결정 변경).
+    그대로 남은 불변조건은 **Fake Door 시트 경로가 stage를 건드리지 않는다**는 것이다:
+    시트를 띄우는 feature(MBTI·별자리·사주 등)는 리포트로 진행하지 않는다.
+  */
   check(
-    'POSTREV-14 · Production Fake Door는 preparing 에 진입하지 않는다',
-    /if \(canPreviewUnlock\)[\s\S]{0,400}setStage\(/.test(paywallSource) &&
+    'POSTREV-14 · Fake Door 시트 경로는 stage를 바꾸지 않는다 (다른 feature가 리포트로 가지 않는다)',
+    /if \(canUnlockDeepReport\)[\s\S]{0,400}setStage\(/.test(paywallSource) &&
       !/setSheetOpen\(true\)[\s\S]{0,200}setStage\(/.test(paywallSource),
   );
   check(
@@ -1448,9 +1469,15 @@ console.log('\nPOSTREV-01~18 — Eligibility 불변 · 체크포인트 · Self-o
     'POSTREV-18 · PREMIUM_PREVIEW 기본값은 여전히 꺼짐이다',
     envSource.includes("PREMIUM_PREVIEW = process.env.NEXT_PUBLIC_PREMIUM_PREVIEW === 'true'"),
   );
+  /*
+    ⚠️ vNext — 게이트 문자열이 바뀌었다(위 PREM-V2-15 주석 참고). Preview gate 자체
+    (`PREMIUM_PREVIEW` 기본값 꺼짐)는 그대로이고, 그건 바로 위 검사가 본다.
+  */
   check(
-    'POSTREV-18 · Unlock stage 게이트가 그대로다',
-    paywallSource.includes("PREMIUM_PREVIEW && isDeepReport && feature.status === 'fake-door'"),
+    'POSTREV-18 · Deep Report Unlock 게이트가 feature.status를 근거로 쓴다',
+    /const canUnlockDeepReport =\s*isDeepReport && feature\.status === 'fake-door';/.test(
+      stripComments(paywallSource),
+    ),
   );
   check(
     'POSTREV-18 · 새 비밀 query parameter가 없다',
@@ -1635,6 +1662,202 @@ console.log('\nRELEASE-01~06 — FREE 중복 근거 단위 판정 · past_experi
     'RELEASE-06 · 근거 단위 전환 후에도 기존 fixture 결과가 그대로다',
     full.chapters.length === 8 && ended.chapters.length === 8,
     { full: full.chapters.length, ended: ended.chapters.length },
+  );
+}
+
+/* ═══ PROD-UNLOCK-01 ~ 10 · Production Deep Report Unlock (vNext) ══════════
+
+   ⚠️ **무엇이 바뀌었나.** v1.45까지 Production의 Relationship Deep Report는 Fake Door였다:
+   `canPreviewUnlock = PREMIUM_PREVIEW && …`이 Production에서 항상 false라 CTA를 누르면
+   예외 없이 '준비 중' BottomSheet로 떨어졌다. 제품 결정이 바뀌어 그 리포트는 이제
+   Production에서도 열린다.
+
+   ⚠️ **그런데 PG는 여전히 없다.** 그래서 이 블록이 지키는 것은 두 문장이다:
+
+   > Deep Report CTA는 BottomSheet가 아니라 success → preparing → report로 간다.
+   > 그러면서 **결제가 완료됐다고 말하지 않는다.**
+
+   ⚠️ CTA 클릭은 클라이언트 state machine이라 이 러너가 직접 누를 수 없다. stage 전이와
+   분기 조건은 **소스 정적 검사**로 고정하고(주석 제외), evidence 자격은 dev 라우트 값으로
+   본다 — 브라우저 실측은 QA 문서에 남긴다. */
+
+console.log('\nPROD-UNLOCK-01~10 — Production Deep Report Unlock · payment 오인 0');
+{
+  const paywallSrc = stripComments(
+    await readFile(join(ROOT, 'src/app/premium/page.tsx'), 'utf8'),
+  );
+  const accessSrc = stripComments(await readFile(join(ROOT, 'src/lib/premiumAccess.ts'), 'utf8'));
+  const unlockSrc = stripComments(
+    await readFile(join(ROOT, 'src/components/premium/PremiumUnlockSuccess.tsx'), 'utf8'),
+  );
+  const copySrcRaw = await readFile(join(ROOT, 'src/data/premium.ts'), 'utf8');
+  const copySrc = stripComments(copySrcRaw);
+
+  /* ── PROD-UNLOCK-01 · Deep Report CTA는 BottomSheet로 가지 않는다 ───────── */
+  check(
+    'PROD-UNLOCK-01 · unlock 조건에서 PREMIUM_PREVIEW가 빠졌다 (Production에서도 열린다)',
+    /const canUnlockDeepReport =\s*isDeepReport && feature\.status === 'fake-door';/.test(
+      paywallSrc,
+    ),
+    paywallSrc.match(/const canUnlockDeepReport =[^;]*;/)?.[0],
+  );
+  /*
+    분기 순서가 핵심이다 — `canUnlockDeepReport`가 `setSheetOpen(true)`보다 **먼저**
+    return해야 Deep Report가 BottomSheet에 닿지 않는다.
+  */
+  const branchIdx = paywallSrc.indexOf('if (canUnlockDeepReport) {');
+  const sheetIdx = paywallSrc.indexOf('setSheetOpen(true)');
+  check(
+    'PROD-UNLOCK-01 · canUnlockDeepReport 분기가 setSheetOpen보다 먼저 return한다',
+    branchIdx > 0 && sheetIdx > branchIdx && /if \(canUnlockDeepReport\) \{[^}]*return;/s.test(paywallSrc),
+    { branchIdx, sheetIdx },
+  );
+  /*
+    ⚠️ 처음에는 `branchIdx ~ sheetIdx` 구간을 훑었는데, **그 구간이 곧 다른 feature의
+    Fake Door 경로**여서 당연히 이벤트가 들어 있었다. 봐야 하는 것은 `if
+    (canUnlockDeepReport) { … }` **블록 안**이다.
+  */
+  check(
+    'PROD-UNLOCK-01 · Deep Report unlock 블록에서 premium_fake_door_reveal을 쏘지 않는다',
+    (() => {
+      const m = paywallSrc.match(/if \(canUnlockDeepReport\) \{([\s\S]*?)\n    \}/);
+      return Boolean(m) && !m[1].includes('premium_fake_door_reveal') && m[1].includes('return;');
+    })(),
+    paywallSrc.match(/if \(canUnlockDeepReport\) \{([\s\S]*?)\n    \}/)?.[1],
+  );
+
+  /* ── PROD-UNLOCK-02 · CTA → success ────────────────────────────────────── */
+  check(
+    'PROD-UNLOCK-02 · unlock 분기가 success(또는 leaving)로 stage를 넘긴다',
+    /if \(canUnlockDeepReport\) \{[\s\S]{0,320}setStage\(reducedMotion \? 'success' : 'leaving'\)/.test(
+      paywallSrc,
+    ),
+  );
+
+  /* ── PROD-UNLOCK-03 · success → preparing ─────────────────────────────── */
+  check(
+    'PROD-UNLOCK-03 · stage 머신이 success 다음에 preparing으로 간다',
+    /stage === 'success'\s*\?\s*'preparing'/.test(paywallSrc),
+  );
+
+  /* ── PROD-UNLOCK-04 · preparing → report ──────────────────────────────── */
+  check(
+    'PROD-UNLOCK-04 · preparing → revealing → report',
+    /stage === 'preparing'\s*\?\s*'revealing'/.test(paywallSrc) &&
+      /:\s*'report';/.test(paywallSrc),
+  );
+  check(
+    'PROD-UNLOCK-04 · report stage에서 RelationshipDeepReportView가 렌더된다',
+    paywallSrc.includes('showReport') && paywallSrc.includes('<RelationshipDeepReportView'),
+  );
+
+  /* ── PROD-UNLOCK-05 · Production mock unlock에 payment-success 카피 0 ───── */
+  check(
+    'PROD-UNLOCK-05 · Production CTA는 payment mode를 쓰지 않는다',
+    !/setUnlockMode\([^)]*'payment'[^)]*\)/.test(paywallSrc) &&
+      /unlockModeForCta[\s\S]{0,200}'demo_unlock'/.test(paywallSrc),
+    paywallSrc.match(/const unlockModeForCta[^;]*;/s)?.[0],
+  );
+  check(
+    'PROD-UNLOCK-05 · demo_unlock 문구에 결제 완료 주장이 없다',
+    (() => {
+      const m = copySrcRaw.match(/demoUnlock: \{[^}]*\}/s);
+      if (!m) return false;
+      return !/결제가 완료|결제 완료됐|결제 성공|결제되었/.test(m[0]);
+    })(),
+    copySrcRaw.match(/demoUnlock: \{[^}]*\}/s)?.[0],
+  );
+  check(
+    'PROD-UNLOCK-05 · demo_unlock 문구가 결제 전임을 명시한다',
+    (() => {
+      const m = copySrcRaw.match(/demoUnlock: \{[^}]*\}/s);
+      return Boolean(m) && /결제는 연결 전|무료/.test(m[0]);
+    })(),
+  );
+  /*
+    ⚠️ 가격을 붙이는 자리도 확인한다. `demo_unlock`에서 `₩1,900`이 Success 화면에
+    찍히면 문구와 무관하게 과금으로 읽힌다.
+  */
+  check(
+    'PROD-UNLOCK-05 · Success 화면은 payment mode에서만 가격을 붙인다',
+    /mode === 'payment' \? `\$\{formatPrice\(price\)\}/.test(unlockSrc),
+  );
+
+  /* ── PROD-UNLOCK-06 · payment mode 경로·카피는 보존한다 ───────────────── */
+  check(
+    'PROD-UNLOCK-06 · PremiumAccessMode에 payment가 남아 있다',
+    /'payment'/.test(accessSrc) && /'demo_unlock'/.test(accessSrc),
+  );
+  check(
+    "PROD-UNLOCK-06 · UNLOCK_COPY.payment.status가 '결제가 완료됐어' 그대로다",
+    /payment: \{\s*status: '결제가 완료됐어'/.test(copySrcRaw),
+  );
+  check(
+    'PROD-UNLOCK-06 · Success 화면이 payment mode를 여전히 분기한다',
+    unlockSrc.includes("mode === 'payment'") && unlockSrc.includes('UNLOCK_COPY.payment'),
+  );
+
+  /* ── PROD-UNLOCK-07 · 다른 미출시 feature의 Fake Door는 그대로다 ────────── */
+  check(
+    'PROD-UNLOCK-07 · unlock 조건이 isDeepReport로 제한된다 (6개 feature가 fake-door를 공유)',
+    /const canUnlockDeepReport =\s*isDeepReport &&/.test(paywallSrc),
+  );
+  check(
+    'PROD-UNLOCK-07 · Fake Door BottomSheet 경로가 남아 있다 (삭제하지 않았다)',
+    paywallSrc.includes('setSheetOpen(true)') &&
+      paywallSrc.includes('<BottomSheet') &&
+      paywallSrc.includes('copy.fakeDoorTitle'),
+  );
+  check(
+    'PROD-UNLOCK-07 · Fake Door 문구 자체는 데이터에 남아 있다 (다른 feature가 쓴다)',
+    /fakeDoorTitle: '상세 분석은 지금 준비 중이야'/.test(copySrc) &&
+      /notifyCta: '출시되면 알려줘'/.test(copySrc),
+  );
+
+  /* ── PROD-UNLOCK-08 · 09 · Provider · promptVersion 불변 ──────────────── */
+  check('PROD-UNLOCK-08 · Provider 호출 1회', full.ai.providerCalls === 1, full.ai);
+  const promptVersions = await readFile(join(ROOT, 'src/services/ai/promptVersions.ts'), 'utf8');
+  check(
+    'PROD-UNLOCK-09 · deepReport promptVersion은 deep-report-v4-tense 그대로다',
+    promptVersions.includes("deepReport: 'deep-report-v4-tense'"),
+  );
+
+  /* ── PROD-UNLOCK-10 · Premium eligibility invariant 유지 ───────────────── */
+  const NO_CUR2 = { signals: {}, askedAt: null };
+  const selfOnly = await run({
+    ...FULL, status: 'solo_none',
+    experience: { important: [], hardest: null, selfGap: null, skipped: true },
+    currentRelationship: NO_CUR2, target: NO_TARGET,
+    entries: [], observedAnalysis: null, observations: {}, mbti: null,
+  });
+  const pastOnly = await run({
+    ...FULL, status: 'solo_none', currentRelationship: NO_CUR2, target: NO_TARGET,
+    entries: [], observedAnalysis: null, observations: {}, mbti: null,
+  });
+  check(
+    'PROD-UNLOCK-10 · Self-only는 여전히 자격이 있다 (Experience/Target 부재로 막지 않는다)',
+    selfOnly.gate.eligible === true && selfOnly.gate.reportAvailable === true,
+    selfOnly.gate,
+  );
+  check(
+    'PROD-UNLOCK-10 · past_experience_no_target는 여전히 unavailable이다 (남은 근거 0)',
+    pastOnly.gate.eligible === false && pastOnly.gate.reportAvailable === false,
+    pastOnly.gate,
+  );
+  check(
+    'PROD-UNLOCK-10 · 자격 == 리포트 사용 가능 (어긋남 0)',
+    [full, selfOnly, pastOnly].every((r) => r.gate.eligible === r.gate.reportAvailable),
+    [full, selfOnly, pastOnly].map((r) => ({ e: r.gate.eligible, a: r.gate.reportAvailable })),
+  );
+  /*
+    ⚠️ Paywall이 자격을 **다시 계산하지 않는다**는 것도 고정한다. `feature.status`는
+    `hasPremiumEvidence`의 결과이고, unlock 조건은 그 값을 읽을 뿐이다 — 규칙이 두 벌이
+    되면 '결제는 되는데 리포트는 비어 있는' 상태가 다시 생긴다.
+  */
+  check(
+    'PROD-UNLOCK-10 · unlock 조건이 hasPremiumEvidence를 재구현하지 않는다',
+    /deepReportAvailable: hasPremiumEvidence\(/.test(paywallSrc) &&
+      !/const canUnlockDeepReport =[^;]*hasPremiumEvidence/s.test(paywallSrc),
   );
 }
 

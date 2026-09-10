@@ -91,7 +91,7 @@ export function RelationshipDeepReportView({
    * vNext — `payment`를 추가했다. **아직 도달 경로가 없다**(PG 미연결) — 실제 결제가
    * 붙었을 때 `access_mode`로 preview/UT와 구분하기 위한 자리다(`lib/premiumAccess.ts`).
    */
-  accessMode?: 'payment' | 'preview' | 'beta_ut';
+  accessMode?: 'payment' | 'demo_unlock' | 'preview' | 'beta_ut';
   /**
    * vNext — 리포트 맨 위에 놓을 Report Header 슬롯. Unlock 직후의 `/premium`에서
    * v1.20 `ReportShell`의 `ReportHeader`를 넘겨, 무료 관찰 보고서와 같은 디자인 언어로

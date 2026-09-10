@@ -5,16 +5,35 @@ import type { PremiumFeatureId } from '@/types';
  *
  * '어떤 자격으로 상세 리포트를 보고 있는가'를 한 곳에서 정의한다.
  *
- *   payment   실제 PG 결제가 확정된 뒤 — **아직 도달 경로가 없다.** PG가 붙으면 성공
- *             callback에서 이 값으로 같은 화면을 재사용한다.
- *   preview   `NEXT_PUBLIC_PREMIUM_PREVIEW=true` 개발·QA 통로
- *   beta_ut   Preview 중 `?mode=ut` — UT 참여자 체험
+ *   payment      실제 PG 결제가 확정된 뒤 — **아직 도달 경로가 없다.** PG가 붙으면 성공
+ *                callback에서 이 값으로 같은 화면을 재사용한다.
+ *   demo_unlock  vNext — **Production 일반 사용자**가 CTA로 리포트를 여는 경로.
+ *                실제 결제는 일어나지 않았고, 화면이 그 사실을 명시한다.
+ *   preview      `NEXT_PUBLIC_PREMIUM_PREVIEW=true` 개발·QA 통로
+ *   beta_ut      Preview 중 `?mode=ut` — UT 참여자 체험
  *
- * ⚠️ **Fake Door를 실제 결제처럼 보이게 하지 않는다.** `preview`/`beta_ut`에서는 화면 문구가
- * '결제가 완료됐어'라고 말하지 않는다(`UNLOCK_COPY`). Production 사용자는 `PREMIUM_PREVIEW`가
- * 꺼져 있어 이 경로 자체에 도달하지 못하고, 기존 Fake Door(준비 중 안내)를 그대로 본다.
+ * ══ ⚠️ `demo_unlock` ≠ `payment` ══════════════════════════════════════════
+ *
+ * v1.45까지 Production의 Relationship Deep Report는 Fake Door였다 — CTA를 누르면
+ * '준비 중' 안내만 보여줬다. vNext에서 **제품 결정이 바뀌어** 그 리포트는 Production에서도
+ * 열린다. 그런데 **PG는 여전히 없다.**
+ *
+ * 그래서 mode를 하나 더 뒀다. `preview`를 재사용하지 않은 이유는 두 가지다:
+ *
+ *  ① 의미가 다르다 — `preview`는 '개발/QA 통로'이고, 이 경로의 사용자는 QA가 아니라
+ *    자기 리포트를 보는 실제 사용자다.
+ *  ② 문구가 거짓이 된다 — `preview` 문구는 `미리보기로 리포트를 열었어`인데, 그 사용자가
+ *    보는 것은 미리보기가 아니라 **자기 데이터로 만든 실제 리포트 전체**다.
+ *
+ * ⚠️ **결제했다고 읽히게 하지 않는다.** `demo_unlock` 문구는 `결제 없이 열었다`는 사실을
+ * 명시한다(`UNLOCK_COPY.demoUnlock`) — CTA에 가격이 적혀 있으므로 이 문장이 없으면
+ * 사용자가 과금됐다고 오해할 수 있다. `결제가 완료됐어`는 `payment` mode에만 남아 있다.
+ *
+ * ⚠️ analytics: `access_mode` property에 값이 하나 늘어난다(추가일 뿐 schema 변경 아님).
+ * 기존 `deep_report_view`·`deep_report_complete`·`deep_report_value_check`가 이 값을
+ * 그대로 실어 보내므로 Production 열람과 QA 열람을 대시보드에서 구분할 수 있다.
  */
-export type PremiumAccessMode = 'payment' | 'preview' | 'beta_ut';
+export type PremiumAccessMode = 'payment' | 'demo_unlock' | 'preview' | 'beta_ut';
 
 /**
  * Preview Unlock 상태.

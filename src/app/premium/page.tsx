@@ -52,25 +52,36 @@ import type { PremiumFeatureId, PremiumSource } from '@/types';
 /**
  * P1 Premium Paywall — **Fake Door**
  *
- * ⚠️ 실제 결제를 진행하지 않는다. 카드 정보를 받지 않고, 결제가 가능한 것처럼 표시하지 않으며,
- * 결제 완료 화면을 만들지 않는다. `상세 분석 열기`를 누르면 의향만 기록하고 **곧바로**
- * '준비 중'임을 알린다(§2/§13).
+ * ⚠️ **실제 결제를 진행하지 않는다.** 카드 정보를 받지 않고, PG SDK·결제 서버·webhook·
+ * 주문 DB가 없고, 결제가 완료됐다고 표시하지 않는다.
  *
  * Flag가 꺼져 있으면 이 화면에 머무르지 않고 결과 화면으로 되돌려보낸다(§36/§37).
  *
- * ── vNext: Paywall → Success → Deep Report 를 **한 Route 안의 stage**로 연결한다 ──
+ * ── Paywall → Success → Preparing → Deep Report 를 **한 Route 안의 stage**로 ──
  *
  * 새 Route를 만들지 않았다. Route를 갈면 스크롤·헤더·푸터가 전부 리마운트돼서 "같은 공간에서
  * 이어진다"는 느낌(§5/§6 layout continuity)이 깨지기 때문이다. 대신 이 화면이
- * `paywall → leaving → success → revealing → report` 다섯 stage를 갖는다.
+ * `paywall → leaving → success → preparing → revealing → report` stage를 갖는다.
  *
- * ⚠️ **Fake Door 경계(§12).** 위 stage는 `NEXT_PUBLIC_PREMIUM_PREVIEW=true`이고
- * flagship Deep Report일 때만 열린다. 그 밖의 모든 경우(= Production 사용자)는 v1.19와
- * **완전히 같은** 동작을 본다 — 의향만 기록하고 곧바로 '준비 중' BottomSheet가 뜬다.
- * Preview에서도 '결제가 완료됐어'라고 말하지 않는다(`UNLOCK_COPY.preview`).
+ * ══ vNext — Deep Report는 Production에서도 열린다 ═══════════════════════════
  *
- * 실제 PG가 붙으면 성공 callback에서 `unlockMode = 'payment'`로 같은 stage를 재사용하면
- * 된다 — 이번 작업에서 PG SDK·결제 서버·webhook·주문 DB는 만들지 않았다(§13).
+ * v1.45까지 이 stage는 `NEXT_PUBLIC_PREMIUM_PREVIEW=true`일 때만 열렸고, Production
+ * 사용자는 CTA를 누르면 예외 없이 '준비 중' BottomSheet를 봤다. **제품 결정이 바뀌어**
+ * Relationship Deep Report는 이제 Production에서도 이 stage로 진행한다.
+ *
+ * ```
+ * v1.45   Production CTA → premium_fake_door_reveal → '준비 중' BottomSheet
+ * vNext   Production CTA → success → preparing → report
+ * ```
+ *
+ * ⚠️ **실제 PG는 여전히 없다.** 그래서 Production CTA는 `unlockMode = 'demo_unlock'`을
+ * 쓰고, Success 화면이 `아직 결제는 연결 전이야 · 이번 열람은 무료야`라고 명시한다.
+ * `결제가 완료됐어`는 `payment` mode에만 남아 있고 **그 mode로 진입하는 코드는 없다** —
+ * PG가 붙으면 성공 callback에서 그 값으로 같은 stage를 재사용한다.
+ *
+ * ⚠️ **다른 Premium feature는 그대로 Fake Door다.** `fake-door` status는 6개 feature가
+ * 공유하므로 Deep Report만 분기한다(`canUnlockDeepReport`) — MBTI·별자리·사주·궁합·Mirror·
+ * History 상세는 이번 변경으로 열리지 않고 '준비 중' BottomSheet를 그대로 쓴다.
  */
 
 /**
@@ -253,11 +264,45 @@ function PremiumView() {
   );
 
   /**
-   * §12 Fake Door 경계 — 이 세 조건이 모두 참일 때만 Unlock stage가 열린다.
-   * Production(`PREMIUM_PREVIEW=false`)에서는 항상 false라 기존 Fake Door 그대로다.
+   * ══ Deep Report Unlock 조건 (vNext) ═══════════════════════════════════════
+   *
+   * v1.45까지는 `PREMIUM_PREVIEW && isDeepReport && fake-door`였다. Production은
+   * `PREMIUM_PREVIEW=false`라 **항상 false**였고, 그래서 CTA를 누르면 예외 없이
+   * '준비 중' BottomSheet로 떨어졌다 — 사용자 캡처가 정확히 그 경로다.
+   *
+   * vNext에서 제품 결정이 바뀌었다: **Relationship Deep Report는 Production에서도 열린다.**
+   * 그래서 `PREMIUM_PREVIEW` 조건을 뺐다.
+   *
+   * ══ ⚠️ 자격 판정을 새로 만들지 않았다 ══════════════════════════════════════
+   *
+   * `feature.status === 'fake-door'`가 이미 v1.45의 자격 판정 결과다.
+   * `premiumFeatureState()`는 `deepReportAvailable === false`면 `'unavailable'`을
+   * 돌려주고, 그 값은 이 화면이 `hasPremiumEvidence({insights, declared, mirror})`로
+   * 계산해서 넘긴 것이다(위 `useMemo`). 즉 여기서 다시 판정하지 않고 **그 결과를 읽는다** —
+   * 자격 규칙이 두 벌이 되면 갈리는 순간 '결제는 되는데 리포트는 비어 있는' 상태가 다시
+   * 생긴다(v1.45 Release에서 실제로 잡은 결함).
+   *
+   * ⚠️ 그래서 Experience/Target 유무로 막지 않는다 — 그 invariant는 `hasPremiumEvidence`
+   * 안에 있고 이 줄은 그것을 우회하지 않는다.
+   *
+   * ⚠️ **다른 Premium feature는 그대로 Fake Door다.** `isDeepReport` 조건을 유지한 이유가
+   * 그것이다 — `fake-door` status는 6개 feature가 공유하므로, 이 조건을 빼면 MBTI·별자리·
+   * 사주 상세까지 함께 열린다. 이번 작업으로 다른 미출시 feature를 열지 않는다.
    */
-  const canPreviewUnlock =
-    PREMIUM_PREVIEW && isDeepReport && feature.status === 'fake-door';
+  const canUnlockDeepReport = isDeepReport && feature.status === 'fake-door';
+
+  /**
+   * Unlock 자격으로 쓸 access mode.
+   *
+   * ⚠️ **Production 일반 CTA에서 `payment`를 쓰지 않는다** — 실제 PG가 없으므로 그건
+   * 거짓 표시다. `demo_unlock`은 '결제 없이 열었다'를 화면에 명시한다
+   * (`lib/premiumAccess.ts` · `UNLOCK_COPY.demoUnlock`).
+   */
+  const unlockModeForCta: PremiumAccessMode = isBetaUt
+    ? 'beta_ut'
+    : PREMIUM_PREVIEW
+      ? 'preview'
+      : 'demo_unlock';
 
   const definition = PREMIUM_FEATURES[featureId];
   /**
@@ -321,12 +366,12 @@ function PremiumView() {
    */
   const restoredRef = useRef(false);
   useEffect(() => {
-    if (restoredRef.current || !canPreviewUnlock) return;
+    if (restoredRef.current || !canUnlockDeepReport) return;
     if (!hasPreviewUnlock(featureId, funnelAnalysisId)) return;
     restoredRef.current = true;
-    setUnlockMode(isBetaUt ? 'beta_ut' : 'preview');
+    setUnlockMode(unlockModeForCta);
     setStage('report');
-  }, [canPreviewUnlock, featureId, funnelAnalysisId, isBetaUt]);
+  }, [canUnlockDeepReport, featureId, funnelAnalysisId, unlockModeForCta]);
 
   /** stage 타이머. 여기서 하는 일은 화면 전환뿐이다 — 어떤 처리도 지연시키지 않는다. */
   useEffect(() => {
@@ -413,18 +458,26 @@ function PremiumView() {
       notifyIntent: false,
     });
 
-    // ②-a Preview/UT — '결제 완료 → 리포트 공개' 경험을 검증하는 통로(§12).
-    //     Fake Door를 '열었다'고 기록하지 않는다 — 준비 중 안내를 보여주지 않았으므로
-    //     `premium_fake_door_reveal`의 의미(= 사용자에게 미출시임을 알림)에 맞지 않는다.
-    //     이 분기는 PREMIUM_PREVIEW가 켜진 개발·UT 환경에서만 실행된다.
-    if (canPreviewUnlock) {
+    /*
+      ②-a Relationship Deep Report — CTA → Unlock → Preparing → Report (vNext)
+
+      ⚠️ **`premium_fake_door_reveal`을 쏘지 않는다.** 그 이벤트의 의미는 '사용자에게
+      미출시임을 알렸다'이고, 이 경로는 알리지 않고 리포트를 연다. 쏘면 대시보드에서
+      Fake Door 노출 수가 실제보다 부풀고, 그 지표로 판단한 결정이 틀어진다.
+
+      ⚠️ Production에서도 실행된다 — v1.45와 달라진 부분이 이 한 줄이다.
+    */
+    if (canUnlockDeepReport) {
       grantPreviewUnlock(featureId, funnelAnalysisId);
-      setUnlockMode(isBetaUt ? 'beta_ut' : 'preview');
+      setUnlockMode(unlockModeForCta);
       setStage(reducedMotion ? 'success' : 'leaving');
       return;
     }
 
-    // ②-b 즉시 '준비 중' 공개 — 결제 화면으로 가지 않는다 (v1.19와 동일)
+    /*
+      ②-b 아직 구현되지 않은 나머지 Premium feature — 기존 Fake Door 그대로다.
+      MBTI·별자리·사주·궁합 상세는 이번 변경의 대상이 아니다.
+    */
     trackEvent('premium_fake_door_reveal', {
       feature: featureId,
       source,
@@ -521,7 +574,7 @@ function PremiumView() {
             report={deep.report}
             analysisId={deep.analysisId}
             funnelAnalysisId={funnelAnalysisId}
-            accessMode={unlockMode ?? 'preview'}
+            accessMode={unlockMode ?? unlockModeForCta}
             reveal={!reducedMotion}
             header={
               <ReportHeader
