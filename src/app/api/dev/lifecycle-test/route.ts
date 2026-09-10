@@ -36,6 +36,12 @@ import {
 } from '@/services/ai/contextBuilders';
 import { resolvePrice } from '@/lib/premiumVariant';
 import { hasDeepConnection } from '@/services/premiumConnections';
+import {
+  LOVY_MID_NOTE,
+  lovyCheckpointOf,
+  lovyConnectionReasonOf,
+  lovyMidNoteAfter,
+} from '@/lib/premiumLovy';
 import { buildRelationshipDeepReport, premiumFeatureState } from '@/services/premiumService';
 import { createEmptyAnswers, createEmptyTargetProfile } from '@/state/defaultAnswers';
 import type {
@@ -266,6 +272,8 @@ export async function POST(request: Request): Promise<Response> {
     historyReport,
     repeatedSignals,
     target,
+    // v1.45 — Chapter Engine의 FREE 중복 게이트. 위 ①에서 이미 만든 것을 그대로 넘긴다
+    mirror,
     lifecycle,
   });
 
@@ -617,7 +625,7 @@ export async function POST(request: Request): Promise<Response> {
          * 만들었다는 뜻은 아니야`를 그대로 띄우고 있는데도 fixture는 통과했다 —
          * 이 배열에 없는 자리는 검사되지 않는 자리라는 것이 그대로 증명됐다.
          *
-         * 두 값 모두 **화면에 실제로 그려진다**(`DeepConnectionCard`의 칩과 경계
+         * 두 값 모두 **화면에 실제로 그려진다**(v1.45부터 `PremiumChapterAccordion`의 칩과 경계
          * 문장). 렌더되는 문자열은 예외 없이 이 배열에 들어와야 한다.
          */
         ...(deepReport.corePattern
@@ -638,7 +646,7 @@ export async function POST(request: Request): Promise<Response> {
          * v1.41은 `ruleSummary`·`limitation`·`sourceLabels`까지 넣었는데 `evidence`는
          * 빠뜨렸다. 그래서 `resolveCurrentRelationship`이 하드코딩하고 있던
          * `지금 관계에서`가 `ended` 사용자의 연결 카드 근거 목록
-         * (`DeepConnectionCard`의 `근거 N개 보기`)에 그대로 나오는데도 fixture가
+         * (v1.45부터 `PremiumChapterAccordion`의 `근거 N개 더 보기`)에 그대로 나오는데도 fixture가
          * 통과했다 — **§39.9와 정확히 같은 실패 형태**(렌더되는 문자열이 검사 배열에
          * 없었다)가 한 버전 뒤에 다시 나온 것이다.
          *
@@ -669,7 +677,70 @@ export async function POST(request: Request): Promise<Response> {
         ...(deepReport.historyDeep?.prompts ?? []),
         ...(deepReport.historyDeep?.limitations ?? []),
         ...deepReport.limitations,
+        /**
+         * ══ v1.45 — **Chapter가 지금 화면이 그리는 자리다** ═══════════════════
+         *
+         * v1.44까지 유료 본문의 렌더 단위는 위 `corePattern`·`connections`·
+         * `singleSourceNotes`였고 이 목록이 그것을 훑었다. v1.45에서 화면은
+         * `report.chapters`를 그린다 — 그 자리를 여기 더하지 않으면 **새 자리가
+         * 검사되지 않는 자리가 된다**(v1.41 §39.9가 정확히 그 실패였다).
+         *
+         * ⚠️ 위 항목을 지우지 않았다. 세 배열은 Chapter Engine의 **입력**이고 여전히
+         * 리포트에 남아 있어서, 두 쪽을 함께 훑으면 Chapter로 묶이지 못한 문장까지
+         * 검사 범위에 남는다 — 스캔 표면을 줄이는 변경은 이 버전에서 하지 않는다.
+         *
+         * ⚠️ `title`·`eyebrow`·`deterministicTakeaway`가 특히 중요하다. 이 셋은
+         * v1.45가 **새로 만든 문장**이고, `tune_with_target`의 제목처럼 시제에 따라
+         * 갈리는 자리가 여기 있다.
+         */
+        ...deepReport.chapters.flatMap((chapter) => [
+          chapter.title,
+          chapter.eyebrow,
+          chapter.deterministicSummary,
+          chapter.deterministicTakeaway,
+          chapter.limitation,
+          ...(chapter.question ? [chapter.question] : []),
+          ...(chapter.narrativeText ? [chapter.narrativeText] : []),
+          ...chapter.evidence.flatMap((item) => [item.sourceLabel, item.text]),
+          /**
+           * v1.45 캐릭터 통합 — **러비 한마디와 연결 이유도 같은 스캔을 받는다.**
+           *
+           * 이 두 문장은 `PremiumChapter`에 없고 표현 계층(`lib/premiumLovy.ts`)이
+           * 만든다. 여기 넣지 않으면 `ended` 금지 어휘 검사가 **닿지 않는 자리**가
+           * 생기는데, 그 중 `tune_with_target`·`next_check`의 기본 문장은 실제로
+           * '맞춰봐'·'확인해볼'로 끝난다 — 시제 안전 카피가 제대로 갈리는지 여기서
+           * 잡아야 한다(v1.41 §39.9가 정확히 이런 자리에서 시제를 놓쳤다).
+           */
+          lovyCheckpointOf(chapter, {
+            tense: lifecycle.tense,
+            allowsOutwardAction: lifecycle.allowsOutwardAction,
+          }),
+          ...(lovyConnectionReasonOf(chapter) ? [lovyConnectionReasonOf(chapter)!] : []),
+        ]),
+        ...deepReport.omissions.map((item) => item.text),
+        /** 중간 메모는 고정 문구지만 화면에 그려지므로 같이 훑는다 */
+        ...(lovyMidNoteAfter(deepReport.chapters.length) !== null
+          ? [LOVY_MID_NOTE.label, LOVY_MID_NOTE.body]
+          : []),
       ],
+      /**
+       * v1.45 — Chapter의 **구조**. 금지 어휘 스캔(2차 guard)이 아니라 1차 판정용이다:
+       * `ended`에서 outward Chapter가 0인지, 근거 없는 Chapter가 없는지를 문장을 읽지
+       * 않고 확인할 수 있어야 한다(v1.40.1이 정한 순서).
+       */
+      chapters: deepReport.chapters.map((chapter) => ({
+        id: chapter.id,
+        kind: chapter.kind,
+        index: chapter.index,
+        audience: chapter.audience,
+        sourceGroupCount: chapter.sourceGroups.length,
+        insightCount: chapter.insightIds.length,
+        hasQuestion: chapter.question !== null,
+      })),
+      /** 상대를 향한 Chapter 수 — `ended`·`none`에서 0이어야 한다 */
+      outwardChapterCount: deepReport.chapters.filter((chapter) => chapter.audience === 'outward')
+        .length,
+      omissionIds: deepReport.omissions.map((item) => item.id),
     },
   });
 }

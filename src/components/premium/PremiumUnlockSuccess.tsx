@@ -91,7 +91,7 @@ export function PremiumUnlockSuccess({
           {UNLOCK_COPY.progressLabel}
         </span>
         <span className="text-[12.5px] text-ink-sub tnum">
-          연결된 신호 {connectedSignalCount}개
+          연결된 이야기 {connectedSignalCount}개
         </span>
       </div>
 

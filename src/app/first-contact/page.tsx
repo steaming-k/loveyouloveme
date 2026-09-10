@@ -27,7 +27,7 @@ import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
 import { SOLO_PREMIUM_HOOK } from '@/data/premium';
 import { useCrossSourceInsights } from '@/hooks/useAiNarrative';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
-import { hasDeepConnection } from '@/services/premiumConnections';
+import { hasPremiumEvidence } from '@/lib/logic/premiumChapters';
 import { premiumFeatureState } from '@/services/premiumService';
 import { createEntryId } from '@/lib/historyRepository';
 import { historyCountBucket } from '@/lib/analytics';
@@ -147,7 +147,16 @@ export default function FirstContactPage() {
    * `additions`를 보여주기로 하면 그때 새어 나갈 자리이기 때문이다.
    */
   const premiumFeature = premiumFeatureState('relationship_deep_report', resolvePrice(priceVariant), {
-    deepReportAvailable: hasDeepConnection(crossSourceInsights),
+    /**
+     * §2-1-A — **Experience/Target 유무로 Premium 자격을 막지 않는다.**
+     * `hasDeepConnection`만 보면 관계 경험이 없는 사용자는 통과할 방법이
+     * 없었다(실측: declared 5축 + Target 4축 + MBTI 양쪽인데도 막혔다).
+     */
+    deepReportAvailable: hasPremiumEvidence({
+      insights: crossSourceInsights,
+      declared: answers.declared,
+      mirror,
+    }),
     solo: true,
     allowsOutwardAction: jobAllowsOutwardAction(resolveRelationshipContext(answers).job),
   });

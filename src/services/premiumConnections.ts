@@ -16,6 +16,7 @@ import type {
   DeepLovyObservation,
   DeepNarrative,
   MirrorAxisKey,
+  PremiumSourceGroup,
 } from '@/types';
 
 /** 축 라벨 조회. `premiumService`에서 import하면 순환 참조가 되므로 데이터에서 직접 읽는다 */
@@ -94,6 +95,32 @@ export function sourceLabelOf(
 ): string {
   if (source === 'current_relationship' && tense === 'former') return '그때 이 관계';
   return SOURCE_LABEL[source];
+}
+
+/**
+ * v1.45 — Chapter의 **출처 묶음** 라벨. 리포트 헤더가 "무엇들 사이에서 이었는지"를
+ * 말할 때 쓴다.
+ *
+ * ⚠️ **어휘를 새로 만들지 않는다.** 위 `SOURCE_LABEL`을 그대로 재사용한다 — 같은 것을
+ * 두 이름으로 부르면 사용자가 두 개의 다른 출처로 읽는다(이 파일 상단 원칙).
+ * 그래서 그룹 → 대표 source로 되돌린 뒤 `sourceLabelOf`를 통과시킨다. 시제 처리도
+ * 자동으로 따라온다 — `ended` 헤더에만 `지금 관계`가 남는 사고를 구조적으로 막는다.
+ */
+export function premiumSourceGroupLabel(
+  group: PremiumSourceGroup,
+  tense: RelationshipTense,
+): string {
+  const representative: Record<PremiumSourceGroup, CrossSourceEvidenceSource> = {
+    declared_me: 'declared',
+    observed_me: 'observed',
+    past_relationship: 'relationship',
+    current_relationship: 'current_relationship',
+    target: 'target',
+    compatibility: 'compatibility',
+    history: 'history',
+    lens: 'mbti_lens',
+  };
+  return sourceLabelOf(representative[group], tense);
 }
 
 /**

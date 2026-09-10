@@ -4,17 +4,23 @@ import { PREMIUM_FEATURES } from '@/data/premium';
 import { HISTORY_STATE_LABEL } from '@/data/copy';
 import { PREMIUM_FAKE_DOOR, SAJU_ENGINE_READY } from '@/lib/env';
 import type { EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
+import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import { buildApproachHints } from '@/lib/logic/approachHints';
 /**
  * v1.40.1 — **type만 가져온다.** 이 파일은 Job을 도출하지 않는다(stage는 evidence가
  * 아니고, 도출은 화면·훅이 한다). 받은 문맥을 그대로 쓰기만 한다.
  */
 import type { DeepReportJobContext } from '@/lib/logic/relationshipStage';
+/**
+ * v1.45 — Chapter Engine. **판정을 만들지 않는다** — 이미 만들어진 Insight를 고르고
+ * 묶기만 한다(`logic/premiumChapters.ts` 상단 참고).
+ */
+import { buildOmissions, buildPremiumChapters, isContentChapter } from '@/lib/logic/premiumChapters';
 import {
   buildActions,
   buildConnectionQuestions,
   buildConnections,
-  hasDeepConnection,
+  premiumSourceGroupLabel,
   selectCorePattern,
   selectDeepObservation,
 } from '@/services/premiumConnections';
@@ -24,11 +30,12 @@ import type {
   ConversationQuestion,
   CrossSourceInsight,
   DeepApproachInsight,
-  DeepCorePattern,
   DeepNarrative,
   HistoryReport,
   MbtiLensReport,
+  MirrorAxisKey,
   MirrorReport,
+  PremiumChapter,
   PremiumDetailReport,
   PremiumDetailSection,
   PremiumFeature,
@@ -483,20 +490,50 @@ export function axisLabel(key: string): string {
  * 요약과 구분되지 않았다. 이제 실제로 이은 정보 종류 수와 연결 수를 그대로 말한다.
  * 값은 전부 이미 만들어진 연결에서 파생된다 — 새 계산 없음.
  */
-function overviewFor(
-  insights: readonly CrossSourceInsight[],
-  narratives: readonly DeepNarrative[],
-  core: DeepCorePattern | null,
-): RelationshipDeepReportOverview {
+/**
+ * ══ v1.45 §6.1 — **숫자가 Chapter 수여야 한다** ═══════════════════════════
+ *
+ * v1.44의 headline은 `정보 8종을 이어서 8개 연결을 찾았어`였다. 그 `8개 연결`은
+ * `corePattern.connectionCount`(= source 2종 이상인 Insight 수)였고, 화면에 실제로
+ * 그려진 유닛은 12개였다 — **헤더의 숫자와 화면의 개수가 서로 달랐다.**
+ *
+ * v1.45는 화면 단위가 Chapter이므로 헤더도 Chapter 수를 말한다. `omissions`(이번에
+ * 만들지 않은 것)는 이 수에 **포함하지 않는다** — 만들지 않은 것을 세면 그건 규모가
+ * 아니라 광고다(§14.1).
+ *
+ * ⚠️ subcopy의 출처 목록도 하드코딩하지 않는다. 실제 Chapter가 쓴 그룹만 적고,
+ * 라벨은 `premiumSourceGroupLabel`(= 화면 칩과 같은 어휘 · 시제 반영)에서 가져온다.
+ */
+function overviewFor(input: {
+  insights: readonly CrossSourceInsight[];
+  narratives: readonly DeepNarrative[];
+  chapters: readonly PremiumChapter[];
+  tense: RelationshipTense;
+}): RelationshipDeepReportOverview {
+  const { insights, narratives, chapters, tense } = input;
   const top = insights.slice(0, 3);
 
+  const groups = [...new Set(chapters.flatMap((chapter) => chapter.sourceGroups))];
+  const groupLabels = groups.map((group) => premiumSourceGroupLabel(group, tense));
+
   return {
-    headline: core
-      ? `따로 답한 정보 ${core.connectedSourceCount}종을 이어서 ${core.connectionCount}개 연결을 찾았어`
-      : '아직 연결해서 볼 수 있는 신호가 부족해',
-    subcopy: core
-      ? '하나씩 볼 때는 안 보이던 지점이야. 무료에서 본 결과를 더 길게 쓴 게 아니라, 서로 이어서 본 거야.'
-      : '관계 경험이나 상대 정보가 더 쌓이면 연결해서 볼 수 있는 게 늘어나.',
+    headline:
+      chapters.length > 0
+        ? `러비가 이번 관찰에서 연결한 이야기 ${chapters.length}개`
+        : '아직 연결해서 볼 수 있는 신호가 부족해',
+    subcopy:
+      chapters.length > 0
+        ? groupLabels.length > 0
+          ? `${groupLabels.join(' · ')} 사이에서 서로 연결되는 지점을 모았어. 무료에서 본 결과를 더 길게 쓴 게 아니라, 서로 이어서 본 거야.`
+          : '하나씩 볼 때는 안 보이던 지점이야. 무료에서 본 결과를 더 길게 쓴 게 아니라, 서로 이어서 본 거야.'
+        : '관계 경험이나 상대 정보가 더 쌓이면 연결해서 볼 수 있는 게 늘어나.',
+    /**
+     * ⚠️ v1.45 — 이 필드는 **화면에 그려지지 않는다.** v1.26부터 그랬고(실측에서
+     * 확인한 죽은 필드), v1.45의 Report Summary는 `chapters` 앞쪽 3개를 직접 쓴다.
+     * 그런데 지우지 않았다 — `test:lifecycle`·`test:relationship-evidence`가 이
+     * 문자열을 금지 어휘 스캔 대상(`renderedStrings`)으로 훑고 있고, AI headline이
+     * 실제로 여기 들어온다. 스캔 표면을 줄이는 변경은 이 버전에서 하지 않는다.
+     */
     topSummaries: top.map(
       (insight) => narratives.find((item) => item.insightId === insight.id)?.headline ?? insight.ruleSummary,
     ),
@@ -587,6 +624,18 @@ export function buildRelationshipDeepReport(input: {
   repeatedSignals: readonly RepeatedRelationshipSignal[];
   target: TargetProfile;
   /**
+   * v1.45 — Chapter Engine의 입력. **다시 계산하지 않는다** — 화면·엔진이 이미 만든
+   * `MirrorReport`를 그대로 받는다.
+   *
+   * ⚠️ 왜 필요한가: ① `isFreeDuplicate`가 "무료 Mirror 행이 이미 보여준 것"을 판정하려면
+   * 무료가 실제로 무엇을 보여주는지 알아야 한다. ② CH07(아직 확신하면 안 되는 지점)의
+   * 재료 중 하나가 **판정하지 못한 축 수**(`totalAxisCount - insights.length`)다.
+   *
+   * ⚠️ **필수다.** optional로 두면 새 호출부가 빼먹고, 그러면 FREE 중복 게이트가
+   * 조용히 꺼진 채 유료가 무료 문장을 다시 판다 — v1.40.1 §38.2가 닫은 실패 형태다.
+   */
+  mirror: MirrorReport;
+  /**
    * v1.40 §37.9 · **v1.40.1 §38.2에서 필수로 바꿨다** — 이 Job에서 무엇을 만들어도
    * 되는가. `deepReportJobContext(job)`(`logic/relationshipStage.ts`)가 만든다.
    *
@@ -616,6 +665,7 @@ export function buildRelationshipDeepReport(input: {
     historyReport,
     repeatedSignals,
     target,
+    mirror,
     lifecycle,
   } = input;
   const { allowsOutwardAction, allowsOutwardQuestions, actionSectionTitle } = lifecycle;
@@ -649,21 +699,118 @@ export function buildRelationshipDeepReport(input: {
       })
     : null;
 
+  // v1.40.1 §38.2 — 세 자리 전부 같은 Job 문맥을 받는다. 한 곳만 받으면 그게 v1.40이다.
+  const actions = buildActions(corePattern, { allowsOutwardAction });
+  const connectionQuestions = buildConnectionQuestions(allConnections, { allowsOutwardQuestions });
+  // v1.41 §39.13 — 러비의 깊은 관찰·철학 질문도 같은 시제 게이트를 받는다.
+  const lovyObservation = selectDeepObservation(corePattern, insights, lifecycle.tense);
+
+  /**
+   * v1.45 — Chapter가 붙일 축별 확인 질문.
+   *
+   * ⚠️ **여기서 질문을 새로 만들지 않는다.** 위 `connectionQuestions`(이미 Job 게이트를
+   * 통과한 목록)를 축으로 되풀어 쓸 뿐이다. 게이트를 두 번 구현하면 한쪽이 빠지고,
+   * 그러면 `ended` 사용자가 Chapter 안에서만 outward 질문을 받는다 — v1.43이 Task
+   * 단위로 재현한 실패 형태와 같다.
+   */
+  const questionByAxis: Partial<Record<MirrorAxisKey, string>> = {};
+  for (const item of connectionQuestions) {
+    const axis = item.question.id.startsWith('conn_')
+      ? (item.question.id.slice('conn_'.length) as MirrorAxisKey)
+      : null;
+    if (axis) questionByAxis[axis] = item.question.text;
+  }
+
+  /**
+   * v1.26 Availability Audit — 연결이 하나도 없으면 이 리포트를 팔지 않는다.
+   *
+   * ⚠️ v1.45 — **그때는 Chapter도 만들지 않는다.** 처음에는 게이트와 무관하게 만들었는데,
+   * Sparse 세션 실측에서 화면은 '부족해' 안내만 보여주면서 헤더가
+   * '연결한 이야기 1개'라고 말했다(CH07 하나가 배열에 남아 있었다) — v1.45가
+   * 고치기로 한 **헤더 숫자와 화면 개수의 불일치**를 새 구조에서 다시 만든 것이다.
+   *
+   * CH07(아직 확신하면 안 되는 지점) 하나만으로는 ₩1,900의 리포트가 아니고, 그 세션에
+   * 정말 필요한 것은 '무엇이 더 쌓이면 열리는지'다 — 그건 아래 `omissions`가 담당한다.
+   */
+  /**
+   * ══ `available`은 **실제로 만들어진 내용 Chapter**로 정한다 (v1.45 PostReview) ══
+   *
+   * 예전에는 `hasDeepConnection(insights)`였다. 그 판정은 '연결할 수 있는 Insight가
+   * 있다'까지만 보고, 그 Insight가 **Chapter까지 살아남았는지는 보지 않았다.** 실측에서
+   * 정확히 그 틈이 드러났다:
+   *
+   * ```
+   * B  Experience O · Target X   gate=true  available=true
+   *    Chapter: uncertainty · next_check     ← 둘 다 파생. 내용 Chapter 0개
+   * ```
+   *
+   * 즉 **내용이 하나도 없는 리포트가 팔렸다.** 원인은 정상 동작이었다 — 그 세션의
+   * cross-source Insight 3개가 전부 무료 Mirror와 같은 것을 말해서 `isFreeDuplicate`가
+   * 걸러냈다. 걸러낸 것은 옳았고, 그 뒤에 남은 것이 없다는 사실을 `available`이 몰랐다.
+   *
+   * 이제 Chapter를 **먼저 만들고** 내용 Chapter가 하나라도 있는지로 판단한다. 그래서
+   * '헤더 숫자와 화면 개수가 다르다' 계열의 결함이 구조적으로 다시 생길 수 없다.
+   *
+   * ⚠️ Chapter를 항상 만드는 것으로 바뀌었으므로, 내용이 없으면 **배열을 비운다.**
+   * 파생 Chapter만 남은 배열을 그대로 넘기면 `!available` 화면이 그것을 세게 된다.
+   */
+  const builtChapters = buildPremiumChapters({
+    insights,
+    connections: allConnections,
+    mirror,
+    compatibility,
+    historyReport,
+    actions,
+    questions: connectionQuestions,
+    lovyObservation,
+    tense: lifecycle.tense,
+    actionSectionTitle,
+    questionByAxis,
+    declared: resolverContext.answers.declared,
+  });
+  const available = builtChapters.some(isContentChapter);
+  const chapters = available ? builtChapters : [];
+
   return {
-    // v1.26 Availability Audit — 연결이 하나도 없으면 팔지 않는다(`hasDeepConnection`).
-    available: hasDeepConnection(insights),
-    overview: overviewFor(insights, narratives, corePattern),
+    available,
+    overview: overviewFor({
+      insights,
+      narratives,
+      chapters,
+      tense: lifecycle.tense,
+    }),
     corePattern,
     connections,
     singleSourceNotes,
-    // v1.40.1 §38.2 — 세 자리 전부 같은 Job 문맥을 받는다. 한 곳만 받으면 그게 v1.40이다.
-    actions: buildActions(corePattern, { allowsOutwardAction }),
-    connectionQuestions: buildConnectionQuestions(allConnections, { allowsOutwardQuestions }),
+    actions,
+    connectionQuestions,
     actionSectionTitle,
-    // v1.41 §39.13 — 러비의 깊은 관찰·철학 질문도 같은 시제 게이트를 받는다.
-    lovyObservation: selectDeepObservation(corePattern, insights, lifecycle.tense),
+    lovyObservation,
     historyDeep,
     approachInsight: allowsOutwardAction ? approachInsightFor(target, compatibility) : null,
     limitations: deepReportLimitations({ historyReport, compatibility }),
+    chapters,
+    omissions: buildOmissions({
+      chapters,
+      mirror,
+      compatibility,
+      historyReport,
+      /**
+       * ⚠️ `signals`에 키가 하나라도 있으면 답한 것이다. `askedAt`은 화면을 열어본
+       * 시점일 뿐 판정에 쓰지 않는다(`CurrentRelationshipEvidence` 주석).
+       */
+      hasCurrentEvidence:
+        Object.keys(resolverContext.answers.currentRelationship.signals).length > 0,
+    }),
+    /**
+     * v1.45 — 화면이 시제를 **다시 판정하지 않게** 그대로 실어 보낸다. 표현 문구를
+     * `ended` 안전 카피로 바꾸는 자리(`lib/premiumLovy.ts`)가 이 값만 읽는다.
+     */
+    tense: lifecycle.tense,
+    /**
+     * v1.45 PostReview — 러비의 체크포인트가 '상대와 맞춰봐' 문장을 붙일 수 있는지
+     * 판단하는 데만 쓴다. 판정·근거·연결에는 영향이 없다.
+     */
+    allowsOutwardAction,
   };
 }

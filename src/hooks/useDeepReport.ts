@@ -7,7 +7,12 @@ import {
   useDeepReportNarrative,
   useEvidenceContext,
 } from '@/hooks/useAiNarrative';
-import { useCompatibility, useHistoryReport, useRepeatedSignals } from '@/hooks/useAnalysis';
+import {
+  useCompatibility,
+  useHistoryReport,
+  useMirror,
+  useRepeatedSignals,
+} from '@/hooks/useAnalysis';
 import { analysisFingerprint } from '@/lib/logic/history';
 import {
   deepReportJobContext,
@@ -40,6 +45,11 @@ export function useDeepReport(enabled: boolean) {
   const compatibility = useCompatibility();
   const historyReport = useHistoryReport();
   const repeated = useRepeatedSignals();
+  /**
+   * v1.45 — Chapter Engine의 FREE 중복 게이트·CH07 재료. **새 계산이 아니다** —
+   * `useCrossSourceInsights`가 이미 부르는 것과 같은 selector다(같은 memo 결과를 공유한다).
+   */
+  const mirror = useMirror();
 
   const insights = useCrossSourceInsights();
   const resolverContext = useEvidenceContext();
@@ -60,6 +70,7 @@ export function useDeepReport(enabled: boolean) {
         historyReport,
         repeatedSignals: repeated,
         target: answers.target,
+        mirror,
         /**
          * v1.40 §37.9 — Ended Safety는 무료/유료 경계와 무관하다. 화면과 **같은 술어**를 쓴다.
          * v1.40.1 §38.2 — 술어 하나가 아니라 문맥 객체 하나를 넘긴다. 넘길 값이
@@ -67,7 +78,16 @@ export function useDeepReport(enabled: boolean) {
          */
         lifecycle: deepReportJobContext(resolveRelationshipContext(answers).job),
       }),
-    [insights, narrative.data, resolverContext, compatibility, historyReport, repeated, answers],
+    [
+      insights,
+      narrative.data,
+      resolverContext,
+      compatibility,
+      historyReport,
+      repeated,
+      mirror,
+      answers,
+    ],
   );
 
   return { report, insights, resolverContext, analysisId, narrative };

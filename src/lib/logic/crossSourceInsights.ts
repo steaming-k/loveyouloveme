@@ -573,11 +573,29 @@ function fromCompatibilityLink(input: {
  * 그리고 그 축을 **관계 경험과 한 번 더 겹쳐본다** — 그래야 무료 Bridge의 반복이 아니라
  * Cross-source가 된다. 겹칠 것이 없으면 만들지 않는다.
  */
+/**
+ * ⚠️ v1.45 §4 Audit — **`tense`가 없어서 `ended`에 현재형이 새고 있었다.**
+ *
+ * 고데이터 `ended` fixture를 계측했더니 이 함수의 `ruleSummary`만 이렇게 나왔다:
+ *
+ * ```
+ * sourceLabels  [성향 렌즈 / 동기화율 비교 / 그때 이 관계]   ← v1.41이 고친 자리
+ * ruleSummary   … 지금 관계에서도 신호가 있는 축이야       ← 고쳐지지 않은 자리
+ * ```
+ *
+ * v1.41 §39.13이 ①②④⑨의 호칭을 전부 시제에 맞췄는데 ⑤만 빠졌다. 발견되지 않은
+ * 이유는 이 조합이 **양쪽 MBTI를 모두 요구**해서 `test:relationship-evidence`의
+ * `FORMER_FORBIDDEN_PHRASES` 스캔이 닿는 fixture가 하나도 없었기 때문이다 —
+ * "게이트는 있는데 그 경로를 아무도 지나가지 않았다"는 v1.40.1과 같은 실패 형태다.
+ *
+ * ⚠️ **연결·근거·판정은 하나도 바뀌지 않는다.** 바뀌는 것은 문장의 호칭뿐이다.
+ */
 function fromMbtiBridge(input: {
   bridge: MbtiBridgeReport;
   mirror: MirrorReport;
+  tense: RelationshipTense;
 }): CrossSourceInsight | null {
-  const { bridge, mirror } = input;
+  const { bridge, mirror, tense } = input;
   if (!bridge.available) return null;
 
   // 무료에서 이미 '같은 방향'이라고 본 축은 Premium에서 다시 말할 가치가 없다.
@@ -613,7 +631,7 @@ function fromMbtiBridge(input: {
     confidenceReason: 'mbti_bridge:differs+relationship',
     ruleSummary:
       mirrorInsight!.evidenceScope === 'current'
-        ? `성향 렌즈와 실제 답변이 다른 방향을 가리킨 ${differing.signalAxisLabel}은, 지금 관계에서도 신호가 있는 축이야. 성향으로 설명되지 않는 자리에 네 답이 놓여 있어.`
+        ? `성향 렌즈와 실제 답변이 다른 방향을 가리킨 ${differing.signalAxisLabel}은, ${tense === 'former' ? '그때 이 관계에서도' : '지금 관계에서도'} 신호가 있는 축이야. 성향으로 설명되지 않는 자리에 네 답이 놓여 있어.`
         : `성향 렌즈와 실제 답변이 다른 방향을 가리킨 ${differing.signalAxisLabel}은, 네 관계 경험에서도 신호가 있던 축이야. 성향으로 설명되지 않는 자리에 네 경험이 놓여 있어.`,
     eligibleForNarrative: true,
   };
@@ -1165,7 +1183,8 @@ export function buildCrossSourceInsights(input: CrossSourceInsightInput): CrossS
 
   // ⑤ MBTI Lens ↔ Relationship Signal (v1.26)
   if (input.mbtiBridge) {
-    const built = fromMbtiBridge({ bridge: input.mbtiBridge, mirror });
+    // v1.45 — `tense`는 **호칭 전용**이다. 연결 생성 규칙은 바뀌지 않는다(§4 Audit).
+    const built = fromMbtiBridge({ bridge: input.mbtiBridge, mirror, tense });
     if (built) insights.push(built);
   }
 

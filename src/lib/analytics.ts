@@ -176,6 +176,25 @@ export const ANALYTICS_EVENTS = [
   // 둘 다 **의향**이며 실제 결제도, GA4 purchase/revenue도 아니다(§5).
   'deep_report_value_rating',
   'deep_report_wtp_after_view',
+  /**
+   * v1.45 §18 — Premium Deep Report v2의 **유일한 새 이벤트.**
+   *
+   * ⚠️ 요청받은 4개 중 3개는 만들지 않았다. 같은 것을 이미 보내고 있기 때문이다:
+   * ```
+   * premium_report_view        = deep_report_view      (§45 — 세는 대상만 새 구조로)
+   * premium_report_half_reached = deep_report_scroll depth=50
+   * premium_report_end_reached  = deep_report_scroll depth=100 · deep_report_complete
+   * ```
+   * 이름만 다른 이벤트를 늘리면 Funnel의 분모가 두 벌이 된다(v1.10 §47이 정한 규칙).
+   *
+   * ⚠️ Accordion 때문에 스크롤 깊이가 읽기 진행을 대신하지 못하는 구간이 생긴다
+   * (한 Chapter만 열려 있으면 컨테이너가 스크롤되지 않는다). 그 진행 신호는 이
+   * 이벤트의 `chapter_index`/`chapter_total`이 대신한다 — 깊이보다 정확하다.
+   *
+   * properties: chapter_kind · chapter_index · chapter_total · source_group_count
+   * ⚠️ 원문·자유서술·근거 문장·AI 문장은 보내지 않는다(§18 금지 목록).
+   */
+  'premium_chapter_open',
   'deep_insight_evidence_expand',
   'deep_insight_feedback',
   'deep_insight_correction_submit',

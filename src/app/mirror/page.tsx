@@ -42,7 +42,7 @@ import { RESULT_ANCHORS, ROUTES } from '@/lib/routes';
 import { canUseAiAxisNarrative, canUseAiHeadline } from '@/lib/logic/mirror';
 import { isLowData } from '@/lib/validation';
 import { premiumFeatureState } from '@/services/premiumService';
-import { hasDeepConnection } from '@/services/premiumConnections';
+import { hasPremiumEvidence } from '@/lib/logic/premiumChapters';
 import { useCrossSourceInsights, useEvidenceContext, useRelationshipNarrative } from '@/hooks/useAiNarrative';
 import { useMirror, usePastObservation, useRelationshipProfile, useRepeatedSignals } from '@/hooks/useAnalysis';
 import { useHistory } from '@/state/HistoryProvider';
@@ -500,7 +500,16 @@ function MirrorView() {
             <PremiumEntryRow
               feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
                 mirrorAvailable: mirror.available,
-                deepReportAvailable: hasDeepConnection(crossSourceInsights),
+                /**
+                 * §2-1-A — **Experience/Target 유무로 Premium 자격을 막지 않는다.**
+                 * `hasDeepConnection`만 보면 관계 경험이 없는 사용자는 통과할 방법이
+                 * 없었다(실측: declared 5축 + Target 4축 + MBTI 양쪽인데도 막혔다).
+                 */
+                deepReportAvailable: hasPremiumEvidence({
+                  insights: crossSourceInsights,
+                  declared: answers.declared,
+                  mirror,
+                }),
                 // v1.40 §37.9 — 지키지 못할 약속을 목록에서 뺀다.
                 allowsOutwardAction: showOutwardAction,
               })}

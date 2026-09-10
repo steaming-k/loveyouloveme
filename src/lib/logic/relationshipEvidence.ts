@@ -10,6 +10,7 @@ import type {
   PastFactor,
   RelationshipEvidenceScope,
   RelationshipExperience,
+  RelationshipTense,
 } from '@/types';
 
 import { HARDEST_TO_AXIS } from './mirrorAxisMap';
@@ -293,8 +294,13 @@ function quoted(text: string): string {
  * ⚠️ 왜 `RelationshipJob`을 그대로 넘기지 않는가: Job은 6종이고 여기서 필요한 구분은
  * **둘**이다. Job을 넘기면 이 파일이 Job별 분기를 갖게 되고, 그러면 위의 '단 하나의
  * 규칙'이 무너진다. 호출부가 `relationshipTenseOf(job)` 한 번으로 좁혀서 넘긴다.
+ *
+ * ⚠️ v1.45 — **정의는 `@/types`로 옮겼고 여기서는 re-export만 한다.**
+ * `RelationshipDeepReport.tense`가 이 값을 담게 됐는데, `types`는 import가 하나도 없는
+ * 최하위 계층이라 types → 이 파일 방향으로 참조하면 순환이 된다. 이름을 그대로 내보내니
+ * 이 파일에서 import하던 20개 파일은 손대지 않았다.
  */
-export type RelationshipTense = 'current' | 'former';
+export type { RelationshipTense };
 
 /**
  * 지금 관계 근거를 문장에서 부르는 말. **이 문구의 단일 source다.** (v1.42 §41.4)

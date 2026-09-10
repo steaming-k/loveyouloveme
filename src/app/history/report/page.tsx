@@ -20,13 +20,14 @@ import { PREMIUM_HOOK_COPY } from '@/data/premium';
 import { historyCountBucket, trackEvent } from '@/lib/analytics';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { premiumFeatureState } from '@/services/premiumService';
-import { hasDeepConnection } from '@/services/premiumConnections';
+import { hasPremiumEvidence } from '@/lib/logic/premiumChapters';
 import { formatEntryDate } from '@/lib/historyFormat';
 import { ROUTES } from '@/lib/routes';
 import { useCrossSourceInsights, useHistoryNarrative } from '@/hooks/useAiNarrative';
 import {
   useComparedHistoryEntries,
   useHistoryReport,
+  useMirror,
   useRepeatedSignals,
 } from '@/hooks/useAnalysis';
 import {
@@ -68,6 +69,12 @@ function HistoryReportView() {
   const { previous, latest } = useComparedHistoryEntries();
   const repeated = useRepeatedSignals();
   const crossSourceInsights = useCrossSourceInsights();
+  /**
+   * §2-1-A — Premium 자격 판정이 쓰는 값. **무료 Mirror가 이미 그 축들을 보여줬는지**만
+   * 본다(Experience 유무 검사가 아니다) — 보여줬다면 Self-only Chapter가 무료 문장을
+   * 다시 파는 셈이므로 그 경로를 열지 않는다.
+   */
+  const mirrorForPremium = useMirror();
   const [variant] = useState(() => resolvePriceVariant());
 
   /**
@@ -256,7 +263,16 @@ function HistoryReportView() {
         <PremiumEntryRow
           feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
             historyComparable: report.comparable,
-            deepReportAvailable: hasDeepConnection(crossSourceInsights),
+            /**
+             * §2-1-A — **Experience/Target 유무로 Premium 자격을 막지 않는다.**
+             * `hasDeepConnection`만 보면 관계 경험이 없는 사용자는 통과할 방법이
+             * 없었다(실측: declared 5축 + Target 4축 + MBTI 양쪽인데도 막혔다).
+             */
+            deepReportAvailable: hasPremiumEvidence({
+              insights: crossSourceInsights,
+              declared: answers.declared,
+              mirror: mirrorForPremium,
+            }),
             // v1.40.1 §38.3 — v1.40에서 이 호출부가 게이트를 빼먹었다. 이 행은
             // `additions`를 그리지 않아 노출은 없었지만, 누락 자체를 남겨두지 않는다.
             allowsOutwardAction: outwardAllowed,

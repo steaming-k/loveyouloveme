@@ -67,7 +67,7 @@ import {
 } from '@/lib/logic/relationshipStage';
 import { answeredAxisCount } from '@/lib/logic/relationshipEvidence';
 import { premiumFeatureState } from '@/services/premiumService';
-import { hasDeepConnection } from '@/services/premiumConnections';
+import { hasPremiumEvidence } from '@/lib/logic/premiumChapters';
 import {
   useCompatibilityNarrative,
   useCrossSourceInsights,
@@ -155,7 +155,13 @@ function CompatibilityView() {
   */
   const { job } = resolveRelationshipContext(answers);
   /** v1.41 — 근거 시점 요약. Mirror가 계산한 값을 **읽기만** 한다 */
-  const mirrorScope = useMirror().scopeSummary;
+  const mirrorForPremium = useMirror();
+  const mirrorScope = mirrorForPremium.scopeSummary;
+  /**
+   * §2-1-A — Premium 자격 판정이 쓰는 값. **무료 Mirror가 이미 그 축들을 보여줬는지**만
+   * 본다(Experience 유무 검사가 아니다) — 보여줬다면 Self-only Chapter가 무료 문장을
+   * 다시 파는 셈이므로 그 경로를 열지 않는다.
+   */
   const jobCopy = STAGE_JOB_COPY[job];
   const showOutwardAction = jobAllowsOutwardAction(job);
   const showOutwardQuestions = jobAllowsOutwardQuestions(job);
@@ -223,7 +229,16 @@ function CompatibilityView() {
   const [variant] = useState(() => resolvePriceVariant());
   const crossSourceInsights = useCrossSourceInsights();
   const premiumFeature = premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
-    deepReportAvailable: hasDeepConnection(crossSourceInsights),
+    /**
+     * §2-1-A — **Experience/Target 유무로 Premium 자격을 막지 않는다.**
+     * `hasDeepConnection`만 보면 관계 경험이 없는 사용자는 통과할 방법이
+     * 없었다(실측: declared 5축 + Target 4축 + MBTI 양쪽인데도 막혔다).
+     */
+    deepReportAvailable: hasPremiumEvidence({
+      insights: crossSourceInsights,
+      declared: answers.declared,
+      mirror: mirrorForPremium,
+    }),
     // v1.40 §37.9 — 지키지 못할 약속을 목록에서 뺀다(`ended`는 그 섹션을 만들지 않는다).
     allowsOutwardAction: showOutwardAction,
   });

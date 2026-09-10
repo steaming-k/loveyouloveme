@@ -12,6 +12,7 @@ import { NoticeBox, PageHeading, SectionLabel, Tag } from '@/components/common/p
 import { useToast } from '@/components/common/ToastProvider';
 import { Lovy } from '@/components/lovy/Lovy';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
+import { PremiumPreparingReport } from '@/components/premium/PremiumPreparingReport';
 import { PremiumUnlockSuccess } from '@/components/premium/PremiumUnlockSuccess';
 import { RelationshipDeepReportView } from '@/components/premium/RelationshipDeepReportView';
 import { ReportHeader } from '@/components/report/ReportShell';
@@ -44,7 +45,7 @@ import {
   jobAllowsOutwardAction,
   resolveRelationshipContext,
 } from '@/lib/logic/relationshipStage';
-import { hasDeepConnection } from '@/services/premiumConnections';
+import { hasPremiumEvidence } from '@/lib/logic/premiumChapters';
 import { useSession } from '@/state/SessionProvider';
 import type { PremiumFeatureId, PremiumSource } from '@/types';
 
@@ -83,8 +84,24 @@ const SUCCESS_HOLD_MS = 560;
 const SUCCESS_EXIT_MS = MOTION.normal;
 /** prefers-reduced-motion — 전환을 없애고 상태 변화만 짧게 인지시킨다(§11) */
 const REDUCED_HOLD_MS = 500;
+/**
+ * PostReview §4-2 — '관찰을 연결하는 중' 장면의 체류 시간.
+ *
+ * 요청받은 전체 transition 길이는 **1.2~2.0초**다. 이 화면 앞에 이미 두 stage가 있으므로
+ * 합으로 맞춘다:
+ *
+ * ```
+ * leaving 200  +  success 560  +  preparing 900  +  revealing ~300  ≈ 1.96초
+ * reduced-motion:  0 + 500 + 600 + 0            = 1.10초   (동작을 줄인 환경은 더 짧게)
+ * ```
+ *
+ * ⚠️ **여기서 무엇도 기다리지 않는다**(§4-5). 고정 타이머다 — AI를 기다리면 실패한 AI가
+ * 리포트를 못 열게 만드는 경로가 생긴다. Deep Report 계산은 Unlock 시점에 이미 시작됐다.
+ */
+const PREPARING_MS = 900;
+const PREPARING_REDUCED_MS = 600;
 
-type UnlockStage = 'paywall' | 'leaving' | 'success' | 'revealing' | 'report';
+type UnlockStage = 'paywall' | 'leaving' | 'success' | 'preparing' | 'revealing' | 'report';
 export default function PremiumPage() {
   return (
     <HydrationGate>
@@ -209,7 +226,16 @@ function PremiumView() {
         historyComparable: historyReport.comparable,
         mbtiAvailable: Boolean(mbtiLens),
         astrologyAvailable: birth.couple,
-        deepReportAvailable: hasDeepConnection(crossSourceInsights),
+        /**
+         * §2-1-A — **Experience/Target 유무로 Premium 자격을 막지 않는다.**
+         * `hasDeepConnection`만 보면 관계 경험이 없는 사용자는 통과할 방법이
+         * 없었다(실측: declared 5축 + Target 4축 + MBTI 양쪽인데도 막혔다).
+         */
+        deepReportAvailable: hasPremiumEvidence({
+          insights: crossSourceInsights,
+          declared: answers.declared,
+          mirror,
+        }),
         // v1.40 §37.9 — Paywall 목록에서도 지키지 못할 약속을 뺀다.
         allowsOutwardAction: jobAllowsOutwardAction(resolveRelationshipContext(answers).job),
       }),
@@ -217,7 +243,8 @@ function PremiumView() {
       answers,
       featureId,
       price,
-      mirror.available,
+      // §2-1-A — 자격 판정이 mirror 전체를 읽는다(무료가 이미 보여준 축인지 확인).
+      mirror,
       historyReport.comparable,
       mbtiLens,
       birth.couple,
@@ -306,7 +333,13 @@ function PremiumView() {
     if (stage === 'paywall' || stage === 'report') return;
 
     const next: UnlockStage =
-      stage === 'leaving' ? 'success' : stage === 'success' ? 'revealing' : 'report';
+      stage === 'leaving'
+        ? 'success'
+        : stage === 'success'
+          ? 'preparing'
+          : stage === 'preparing'
+            ? 'revealing'
+            : 'report';
     const ms =
       stage === 'leaving'
         ? reducedMotion
@@ -316,9 +349,13 @@ function PremiumView() {
           ? reducedMotion
             ? REDUCED_HOLD_MS
             : SUCCESS_HOLD_MS
-          : reducedMotion
-            ? 0
-            : SUCCESS_EXIT_MS;
+          : stage === 'preparing'
+            ? reducedMotion
+              ? PREPARING_REDUCED_MS
+              : PREPARING_MS
+            : reducedMotion
+              ? 0
+              : SUCCESS_EXIT_MS;
 
     const timer = setTimeout(() => setStage(next), ms);
     return () => clearTimeout(timer);
@@ -397,14 +434,22 @@ function PremiumView() {
     setSheetOpen(true);
   };
 
-  const showSuccess = stage === 'success' || stage === 'revealing';
+  const showSuccess = stage === 'success';
+  /** PostReview §4-1 — Unlock 확인 다음, 리포트 앞 */
+  const showPreparing = stage === 'preparing' || stage === 'revealing';
   const showReport = stage === 'report';
-  /** 카드로 실제 보여줄 Insight 개수 — 가짜 숫자를 만들지 않는다(§7) */
-  const connectedSignalCount =
-    // v1.26 — 새 구조에서 다시 센다: 연결 + 단일 관찰 전부. 이벤트 의미는 그대로다(§45).
-    (deep.report.corePattern ? 1 : 0) +
-    deep.report.connections.length +
-    deep.report.singleSourceNotes.length;
+  /**
+   * 실제로 보여줄 단위 개수 — 가짜 숫자를 만들지 않는다(§7).
+   *
+   * v1.45 — **Chapter 수를 센다.** v1.26이 연결+단일 관찰로 세는 대상을 옮긴 것과 같은
+   * 종류의 변경이고, 이유도 같다: 사용자가 화면에서 **실제로 세게 되는 단위**와 같아야
+   * 한다. v1.44에서는 헤더가 8개라고 말하고 화면에는 12개가 있었다(실측).
+   */
+  const chapterCount = deep.report.chapters.length;
+  /** 이 리포트가 실제로 이은 **서로 다른 자료 종류** 수 — Chapter 수와 다른 정보다 */
+  const sourceGroupCount = new Set(
+    deep.report.chapters.flatMap((chapter) => chapter.sourceGroups),
+  ).size;
 
   return (
     <>
@@ -421,7 +466,7 @@ function PremiumView() {
             버튼이 남아 있으면 두 번 결제하는 것처럼 보인다. Success와 Report가 같은 footer를
             쓰므로 그 두 stage 사이에는 하단 layout shift가 없다(§16).
           */
-          showSuccess || showReport ? (
+          showSuccess || showPreparing || showReport ? (
             <Button
               variant="secondary"
               onClick={() => {
@@ -481,9 +526,15 @@ function PremiumView() {
             header={
               <ReportHeader
                 eyebrow={DEEP_REPORT_COPY.entryLabel}
-                title={`신호 ${connectedSignalCount}개를 연결한 관찰 기록`}
+                title={`이야기 ${chapterCount}개를 연결한 관찰 기록`}
+                /**
+                 * ⚠️ v1.45 — meta에서 Chapter 수를 **다시 말하지 않는다.** 실측에서 헤더
+                 * 스택이 '이야기 8개를 연결한 관찰 기록' → '연결한 이야기 8개' →
+                 * '러비가 이번 관찰에서 연결한 이야기 8개'로 같은 숫자를 세 번 반복했다.
+                 * 여기서는 **다른 숫자**(이은 자료 종류 수)를 말한다.
+                 */
                 meta={[
-                  `연결한 신호 ${connectedSignalCount}개`,
+                  `이은 자료 ${sourceGroupCount}종`,
                   `${formatEntryDate(today.toISOString())} 작성`,
                 ]}
               />
@@ -495,13 +546,22 @@ function PremiumView() {
               retry: deep.narrative.retry,
             }}
           />
+        ) : showPreparing ? (
+          /*
+            PostReview §4-1 — Unlock 확인 → **관찰을 연결하는 장면** → 리포트.
+            ⚠️ 연출만이다. Deep Report는 Unlock 시점부터 이미 만들어지고 있고
+            (`useDeepReport(stage !== 'paywall')`), 여기서 아무것도 다시 요청하지 않는다.
+          */
+          <div className={cn(stage === 'revealing' && 'unlock-exit')}>
+            <PremiumPreparingReport animate={!reducedMotion} />
+          </div>
         ) : showSuccess ? (
           <PremiumUnlockSuccess
             mode={unlockMode ?? 'preview'}
             price={price}
-            connectedSignalCount={connectedSignalCount}
+            connectedSignalCount={chapterCount}
             animate={!reducedMotion}
-            leaving={stage === 'revealing'}
+            leaving={false}
           />
         ) : (
         <div className={cn('flex flex-col gap-5', stage === 'leaving' && 'stage-exit')}>
@@ -580,10 +640,60 @@ function PremiumView() {
                 ))}
               </ul>
               <p className="px-1 text-meta keep-all text-ink-muted">
-                {/* §7 — 실제 계산값만 쓴다. 남은 게 없으면 개수를 말하지 않는다. */}
-                {connectionInsights.length > previewSummaries.length
+                {/*
+                  §7 — 실제 계산값만 쓴다. 남은 게 없으면 개수를 말하지 않는다.
+
+                  ⚠️ v1.45 — Chapter 목록이 아래에 있으면 **개수를 여기서 말하지 않는다.**
+                  실측에서 이 줄이 '연결 5개'(= Insight 단위)라고 말하는 바로 아래에
+                  '8개'(= Chapter 단위) 목록이 붙었다. 두 숫자 다 사실이지만 단위가
+                  달라서, 나란히 놓이면 사용자는 어느 쪽이 리포트의 규모인지 알 수 없다.
+                  규모를 말하는 자리는 Chapter 목록 하나로 정한다(§6.1 · §15.1).
+                */}
+                {!(deep.report.chapters.length > 0) &&
+                connectionInsights.length > previewSummaries.length
                   ? `아직 연결해서 보여주지 않은 연결 ${connectionInsights.length - previewSummaries.length}개 · ${DEEP_REPORT_COPY.previewLocked}`
                   : DEEP_REPORT_COPY.previewLocked}
+              </p>
+            </section>
+          )}
+
+          {/*
+            v1.45 §15.1 — **이번 관찰에서 실제로 만들어진 Chapter 목록.**
+
+            예전 Paywall은 `additions`(정적 문구 6줄)만 보여줬다. 그 목록은 모든
+            사용자에게 같았고, 그래서 "연결을 상대에게 확인해볼 질문"처럼 이 세션에서
+            실제로는 만들어지지 않는 항목이 섞일 수 있었다(v1.40이 `ended`에서 한 줄을
+            빼야 했던 이유가 정확히 그것이다).
+
+            이제 목록의 출처가 **리포트 자신**이다 — `report.chapters`의 실제 제목이므로
+            리포트가 만들지 않은 Chapter는 목록에도 없다. 가짜 teaser가 문구 관리가
+            아니라 **구조적으로** 불가능해진다.
+
+            ⚠️ 본문·근거·강조는 여기서 보여주지 않는다. 보여주는 것은 목차와 개수뿐이다.
+          */}
+          {isDeepReport && deep.report.chapters.length > 0 && (
+            <section className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <SectionLabel>{DEEP_REPORT_COPY.chapterListLabel}</SectionLabel>
+                <span className="text-[11px] font-semibold tnum text-ink-muted">
+                  {chapterCount}개
+                </span>
+              </div>
+              <ul className="flex flex-col gap-1.5 rounded-card border border-brand-edge bg-brand-tint p-4">
+                {deep.report.chapters.map((chapter) => (
+                  <li
+                    key={chapter.id}
+                    className="flex gap-2 text-[12.5px] keep-all font-medium text-brand-ink"
+                  >
+                    <span className="flex-none text-brand-pressed" aria-hidden>
+                      ✓
+                    </span>
+                    {chapter.title}
+                  </li>
+                ))}
+              </ul>
+              <p className="px-1 text-meta keep-all text-ink-muted">
+                {DEEP_REPORT_COPY.chapterListNote}
               </p>
             </section>
           )}
@@ -603,7 +713,16 @@ function PremiumView() {
             </ul>
           </section>
 
-          {/* 상세에서 추가되는 것 — 무엇을 사는지 모르면 CTA도 의미가 없다 */}
+          {/*
+            상세에서 추가되는 것 — 무엇을 사는지 모르면 CTA도 의미가 없다.
+
+            ⚠️ v1.45 §15.1 — Deep Report에서 Chapter 목록이 만들어졌으면 **이 정적 목록을
+            그리지 않는다.** 위 Chapter 목록이 같은 질문('무엇을 사는가')에 더 정확하게
+            답하고 있어서, 둘을 함께 두면 같은 약속을 두 번 하는 것이 된다(§22). 그리고
+            정적 목록 쪽은 이 세션에서 실제로 만들어지지 않은 항목을 담을 수 있다 —
+            그것이 v1.40이 `ended`에서 한 줄을 필터해야 했던 이유다.
+          */}
+          {!(isDeepReport && deep.report.chapters.length > 0) && (
           <section className="flex flex-col gap-2">
             <SectionLabel>{copy.additionsLabel}</SectionLabel>
             <ul className="flex flex-col gap-1.5 rounded-card border border-brand-edge bg-brand-tint p-4">
@@ -623,6 +742,7 @@ function PremiumView() {
               ))}
             </ul>
           </section>
+          )}
 
           {/* 가격 — 1회 결제 후보임을 명확히. 정가/할인/긴급성 표현 없음 */}
           <section className="flex items-baseline justify-between gap-3 rounded-card border border-line bg-surface px-4 py-3.5">

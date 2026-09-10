@@ -1868,6 +1868,186 @@ export interface RelationshipDeepReport {
   lovyObservation: DeepLovyObservation | null;
   /** 이 리포트가 못 하는 것 — 항상 사용자에게 보여준다 */
   limitations: string[];
+  /**
+   * v1.45 — **이 리포트의 렌더 단위.** 화면은 이 배열만 그린다.
+   *
+   * v1.44까지 화면은 `corePattern` + `connections` + `singleSourceNotes`를 **평면 목록**
+   * 으로 그렸다. 실측(고데이터 세션)에서 12개 유닛이 제목 없이 나열됐고 같은 축이
+   * 최대 4번 반복됐다 — 리포트가 아니라 카드 더미였다. Chapter는 같은 주제의 Insight를
+   * 하나로 묶어 그 반복을 없앤다(`logic/premiumChapters.ts`).
+   *
+   * ⚠️ **Chapter는 판정을 만들지 않는다.** 이미 만들어진 Insight를 고르고 묶을 뿐이고,
+   * 근거가 없으면 Chapter도 없다 — 분량을 위해 빈 Chapter를 만들지 않는다.
+   */
+  chapters: PremiumChapter[];
+  /**
+   * v1.45 — **아직 만들지 않은 연결.** Chapter 수에 포함하지 않는다.
+   *
+   * Sparse 세션에서 근거 없는 Chapter를 만드는 대신 무엇이 부족한지 정직하게 적는다.
+   * locked teaser가 아니다 — 유료 결제로 열리는 것이 아니라 **데이터가 쌓이면** 열린다.
+   */
+  omissions: PremiumOmission[];
+  /**
+   * v1.45 — 이 리포트가 **현재 관계**를 보고 있는지 **끝난 관계**를 보고 있는지.
+   *
+   * ⚠️ 새 판정이 아니다. `deepReportJobContext(job).tense`가 이미 정한 값을 리포트에
+   * 그대로 실어 두는 것이고, 화면이 시제를 **다시 계산하지 않게** 하기 위한 자리다.
+   * 이 값이 없던 동안 화면은 시제를 알 수 없었고, 그래서 러비 한마디 같은 표현
+   * 문구를 `ended` 안전 카피로 바꿀 방법이 없었다(§18).
+   */
+  tense: RelationshipTense;
+  /**
+   * v1.45 PostReview — 이 리포트가 **상대를 향한 행동을 제안할 수 있는가**.
+   *
+   * ⚠️ 새 판정이 아니다. `deepReportJobContext(job).allowsOutwardAction`이 이미 정한
+   * 값을 그대로 실어 두는 것이고, 화면이 Job을 다시 해석하지 않게 하기 위한 자리다.
+   *
+   * ⚠️ **`tense`로 대체할 수 없다.** `job=none`(상대 없음)은 `tense: 'current'`인데도
+   * outward 제안이 금지된다 — 시제와 행동 허용은 서로 다른 축이다. 러비의 체크포인트가
+   * '상대와 맞춰봐' 문장을 붙일지 결정할 때 이 값을 본다.
+   */
+  allowsOutwardAction: boolean;
+}
+
+/**
+ * 관계를 **어느 시제로 부를 것인가** (v1.42 §41.4)
+ *
+ * ```
+ * current   진행 중인 관계 (job != ended)   "지금 이 관계에서"
+ * former    끝난 관계 (job=ended)           "그때 이 관계에서"
+ * ```
+ *
+ * ⚠️ v1.45 — 정의가 `lib/logic/relationshipEvidence.ts`에 있었는데, 이 파일의
+ * `RelationshipDeepReport.tense`가 그 값을 담게 되면서 여기로 옮겼다. `types`는
+ * import가 하나도 없는 최하위 계층이라, 반대 방향(types → lib)으로 참조하면 순환이
+ * 된다. `relationshipEvidence`는 이 이름을 **그대로 re-export**하므로 기존 20개
+ * 파일의 import 경로는 하나도 바뀌지 않는다.
+ *
+ * ⚠️ `RelationshipJob`(6종)을 시제로 쓰지 않는 이유는 그쪽 주석에 그대로 있다 —
+ * 문장 생성에 필요한 구분은 둘뿐이고, Job을 넘기면 문장 파일이 Job별 분기를 갖는다.
+ */
+export type RelationshipTense = 'current' | 'former';
+
+/* ---------------------------------------- Premium Deep Report v2 (v1.45) */
+
+/**
+ * 근거의 **출처 묶음.** `CrossSourceEvidenceSource`(11종)를 사용자가 구분할 수 있는
+ * 단위로 좁힌 것이다.
+ *
+ * ⚠️ 새 판정이 아니다. Chapter가 "서로 독립적인 자료 2개 이상을 이었는가"를 셀 때
+ * 같은 곳을 두 번 세지 않기 위한 것뿐이다 — `declared`와 `adaptive`는 둘 다
+ * '내가 답한 기준'이므로 두 종류로 세면 안 된다.
+ */
+export type PremiumSourceGroup =
+  | 'declared_me'
+  | 'observed_me'
+  | 'past_relationship'
+  | 'current_relationship'
+  | 'target'
+  | 'compatibility'
+  | 'history'
+  /**
+   * ⚠️ MBTI는 **동기화율에 들어가지 않는다**(v1.2에서 5번째 축으로 넣었다가 철회했다).
+   * 그래서 `observed_me`에 합치지 않고 별도 그룹으로 둔다 — 합치면 '관찰된 나'의
+   * 근거 수가 성향 렌즈 때문에 부풀어 보인다.
+   */
+  | 'lens';
+
+/**
+ * Chapter의 종류. **화면 순서가 아니라 정체성**이다(순서는 `index`가 갖는다).
+ *
+ * ⚠️ 이 목록을 늘려서 리포트를 길게 만들지 않는다. 각 종류는 서로 다른 **근거 조합**을
+ * 요구하고, 그 조합이 없으면 그 Chapter는 생성되지 않는다.
+ */
+export type PremiumChapterKind =
+  /** 말한 기준 × 관계에서 나타난 신호 */
+  | 'declared_vs_shown'
+  /** 과거에 가장 힘들었던/중요했던 지점 × 말한 기준 */
+  | 'hidden_priority'
+  /** 가까워지는 방식 × 거리를 두는 방식 (두 축) */
+  | 'closeness_distance'
+  /** 갈등 축 */
+  | 'conflict_needs'
+  /** 애정 표현 축 */
+  | 'affection_exchange'
+  /** 상대 정보·동기화율과 이어지는 지점 */
+  | 'tune_with_target'
+  /** 아직 확신하면 안 되는 지점 — 서비스가 모르는 것 */
+  | 'uncertainty'
+  /** 앞 Chapter에서 파생된 행동·질문 */
+  | 'next_check'
+  /** 두 시점 비교 (History 또는 지금 × 이전) */
+  | 'past_and_now'
+  /** 앞 Chapter를 압축한 마무리 */
+  | 'closing'
+  /* ── Self-only 계열 (v1.45 PostReview §2) ─────────────────────────────
+     ⚠️ 관계 경험도 상대도 없는 사용자를 위한 것이다. cross-source 연결이 아니라
+     **cross-axis synthesis**다 — 따로 답한 기준 여러 개를 한 프로필로 묶는다.
+     그래서 '관계에서 ~했다'가 아니라 '지금 답에서는 ~을 중요하게 보고 있어'까지만
+     말한다(§2-3). */
+  /** 내가 관계에서 중요하다고 말한 기준들을 한 프로필로 */
+  | 'self_profile'
+  /** 동시에 중요하다고 답해서 서로 당길 수 있는 기준 조합 */
+  | 'self_tension';
+
+/** Chapter 하나가 보여주는 근거 한 줄 */
+export interface PremiumChapterEvidence {
+  key: string;
+  sourceLabel: string;
+  text: string;
+}
+
+/**
+ * Premium Deep Report의 **한 챕터** (v1.45)
+ *
+ * ⚠️ **AI 결과를 source of truth로 쓰지 않는다.** 존재 여부·제목·근거·순서는 전부
+ * 결정론이고, AI가 채우는 것은 `narrativeText` 하나뿐이다. 그 값이 null이어도
+ * `deterministicSummary` · `deterministicTakeaway` · `evidence` · `limitation`으로
+ * 챕터가 완결된다(§11.3 AI Failure).
+ */
+export interface PremiumChapter {
+  id: string;
+  kind: PremiumChapterKind;
+  /** 1-based 렌더 순서. 화면의 `02 / 8` 표시가 이 값을 쓴다 */
+  index: number;
+  title: string;
+  /** 제목 위 짧은 라벨 — 이 챕터가 다루는 축/주제 */
+  eyebrow: string;
+  /** 이 챕터가 근거로 삼은 결정론 Insight id. AI 문장을 붙일 때도 이 목록으로만 붙인다 */
+  insightIds: string[];
+  sourceGroups: PremiumSourceGroup[];
+  evidence: PremiumChapterEvidence[];
+  /** AI 없이도 항상 존재하는 본문 */
+  deterministicSummary: string;
+  /** 이 챕터의 핵심 문장 하나 (§12.3 highlight) */
+  deterministicTakeaway: string;
+  /**
+   * AI가 붙인 해석. **없으면 그냥 없다** — 챕터가 사라지지 않는다.
+   * ⚠️ 이 챕터의 `insightIds`에 속한 narrative만 들어온다(다른 챕터 근거 유입 불가).
+   */
+  narrativeText: string | null;
+  /** 확인해볼 질문. Job이 허용하지 않으면 null */
+  question: string | null;
+  /** 이 챕터가 말할 수 없는 것. 항상 존재한다 */
+  limitation: string;
+  /** 이 챕터가 누구를 향하는가 — `outward`는 상대를 향한 것이 하나라도 있을 때만 */
+  audience: 'self' | 'outward';
+  /**
+   * FREE 중복 방지용 결정론 키. `kind:axes:sourceGroups` — 같은 키가 두 번 나오면
+   * 두 번째는 만들지 않는다.
+   */
+  noveltyKey: string;
+}
+
+/**
+ * 이번 관찰에서 **만들지 않은 연결** (§14.1)
+ *
+ * ⚠️ Chapter 수에 포함하지 않는다. 그리고 '결제하면 열린다'가 아니다 —
+ * 어떤 데이터가 더 쌓여야 하는지를 결정론으로 적는다.
+ */
+export interface PremiumOmission {
+  id: string;
+  text: string;
 }
 
 /* ------------------------------------------ Premium (v1.5, Fake Door) */

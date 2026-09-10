@@ -24,7 +24,21 @@ export type LovyPose =
   | 'cool'
   | 'wand'
   | 'calendar'
-  | 'movie';
+  | 'movie'
+  /* ── v1.45 Premium 전용 (public/lovy/premium/*) ─────────────────────────
+     ⚠️ 기존 14 포즈로 표현되지 않는 것만 추가했다. `docs/캐릭터`의 새 이미지 24장 중
+     대부분은 이미 있는 포즈(돋보기 = observe · 물음표 = question · 책 = book)와 겹쳐서
+     가져오지 않았다 — 같은 역할의 에셋을 두 벌 두면 화면마다 다른 러비가 나온다. */
+  /** 흩어진 자료를 모아 정리하는 모습 — Premium이 파는 행동 자체 */
+  | 'connect'
+  /** 알아챈 모습 */
+  | 'notice'
+  /** 아직 결론을 내리지 않고 생각하는 모습 */
+  | 'ponder'
+  /** 표현을 기록으로 들고 있는 모습 */
+  | 'together'
+  /** 이번 관찰을 수첩에 적는 모습 */
+  | 'note';
 
 interface LovyAsset {
   src: string;
@@ -47,6 +61,15 @@ interface LovyAsset {
  * 같은 `size`면 항상 같은 박스가 나온다.
  */
 const SQUARE = { width: 291, height: 298 } as const;
+
+/**
+ * v1.45 Premium 에셋의 원본 캔버스.
+ *
+ * ⚠️ **재인코딩하지 않고 원본을 그대로 복사했다**(`docs/캐릭터` → `public/lovy/premium/`,
+ * SHA-256 동일). 그래서 1254×1254 그대로이고 기존 291×298 세트와 캔버스가 다르다 —
+ * `next/image`가 화면에 필요한 크기로만 내려보내므로 전송량은 표시 크기를 따른다.
+ */
+const PREMIUM_SQUARE = { width: 1254, height: 1254 } as const;
 
 /**
  * 시각 보정 배율 (v1.7 에셋 교체 후 추가).
@@ -75,6 +98,21 @@ export const LOVY_VISUAL_SCALE: Record<LovyPose, number> = {
   book: 1.17,
   crystal: 1.35,
   wand: 1.3,
+  /*
+    v1.45 — 새 에셋의 알파 bbox를 실측해서 **몸통 높이 비율을 기존 세트에 맞췄다.**
+    기준값: observe 0.752×1.06 = 0.797 · book 0.685×1.17 = 0.801 → 목표 ≈ 0.80.
+
+      connect   fillH 0.834 → 0.96   (자료 뭉치까지 bbox에 들어와 가장 큰 값)
+      note      fillH 0.797 → 1.00
+      notice    fillH 0.778 → 1.03
+      together  fillH 0.789 → 1.01
+      ponder    fillH 0.687 → 1.16   (생각풍선 여백이 커서 보정이 가장 크다)
+  */
+  connect: 0.96,
+  notice: 1.03,
+  ponder: 1.16,
+  together: 1.01,
+  note: 1.0,
 };
 
 export const LOVY_ASSETS: Record<LovyPose, LovyAsset> = {
@@ -93,4 +131,31 @@ export const LOVY_ASSETS: Record<LovyPose, LovyAsset> = {
   wand: { src: '/lovy/wand.png', ...SQUARE, alt: '러비가 별 지팡이를 든 모습' },
   calendar: { src: '/lovy/calendar.png', ...SQUARE, alt: '러비가 달력 옆에 서 있는 모습' },
   movie: { src: '/lovy/movie.png', ...SQUARE, alt: '러비가 3D 안경을 쓰고 팝콘을 든 모습' },
+
+  /* v1.45 Premium — 원본은 `docs/캐릭터`에 그대로 두고 여기로 exact copy했다 */
+  connect: {
+    src: '/lovy/premium/lovy-connect.png',
+    ...PREMIUM_SQUARE,
+    alt: '러비가 흩어져 있던 관찰 자료를 모아 정리하는 모습',
+  },
+  notice: {
+    src: '/lovy/premium/lovy-notice.png',
+    ...PREMIUM_SQUARE,
+    alt: '러비가 무언가를 알아챈 모습',
+  },
+  ponder: {
+    src: '/lovy/premium/lovy-ponder.png',
+    ...PREMIUM_SQUARE,
+    alt: '러비가 컵을 들고 생각하는 모습',
+  },
+  together: {
+    src: '/lovy/premium/lovy-together.png',
+    ...PREMIUM_SQUARE,
+    alt: '러비가 마음이 적힌 기록을 들고 있는 모습',
+  },
+  note: {
+    src: '/lovy/premium/lovy-note.png',
+    ...PREMIUM_SQUARE,
+    alt: '러비가 수첩에 이번 관찰을 적는 모습',
+  },
 };

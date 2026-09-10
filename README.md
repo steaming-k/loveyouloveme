@@ -7,7 +7,7 @@
 론칭 프로젝트입니다. 실측 확인된 사실과 미검증 항목을 분리해서 기록합니다 — "구현했다"와
 "검증됐다"를 같은 말로 쓰지 않습니다.
 
-**기준 문서** — 현재 버전 **v1.43**
+**기준 문서** — 현재 버전 **v1.45**
 
 | 문서 | 담는 것 | 언제 보나 |
 |---|---|---|
@@ -49,16 +49,18 @@ http://localhost:3000 · 기준 뷰포트 **393 × 852** (360px에서도 깨지�
 | `npm run test:lifecycle` | Lifecycle Fixture **144건** — Relationship Stage/Job · **불변 검사**(단계만 바꿔도 동기화율·Mirror·Premium 게이트 동일) · Ended/Dating/Long-term Safety · **Premium Deep Report 본문의 구조적 안전**(v1.40.1 · `audience` 카운트) · Paywall↔본문 대칭 · fixture enum guard · legacy 세션 (**dev 서버 필요**) |
 | `npm run test:relationship-evidence` | Relationship Evidence Fixture **280건** (v1.41 80 → v1.42 154 → v1.43 280) — v1.43에서 **AI Task Contract 구조 검사 TC0~TC6**(Task 5종 × 차원 7개가 전부 채워졌는가 · 시제·게이트 source가 각각 하나인가 · 축 enum이 프롬프트·파서에서 같은 상수인가 · 지문에 policy input이 들어갔는가) + **C4~C5 · CMP-CTX · D-CACHE**(compatibility·deep-report 캐시 identity) + **CC0~CC7**(User Correction Trust Boundary — 사용자 수정이 AI 서술·기록과 모순되지 않는가 · **correction은 cache identity에 들어가지 않는다**는 것과 그 커플링까지) 추가 — **stage ≠ evidence 양방향**(`dating`인데 근거가 없으면 current 0 · `talking`인데 근거를 넣으면 current 사용) · **legacy 무변경**(현재 근거가 없는 세션의 판정이 v1.40.1과 JSON 수준에서 동일) · 점수 불변 · scope 정직성(mixed면 이름 붙이지 않음) · `ended` 시제 전수 · Premium ⑨ · Ended safety 회귀 · **Resolver가 stage를 import하지 않는지 구조 검사**(R1) · **v1.42 A0~A15** — AI 지문이 S30을 보는가 · stage가 달라도 근거·시제가 같으면 같은 지문인가 · AI context에 raw status 0건인가(R2) · AI가 없어도 결정론 결과가 완결되는가 · **CA4b**(근거의 source는 유지되고 시제만 바뀌는가) · **AQ-D**(AI 질문 게이트가 결정론 질문과 같은 술어를 쓰는가) · **CF0~CF6 · CF-R**(같은 시제에서 질문 정책만 달라도 캐시 identity가 갈리는가) (**dev 서버 필요**) |
 | `npm run test:history` | Logic Fixture 100건 — History H0~H10 + Observed 시간축 + 근거 묶음 + Solo Premium 게이트 + `네가 말한 너` 문구 무결성 + 샘플 근거 정합성 · S07 사진 게이트(v1.37) + **관찰 시퀀스 시간 예산**(v1.38) (Provider Key 불필요 · **dev 서버 필요**) |
+| `npm run test:trust` | Trust Boundary Fixture **205건** (v1.44) — **입력을 신뢰할 수 없을 때 무엇을 말하는가.** 손상 세션 강등 · AI `meta` 부재 방어 · 근거 없는 Home 단정 차단 · 근거 없는 시간적 변화 주장 차단. 유효 입력의 문구가 **그대로인지도 함께** 고정한다(과필터 방지) (**dev 서버 필요**) |
+| `npm run test:premium` | Premium Deep Report v2 Fixture **173건** (v1.45 · PREM-V2-01~15 + LOVY-01~12 + POSTREV-01~18 + RELEASE-01~06) — 고데이터에서 Chapter **7~10개** · Chapter마다 독립 근거 2종 · 같은 축 반복 상한 · **FREE 중복 0** · Sparse **filler 0** · `ended` outward **0** · **AI 500·parse 실패에도 Chapter 유지** · 다른 Chapter 근거 차단 · 헤더 N = 실제 Chapter 수 · Accordion A11y·Analytics Privacy·Production Guard 정적 guard · **캐릭터 통합**(kind마다 러비 포즈 존재 · 인접 중복 0 · 원본↔runtime SHA-256 동일 · 러비 한마디가 세션에 따라 변하지 않음 · 중간 메모가 Chapter 수에 미포함 · Sparse 메모 0 · `ended` 안전 카피 · Provider 1회 · promptVersion 불변) (**dev 서버 필요**) |
 | `npm run test:ai:e2e` | 실제 `/api/ai/*` Route 왕복 (**dev 서버 필요** · Key 없으면 SKIPPED로 정직하게 보고) |
 | `node tests/run-observed-e2e.mjs` | `npm run test:observed`와 같은 스크립트 |
 
-> ⚠️ **테스트 5종은 모두 `http://localhost:3000`의 Route를 왕복합니다** — 스크립트가 서버를
+> ⚠️ **테스트 7종은 모두 `http://localhost:3000`의 Route를 왕복합니다** — 스크립트가 서버를
 > 직접 띄우지 않습니다(v1.39 확인). 서버 없이 실행하면 `ECONNREFUSED ::1:3000`으로 즉시
 > 실패합니다. 터미널을 두 개 씁니다.
 >
 > ```
 > 터미널 A:  npm run dev
-> 터미널 B:  npm run test:ai && npm run test:observed && npm run test:history && npm run test:lifecycle && npm run test:relationship-evidence
+> 터미널 B:  npm run test:ai && npm run test:observed && npm run test:history && npm run test:lifecycle && npm run test:relationship-evidence && npm run test:trust && npm run test:premium
 > ```
 >
 > `test:history`는 검증 로직을 스크립트에 복제하지 않고 개발 전용 Route

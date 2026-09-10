@@ -5,14 +5,16 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '@/components/common/Button';
 import { NoticeBox, SectionLabel } from '@/components/common/primitives';
 import { AiNarrativeNotice, AiSourceLabel } from '@/components/ai/AiModeNotice';
-import { DeepConnectionCard } from '@/components/premium/DeepConnectionCard';
 import { DeepReportValueCheck } from '@/components/premium/DeepReportValueCheck';
-import { PremiumDetailView } from '@/components/premium/PremiumDetailView';
+import { PremiumChapterAccordion } from '@/components/premium/PremiumChapterAccordion';
+import { Lovy } from '@/components/lovy/Lovy';
 import { DeepReportUtFlow } from '@/components/ut/DeepReportUtFlow';
 import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
 import { UT_MODE } from '@/lib/env';
 import { hasCompletedDeepReport, markDeepReportCompleted } from '@/lib/deepReportUtStore';
+import { isContentChapter } from '@/lib/logic/premiumChapters';
+import { LOVY_REPORT_POSE, LOVY_SIZE } from '@/lib/premiumLovy';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import type { AiFailureReason, AiMode, AiNarrativeStatus, RelationshipDeepReport } from '@/types';
 
@@ -26,16 +28,37 @@ import type { AiFailureReason, AiMode, AiNarrativeStatus, RelationshipDeepReport
  * `궁합 심화 비교`(무료 SignalCard와 같은 `dimension.evidence`/`scene`)와
  * `실제로 일어날 수 있는 상황`(같은 `scene.watch`). 둘 다 제거했다.
  *
- * 지금 순서:
- *   01 CORE PATTERN   연결된 정보 종류 수 + 가장 중요한 연결 1개   ← 첫 viewport
- *   02 CONNECTIONS    나머지 연결 (source 2개 이상인 것만)
- *   03 SINGLE NOTES   연결이 아닌 단일 관찰 — 더 낮은 위계
- *   04 HISTORY        과거 관찰과 지금 (기록 2개 이상일 때만)
- *   05 TRY THIS       TRY / CHECK / NOTICE + 연결을 검증하는 질문
- *   06 FINAL          러비의 깊은 관찰 + 관계 철학 질문
+ * ══ v1.45 — **Chapter 구조로 다시 재편했다** ═══════════════════════════════
+ *
+ * v1.26의 IA(아래 예전 순서)를 고데이터 세션으로 실측한 결과가 재편의 근거다:
+ *
+ * ```
+ * 예전 순서               실측 결과
+ * 01 CORE PATTERN         유닛 12개가 제목 없이 한 줄로 나열됐다
+ * 02 CONNECTIONS          같은 축이 최대 4번 반복됐다 (contact ×4 · conflict ×4)
+ * 03 SINGLE NOTES         cs_history_change_* 3개가 04 HISTORY와 중복이었다
+ * 04 HISTORY              (같은 비교를 두 번 보여줬다)
+ * 05 TRY THIS
+ * 06 FINAL                overview.topSummaries는 계산만 되고 그려지지 않았다
+ * ```
+ *
+ * 즉 문제는 분량이 아니라 **구조**였다. 지금 순서:
+ *
+ * ```
+ * 01 HEADER      리포트 규모 — 펼치기 전에 Chapter N개가 보인다
+ * 02 SUMMARY     가장 중요한 연결 1~3개 (새로 만들지 않는다 — Chapter Top의 preview)
+ * 03 CHAPTERS    Accordion. 각 Chapter = 근거 + 본문 + 강조 + 확인해볼 것 + 경계
+ * 04 OMITTED     이번에 만들지 않은 연결 (Chapter 수에 포함하지 않는다)
+ * 05 LIMITS      이 리포트의 한계
+ * ```
  *
  * 데이터가 없는 섹션은 만들어내지 않고 **숨긴다** — 그래서 이 파일은 각 섹션을
  * 조건부로만 렌더한다.
+ *
+ * ⚠️ **이 파일은 문장을 만들지 않는다.** 제목·본문·강조·근거·경계 전부
+ * `report.chapters`에 이미 들어 있다(`logic/premiumChapters.ts`). 화면이 문장을
+ * 만들면 fixture가 볼 수 없는 자리가 생기고, v1.41 §39.9가 정확히 그 자리에서
+ * 시제를 놓쳤다.
  *
  * `analysisId`는 Deep Report UT 응답을 이 분석에 묶어두는 키다(§20) — Compatibility/Mirror/
  * History 계산에는 전혀 쓰이지 않는다.
@@ -95,21 +118,41 @@ export function RelationshipDeepReportView({
 }) {
   /**
    * §45 — `deep_report_view`/`deep_report_complete`의 의미(분모/분자)는 바꾸지 않는다.
-   * `insight_count`가 세는 대상만 새 구조에서 다시 센다: 연결 + 단일 관찰 전부.
+   * `insight_count`가 세는 대상만 새 구조에서 다시 센다.
+   *
+   * v1.45 — **Chapter 수를 센다.** v1.26이 `relationshipSelf`+`crossSourceInsights`에서
+   * `corePattern`+`connections`+`singleSourceNotes`로 세는 대상을 옮긴 것과 같은
+   * 종류의 변경이다: 이벤트의 의미('이 리포트에 유닛이 몇 개였나')는 그대로이고
+   * **화면에 실제로 그려지는 단위**가 Chapter로 바뀌었다.
    */
-  const connectionTotal =
-    (report.corePattern ? 1 : 0) + report.connections.length + report.singleSourceNotes.length;
+  const chapterTotal = report.chapters.length;
 
   /**
    * 화면에 실제로 그려진 AI 문장이 있는가 (v1.28)
    *
-   * `DeepConnectionCard`는 `connection.narrativeText`가 null이면 그 문단을 아예
-   * 그리지 않는다. 그러니 배지의 근거도 같은 값이어야 한다.
-   * `singleSourceNotes`는 AI 문장을 갖지 않으므로 세지 않는다.
+   * `PremiumChapterAccordion`은 `chapter.narrativeText`가 null이면 그 문단을 아예
+   * 그리지 않는다. 그러니 배지의 근거도 같은 값이어야 한다 — `mode`만 보고 붙이면
+   * Quality Gate가 문장을 전부 떨어뜨린 경우에 **없는 것을 있다고 표시**한다.
    */
-  const hasRenderedAiNarrative =
-    Boolean(report.corePattern?.connection.narrativeText) ||
-    report.connections.some((connection) => Boolean(connection.narrativeText));
+  const hasRenderedAiNarrative = report.chapters.some((chapter) =>
+    Boolean(chapter.narrativeText),
+  );
+
+  /**
+   * §6.2 Report Summary — Accordion 전에 한 화면 안에서 보여줄 가장 중요한 연결 1~3개.
+   *
+   * ⚠️ **새로 생성하지 않는다.** 이미 선정된 Chapter 중 근거를 가진 앞쪽 3개의
+   * preview다 — 제목·근거 종류 수·강조 문장 전부 그 Chapter의 값 그대로다.
+   * (파생 Chapter는 제외한다: `next_check`·`closing`은 아래 Chapter의 요약이 아니라
+   * 아래 Chapter에서 나온 것이라, 요약에 올리면 순서가 거꾸로 읽힌다.)
+   */
+  /**
+   * ⚠️ v1.45 PostReview — `insightIds.length > 0`이 아니라 `isContentChapter`를 쓴다.
+   * Self-only Chapter는 Insight가 아니라 declared 답변에서 왔기 때문에 `insightIds`가
+   * 비어 있는데, 예전 판정은 그걸 '파생 Chapter'로 오해해서 **Self-only 리포트에는
+   * 요약 섹션이 통째로 사라졌다**(브라우저 실측에서 확인).
+   */
+  const summaryChapters = report.chapters.filter(isContentChapter).slice(0, 3);
 
   const viewSent = useRef(false);
   const [utOpen, setUtOpen] = useState(false);
@@ -153,11 +196,11 @@ export function RelationshipDeepReportView({
     trackEvent('deep_report_view', {
       access_mode: accessMode,
       // §45 — 이벤트의 의미(분모/분자)는 그대로다. 세는 대상만 새 구조에서 다시 센다.
-      insight_count: connectionTotal,
+      insight_count: chapterTotal,
       ...attribution,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [report.available, connectionTotal, accessMode, funnelAnalysisId]);
+  }, [report.available, chapterTotal, accessMode, funnelAnalysisId]);
 
   // §49 — 50/100 두 단계만. 이 화면의 스크롤 조상(ScreenLayout의 overflow-y-auto body)을 찾는다.
   useEffect(() => {
@@ -194,6 +237,43 @@ export function RelationshipDeepReportView({
     return (
       <div className="flex flex-col gap-4">
         {header}
+        {/*
+          ⚠️ v1.45 — 예전에는 이 자리에 `limitations[0]`(일반 면책 문구)만 있었다.
+          Sparse 세션 실측에서 화면에 남은 문장이 "이 리포트는 네가 입력한 데이터를
+          서로 연결해 본 관찰이야"뿐이었다 — **왜 아무것도 없는지를 말하지 않았다.**
+
+          이제 헤드라인(= 연결이 부족하다)과 `omissions`(= 무엇이 더 쌓이면 열리는지)를
+          함께 보여준다. 없는 것을 팔지 않으면서, 없는 이유는 알려준다(§14.1).
+        */}
+        {/*
+          §28 — Sparse에는 **자료를 모아 든 러비(`connect`)를 쓰지 않는다.** 근거가
+          부족한 화면에 자료 뭉치를 든 그림을 놓으면 '많이 찾았다'로 읽힌다. 축하·하트
+          계열은 애초에 이 리포트 어디에도 쓰지 않는다.
+        */}
+        <section className="flex flex-col gap-2">
+          <div className="flex items-center gap-3">
+            <Lovy pose="question" size={LOVY_SIZE.reportHeader} decorative />
+            <h2 className="min-w-0 text-section keep-all font-semibold">
+              {report.overview.headline}
+            </h2>
+          </div>
+          <p className="text-[12.5px] keep-all leading-relaxed text-ink-sub">
+            {report.overview.subcopy}
+          </p>
+          {/* §11 — 없는 것을 채우지 않는다는 약속을 러비의 말로 남긴다(고정 문구) */}
+          <p className="text-[12px] keep-all leading-relaxed text-ink-muted">
+            모르는 건 억지로 채우지 않을게.
+          </p>
+        </section>
+        {report.omissions.length > 0 ? (
+          <ul className="flex flex-col gap-2 rounded-card border border-dashed border-line-strong bg-sunken p-4">
+            {report.omissions.map((item) => (
+              <li key={item.id} className="text-[12px] keep-all leading-relaxed text-ink-sub">
+                {item.text}
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <NoticeBox>
           {report.limitations[0] ?? '아직 연결해서 볼 수 있는 신호가 부족해.'}
         </NoticeBox>
@@ -215,9 +295,38 @@ export function RelationshipDeepReportView({
     <div ref={rootRef} className={cn('flex flex-col gap-6', reveal && 'report-reveal')}>
       {header}
 
-      {/* 01 Overview */}
+      {/*
+        01 Overview — §11 · §12 **러비가 리포트를 시작한다.**
+
+        ⚠️ 헤드라인 숫자는 그대로 `report.overview.headline`이다(실제 Chapter 수).
+        여기서 새로 세지 않는다 — v1.45가 고친 '헤더 숫자와 화면 개수 불일치'를
+        화면에서 되살리지 않는다.
+
+        ⚠️ 캐릭터는 `flex-none` 84px이고 텍스트가 남은 폭을 전부 쓴다. 393px에서
+        제목이 캐릭터보다 시각적으로 우선이어야 한다(§12 · §26).
+      */}
       <section className="flex flex-col gap-2">
-        <h2 className="text-section keep-all font-semibold">{report.overview.headline}</h2>
+        {/*
+          ⚠️ 캐릭터와 나란히 놓는 것은 **제목까지**다. 처음에는 소개 문단까지 같은 행에
+          넣었는데, 375px에서 본문이 282px 폭 5줄로 눌렸다 — 캐릭터가 텍스트 위계를
+          방해하지 않아야 한다는 §12 조건을 글자 폭에서 어긴 상태였다.
+        */}
+        <div className="flex items-center gap-3">
+          <Lovy
+            pose={LOVY_REPORT_POSE}
+            size={LOVY_SIZE.reportHeader}
+            decorative
+            priority
+            float
+          />
+          <div className="flex min-w-0 flex-col gap-1">
+            {/* 고정 문구 — 이 리포트가 무료와 다른 점을 한 줄로 말한다(새 판정 아님) */}
+            <p className="text-[11px] font-semibold keep-all leading-snug text-mint-ink">
+              이번엔 한 조각씩 보는 게 아니라, 서로 연결해봤어.
+            </p>
+            <h2 className="text-section keep-all font-semibold">{report.overview.headline}</h2>
+          </div>
+        </div>
         <p className="text-[12.5px] keep-all leading-relaxed text-ink-sub">
           {report.overview.subcopy}
         </p>
@@ -231,7 +340,7 @@ export function RelationshipDeepReportView({
         §03 안에만 두면 실패해도 화면에 **아무 표시도 없이** 조용히 규칙 요약만 보여주게
         된다. Insight 카드가 하나라도 있으면(§02 또는 §03) 항상 여기서 보여준다.
       */}
-      {aiNarrative && connectionTotal > 0 ? (
+      {aiNarrative && chapterTotal > 0 ? (
         <div className="flex flex-col gap-2">
           {/*
             ⚠️ v1.27 — **화면에 AI 문장이 실제로 있을 때만 라벨을 붙인다.**
@@ -266,167 +375,101 @@ export function RelationshipDeepReportView({
       ) : null}
 
       {/*
-        01 CORE PATTERN (§16) — 첫 viewport에서 ₩1,900의 값이 즉시 보여야 한다.
-        '무료 결과 다시 보기'처럼 보이면 실패이므로, 연결된 정보 종류 수와 가장 중요한
-        연결 하나를 먼저 놓는다. 연결이 하나도 없으면 이 블록 자체가 없다.
+        02 REPORT SUMMARY (§6.2) — Accordion을 펼치기 전에 한 화면에서 보이는 요약.
+
+        ⚠️ **여기서 새 내용을 만들지 않는다.** 이미 선정된 Chapter Top 1~3의 preview이고
+        제목·근거 종류 수·강조 문장 전부 그 Chapter의 값 그대로다. 요약이 아래 본문과
+        다른 말을 하면 리포트가 두 벌이 된다.
       */}
-      {report.corePattern ? (
+      {summaryChapters.length > 0 ? (
         <section className="flex flex-col gap-2.5">
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <SectionLabel>가장 중요한 연결</SectionLabel>
-            <span className="text-[11px] font-semibold tnum text-ink-muted">
-              정보 {report.corePattern.connectedSourceCount}종 · 연결{' '}
-              {report.corePattern.connectionCount}개
-            </span>
-          </div>
-          <DeepConnectionCard
-            connection={report.corePattern.connection}
-            variant="core"
-            funnelAnalysisId={funnelAnalysisId}
-          />
-        </section>
-      ) : null}
-
-      {/* 02 CONNECTIONS — 나머지 연결. 카드 나열이 아니라 divider 목록이다(§42) */}
-      {report.connections.length > 0 || report.approachInsight ? (
-        <section className="flex flex-col gap-2.5">
-          <SectionLabel>이어서 보이는 연결</SectionLabel>
-          <div className="flex flex-col">
-            {report.connections.map((connection) => (
-              <DeepConnectionCard
-                key={connection.id}
-                connection={connection}
-                funnelAnalysisId={funnelAnalysisId}
-              />
-            ))}
-          </div>
-
-          {/* Target Preference × 상대 축 × 내 축. 무료 힌트를 대체하지 않는다 */}
-          {report.approachInsight ? (
-            <div className="flex flex-col gap-1.5 border-t border-line-soft pt-4">
-              <p className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
-                상대 정보 · 관계 신호 연결
-              </p>
-              <p className="text-[13px] font-medium keep-all">{report.approachInsight.title}</p>
-              <p className="text-[12.5px] keep-all leading-relaxed text-ink-sub">
-                {report.approachInsight.text}
-              </p>
-            </div>
-          ) : null}
-        </section>
-      ) : null}
-
-      {/*
-        03 SINGLE NOTES — source **종류**가 1개인 관찰. 연결 섹션과 섞지 않는다
-        (cross-source 우선). 숨기지도 않는다 — 근거는 있지만 아직 이어지지 않았다는
-        사실 자체가 정보다.
-
-        ⚠️ v1.26 History 실측에서 라벨을 고쳤다. 예전 라벨은 "아직 **하나의 근거**만 있는
-        관찰"이었는데, 반복 신호(REPEATED_SIGNAL)는 source 종류가 `history` 하나뿐이어도
-        **근거는 2개 이상**이다(과거 기록 2건). "근거가 하나"라고 말하면 사실이 아니다.
-        이 섹션의 기준은 근거 수가 아니라 **다른 자료와 이어졌는지**다.
-      */}
-      {report.singleSourceNotes.length > 0 ? (
-        <section className="flex flex-col gap-2">
-          <SectionLabel>아직 다른 자료와 이어지지 않은 관찰</SectionLabel>
+          <SectionLabel>이번 리포트에서 가장 중요한 연결</SectionLabel>
           <ul className="flex flex-col gap-2">
-            {report.singleSourceNotes.map((note) => (
-              <li key={note.id} className="flex flex-col gap-0.5">
-                <span className="text-[10px] font-semibold tracking-[0.06em] text-ink-faint">
-                  {note.sourceLabels.join(" · ")}
-                </span>
-                <span className="text-[12px] keep-all leading-relaxed text-ink-sub">
-                  {note.ruleSummary}
-                </span>
+            {summaryChapters.map((chapter) => (
+              <li
+                key={chapter.id}
+                className="flex flex-col gap-1.5 rounded-card border border-line bg-surface px-4 py-3.5"
+              >
+                <div className="flex items-baseline gap-2">
+                  <span className="flex-none text-[11px] font-semibold tnum text-ink-faint">
+                    {String(chapter.index).padStart(2, '0')}
+                  </span>
+                  <p className="min-w-0 text-[13.5px] font-semibold keep-all leading-snug">
+                    {chapter.title}
+                  </p>
+                </div>
+                {/* 무엇을 이었는지 — 근거 종류 수는 실제 값이다(가짜 숫자를 만들지 않는다) */}
+                <p className="text-[10.5px] font-semibold tracking-[0.04em] text-mint-ink">
+                  {chapter.eyebrow}
+                  {chapter.sourceGroups.length > 0 ? ` · 자료 ${chapter.sourceGroups.length}종` : ''}
+                </p>
+                <p className="text-[12.5px] keep-all leading-relaxed text-ink-sub">
+                  {chapter.deterministicTakeaway}
+                </p>
               </li>
             ))}
           </ul>
         </section>
       ) : null}
-      {/* 07 History Deep — 기존 buildHistoryDetail 재사용. 기록 2개 미만이면 섹션 자체가 없다 */}
-      {report.historyDeep?.available ? (
-        <section className="flex flex-col gap-2.5">
-          <SectionLabel>과거 관찰과 지금</SectionLabel>
-          <PremiumDetailView report={report.historyDeep} />
+
+      {/*
+        03 CHAPTERS (§13.1) — Accordion.
+
+        ⚠️ **전체 N개가 사용자가 펼치기 전에 보여야 한다.** 섹션 라벨 옆의 `N개 챕터`와
+        각 header의 `02/8`이 그 역할을 한다. 숫자는 하드코딩이 아니라 실제 배열 길이다.
+      */}
+      {report.chapters.length > 0 ? (
+        <section className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <SectionLabel>관계 연결 리포트</SectionLabel>
+            <span className="text-[11px] font-semibold tnum text-ink-muted">
+              전체 {report.chapters.length}개
+            </span>
+          </div>
+          <PremiumChapterAccordion
+            chapters={report.chapters}
+            tense={report.tense}
+            allowsOutwardAction={report.allowsOutwardAction}
+            funnelAnalysisId={funnelAnalysisId}
+          />
         </section>
       ) : null}
 
       {/*
-        05 TRY THIS (§33) — **처방이 아니다.** TRY / CHECK / NOTICE / REFLECT로만 말한다.
-        질문은 무료 질문을 반복하지 않는다 — 연결 자체를 상대에게 검증하는 질문이다(§32).
+        Target Preference × 상대 축 × 내 축 (v1.15 §5).
 
-        v1.40.1 §38.2 — 제목이 하드코딩이 아니다. 무료 화면 `04 NOW WHAT`이 쓰는
-        `STAGE_JOB_COPY[job].nowWhatTitle`을 리포트가 담아 온다(`actionSectionTitle`).
-        v1.40까지는 여기가 항상 `그래서 무엇을 확인할까`였고, 그래서 관계가 끝났다고
-        답한 사용자도 유료 리포트에서 `확인할까`를 읽었다 — 무료 화면은 같은 자리에
-        이미 `그래서 뭐가 남았을까`를 주고 있었다. 두 화면이 서로 다른 말을 했다.
-        ⚠️ 새 copy를 만들지 않았다. 이 컴포넌트는 Job을 모르고, 문구를 고르지도 않는다.
+        ⚠️ Chapter로 만들지 않았다. 이 문장은 cross-source **연결**이 아니라 무료 힌트가
+        왜 지금 이 관계 맥락에서 의미가 있는지를 말하는 보조 블록이고, Chapter로 올리면
+        근거 2종 규칙을 만족하지 못한 것을 Chapter라고 부르게 된다(§8).
+        `ended`에서는 애초에 null이다(`allowsOutwardAction`).
       */}
-      {report.actions.length > 0 || report.connectionQuestions.length > 0 ? (
-        <section className="flex flex-col gap-3">
-          <SectionLabel>{report.actionSectionTitle}</SectionLabel>
-
-          {report.actions.length > 0 ? (
-            <ul className="flex flex-col">
-              {report.actions.map((action) => (
-                <li
-                  key={action.kind}
-                  className="flex gap-3 border-t border-line-soft py-3 first:border-t-0 first:pt-0"
-                >
-                  {/* v1.40.1 — `REFLECT`(7자)가 추가돼 48px에서 넘쳤다. 폭만 늘렸다 */}
-                  <span className="w-[58px] flex-none text-[10px] font-semibold tracking-[0.1em] text-mint-ink">
-                    {action.kind}
-                  </span>
-                  <span className="min-w-0 text-[12.5px] keep-all leading-relaxed">
-                    {action.text}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-
-          {report.connectionQuestions.length > 0 ? (
-            <ul className="flex flex-col gap-2.5">
-              {report.connectionQuestions.map((item) => (
-                <li
-                  key={item.question.id}
-                  className="flex flex-col gap-1.5 rounded-row border border-line bg-surface px-3.5 py-3"
-                >
-                  <p className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
-                    {item.question.tag}
-                  </p>
-                  <p className="text-caption keep-all leading-relaxed">{item.question.text}</p>
-                  {/* 왜 이 질문인지 — 근거와 붙어 있어야 한다 */}
-                  <p className="text-[11px] keep-all leading-relaxed text-ink-muted">{item.why}</p>
-                </li>
-              ))}
-            </ul>
-          ) : null}
+      {report.approachInsight ? (
+        <section className="flex flex-col gap-1.5">
+          <SectionLabel>상대 정보 · 관계 신호 연결</SectionLabel>
+          <p className="text-[13px] font-medium keep-all">{report.approachInsight.title}</p>
+          <p className="text-[12.5px] keep-all leading-relaxed text-ink-sub">
+            {report.approachInsight.text}
+          </p>
         </section>
       ) : null}
 
       {/*
-        v1.26 P3-3 — 여기 있던 `08 러비의 최종 관찰`을 제거했다.
-        실측에서 그 섹션의 첫 문장이 위 CORE PATTERN의 `ruleSummary`와 **글자 그대로
-        같았고**(둘 다 `insights[0]`을 읽었다), 근거 목록도 CORE PATTERN의 근거를
-        다시 나열했다. 같은 문장을 리포트 안에서 두 번 보여주면 §22 위반이다.
-        마무리는 아래 LOVY DEEP OBSERVATION 하나가 맡는다.
+        04 이번에 만들지 않은 것 (§14.1)
+
+        ⚠️ **Chapter 수에 포함하지 않는다.** 그리고 locked teaser가 아니다 — 결제로
+        열리는 것이 아니라 데이터가 쌓이면 열린다. 그래서 자물쇠 아이콘도, 개수도
+        붙이지 않는다.
       */}
-      {/*
-        §25 · §26 — 무료 Observation보다 한 단계 깊은 러비의 관찰 + 관계 철학 질문 하나.
-        **실제 연결 데이터에서만** 나온다(연결이 없으면 null) — 뜬금없는 명언을 붙이지 않는다.
-      */}
-      {report.lovyObservation ? (
-        <section className="flex flex-col gap-2.5 border-l-2 border-mint pl-3.5">
-          <p className="text-[10px] font-semibold tracking-[0.16em] text-mint-ink">
-            LOVY DEEP OBSERVATION
-          </p>
-          <p className="text-[13px] keep-all leading-relaxed text-[#555]">
-            {report.lovyObservation.observation}
-          </p>
-          <p className="text-[13.5px] font-medium keep-all leading-relaxed text-ink">
-            {report.lovyObservation.question}
-          </p>
+      {report.omissions.length > 0 ? (
+        <section className="flex flex-col gap-2">
+          <SectionLabel>아직 만들지 않은 연결</SectionLabel>
+          <ul className="flex flex-col gap-2 rounded-card border border-dashed border-line-strong bg-sunken p-4">
+            {report.omissions.map((item) => (
+              <li key={item.id} className="text-[12px] keep-all leading-relaxed text-ink-sub">
+                {item.text}
+              </li>
+            ))}
+          </ul>
         </section>
       ) : null}
 

@@ -66,7 +66,7 @@ function PairConnector() {
 /**
  * **내 답변 안에서 함께 나타난 두 신호** (§23-03)
  *
- * Premium의 `DeepConnectionCard`와 같은 규칙을 따른다 — 근거를 숨기지 않고,
+ * Premium의 `PremiumChapterAccordion`과 같은 규칙을 따른다 — 근거를 숨기지 않고,
  * **말할 수 없는 것(`limitation`)을 항상 함께 보여준다.** 다만 이어지는 것이
  * '나와 상대'가 아니라 '내 답변 두 개'라서 라벨이 `함께 나타남`이다.
  */

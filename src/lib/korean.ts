@@ -16,6 +16,17 @@ export function withSubjectParticle(word: string): string {
   return word + josa(word, '이', '가');
 }
 
+/**
+ * 서술격 조사 이야/야 (v1.45)
+ *
+ * Premium Chapter의 강조 문장이 축 라벨을 문장 끝에 놓는다
+ * (`중요한 건 ○○야`). 하드코딩하면 받침 있는 라벨에서 `연락야`·`애정 표현야`가 된다 —
+ * 실측에서 실제로 그렇게 나왔다.
+ */
+export function withCopula(word: string): string {
+  return word + josa(word, '이야', '야');
+}
+
 function josa(word: string, withBatchim: string, withoutBatchim: string): string {
   const lastChar = word.trim().at(-1);
   if (!lastChar) return withoutBatchim;

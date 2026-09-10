@@ -186,6 +186,8 @@ function PremiumPreviewView() {
           historyReport,
           repeatedSignals: repeated,
           target: answers.target,
+          // v1.45 — Chapter Engine의 FREE 중복 게이트. 이 화면은 이미 `mirror`를 갖고 있다
+          mirror,
           lifecycle,
         });
     }
