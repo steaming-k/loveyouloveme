@@ -298,6 +298,22 @@ function reportedSceneStrings(result) {
  * 읽혔고, `premium/page.tsx` 주석의 `성공 callback`이 '결제 성공 주장'으로 읽혔다.
  * **주석은 코드가 아니다.**
  */
+/** 디렉터리를 재귀로 훑는다 — AUDIO-01이 소스와 자산을 전수 검사한다 */
+async function listFilesUnder(dir, keep) {
+  const { readdir } = await import('node:fs/promises');
+  const out = [];
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...(await listFilesUnder(full, keep)));
+    else if (keep(entry.name)) out.push(full);
+  }
+  return out;
+}
+
+const listSourceFiles = (dir) =>
+  listFilesUnder(dir, (name) => name.endsWith('.ts') || name.endsWith('.tsx'));
+const listPublicFiles = (dir) => listFilesUnder(dir, () => true);
+
 function stripComments(source) {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
@@ -2197,6 +2213,189 @@ console.log('\nEVT-01 ~ EVT-14 — 관계 사건 (User-reported Relationship Eve
     historyEntryBlock.length > 0 && !historyEntryBlock.includes('event'),
     historyEntryBlock.slice(0, 120),
   );
+}
+
+/* ═══ UT-1 P2 · 입력 friction ═══════════════════════════════════════════════
+
+   ⚠️ **Core 로직을 바꾸지 않았다는 것까지 함께 고정한다.** 상한을 올리는 변경은
+   숫자 하나만 바뀌어 보이지만, 그 값이 점수·판정으로 새면 P2의 금지선을 넘는다.
+   그래서 상한값뿐 아니라 '그 값을 누가 읽는가'도 소스로 본다. */
+{
+  const labelsSrc = stripComments(await readFile(join(ROOT, 'src/data/labels.ts'), 'utf8'));
+  const prefSrc = stripComments(await readFile(join(ROOT, 'src/data/targetPreferences.ts'), 'utf8'));
+  const pastViewSrc = stripComments(
+    await readFile(join(ROOT, 'src/app/profile/past/[step]/PastStepView.tsx'), 'utf8'),
+  );
+  const targetSrc = stripComments(await readFile(join(ROOT, 'src/app/target/page.tsx'), 'utf8'));
+  const compatSrc = stripComments(
+    await readFile(join(ROOT, 'src/lib/logic/compatibility.ts'), 'utf8'),
+  );
+
+  /* ── INPUT-01 · 중요 가치 max 5 ─────────────────────────────────────── */
+  check('INPUT-01 · 중요 가치 상한이 5다', /MAX_PAST_FACTORS = 5/.test(labelsSrc), null);
+  /**
+   * 상한이 5가 된 구조적 이유 — Mirror 축이 5개인데 상한이 4라 **어떤 사용자도**
+   * 5축 전부를 중요하다고 표시할 수 없었다. 그 관계를 값으로 남긴다.
+   */
+  const mirrorAxisCount = (
+    stripComments(await readFile(join(ROOT, 'src/data/axes.ts'), 'utf8')).match(
+      /\{ key: '\w+', label: '[^']+' \}/g,
+    ) ?? []
+  ).length;
+  check(
+    'INPUT-01 · 상한이 Mirror 축 수(5) 이상이다 (5축 전부를 고를 수 있다)',
+    mirrorAxisCount === 5,
+    { mirrorAxisCount },
+  );
+  check(
+    'INPUT-01 · counter/help text가 상수에서 나온다 (숫자를 손으로 적지 않는다)',
+    pastViewSrc.includes('최대 ${MAX_PAST_FACTORS}개') &&
+      pastViewSrc.includes('최대 ${MAX_PAST_FACTORS}개까지 고를 수 있어'),
+    null,
+  );
+
+  /* ── INPUT-02 · 기존 저장 데이터 호환 ────────────────────────────────── */
+  const legacyFour = await run({
+    ...FULL,
+    experience: { ...EXPERIENCE, important: ['contact', 'alone', 'conflict', 'affection'] },
+  });
+  const nowFive = await run({
+    ...FULL,
+    experience: {
+      ...EXPERIENCE,
+      important: ['contact', 'alone', 'conflict', 'affection', 'hobby'],
+    },
+  });
+  check(
+    'INPUT-02 · 4개까지 저장된 기존 세션이 그대로 동작한다',
+    legacyFour.ok === true && legacyFour.mirrorStates.length > 0,
+    legacyFour.mirrorStates,
+  );
+  check(
+    'INPUT-02 · 5번째 선택은 그 축의 판정에만 반영된다 (점수는 읽지 않는다)',
+    legacyFour.compatibility.score === nowFive.compatibility.score &&
+      legacyFour.compatibility.comparedCount === nowFive.compatibility.comparedCount,
+    { four: legacyFour.compatibility.score, five: nowFive.compatibility.score },
+  );
+  check(
+    'INPUT-02 · 동기화율 계산이 experience를 아예 읽지 않는다 (소스 고정)',
+    !/experience/.test(compatSrc),
+    null,
+  );
+
+  /* ── INTEREST-01 · 좋아하는 것 상한 확대 ─────────────────────────────── */
+  check('INTEREST-01 · 상한이 5보다 크다', /TARGET_INTEREST_MAX = 10/.test(prefSrc), null);
+  check(
+    'INTEREST-01 · counter가 상수에서 나온다',
+    targetSrc.includes('최대 ${TARGET_INTEREST_MAX}개까지'),
+    null,
+  );
+  /**
+   * bounded의 의미 — 개수를 늘려도 **AI context는 커지지 않는다.** 관심사는 애초에
+   * Provider로 나가지 않고(§EVT-14와 같은 경계), 문장 생성은 `interests[0]` 하나만 읽는다.
+   */
+  const contextSrc = stripComments(
+    await readFile(join(ROOT, 'src/services/ai/contextBuilders.ts'), 'utf8'),
+  );
+  check(
+    'INTEREST-01 · 관심사가 AI Provider로 나가지 않는다 (개수를 늘려도 context 불변)',
+    !/interests/.test(contextSrc),
+    null,
+  );
+  const hintsSrc = stripComments(
+    await readFile(join(ROOT, 'src/lib/logic/approachHints.ts'), 'utf8'),
+  );
+  check(
+    'INTEREST-01 · 문장 생성은 대표 1개만 읽는다 (목록 길이에 비례해 늘지 않는다)',
+    /interests\[0\]/.test(hintsSrc),
+    null,
+  );
+  /* 관심사는 여전히 판정에 들어가지 않는다(§11) */
+  const withMany = await run({
+    ...FULL,
+    target: {
+      ...TARGET,
+      preferences: {
+        interests: Array.from({ length: 10 }, (_, index) => ({
+          id: `i-${index}`,
+          category: 'movie_show',
+          label: `관심사 ${index}`,
+        })),
+      },
+    },
+  });
+  check(
+    'INTEREST-01 · 10개를 넣어도 동기화율·comparedCount가 그대로다 (§11)',
+    withMany.compatibility.score === full.compatibility.score &&
+      withMany.compatibility.comparedCount === full.compatibility.comparedCount,
+    { many: withMany.compatibility.score, base: full.compatibility.score },
+  );
+
+  /* ── BIRTH-01~03 · 출생시간 정규화 ──────────────────────────────────── */
+  const birth = await run({
+    ...FULL,
+    birthTimeInputs: ['1030', '10:30', '10.30', '930', '9:30', '2560', '999', 'abc', '', '10'],
+  });
+  const byRaw = new Map(birth.birthTimeChecks.map((item) => [item.raw, item]));
+  const ok = (raw, stored) =>
+    byRaw.get(raw)?.stored === stored && byRaw.get(raw)?.error === null;
+
+  check('BIRTH-01 · `1030` → `10:30`', ok('1030', '10:30'), byRaw.get('1030'));
+  check('BIRTH-02 · `10:30` → `10:30`', ok('10:30', '10:30'), byRaw.get('10:30'));
+  check('BIRTH-02 · `10.30`도 같은 값이 된다', ok('10.30', '10:30'), byRaw.get('10.30'));
+  /** UT-1 P2 §3에서 새로 받아주기로 한 세 자리 입력 */
+  check('BIRTH-02 · `930` → `09:30`', ok('930', '09:30'), byRaw.get('930'));
+  check('BIRTH-02 · `9:30` → `09:30`', ok('9:30', '09:30'), byRaw.get('9:30'));
+
+  /* 잘못된 입력은 **조용히 통과하지 않는다.** 어떤 라벨이든 error가 있어야 한다 */
+  for (const raw of ['2560', '999', 'abc', '10']) {
+    check(
+      `BIRTH-03 · \`${raw}\`는 오류로 분류된다`,
+      byRaw.get(raw)?.error !== null && byRaw.get(raw)?.error !== undefined,
+      byRaw.get(raw),
+    );
+  }
+  check(
+    'BIRTH-03 · `2560`은 형식이 아니라 없는 시간으로 분류된다',
+    byRaw.get('2560')?.stored === '25:60' && byRaw.get('2560')?.error === 'invalid',
+    byRaw.get('2560'),
+  );
+  check(
+    'BIRTH-03 · 잘못된 입력을 조용히 지우지 않는다 (사용자가 고칠 수 있게 원문을 남긴다)',
+    byRaw.get('abc')?.stored === 'abc',
+    byRaw.get('abc'),
+  );
+
+  /* 출생시간 Optional 계약 — 시간이 없어도 날짜 기반 렌즈는 그대로 나온다 */
+  const birthSrc = stripComments(await readFile(join(ROOT, 'src/lib/logic/birth.ts'), 'utf8'));
+  check(
+    'BIRTH-03 · 시간이 필요한 계산은 hasUsableBirthTime이 막는다 (Optional 유지)',
+    /export function hasUsableBirthTime/.test(birthSrc),
+    null,
+  );
+  check(
+    'BIRTH-03 · 요약 줄도 유효한 시간만 보여준다 (틀린 입력이 화면으로 새지 않는다)',
+    /if \(hasUsableBirthTime\(profile\)\) parts\.push/.test(birthSrc),
+    null,
+  );
+
+  /* ── AUDIO-01 · 앱이 소리를 내지 않는다 ─────────────────────────────── */
+  const soundOffenders = [];
+  for (const file of await listSourceFiles(join(ROOT, 'src'))) {
+    const code = stripComments(await readFile(file, 'utf8'));
+    if (/new\s+Audio\(|AudioContext|<audio|\.mp3|\.wav|\.ogg|\.m4a/.test(code)) {
+      soundOffenders.push(file.slice(ROOT.length + 1));
+    }
+  }
+  check('AUDIO-01 · 소스에 오디오 호출·자산 참조가 0건이다', soundOffenders.length === 0, soundOffenders);
+  const assets = await listPublicFiles(join(ROOT, 'public'));
+  const mediaAssets = assets.filter((file) => /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(file));
+  check('AUDIO-01 · public에 오디오 자산이 0개다', mediaAssets.length === 0, mediaAssets);
+  const pkg = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8'));
+  const soundDeps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).filter((name) =>
+    /howler|use-sound|tone|audio/i.test(name),
+  );
+  check('AUDIO-01 · 오디오 의존성이 0개다', soundDeps.length === 0, soundDeps);
 }
 
 /* ═══ EVENT-01~03 · 기억나는 장면의 종류는 '사용자가 고른 것'이다 (P1-B §5) ══

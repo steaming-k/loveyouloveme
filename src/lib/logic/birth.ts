@@ -62,6 +62,33 @@ export function validateBirthTime(raw: string | null): BirthTimeError {
   return null;
 }
 
+/**
+ * 사용자가 적은 시간을 `HH:MM`으로 맞춘다 (UT-1 P2 §3).
+ *
+ * ```
+ * 1030 · 10:30 · 10.30 → 10:30
+ * 930  · 9:30          → 09:30     ← v1.46.3까지는 둘 다 형식 오류였다
+ * ```
+ *
+ * ⚠️ **세 자리를 `HMM`으로 읽는다.** `930`은 9시 30분이지 93시 0분이 아니다.
+ * 그래서 `999`는 `09:99`가 되고 아래 `validateBirthTime`이 **분 99로 걸러낸다** —
+ * 형식 오류가 아니라 '없는 시간'으로 분류될 뿐, 통과하지는 않는다.
+ *
+ * ⚠️ **여기서 유효성을 판정하지 않는다.** 이 함수는 모양만 맞추고, 시·분 범위 검사는
+ * `validateBirthTime` 하나가 한다 — 검사가 두 벌이 되면 갈린다. 모양조차 못 맞추면
+ * `null`을 돌려주고, 호출부는 사용자가 적은 값을 그대로 둬서 화면에 오류가 보이게
+ * 한다(조용히 지우지 않는다).
+ *
+ * ⚠️ 출생시간은 **여전히 Optional이다.** 이 함수가 생겼다고 필수가 되지 않는다 —
+ * 시간이 필요한 계산은 전부 `hasUsableBirthTime`이 막고 있다(§7 Progressive Input).
+ */
+export function normalizeBirthTime(input: string): string | null {
+  const digits = input.replace(/[^\d]/g, '');
+  if (digits.length === 4) return `${digits.slice(0, 2)}:${digits.slice(2, 4)}`;
+  if (digits.length === 3) return `0${digits.slice(0, 1)}:${digits.slice(1, 3)}`;
+  return null;
+}
+
 /** 이 프로필로 날짜 기반 계산이 가능한지 */
 export function isBirthDateUsable(profile: BirthProfile, today: Date): boolean {
   return validateBirthDate(profile.date, today) === null;
@@ -105,7 +132,16 @@ export function formatBirthSummary(profile: BirthProfile): string {
 
   const parts = [profile.date.replace(/-/g, '.'), CALENDAR_LABEL[profile.calendarType]];
 
-  if (profile.time) parts.push(profile.time);
+  /**
+   * ⚠️ UT-1 P2 §3 — **유효한 시간만 보여준다.**
+   *
+   * 형식이 틀린 입력은 사용자가 고칠 수 있도록 세션에 **적은 그대로** 남는다
+   * (`BirthProfileForm`의 `stored ?? raw`). 그래서 예전에는 `profile.time`만 보고
+   * `1995.08.12 · 양력 · 999`처럼 요약 줄에 그 값이 그대로 나갈 수 있었다.
+   * 계산은 `hasUsableBirthTime`이 이미 막고 있었으므로 결과가 틀린 적은 없지만,
+   * 요약 줄은 그 게이트를 지나지 않았다.
+   */
+  if (hasUsableBirthTime(profile)) parts.push(profile.time!);
   else if (profile.timeUnknown) parts.push('시간 모름');
 
   if (profile.location?.city) parts.push(profile.location.city);

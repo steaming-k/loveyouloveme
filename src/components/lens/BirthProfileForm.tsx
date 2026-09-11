@@ -3,7 +3,7 @@
 import { ChoiceChip } from '@/components/common/ChoiceChip';
 import { InlineError, SectionLabel } from '@/components/common/primitives';
 import { BIRTH_COPY } from '@/data/copy';
-import { validateBirthDate, validateBirthTime } from '@/lib/logic/birth';
+import { normalizeBirthTime, validateBirthDate, validateBirthTime } from '@/lib/logic/birth';
 import type { BirthProfile, CalendarType } from '@/types';
 
 /**
@@ -31,11 +31,11 @@ function toStoredDate(input: string): string | null {
   return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
 }
 
-function toStoredTime(input: string): string | null {
-  const digits = input.replace(/[^\d]/g, '');
-  if (digits.length !== 4) return null;
-  return `${digits.slice(0, 2)}:${digits.slice(2, 4)}`;
-}
+/*
+  UT-1 P2 §3 — 시간 정규화는 `logic/birth.ts`로 옮겼다(`normalizeBirthTime`).
+  검사(`validateBirthTime`) 바로 옆에 두어야 둘이 갈라지지 않고, fixture가
+  화면을 열지 않고도 같은 함수를 부를 수 있다.
+*/
 
 export function BirthProfileForm({
   profile,
@@ -131,7 +131,7 @@ export function BirthProfileForm({
           onBlur={(event) => {
             const raw = event.target.value.trim();
             if (raw === '') return onChange({ time: null });
-            const stored = toStoredTime(raw);
+            const stored = normalizeBirthTime(raw);
             onChange({ time: stored ?? raw });
           }}
           aria-invalid={timeMessage ? true : undefined}

@@ -496,7 +496,7 @@ export interface AdaptiveAnswer {
 }
 
 export interface RelationshipExperience {
-  /** 생각보다 중요했던 요소 (최대 4개) */
+  /** 생각보다 중요했던 요소 (최대 `MAX_PAST_FACTORS`개) */
   important: PastFactor[];
   hardest: HardestMoment | null;
   /** 연애 전 생각한 나 vs 실제 연애 속 나 */
@@ -703,7 +703,7 @@ export type TargetInterestCategory =
   | 'home'
   | 'custom';
 
-/** 최대 5개(§5). `category==='custom'`이면 `label`이 사용자가 직접 적은 문장이다(§6) */
+/** 최대 `TARGET_INTEREST_MAX`개(§5). `category==='custom'`이면 `label`이 사용자가 직접 적은 문장이다(§6) */
 export interface TargetInterest {
   id: string;
   category: TargetInterestCategory;

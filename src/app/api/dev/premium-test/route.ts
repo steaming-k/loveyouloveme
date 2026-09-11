@@ -1,5 +1,6 @@
 import { MIRROR_AXES } from '@/data/axes';
 import { resolveEvidenceRefs, type EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
+import { normalizeBirthTime, validateBirthTime } from '@/lib/logic/birth';
 import { buildCompatibility } from '@/lib/logic/compatibility';
 import { buildCrossSourceInsights } from '@/lib/logic/crossSourceInsights';
 import { buildFirstContactReport } from '@/lib/logic/firstContact';
@@ -81,6 +82,15 @@ interface PremiumTestRequest {
   mbti?: MbtiType | null;
   /** v1.46 PremiumLens — 관계 렌즈(사주·별자리)의 재료. 생략하면 두 렌즈가 unavailable이다 */
   birthProfile?: Partial<BirthProfile>;
+  /**
+   * UT-1 P2 §3 — 출생시간 **입력 정규화 probe.**
+   *
+   * 사용자가 적은 문자열을 넣으면 화면과 **같은 두 함수**(`normalizeBirthTime` →
+   * `validateBirthTime`)를 통과시킨 결과를 돌려준다. 브라우저를 열지 않고
+   * `1030`/`10:30`/`2560`/`999`/문자를 값으로 고정하기 위한 것이고,
+   * 리포트 계산에는 관여하지 않는다.
+   */
+  birthTimeInputs?: string[];
   /** 저장돼 있다고 가정할 기록 (오래된 것 → 최신) */
   entries?: RelationshipHistoryEntry[];
   observedAnalysis?: ObservedProfileResult | null;
@@ -268,6 +278,15 @@ export async function POST(request: Request): Promise<Response> {
      *
      * ⚠️ 판정을 복제하지 않는다. 화면과 같은 함수를 같은 술어로 부른다.
      */
+    /**
+     * UT-1 P2 §3 — 입력 정규화 결과. 화면과 같은 함수를 같은 순서로 부른다.
+     * `stored`는 화면이 세션에 넣는 값과 같다(`normalize` 실패 시 원문 그대로).
+     */
+    birthTimeChecks: (body.birthTimeInputs ?? []).map((raw) => {
+      const normalized = normalizeBirthTime(raw);
+      const stored = normalized ?? raw;
+      return { raw, normalized, stored, error: validateBirthTime(stored) };
+    }),
     premiumEntry: (() => {
       const soloMode = soloModeOfTarget(answers.target);
       const feature = premiumFeatureState('relationship_deep_report', resolvePrice('A'), {

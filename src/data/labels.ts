@@ -148,4 +148,19 @@ export const PAST_FACTOR_ORDER: PastFactor[] = [
   'stable',
 ];
 
-export const MAX_PAST_FACTORS = 4;
+/**
+ * '이전 관계에서 생각보다 중요했던 것' 최대 선택 수.
+ *
+ * ⚠️ UT-1 P2 §1 — **4 → 5.** 참가자들이 4개에서 막혔다고 답했고, 구조적으로도
+ * 4는 어긋난 값이었다: Relationship Mirror는 축이 **5개**(`MIRROR_AXES`)인데
+ * 상한이 4라 **어떤 사용자도 5축 전부를 중요하다고 표시할 수 없었다.**
+ *
+ * ⚠️ **점수 공식은 한 줄도 바뀌지 않는다.** 동기화율은 이 값을 읽지 않고
+ * (`declared` × `target`만 본다), Mirror는 이 목록을 **개수가 아니라 포함 여부**로
+ * 읽는다(`relationshipEvidence`의 `includes(axis)`). 그래서 상한이 올라가면
+ * 달라지는 것은 '사용자가 더 많이 알려줄 수 있다'는 것뿐이고, 판정 규칙은 그대로다.
+ *
+ * ⚠️ 기존 저장 데이터(4개 이하)는 그대로 유효하다 — 상한을 올리는 변경은 저장된
+ * 값을 무효화하지 않는다. 반대 방향(줄이기)이었다면 migration이 필요했을 것이다.
+ */
+export const MAX_PAST_FACTORS = 5;
