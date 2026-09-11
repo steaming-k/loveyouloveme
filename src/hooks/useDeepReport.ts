@@ -20,6 +20,7 @@ import {
   relationshipTenseOf,
   resolveRelationshipContext,
 } from '@/lib/logic/relationshipStage';
+import { soloModeOfTarget } from '@/lib/logic/soloMode';
 import { usePremiumLensAi } from '@/hooks/usePremiumLensAi';
 import { buildRelationshipDeepReport } from '@/services/premiumService';
 import { useSession } from '@/state/SessionProvider';
@@ -117,6 +118,13 @@ export function useDeepReport(enabled: boolean) {
     tense: relationshipTenseOf(job),
     allowsOutwardQuestions: jobAllowsOutwardQuestions(job),
     enabled,
+    /**
+     * v1.46.1 §6 — **렌즈 mode에서 다시 도출하지 않는다.** 세 렌즈가 전부 `self`여도
+     * 상대는 있을 수 있고(상대 MBTI·생일을 모르는 경우), 그 둘을 구분하는 판정은
+     * `soloModeOfTarget` 하나다 — `buildPremiumLensBundle`에 넘어가는 `hasTarget`과
+     * 같은 술어다(판정 source는 하나다).
+     */
+    targetExists: soloModeOfTarget(answers.target) !== 'no_target',
   });
 
   return { report, insights, resolverContext, analysisId, narrative, lensAi };

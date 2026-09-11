@@ -1,0 +1,27 @@
+{
+  "name": "lens_style_02_no_target_allowed",
+  "description": "STYLE-05 과필터 방지 대조군 — 상대가 **정말 없는** 사용자에게 '상대가 생기면 둘을 나란히 볼 수 있어'는 정확한 문장이다. 같은 어휘를 무조건 막으면 이 사용자의 결과가 통째로 사라진다. 검사는 targetExists가 true일 때만 돌아야 한다(v1.42 §40.14가 시제 검사에서 세운 비대칭과 같은 규칙).",
+  "task": "premium-mbti-lens",
+  "mode": "self",
+  "tense": "current",
+  "allowsOutwardQuestions": true,
+  "targetExists": false,
+  "raw": {
+    "summary": "지금은 네 쪽만 봤어. 상대가 생기면 같은 관점으로 둘을 나란히 놓을 수 있어.",
+    "units": [
+      {
+        "id": "mbti_self_energy",
+        "body": "상대가 없어서 이번에는 너만 봤어. 혼자 있는 시간으로 회복하는 쪽으로 분류됐어."
+      },
+      {
+        "id": "mbti_self_signal",
+        "body": "너는 같은 행동에서도 그게 무슨 뜻인지를 먼저 읽는 쪽이야. 최근에 그랬던 순간을 하나 떠올려봐."
+      }
+    ]
+  },
+  "expect": {
+    "unitIds": ["mbti_self_energy", "mbti_self_signal"],
+    "summaryEmpty": false,
+    "violations": []
+  }
+}

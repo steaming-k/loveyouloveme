@@ -3,6 +3,7 @@ import {
   CROSS_LENS_COPY,
   LENS_DISCLAIMER,
   LENS_LABEL,
+  LENS_SELF_COPY,
   LENS_THEME_LABEL,
   LENS_THEME_QUESTION,
   LENS_UNAVAILABLE_REASON,
@@ -63,6 +64,7 @@ import type {
   PremiumLensKind,
   PremiumLensReport,
   PremiumLensSectionUnit,
+  PremiumLensSelfReason,
   PremiumLensTheme,
   RelationshipEvent,
   ZodiacSign,
@@ -331,7 +333,12 @@ function mbtiCheckpoint(differing: readonly AxisKey[]): string {
   return '비슷하다고 넘어간 것 중에 사실 확인해본 적 없는 걸 하나 골라서 물어봐.';
 }
 
-function buildMbtiSelf(mine: MbtiType, declared: DeclaredPreference): PremiumLensReport {
+function buildMbtiSelf(
+  mine: MbtiType,
+  declared: DeclaredPreference,
+  selfReason: PremiumLensSelfReason,
+): PremiumLensReport {
+  const copy = LENS_SELF_COPY.mbti[selfReason];
   const energy = letterOf(mine, 'energy') as 'I' | 'E';
   const information = letterOf(mine, 'information') as 'S' | 'N';
   const decision = letterOf(mine, 'decision') as 'T' | 'F';
@@ -369,19 +376,19 @@ function buildMbtiSelf(mine: MbtiType, declared: DeclaredPreference): PremiumLen
     kind: 'mbti',
     label: LENS_LABEL.mbti,
     mode: 'self',
+    selfReason,
     headline: `${mine} — MBTI로 보는 관계 속의 나.`,
-    overview:
-      '유형 설명이 아니라, 이 분류로 봤을 때 관계에서 네가 어디에 힘을 쓰게 되는지를 봐. 상대가 생기면 같은 렌즈로 둘을 나란히 놓을 수 있어.',
+    overview: copy.overview,
     sections,
     checkpoint:
       '위 네 줄 중에 "이건 나랑 다른데" 싶은 게 있으면 그 줄을 기억해둬. 다음에 실제로 그 상황이 왔을 때 어느 쪽이 맞았는지 확인해보는 게 이 렌즈를 쓰는 방법이야.',
     basis: [
       { label: '나', value: mine },
-      { label: '상대', value: '입력 없음 — 이번엔 나만 봤어' },
+      { label: '상대', value: copy.basis },
       { label: '비교한 내 답', value: declaredAloneLabel(declared) },
     ],
     limitations: [
-      '상대 정보가 없어서 둘을 나란히 놓는 비교는 만들지 않았어.',
+      copy.limitation,
       'MBTI는 선호를 네 갈래로 나눈 분류라, 네가 실제로 어떻게 행동하는지는 설명하지 못해.',
     ],
     disclaimer: LENS_DISCLAIMER.mbti,
@@ -552,7 +559,12 @@ function relationThemeOf(relation: ReturnType<typeof elementRelation>): PremiumL
   return 'standard';
 }
 
-function buildSajuSelf(mine: DayPillar, mineLimits: readonly string[]): PremiumLensReport {
+function buildSajuSelf(
+  mine: DayPillar,
+  mineLimits: readonly string[],
+  selfReason: PremiumLensSelfReason,
+): PremiumLensReport {
+  const copy = LENS_SELF_COPY.saju[selfReason];
   const sections: PremiumLensSectionUnit[] = [
     {
       id: 'saju_self_pillar',
@@ -588,9 +600,9 @@ function buildSajuSelf(mine: DayPillar, mineLimits: readonly string[]): PremiumL
     kind: 'saju',
     label: LENS_LABEL.saju,
     mode: 'self',
+    selfReason,
     headline: `${mine.label}일 — 사주로 보는 관계 기준의 나.`,
-    overview:
-      '전통 명리에서 나를 가리키는 자리는 일간이야. 이 렌즈는 그 한 글자로 관계에서 힘이 어느 방향으로 나가는 것으로 읽히는지를 봐.',
+    overview: copy.overview,
     sections,
     checkpoint:
       '위에서 읽은 방향이 최근 관계에서도 그랬는지 하나만 떠올려봐. 맞지 않으면 그 프레임이 아니라 네 경험이 맞는 거야.',
@@ -600,10 +612,10 @@ function buildSajuSelf(mine: DayPillar, mineLimits: readonly string[]): PremiumL
         label: '일간 · 일지',
         value: `${mine.stem}(${ELEMENT_LABEL_KO[mine.stemElement]}) · ${mine.branch}(${ELEMENT_LABEL_KO[mine.branchElement]})`,
       },
-      { label: '상대 일주', value: '입력 없음 — 이번엔 나만 봤어' },
+      { label: '상대 일주', value: copy.basis },
       { label: '계산한 기둥', value: '일주 1개 (연주·월주·시주 미계산)' },
     ],
-    limitations: [SAJU_SCOPE_NOTE, ...mineLimits],
+    limitations: [copy.limitation, SAJU_SCOPE_NOTE, ...mineLimits],
     disclaimer: LENS_DISCLAIMER.saju,
     themes: dedupeThemes([
       SAJU_ELEMENT_THEME[mine.stemElement],
@@ -703,7 +715,9 @@ function buildZodiacSelf(
   mine: ZodiacSign,
   cusp: boolean,
   declared: DeclaredPreference,
+  selfReason: PremiumLensSelfReason,
 ): PremiumLensReport {
+  const copy = LENS_SELF_COPY.zodiac[selfReason];
   const element = ZODIAC_ELEMENT[mine];
   const modality = ZODIAC_MODALITY[mine];
 
@@ -735,9 +749,9 @@ function buildZodiacSelf(
     kind: 'zodiac',
     label: LENS_LABEL.zodiac,
     mode: 'self',
+    selfReason,
     headline: `${signLabel(mine)} — 별자리로 보는 관계 속의 나.`,
-    overview:
-      '별자리 한 줄 운세가 아니라, 관계에 대한 기대와 표현 방식을 상징으로 다시 보는 각도야. 태양궁에서 곧바로 따라오는 원소·양태까지만 쓴다.',
+    overview: copy.overview,
     sections,
     /**
      * ⚠️ 태양궁 질문(`ZODIAC_NOTES[sign].question`)을 **그대로 체크포인트로 쓰지 않는다.**
@@ -748,10 +762,10 @@ function buildZodiacSelf(
     checkpoint: `이 렌즈가 던지는 질문은 이거야 — "${ZODIAC_NOTES[mine].question}" 최근에 그랬던 순간을 하나 떠올려봐. 네 기억과 위 설명이 다르면, 맞는 쪽은 네 기억이야.`,
     basis: [
       { label: '내 태양궁', value: `${signLabel(mine)} · ${ELEMENT_LABEL[element]} · ${MODALITY_LABEL[modality]}` },
-      { label: '상대 태양궁', value: '입력 없음 — 이번엔 나만 봤어' },
+      { label: '상대 태양궁', value: copy.basis },
       { label: '계산 범위', value: '태양궁만 (달·상승궁 미계산)' },
     ],
-    limitations: zodiacLimitations(cusp, false),
+    limitations: [copy.limitation, ...zodiacLimitations(cusp, false)],
     disclaimer: LENS_DISCLAIMER.zodiac,
     themes: dedupeThemes([ZODIAC_ELEMENT_THEME[element], ZODIAC_MODALITY_THEME[modality]]),
   };
@@ -915,17 +929,24 @@ function unavailable(kind: PremiumLensKind, reason: string): PremiumLensEntry {
  * ⚠️ **렌즈마다 독립적으로 판정한다**(§6). `hasTarget`이 true여도 그 렌즈의
  * 상대 데이터가 없으면 `self`로 내려간다(LENS-10) — 상대가 있다는 이유만으로
  * pair 결과를 만들지 않는다.
+ *
+ * ⚠️ v1.46.1 — `self`가 된 **이유**를 함께 싣는다. 판정은 그대로다(무엇이 pair가
+ * 되는지는 한 글자도 바뀌지 않았다). 바뀐 것은 같은 `self` 안에서 `대상이 없다`와
+ * `대상은 있는데 이 렌즈의 값을 모른다`를 구분해 말하는 것뿐이다.
  */
 export function buildPremiumLensBundle(input: PremiumLensInput): PremiumLensBundle {
   const { selfMbti, targetMbti, selfBirth, targetBirth, hasTarget, declared, events, today } =
     input;
+
+  /** 상대가 있는데 이 렌즈의 값만 없는 경우와, 상대 자체가 없는 경우를 가른다 */
+  const selfReason: PremiumLensSelfReason = hasTarget ? 'target_data_missing' : 'no_target';
 
   /* ── MBTI ─────────────────────────────────────────────────────────── */
   const mbti: PremiumLensEntry = !selfMbti
     ? unavailable('mbti', LENS_UNAVAILABLE_REASON.mbtiNoSelf)
     : hasTarget && targetMbti
       ? buildMbtiPair(selfMbti, targetMbti, events)
-      : buildMbtiSelf(selfMbti, declared);
+      : buildMbtiSelf(selfMbti, declared, selfReason);
 
   /* ── 사주 ─────────────────────────────────────────────────────────── */
   const mineSaju = readSajuDay(selfBirth, today);
@@ -939,7 +960,7 @@ export function buildPremiumLensBundle(input: PremiumLensInput): PremiumLensBund
       )
     : theirsSaju
       ? buildSajuPair(mineSaju.pillar, theirsSaju.pillar, mineSaju.limitations, events)
-      : buildSajuSelf(mineSaju.pillar, mineSaju.limitations);
+      : buildSajuSelf(mineSaju.pillar, mineSaju.limitations, selfReason);
 
   /* ── 별자리 ────────────────────────────────────────────────────────── */
   const mineSign = getSunSign(selfBirth.date);
@@ -949,7 +970,7 @@ export function buildPremiumLensBundle(input: PremiumLensInput): PremiumLensBund
     ? unavailable('zodiac', LENS_UNAVAILABLE_REASON.zodiacNoSelf)
     : theirsSign
       ? buildZodiacPair(mineSign, theirsSign, cusp)
-      : buildZodiacSelf(mineSign, nearCusp(selfBirth.date), declared);
+      : buildZodiacSelf(mineSign, nearCusp(selfBirth.date), declared, selfReason);
 
   const lenses: PremiumLensEntry[] = [mbti, saju, zodiac];
   const reports = lenses.filter((lens): lens is PremiumLensReport => lens.mode !== 'unavailable');

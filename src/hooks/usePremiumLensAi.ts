@@ -98,8 +98,14 @@ export function usePremiumLensAi(input: {
   tense: RelationshipTense;
   allowsOutwardQuestions: boolean;
   enabled: boolean;
+  /**
+   * v1.46.1 §6 — 상대라는 대상이 있는지. **렌즈 mode와 별개의 값이다**: 상대가
+   * 있어도 세 렌즈가 전부 `self`일 수 있다(상대 MBTI·생일을 모르는 경우). 이 값을
+   * 주지 않으면 모델이 그 사용자에게 `상대가 아직 없으니`라고 쓴다.
+   */
+  targetExists: boolean;
 }): PremiumLensAi {
-  const { bundle, declared, events, tense, allowsOutwardQuestions, enabled } = input;
+  const { bundle, declared, events, tense, allowsOutwardQuestions, enabled, targetExists } = input;
 
   /** 결과가 만들어진 렌즈만. `unavailable`은 AI를 부르지 않는다(§34 · AI-LENS-07) */
   const reports = useMemo(
@@ -195,6 +201,7 @@ export function usePremiumLensAi(input: {
             tense,
             allowsOutwardQuestions,
             fingerprint: fingerprints[index]!,
+            targetExists,
           }),
         ),
       );
@@ -298,6 +305,7 @@ export function usePremiumLensAi(input: {
         allowsOutwardQuestions,
         fingerprint: crossFingerprint,
         deterministic: bundle.crossLens,
+        targetExists,
       });
 
       if (activeRef.current !== runKey) return;

@@ -30,7 +30,7 @@ export async function POST(request: Request): Promise<Response> {
     return failureResponse('INVALID_OUTPUT', requestId, 400);
   }
 
-  const { inputFingerprint, context, mode, tense, allowsOutwardQuestions, deterministicText } =
+  const { inputFingerprint, context, mode, tense, allowsOutwardQuestions, deterministicText, targetExists } =
     body as Record<string, unknown>;
 
   if (typeof inputFingerprint !== 'string') {
@@ -47,6 +47,10 @@ export async function POST(request: Request): Promise<Response> {
   if (typeof allowsOutwardQuestions !== 'boolean') {
     return failureResponse('INVALID_OUTPUT', requestId, 400);
   }
+  /** v1.46.1 §4 — **기본값 없음.** 기본값을 두면 '상대가 없어서' 검사가 조용히 꺼진다 */
+  if (typeof targetExists !== 'boolean') {
+    return failureResponse('INVALID_OUTPUT', requestId, 400);
+  }
 
   const result = await runPremiumLensTask({
     inputFingerprint,
@@ -55,6 +59,7 @@ export async function POST(request: Request): Promise<Response> {
     context,
     tense,
     allowsOutwardQuestions,
+    targetExists,
     deterministicText: typeof deterministicText === 'string' ? deterministicText : '',
   });
 

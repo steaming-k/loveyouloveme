@@ -1,0 +1,27 @@
+{
+  "name": "lens_style_01_wrong_target_state",
+  "description": "STYLE-05 (v1.46.1 §4) — 상대는 있는데 그 렌즈의 값(상대 MBTI)만 모르는 사용자다. 여기서 '상대가 없어서'라고 쓰면 사용자가 방금 입력한 사실을 부정하는 문장이 된다. 금지 어휘도 인과도 없어서 기존 스캐너 네 개는 전부 통과시킨다 — targetExists를 알아야만 잡히는 결함이다. 무엇을 모르는지 말하는 문장은 그대로 살아남아야 한다(과필터 방지).",
+  "task": "premium-mbti-lens",
+  "mode": "self",
+  "tense": "current",
+  "allowsOutwardQuestions": true,
+  "targetExists": true,
+  "raw": {
+    "summary": "네 쪽부터 먼저 볼게. 상대 유형을 알게 되면 둘의 차이도 이어서 볼 수 있어.",
+    "units": [
+      {
+        "id": "mbti_self_energy",
+        "body": "상대가 없어서 이번에는 너만 봤어. 혼자 있는 시간으로 회복하는 쪽으로 분류됐어."
+      },
+      {
+        "id": "mbti_self_signal",
+        "body": "상대 MBTI를 몰라서 둘을 나란히 놓진 않았어. 너는 같은 행동에서도 그게 무슨 뜻인지를 먼저 읽는 쪽이야."
+      }
+    ]
+  },
+  "expect": {
+    "unitIds": ["mbti_self_signal"],
+    "summaryEmpty": false,
+    "violations": ["wrong_target_state"]
+  }
+}

@@ -521,18 +521,28 @@ export function requestPremiumLensNarrative(input: {
   tense: RelationshipTense;
   allowsOutwardQuestions: boolean;
   fingerprint: string;
+  /** v1.46.1 §6 — 대상 존재 여부. 이 렌즈의 상대 데이터가 있는지와 다른 값이다 */
+  targetExists: boolean;
 }): Promise<
   { ok: true; data: PremiumLensNarrativeBundle } | { ok: false; reason: AiFailureReason }
 > {
   const { report, declared, events, tense, allowsOutwardQuestions, fingerprint } = input;
 
-  const context = buildPremiumLensContext({ report, declared, events, tense });
+  const context = buildPremiumLensContext({
+    report,
+    declared,
+    events,
+    tense,
+    targetExists: input.targetExists,
+  });
 
   return requestNarrative<PremiumLensNarrativeBundle>(LENS_AI_TASK[report.kind], fingerprint, {
     context,
     mode: report.mode,
     tense,
     allowsOutwardQuestions,
+    /** v1.43 §47.5와 같은 계약 — 최상위로도 보낸다(`context: unknown`이라 서버가 못 읽는다) */
+    targetExists: input.targetExists,
     deterministicText: lensDeterministicText(report),
   });
 }
@@ -554,6 +564,7 @@ export function requestCrossLensNarrative(input: {
   fingerprint: string;
   /** 화면에서 AI 블록 바로 위에 있는 결정론 카드 — 같은 말을 두 번 하지 않기 위해(§31) */
   deterministic: PremiumCrossLens | null;
+  targetExists: boolean;
 }): Promise<
   { ok: true; data: CrossLensNarrativeBundle } | { ok: false; reason: AiFailureReason }
 > {
@@ -566,11 +577,13 @@ export function requestCrossLensNarrative(input: {
     events,
     tense,
     deterministic: input.deterministic,
+    targetExists: input.targetExists,
   });
 
   return requestNarrative<CrossLensNarrativeBundle>('premium-cross-lens', fingerprint, {
     context,
     tense,
     allowsOutwardQuestions,
+    targetExists: input.targetExists,
   });
 }

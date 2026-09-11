@@ -32,10 +32,8 @@ export async function POST(request: Request): Promise<Response> {
     return failureResponse('INVALID_OUTPUT', requestId, 400);
   }
 
-  const { inputFingerprint, context, tense, allowsOutwardQuestions } = body as Record<
-    string,
-    unknown
-  >;
+  const { inputFingerprint, context, tense, allowsOutwardQuestions, targetExists } =
+    body as Record<string, unknown>;
 
   if (typeof inputFingerprint !== 'string') {
     return failureResponse('INVALID_OUTPUT', requestId, 400);
@@ -46,12 +44,17 @@ export async function POST(request: Request): Promise<Response> {
   if (typeof allowsOutwardQuestions !== 'boolean') {
     return failureResponse('INVALID_OUTPUT', requestId, 400);
   }
+  /** v1.46.1 §4 — **기본값 없음.** 기본값을 두면 '상대가 없어서' 검사가 조용히 꺼진다 */
+  if (typeof targetExists !== 'boolean') {
+    return failureResponse('INVALID_OUTPUT', requestId, 400);
+  }
 
   const result = await runCrossLensTask({
     inputFingerprint,
     context,
     tense,
     allowsOutwardQuestions,
+    targetExists,
   });
 
   const durationMs = Date.now() - startedAt;

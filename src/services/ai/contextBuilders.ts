@@ -23,6 +23,7 @@ import type {
   PremiumLensKind,
   PremiumCrossLens,
   PremiumLensReport,
+  PremiumLensSelfReason,
   RelationshipEvent,
   RelationshipEventType,
   RelationshipExperience,
@@ -533,6 +534,15 @@ export const MIRROR_AXIS_LABELS = MIRROR_AXES;
 export interface PremiumLensContext {
   lens: PremiumLensKind;
   mode: 'pair' | 'self';
+  /**
+   * v1.46.1 — **상대가 있는지.** `mode: 'self'` 하나로는 두 상태가 구분되지 않는다:
+   * 대상이 아직 없는 사용자와, 대상은 있는데 이 렌즈의 값(상대 MBTI·생년월일)을
+   * 모르는 사용자다. 구분해서 주지 않으면 모델이 후자에게 `상대가 아직 없으니`라고
+   * 쓰고, 그건 사용자가 방금 입력한 사실을 부정하는 문장이 된다.
+   */
+  targetExists: boolean;
+  /** `self`일 때만. 화면 카피와 같은 값을 본다 */
+  selfReason?: PremiumLensSelfReason;
   tense: RelationshipTense;
   /**
    * 결정론 엔진이 계산한 값 그대로. **`AI_OUTPUT ⊆ DETERMINISTIC_LENS_EVIDENCE`의
@@ -613,12 +623,16 @@ export function buildPremiumLensContext(input: {
   declared: DeclaredPreference;
   events: readonly RelationshipEvent[];
   tense: RelationshipTense;
+  /** 상대라는 대상이 있는지. 이 렌즈의 상대 **데이터**가 있는지와 다른 값이다 */
+  targetExists: boolean;
 }): PremiumLensContext {
-  const { report, declared, events, tense } = input;
+  const { report, declared, events, tense, targetExists } = input;
 
   return {
     lens: report.kind,
     mode: report.mode,
+    targetExists,
+    ...(report.selfReason ? { selfReason: report.selfReason } : {}),
     tense,
     basis: report.basis.map((row) => ({ label: row.label, value: row.value })),
     themes: report.themes.map((theme) => LENS_THEME_LABEL[theme]),
@@ -640,10 +654,13 @@ export function buildPremiumLensContext(input: {
  */
 export interface CrossLensContext {
   tense: RelationshipTense;
+  /** v1.46.1 — 렌즈 Task와 같은 이유(§6). `self`뿐인 결과에서도 상대는 있을 수 있다 */
+  targetExists: boolean;
   lenses: Array<{
     lens: PremiumLensKind;
     label: string;
     mode: 'pair' | 'self';
+    selfReason?: PremiumLensSelfReason;
     themes: string[];
     /** 해당 렌즈 AI가 만든 한 줄. 실패했으면 null */
     aiTheme: string | null;
@@ -671,8 +688,9 @@ export function buildCrossLensContext(input: {
   tense: RelationshipTense;
   /** 결정론 Cross-Lens. 없으면 화면에 그 카드도 없다 */
   deterministic: PremiumCrossLens | null;
+  targetExists: boolean;
 }): CrossLensContext {
-  const { reports, aiThemes, declared, events, tense, deterministic } = input;
+  const { reports, aiThemes, declared, events, tense, deterministic, targetExists } = input;
 
   /**
    * 사건은 **렌즈별 목록의 합집합**에서 앞 2개만. 여기서 다시 전체 목록을 보내면
@@ -693,10 +711,12 @@ export function buildCrossLensContext(input: {
 
   return {
     tense,
+    targetExists,
     lenses: reports.map((report) => ({
       lens: report.kind,
       label: report.label,
       mode: report.mode,
+      ...(report.selfReason ? { selfReason: report.selfReason } : {}),
       themes: report.themes.map((theme) => LENS_THEME_LABEL[theme]),
       aiTheme: aiThemes[report.kind] ?? null,
       computed: report.basis

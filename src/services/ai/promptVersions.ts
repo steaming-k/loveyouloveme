@@ -192,10 +192,21 @@ export const PROMPT_VERSIONS = {
    * 버전을 그대로 두면 이미 그 문장을 받은 세션이 새 프롬프트의 결과를 영영 보지
    * 못한다(v1.42 §40.12).
    */
-  premiumMbtiLens: 'premium-mbti-v2',
-  premiumSajuLens: 'premium-saju-v2',
-  premiumZodiacLens: 'premium-zodiac-v2',
-  premiumCrossLens: 'premium-cross-lens-v2',
+  /**
+   * v3 (v1.46.1) — **문체 계약 + 상대 상태 계약.**
+   *
+   * ① `targetExists` / `selfReason`을 읽는 법을 명시했다. 상대가 있는데 그 렌즈의
+   *    값만 모르는 사용자에게 '상대가 없어서'라고 쓰던 문장을 막는다.
+   * ② 한 칸을 쓰는 순서(확인된 것 → 장면 → 확인할 것) · 추상어 대신 장면 ·
+   *    같은 틀 반복 제한 · 문장 길이 · 내부 용어 금지 · 체크포인트만 말하듯.
+   *
+   * ⚠️ 버전을 올리는 이유는 캐시다(v1.42 §40.12). 그대로 두면 v2 문체를 받은 세션이
+   * 새 문체를 영영 보지 못한다.
+   */
+  premiumMbtiLens: 'premium-mbti-v3',
+  premiumSajuLens: 'premium-saju-v3',
+  premiumZodiacLens: 'premium-zodiac-v3',
+  premiumCrossLens: 'premium-cross-lens-v3',
 } as const;
 
 export const ANALYSIS_VERSION = '1.0';

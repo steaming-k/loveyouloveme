@@ -1,0 +1,35 @@
+{
+  "name": "lens_style_03_repeat_limited",
+  "description": "STYLE-01·02·09 (v1.46.1 §8) — 네 칸이 전부 '이 렌즈에서는'으로 시작하면 여섯 칸이 한 문단처럼 읽힌다. 금지어가 아니라 **반복**이 문제이므로 앞의 두 개는 남기고 세 번째부터 버린다. 항목 하나만 보는 스캐너로는 잡을 수 없어서 핸들러 단계에 둔 검사다.",
+  "task": "premium-zodiac-lens",
+  "mode": "self",
+  "tense": "current",
+  "allowsOutwardQuestions": true,
+  "targetExists": false,
+  "raw": {
+    "summary": "태양궁 하나로 볼 수 있는 범위만 정리했어.",
+    "units": [
+      {
+        "id": "zodiac_self_theme",
+        "body": "이 렌즈에서는 관계에서 무엇을 먼저 기대하는지를 봐. 물병자리는 거리를 두고 조절하는 쪽으로 읽혀."
+      },
+      {
+        "id": "zodiac_self_closeness",
+        "body": "이 렌즈에서는 가까움을 재는 방식이 원소로 갈려. 공기 원소는 대화로 거리를 조절하는 쪽이야."
+      },
+      {
+        "id": "zodiac_self_distance",
+        "body": "이 렌즈에서는 고정 양태가 한번 정한 방식을 오래 끌고 가는 쪽으로 읽혀."
+      },
+      {
+        "id": "zodiac_self_declared",
+        "body": "이 렌즈에서는 네가 답한 개인 시간 필요도와 나란히 놓을 수 있어. 두 관점이 같은 방향을 가리켰어."
+      }
+    ]
+  },
+  "expect": {
+    "unitIds": ["zodiac_self_theme", "zodiac_self_closeness"],
+    "repeatCount": 2,
+    "violations": []
+  }
+}

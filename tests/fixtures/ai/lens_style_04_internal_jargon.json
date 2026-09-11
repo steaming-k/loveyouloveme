@@ -1,0 +1,26 @@
+{
+  "name": "lens_style_04_internal_jargon",
+  "description": "STYLE-03 (v1.46.1 §14) — enum 코드는 maskInternalCodes가 라벨로 바꾸지만 구조 용어(pair · self · mode)는 그 표에 없어서 그대로 지나간다. 'pair로 보면' 같은 문장은 우리 코드의 말이지 사용자의 말이 아니다. 한국어 본문에 알파벳으로 나올 자리가 없으므로 그 항목을 버린다.",
+  "task": "premium-saju-lens",
+  "mode": "self",
+  "tense": "current",
+  "allowsOutwardQuestions": true,
+  "targetExists": false,
+  "raw": {
+    "summary": "일간 하나로 볼 수 있는 범위만 정리했어.",
+    "units": [
+      {
+        "id": "saju_self_structure",
+        "body": "지금은 self 모드라 네 일주만 봤어. 나중에 pair로 보면 둘을 나란히 놓을 수 있어."
+      },
+      {
+        "id": "saju_self_theme",
+        "body": "네 일간은 을(목)이야. 먼저 방향을 그리고 움직여보는 쪽으로 읽혀."
+      }
+    ]
+  },
+  "expect": {
+    "unitIds": ["saju_self_theme"],
+    "violations": ["internal_jargon"]
+  }
+}

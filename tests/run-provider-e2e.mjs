@@ -572,6 +572,15 @@ const LENS_FORBIDDEN = [
   'expression',
   'alone_time',
   'closeness',
+  /**
+   * v1.46.1 §14 — 내부 **구조 용어**. enum 코드와 달리 라벨 표가 없어서 치환되지
+   * 않고, 스캐너가 항목째로 버린다. 밖에서 한 번 더 본다.
+   */
+  'pair',
+  'self',
+  /** v1.46.1 §4 — 상대가 있는 상태로 보냈으므로 이 말이 나오면 안 된다 */
+  '상대가 없어서',
+  '상대가 생기면',
 ];
 
 function lensTextOf(narrative) {
@@ -607,6 +616,7 @@ const LENS_CASES = [
     context: {
       lens: 'mbti',
       mode: 'pair',
+      targetExists: true,
       tense: 'current',
       basis: [
         { label: '나', value: 'INFP' },
@@ -631,6 +641,7 @@ const LENS_CASES = [
     context: {
       lens: 'saju',
       mode: 'pair',
+      targetExists: true,
       tense: 'former',
       basis: [
         { label: '내 일주', value: '갑자(甲子) · 일간 목' },
@@ -652,6 +663,8 @@ const LENS_CASES = [
     context: {
       lens: 'zodiac',
       mode: 'self',
+      selfReason: 'target_data_missing',
+      targetExists: true,
       tense: 'current',
       basis: [
         { label: '내 태양궁', value: '물병자리 · 공기 · 고정' },
@@ -673,6 +686,12 @@ async function testPremiumLens(testCase) {
     mode: testCase.mode,
     tense: testCase.tense,
     allowsOutwardQuestions: testCase.allowsOutwardQuestions,
+    /**
+     * v1.46.1 §4 — 라우트가 boolean을 강제한다(기본값 없음). 세 케이스 모두 **상대가
+     * 있는** 상태로 보낸다 — self 케이스도 그렇다. 그게 새로 열린 경로이고,
+     * 거기서 '상대가 없어서'가 나오면 아래 금지어 검사가 잡는다.
+     */
+    targetExists: true,
     deterministicText: testCase.context.alreadySaid.join(' '),
   });
 
@@ -720,8 +739,10 @@ async function testCrossLens(aiThemes) {
     inputFingerprint: 'e2e_premium_cross_lens_1',
     tense: 'current',
     allowsOutwardQuestions: true,
+    targetExists: true,
     context: {
       tense: 'current',
+      targetExists: true,
       lenses: [
         {
           lens: 'mbti',

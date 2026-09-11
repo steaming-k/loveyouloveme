@@ -63,6 +63,8 @@ async function run(fixture) {
       // v1.46 AI Lens — 렌즈 fixture. 없으면 라우트가 'pair' / 되풀이 검사 건너뜀
       mode: fixture.mode,
       deterministicText: fixture.deterministicText,
+      // v1.46.1 §4 — 상대가 있는지. 없으면 라우트가 false로 본다('상대가 없어서'가 정상)
+      targetExists: fixture.targetExists,
     }),
   });
 
@@ -426,6 +428,10 @@ async function run(fixture) {
       check(name, `unit ${expect.unitIds.join(',')}`,
         eq((result.units ?? []).map((unit) => unit.id), expect.unitIds),
         `실제 ${(result.units ?? []).map((unit) => unit.id).join(',')}`);
+    }
+    if (expect.repeatCount !== undefined) {
+      check(name, `반복으로 버린 개수 ${expect.repeatCount}`,
+        (result.repeatCount ?? 0) === expect.repeatCount, `실제 ${result.repeatCount ?? 0}`);
     }
     if (expect.crossCounts) {
       const actual = [

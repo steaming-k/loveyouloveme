@@ -476,6 +476,18 @@ const LIMITATION_MARKERS: readonly RegExp[] = [
   /근거(는|가)?\s*(는)?\s*없/,
   /확인(할|해봐야|해야)/,
   /까지(야|다|이다)/,
+  /**
+   * v1.46.1 — **'그 값을 몰라서 이번엔 하지 않았다'.**
+   *
+   * `상대 MBTI를 몰라서 둘을 나란히 놓진 않았어`가 `causal_connective`(~라서)에
+   * 걸려 버려졌다. 실측에서 확인한 오탐이고, 하필 v1.46.1이 **쓰라고 정한 문장**이다.
+   *
+   * ⚠️ 인과 기준을 낮춘 것이 아니다. 이 패턴이 요구하는 것은 뒤쪽의
+   * `~하지 않았다 / 못 했다 / 빼고`로, **우리가 분석 범위를 줄였다**는 서술이다.
+   * `상대를 몰라서 관계가 어긋났어` 같은 관계에 대한 인과 주장은 여기에 걸리지
+   * 않는다 — 그 문장에는 '하지 않았다'가 없다.
+   */
+  /(모르|몰라|없어서|없어)[^.]{0,24}(않았|않아|못\s*했|못\s*해|빼고|제외)/,
 ];
 
 /** 문장 분리 — 한국어 종결부호와 줄바꿈 기준. 완벽한 파서가 아니라 검사 단위다 */
@@ -794,16 +806,108 @@ const PROMPT_ECHO_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
   { label: 'prompt_placeholder', pattern: /<[^<>]{1,40}>/ },
 ];
 
+/* --------- 잘못된 상대 상태 · 내부 용어 · 반복 (v1.46.1 · §8 · §14 · §19) */
+
+/**
+ * **상대가 있는데 '없다'고 말하는 문장** (v1.46.1 §4)
+ *
+ * 세 렌즈가 전부 `self`인 화면에서도 상대는 있을 수 있다 — 상대 MBTI나 생년월일만
+ * 모르는 경우다. 그때 '상대가 없어서'라고 쓰면 사용자가 **방금 입력한 사실을
+ * 부정하는 문장**이 된다. 위험한 주장은 아니라서 기존 스캐너는 전부 통과시킨다.
+ *
+ * ⚠️ `targetExists === false`일 때는 검사하지 않는다 — 그때는 정확한 문장이다.
+ */
+const ABSENT_TARGET_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
+  {
+    label: 'wrong_target_state',
+    pattern:
+      /(상대|대상|상대방)(가|이|는|도)?\s*(아직\s*)?(없|안\s*계|존재하지\s*않)|상대가\s*생기면|상대\s*없이|혼자인?\s*상태라/,
+  },
+];
+
+/**
+ * 우리 코드의 말이 사용자 화면에 나오는 것 (v1.46.1 §14)
+ *
+ * enum 코드는 `maskInternalCodes`가 라벨로 바꾸지만, 그 표에 없는 **구조 용어**는
+ * 그대로 지나간다 — `pair로 보면` · `self 모드에서는` 같은 문장이다. 한국어 본문에
+ * 이 단어들이 알파벳으로 나올 자리는 없다.
+ */
+const INTERNAL_JARGON_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
+  {
+    label: 'internal_jargon',
+    pattern: /\b(pair|self|deterministic|lens\s*mode|source\s*group|enum)\b/i,
+  },
+];
+
+/**
+ * 한 결과 안에서 **같은 틀이 반복되는 것** (v1.46.1 §8 · STYLE-01 · STYLE-02)
+ *
+ * ⚠️ 금지어가 아니다. 한 번 쓰면 자연스러운 표현이고, 여섯 칸이 전부 같은 말로
+ * 시작할 때만 문제가 된다. 그래서 **항목 단위 스캐너에 넣지 않았다** — 항목 하나만
+ * 보면 반복인지 알 수 없기 때문이다.
+ */
+const STOCK_PHRASES: readonly RegExp[] = [
+  /이\s*렌즈에서는/,
+  /관계를\s*바라보는\s*관점/,
+  /가능성이\s*있어/,
+  /(을|ㄹ)\s*수\s*있어/,
+  /중요한\s*건/,
+  /주목할\s*점은/,
+  /서로\s*다른\s*방식으로/,
+  /반복되는\s*테마/,
+  /확인해볼\s*수\s*있어/,
+  /경향이\s*있어/,
+];
+
+/** 같은 틀을 쓴 항목은 **두 개까지** 남긴다. 세 번째부터가 '반복'이다 */
+const STOCK_PHRASE_LIMIT = 2;
+
+/**
+ * @returns 남긴 항목과, 반복으로 버린 개수
+ *
+ * ⚠️ 순서를 지킨다 — 앞의 두 개를 남기고 뒤를 버린다. 점수로 고르면 같은 입력에서
+ * 결과가 흔들리고, 렌즈 결과는 두 번 열었을 때 같아야 한다.
+ */
+export function limitStockPhraseRepeats<T>(
+  items: readonly T[],
+  toText: (item: T) => string,
+): { items: T[]; dropped: number } {
+  const used = new Map<number, number>();
+  const kept: T[] = [];
+
+  for (const item of items) {
+    const text = toText(item);
+    const hitIndex = STOCK_PHRASES.findIndex((pattern) => pattern.test(text));
+
+    if (hitIndex < 0) {
+      kept.push(item);
+      continue;
+    }
+
+    const seen = used.get(hitIndex) ?? 0;
+    if (seen >= STOCK_PHRASE_LIMIT) continue;
+
+    used.set(hitIndex, seen + 1);
+    kept.push(item);
+  }
+
+  return { items: kept, dropped: items.length - kept.length };
+}
+
 /**
  * 렌즈 AI 문장 검사 (v1.46 AI Lens).
  *
  * @param kind 어느 렌즈인가 — 렌즈마다 '계산하지 않은 것'이 다르다
  * @param tense `former`면 현재형 관계 서술을 막는다
+ * @param targetExists 상대가 있는지. **기본값을 두지 않는다** — 기본값이 `false`면
+ *        상대가 있는 사용자에게 잘못된 문장이 통과하고, `true`면 상대가 없는
+ *        사용자의 정상 문장이 버려진다. 어느 쪽으로도 조용히 틀릴 수 없게 한다.
  */
 export function scanLensNarrative(
   text: string,
   kind: PremiumLensKind,
   tense: RelationshipTense,
+  targetExists: boolean,
 ): SafetyScanResult {
   const violations = [...scanForForbiddenInference(text).violations];
 
@@ -817,11 +921,28 @@ export function scanLensNarrative(
     if (pattern.test(text)) violations.push(label);
   }
 
+  violations.push(...styleViolations(text, targetExists));
+
+  return { safe: violations.length === 0, violations: [...new Set(violations)] };
+}
+
+/** 프롬프트 echo · 내부 용어 · 잘못된 상대 상태 — 렌즈와 Cross-Lens가 같이 쓴다 */
+function styleViolations(text: string, targetExists: boolean): string[] {
+  const violations: string[] = [];
+
   for (const { label, pattern } of PROMPT_ECHO_PATTERNS) {
     if (pattern.test(text)) violations.push(label);
   }
+  for (const { label, pattern } of INTERNAL_JARGON_PATTERNS) {
+    if (pattern.test(text)) violations.push(label);
+  }
+  if (targetExists) {
+    for (const { label, pattern } of ABSENT_TARGET_PATTERNS) {
+      if (pattern.test(text)) violations.push(label);
+    }
+  }
 
-  return { safe: violations.length === 0, violations: [...new Set(violations)] };
+  return violations;
 }
 
 /**
@@ -847,6 +968,7 @@ const CROSS_LENS_CORROBORATION_PATTERNS: readonly { label: string; pattern: RegE
 export function scanCrossLensNarrative(
   text: string,
   tense: RelationshipTense,
+  targetExists: boolean,
 ): SafetyScanResult {
   const violations = [...scanForForbiddenInference(text).violations];
 
@@ -866,9 +988,7 @@ export function scanCrossLensNarrative(
     if (pattern.test(text)) violations.push(label);
   }
 
-  for (const { label, pattern } of PROMPT_ECHO_PATTERNS) {
-    if (pattern.test(text)) violations.push(label);
-  }
+  violations.push(...styleViolations(text, targetExists));
 
   return { safe: violations.length === 0, violations: [...new Set(violations)] };
 }

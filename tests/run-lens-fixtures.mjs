@@ -774,6 +774,212 @@ console.log('\nVALUE-01~07 · 유료 가치 기준');
    `npm run test:ai:e2e`가 진짜 Provider로 한다(AI-LENS-08~12의 런타임 근거).
    소스 스캔은 "규칙이 코드에 있는가"까지이고, 그 둘을 섞으면 어느 쪽도 증명되지 않는다.
    ══════════════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════════════
+   PARTIAL-01 ~ PARTIAL-08 · 상대는 있는데 정보가 부족한 경우 (v1.46.1 §1~§4)
+
+   고정하는 invariant는 한 줄이다:
+
+   > **상대가 있다 ≠ 이 렌즈의 상대 데이터가 있다.**
+
+   두 상태 모두 결과는 Self Lens지만 **할 말이 다르다.** mode만 보면 구분되지
+   않으므로 `selfReason`을 함께 보고, 화면 문자열이 실제로 갈리는지까지 본다.
+   ══════════════════════════════════════════════════════════════════════ */
+console.log('\nPARTIAL-01 ~ PARTIAL-08 — Target 부분정보 (v1.46.1)');
+{
+  /** 이름(관계)만 아는 상대 — MBTI도 생년월일도 모른다 */
+  const NAME_ONLY_TARGET = {
+    ...NO_TARGET,
+    relation: 'crush',
+  };
+  /** MBTI만 아는 상대 — 생년월일은 모른다 */
+  const MBTI_ONLY_TARGET = {
+    ...NO_TARGET,
+    relation: 'crush',
+    mbti: 'ENFP',
+  };
+
+  const nameOnly = await run({ ...BASE, target: NAME_ONLY_TARGET });
+  const mbtiOnly = await run({ ...BASE, target: MBTI_ONLY_TARGET });
+  const noTarget = await run({ ...BASE, target: NO_TARGET });
+
+  /* ── PARTIAL-01 · 이름만 아는 상대 → 세 렌즈 전부 self + 이유가 붙는다 ── */
+  for (const kind of ['mbti', 'saju', 'zodiac']) {
+    const lens = lensOf(nameOnly, kind);
+    check(
+      `PARTIAL-01 [${kind}] 상대 정보가 없어도 Lens를 막지 않는다 (self로 제공)`,
+      lens.mode === 'self',
+      lens.mode,
+    );
+    check(
+      `PARTIAL-01 [${kind}] self 사유가 'target_data_missing'이다`,
+      lens.selfReason === 'target_data_missing',
+      lens.selfReason,
+    );
+  }
+
+  /* ── PARTIAL-02 · 상대가 있는데 '상대가 없어서'라고 말하지 않는다 ─────── */
+  const nameOnlyText = lensStrings(nameOnly.report.lensBundle).join(' ');
+  check(
+    "PARTIAL-02 상대가 있는 사용자에게 '상대가 없어서/상대가 생기면'을 쓰지 않는다",
+    !/상대(가|는)?\s*없어서|상대가\s*생기면|대상이\s*없/.test(nameOnlyText),
+    nameOnlyText.match(/[^.]*상대(가|는)?\s*없어서[^.]*/)?.[0] ?? 'n/a',
+  );
+  check(
+    'PARTIAL-02 대신 무엇을 모르는지 말한다',
+    /아직\s*모르네|몰라서|모르니까/.test(nameOnlyText),
+  );
+
+  /* ── PARTIAL-03 · 상대가 없는 사용자는 기존 카피 그대로 ───────────────── */
+  const noTargetText = lensStrings(noTarget.report.lensBundle).join(' ');
+  check(
+    'PARTIAL-03 상대가 없는 사용자에게는 상대가 생기면 볼 수 있다고 말한다',
+    /상대가\s*생기면/.test(noTargetText),
+  );
+  check(
+    "PARTIAL-03 두 상태의 카피가 실제로 다르다",
+    noTargetText !== nameOnlyText,
+  );
+  for (const kind of ['mbti', 'saju', 'zodiac']) {
+    check(
+      `PARTIAL-03 [${kind}] 상대가 없으면 사유가 'no_target'이다`,
+      lensOf(noTarget, kind).selfReason === 'no_target',
+      lensOf(noTarget, kind).selfReason,
+    );
+  }
+
+  /* ── PARTIAL-04 · 렌즈마다 독립 판정 (MBTI만 아는 상대) ───────────────── */
+  check(
+    'PARTIAL-04 상대 MBTI만 알면 MBTI는 pair, 나머지 둘은 self다',
+    lensOf(mbtiOnly, 'mbti').mode === 'pair' &&
+      lensOf(mbtiOnly, 'saju').mode === 'self' &&
+      lensOf(mbtiOnly, 'zodiac').mode === 'self',
+    ['mbti', 'saju', 'zodiac'].map((k) => `${k}:${lensOf(mbtiOnly, k).mode}`).join(' '),
+  );
+  check(
+    'PARTIAL-04 pair가 된 렌즈에는 self 사유가 붙지 않는다',
+    lensOf(mbtiOnly, 'mbti').selfReason === undefined,
+    lensOf(mbtiOnly, 'mbti').selfReason,
+  );
+  check(
+    'PARTIAL-04 self로 남은 두 렌즈는 target_data_missing이다',
+    lensOf(mbtiOnly, 'saju').selfReason === 'target_data_missing' &&
+      lensOf(mbtiOnly, 'zodiac').selfReason === 'target_data_missing',
+  );
+
+  /* ── PARTIAL-05 · 출생시간은 pair 차단 사유가 아니다 (§3) ─────────────── */
+  const noTime = await run({
+    ...BASE,
+    birthProfile: { ...SELF_BIRTH, time: null, timeUnknown: true },
+    target: { ...TARGET, birthProfile: { ...TARGET_BIRTH, time: null, timeUnknown: true } },
+  });
+  check(
+    'PARTIAL-05 출생시간을 몰라도 사주·별자리가 pair로 나온다 (엔진이 쓰지 않는 값이다)',
+    lensOf(noTime, 'saju').mode === 'pair' && lensOf(noTime, 'zodiac').mode === 'pair',
+    `saju:${lensOf(noTime, 'saju').mode} zodiac:${lensOf(noTime, 'zodiac').mode}`,
+  );
+  check(
+    "PARTIAL-05 '출생시간을 몰라서 비교를 못 한다'고 말하지 않는다",
+    !/출생\s*시간.{0,20}(몰라|없어서).{0,20}(비교|못)/.test(
+      lensStrings(noTime.report.lensBundle).join(' '),
+    ),
+  );
+
+  /* ── PARTIAL-06 · 판정은 그대로 (Core 영향 0) ─────────────────────────── */
+  check(
+    'PARTIAL-06 동기화율이 렌즈 사유와 무관하게 그대로다',
+    nameOnly.compatibility.score === noTarget.compatibility.score,
+    `${nameOnly.compatibility.score} vs ${noTarget.compatibility.score}`,
+  );
+  check(
+    'PARTIAL-06 Mirror 판정도 그대로다',
+    JSON.stringify(nameOnly.mirrorStates) === JSON.stringify(noTarget.mirrorStates),
+  );
+
+  /* ── PARTIAL-07 · 정보 추가 안내는 한 번만, 부족할 때만 ───────────────── */
+  const section = await src('src/components/premium/PremiumLensSection.tsx');
+  check(
+    'PARTIAL-07 안내 문구가 렌즈 묶음 아래 한 곳에서만 그려진다',
+    (section.match(/LENS_TARGET_HINT/g) ?? []).length === 2,
+    (section.match(/LENS_TARGET_HINT/g) ?? []).length,
+  );
+  check(
+    'PARTIAL-07 그 안내는 target_data_missing일 때만 나온다',
+    /selfReason === 'target_data_missing'/.test(section),
+  );
+
+  /* ── PARTIAL-09 · **상대가 없다는 이유로 Premium을 막지 않는다** ──────────
+     ⚠️ 이 검사가 가리는 두 상태는 결과가 같아 보여서 자주 뒤섞인다:
+
+       A  상대 없음 + 유료에서 쓸 근거 있음   → 자격 O (Self Lens까지 정상)
+       B  상대 없음 + 무료가 이미 그 근거를 씀 → 자격 X (근거 때문이지 상대 때문이 아니다)
+
+     B를 A의 증거로 읽으면 '상대 없으면 못 본다'는 결함이 정상으로 굳는다. */
+  const soloEnough = await run({
+    status: 'solo_new',
+    declared: DECLARED,
+    /** 관계 경험을 답하지 않았다 — 무료 Mirror가 아직 아무 축도 소비하지 않은 상태 */
+    experience: { important: [], hardest: null, selfGap: null, note: '', skipped: true, adaptive: null },
+    mbti: 'INFP',
+    birthProfile: SELF_BIRTH,
+    target: NO_TARGET,
+  });
+  check(
+    'PARTIAL-09 (A) 상대가 없어도 근거가 있으면 Premium 자격이 선다',
+    soloEnough.gate.eligible === true && soloEnough.report.available === true,
+    soloEnough.gate,
+  );
+  check(
+    'PARTIAL-09 (A) 그 리포트에 렌즈 3종이 self로 들어 있다',
+    ['mbti', 'saju', 'zodiac'].every((kind) => lensOf(soloEnough, kind).mode === 'self'),
+    ['mbti', 'saju', 'zodiac'].map((k) => `${k}:${lensOf(soloEnough, k).mode}`).join(' '),
+  );
+
+  const soloNotEnough = await run({ ...BASE, target: NO_TARGET });
+  check(
+    'PARTIAL-09 (B) 막힐 때는 무료가 이미 근거를 소비했기 때문이다 (상대 유무가 아니다)',
+    soloNotEnough.gate.eligible === false && soloNotEnough.gate.mirrorInsightCount > 0,
+    soloNotEnough.gate,
+  );
+  /**
+   * 두 세션의 **차이는 상대가 아니다** — 둘 다 상대가 없다. 다른 것은 관계 경험뿐이고,
+   * 그래서 자격이 갈린 원인이 근거라는 것이 값으로 드러난다.
+   */
+  check(
+    'PARTIAL-09 두 세션 모두 상대가 없는데 자격이 갈린다 (원인은 근거다)',
+    lensOf(soloEnough, 'mbti').selfReason === 'no_target' &&
+      lensOf(soloNotEnough, 'mbti').selfReason === 'no_target' &&
+      soloEnough.gate.eligible !== soloNotEnough.gate.eligible,
+  );
+
+  /* ── PARTIAL-10 · 자격 판정이 상대 관련 술어를 읽지 않는다 (소스 스캔) ─── */
+  const chapters = await src('src/lib/logic/premiumChapters.ts');
+  const gateBlock = chapters.slice(
+    chapters.indexOf('export function hasPremiumEvidence'),
+    chapters.indexOf('const MAX_CHAPTERS_PER_AXIS'),
+  );
+  check(
+    'PARTIAL-10 hasPremiumEvidence가 hasTarget·targetExists·soloMode를 읽지 않는다',
+    !/hasTarget|targetExists|soloMode|target\./.test(gateBlock),
+    gateBlock.match(/hasTarget|targetExists|soloMode|target\./)?.[0] ?? 'clean',
+  );
+  check(
+    'PARTIAL-10 자격 판정 파일 전체가 soloMode 판정을 import하지 않는다',
+    !/from '@\/lib\/logic\/soloMode'/.test(chapters),
+  );
+
+  /* ── PARTIAL-08 · 모르는 값을 지어내지 않는다 ─────────────────────────── */
+  check(
+    'PARTIAL-08 상대 정보를 모르면 상대 칸에 추정값이 들어가지 않는다',
+    ['mbti', 'saju', 'zodiac'].every((kind) => {
+      const row = lensOf(nameOnly, kind).basis.find((r) => r.label.startsWith('상대'));
+      return row !== undefined && /아직\s*모름/.test(row.value);
+    }),
+    ['mbti', 'saju', 'zodiac'].map(
+      (k) => lensOf(nameOnly, k).basis.find((r) => r.label.startsWith('상대'))?.value,
+    ),
+  );
+}
+
 console.log('\nAI-LENS-01 ~ AI-LENS-20 — 렌즈별 AI 해석 (v1.46 AI Lens)');
 {
   const lensAiData = await readFile(join(ROOT, 'src/data/premiumLensAi.ts'), 'utf8');
@@ -971,7 +1177,7 @@ console.log('\nAI-LENS-01 ~ AI-LENS-20 — 렌즈별 AI 해석 (v1.46 AI Lens)')
   );
   check(
     'AI-LENS-18 네 Task가 서로 다른 promptVersion을 갖는다 (캐시 네임스페이스 분리)',
-    ['premium-mbti-v2', 'premium-saju-v2', 'premium-zodiac-v2', 'premium-cross-lens-v2'].every(
+    ['premium-mbti-v3', 'premium-saju-v3', 'premium-zodiac-v3', 'premium-cross-lens-v3'].every(
       (version) => versions.includes(`'${version}'`),
     ),
   );
@@ -1057,6 +1263,52 @@ console.log('\nAI-LENS-01 ~ AI-LENS-20 — 렌즈별 AI 해석 (v1.46 AI Lens)')
     'AI-LENS-ENUM-01~03 Cross-Lens 항목과 렌즈 body가 같은 guard를 쓴다',
     /const text = maskInternalCodes\(str\(item, 900\)\)/.test(schemas) &&
       /const body = maskInternalCodes\(str\(item\.body, 1200\)\)/.test(schemas),
+  );
+
+  /* ── STYLE-01~03 · 반복 · 내부 용어 · 잘못된 상대 상태 (v1.46.1 §19) ──── */
+  check(
+    'STYLE-01~02 같은 틀의 반복은 두 개까지만 남는다 (금지가 아니라 제한)',
+    /const STOCK_PHRASE_LIMIT = 2;/.test(safety) &&
+      /export function limitStockPhraseRepeats</.test(safety),
+    '반복 제한 함수가 없다',
+  );
+  check(
+    'STYLE-01~02 반복 제한이 렌즈와 Cross-Lens **양쪽** 핸들러에서 돈다',
+    (handlers.match(/limitStockPhraseRepeats\(/g) ?? []).length === 2,
+    (handlers.match(/limitStockPhraseRepeats\(/g) ?? []).length,
+  );
+  check(
+    'STYLE-03 내부 구조 용어(pair·self·mode)가 스캐너 금지 목록에 있다',
+    /internal_jargon/.test(safety) && /pair\|self\|deterministic/.test(safety),
+  );
+  check(
+    'STYLE-05 상대가 있을 때만 "상대가 없어서"를 막는다 (없는 사용자의 정상 문장은 통과)',
+    /if \(targetExists\) \{/.test(safety) && /wrong_target_state/.test(safety),
+  );
+  /**
+   * ⚠️ **기본값이 없다는 것**까지 검사한다. `targetExists = true` 같은 기본값을 두면
+   * 새 호출부가 조용히 검사를 켜거나 꺼도 아무도 모른다 — v1.42 §40.8이 닫은 형태다.
+   */
+  check(
+    'STYLE-05 라우트가 targetExists를 boolean으로 강제한다 (기본값 없음)',
+    /typeof targetExists !== 'boolean'/.test(
+      await src('src/app/api/ai/premium-mbti-lens/route.ts'),
+    ) &&
+      /typeof targetExists !== 'boolean'/.test(
+        await src('src/app/api/ai/premium-cross-lens/route.ts'),
+      ),
+  );
+  check(
+    'STYLE-05 AI context가 targetExists와 selfReason을 함께 보낸다',
+    /targetExists: boolean;/.test(builders) && /selfReason\?: PremiumLensSelfReason;/.test(builders),
+  );
+  check(
+    'STYLE-08 체크포인트만 말하듯 쓰라고 프롬프트가 구분한다 (본문은 차분하게)',
+    prompts.includes('여기만 **말하듯** 쓴다'),
+  );
+  check(
+    'STYLE-09 반복 제한 목록이 프롬프트와 스캐너 양쪽에 있다',
+    prompts.includes('한 결과 안에서 두 번까지') && /STOCK_PHRASES/.test(safety),
   );
 }
 

@@ -2234,6 +2234,25 @@ export type PremiumLensKind = 'mbti' | 'saju' | 'zodiac';
 export type PremiumLensMode = 'pair' | 'self' | 'unavailable';
 
 /**
+ * `self`로 내려간 **이유** (v1.46.1)
+ *
+ * ══ 상대가 있다 ≠ 이 렌즈의 상대 데이터가 있다 ═══════════════════════════
+ *
+ * 두 상태는 결과가 똑같이 `self`지만 **사용자에게 할 말이 다르다.**
+ *
+ * ```
+ * no_target            대상 자체가 없다        '상대가 생기면 둘을 나란히 볼 수 있어'
+ * target_data_missing  대상은 있는데 모른다    '상대는 있지만 MBTI는 아직 모르네'
+ * ```
+ *
+ * ⚠️ 사용자가 이미 '상대가 있다'고 입력했는데 화면이 `상대가 없어서`라고 말하면,
+ * 그건 방금 자기가 입력한 것을 제품이 못 봤다는 뜻으로 읽힌다. mode 하나로는 그
+ * 구분이 안 되므로 이유를 따로 들고 다닌다 — AI context에도 이 값이 간다(그러지
+ * 않으면 모델이 '상대가 아직 없으니'로 쓴다).
+ */
+export type PremiumLensSelfReason = 'no_target' | 'target_data_missing';
+
+/**
  * 여러 렌즈에 걸쳐 반복될 수 있는 **관계 테마.**
  *
  * ⚠️ 새 판정 축이 아니다. Cross-Lens(§19)가 "서로 다른 프레임에서 같은 주제가
@@ -2289,6 +2308,8 @@ export interface PremiumLensReport {
   /** `MBTI 관계 렌즈` */
   label: string;
   mode: 'pair' | 'self';
+  /** `self`일 때만 있다. 왜 pair가 아닌지 — 카피와 AI context가 이 값으로 갈린다 */
+  selfReason?: PremiumLensSelfReason;
   headline: string;
   overview: string;
   /** §29 — pair는 4개 이상, self는 4개 이상(자기 3 + 불확실성 1) */

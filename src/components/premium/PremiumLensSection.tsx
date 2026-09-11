@@ -7,6 +7,7 @@ import { SectionLabel } from '@/components/common/primitives';
 import type { LovyPose } from '@/data/lovy';
 import {
   CROSS_LENS_COPY,
+  LENS_TARGET_HINT,
   LENS_ANCHOR,
   LENS_SECTION_COPY,
 } from '@/data/premiumLens';
@@ -139,6 +140,21 @@ export function PremiumLensSection({
           </li>
         ))}
       </ul>
+
+      {/**
+       * §5 — 상대는 있는데 그 렌즈의 값만 모르는 경우에만, **묶음 아래 한 번만.**
+       *
+       * ⚠️ 카드마다 붙이지 않는다. 세 렌즈가 전부 그 상태면 같은 재촉을 세 번 하는
+       * 것이 되고, 그러면 결과보다 '정보를 더 내놓으라'는 말이 크게 읽힌다.
+       * ⚠️ 상대가 아예 없는 사용자에게는 그리지 않는다 — 갈 수 없는 길이다.
+       */}
+      {bundle.lenses.some(
+        (lens) => lens.mode === 'self' && lens.selfReason === 'target_data_missing',
+      ) ? (
+        <p className="text-[11px] keep-all leading-relaxed text-ink-faint">
+          {LENS_TARGET_HINT}
+        </p>
+      ) : null}
 
       {bundle.crossLens ? (
         <CrossLensCard

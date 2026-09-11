@@ -24,6 +24,7 @@ import {
   echoesReferenceSentence,
   filterSafeItems,
   isRedundantNarrative,
+  limitStockPhraseRepeats,
   scanCompatibilityNarrative,
   scanCrossLensNarrative,
   scanLensNarrative,
@@ -994,6 +995,11 @@ export interface PremiumLensRequest {
    */
   allowsOutwardQuestions: boolean;
   /**
+   * v1.46.1 §4 — 상대가 있는지. mode가 `self`여도 상대는 있을 수 있다.
+   * 있으면 '상대가 없어서' 류 문장을 서버가 버린다.
+   */
+  targetExists: boolean;
+  /**
    * §31 — 결정론 본문. **프롬프트에는 들어가지 않는다.**
    *
    * 모델에게는 소제목만 보내고(`context.alreadySaid`), 실제 되풀이 여부는 여기서
@@ -1084,7 +1090,7 @@ export async function runPremiumLensTask(
     const scan = filterSafeItems(
       gated,
       (unit) => unit.body,
-      (text) => scanLensNarrative(text, kind, request.tense),
+      (text) => scanLensNarrative(text, kind, request.tense, request.targetExists),
     );
 
     /**
@@ -1103,9 +1109,18 @@ export async function runPremiumLensTask(
       (unit) => !echoesReferenceSentence(unit.body, request.deterministicText),
     );
 
+    /**
+     * Quality Gate ④ — **같은 틀의 반복** (v1.46.1 §8).
+     *
+     * ⚠️ 항목 스캐너가 아니라 여기 있는 이유는, 반복은 항목 하나만 봐서는 알 수 없기
+     * 때문이다. 앞의 두 개는 그대로 두고 세 번째부터 버린다 — 표현 하나를 금지하는
+     * 것이 아니라 여섯 칸이 한 문단처럼 읽히는 것을 막는 것이다.
+     */
+    const varied = limitStockPhraseRepeats(novel, (unit) => unit.body);
+
     const summarySafe =
       parsed.summary.length > 0 &&
-      scanLensNarrative(parsed.summary, kind, request.tense).safe &&
+      scanLensNarrative(parsed.summary, kind, request.tense, request.targetExists).safe &&
       !echoesReferenceSentence(parsed.summary, request.deterministicText);
 
     /**
@@ -1113,7 +1128,8 @@ export async function runPremiumLensTask(
      * 대상이 아니다. 다만 안전 검사는 똑같이 받는다.
      */
     const checkpointSafe =
-      parsed.checkpoint && scanLensNarrative(parsed.checkpoint, kind, request.tense).safe
+      parsed.checkpoint &&
+      scanLensNarrative(parsed.checkpoint, kind, request.tense, request.targetExists).safe
         ? parsed.checkpoint
         : undefined;
 
@@ -1131,11 +1147,16 @@ export async function runPremiumLensTask(
       parsed: parsed.units.length,
       safe: scan.items.length,
       violations: scan.violations,
-      extra: { gated: gated.length, novel: novel.length, summary: summarySafe ? 1 : 0 },
+      extra: {
+        gated: gated.length,
+        novel: novel.length,
+        repeat: varied.dropped,
+        summary: summarySafe ? 1 : 0,
+      },
     });
 
     /** 남은 것이 하나도 없으면 narrative를 만들지 않는다 — 빈 블록을 그리지 않는다 */
-    if (!summarySafe && novel.length === 0) {
+    if (!summarySafe && varied.items.length === 0) {
       return { ok: true, data: { narrative: null, meta: metaFor(aiModeFor(config), provider.model) } };
     }
 
@@ -1146,7 +1167,7 @@ export async function runPremiumLensTask(
           kind,
           mode,
           summary: summarySafe ? parsed.summary : '',
-          units: novel,
+          units: varied.items,
           ...(checkpointSafe ? { checkpoint: checkpointSafe } : {}),
           ...(parsed.crossTheme ? { crossTheme: parsed.crossTheme } : {}),
         },
@@ -1165,6 +1186,8 @@ export interface CrossLensRequest {
   context: unknown;
   tense: RelationshipTense;
   allowsOutwardQuestions: boolean;
+  /** v1.46.1 §4 — 렌즈 Task와 같은 이유. 세 렌즈가 전부 self여도 상대는 있을 수 있다 */
+  targetExists: boolean;
 }
 
 export async function runCrossLensTask(
@@ -1207,11 +1230,12 @@ export async function runCrossLensTask(
       return { ok: true, data: { narrative: null, meta: metaFor(aiModeFor(config), provider.model) } };
     }
 
-    const keep = (text: string) => scanCrossLensNarrative(text, request.tense).safe;
+    const keep = (text: string) =>
+      scanCrossLensNarrative(text, request.tense, request.targetExists).safe;
     const violations = new Set<string>();
     const filter = (items: readonly string[]) =>
       items.filter((item) => {
-        const result = scanCrossLensNarrative(item, request.tense);
+        const result = scanCrossLensNarrative(item, request.tense, request.targetExists);
         if (!result.safe) result.violations.forEach((label) => violations.add(label));
         return result.safe;
       });
@@ -1226,11 +1250,26 @@ export async function runCrossLensTask(
       ? filter(parsed.verificationQuestions)
       : [];
 
+    /**
+     * §8 — 세 블록을 **함께** 센다. 블록마다 따로 세면 '반복되는 테마'가 여섯 번
+     * 나와도 각 블록에서는 두 번씩이라 통과한다. 사용자는 한 카드로 읽는다.
+     */
+    const varied = limitStockPhraseRepeats(
+      [
+        ...repeatedThemes.map((text) => ({ block: 'repeated' as const, text })),
+        ...differences.map((text) => ({ block: 'differences' as const, text })),
+        ...verificationQuestions.map((text) => ({ block: 'questions' as const, text })),
+      ],
+      (item) => item.text,
+    );
+    const keptOf = (block: 'repeated' | 'differences' | 'questions') =>
+      varied.items.filter((item) => item.block === block).map((item) => item.text);
+
     const closing = parsed.closing && keep(parsed.closing) ? parsed.closing : undefined;
 
     const rawTotal =
       parsed.repeatedThemes.length + parsed.differences.length + parsed.verificationQuestions.length;
-    const safeTotal = repeatedThemes.length + differences.length + verificationQuestions.length;
+    const safeTotal = varied.items.length;
 
     logAiFilter({
       task: 'premium-cross-lens',
@@ -1240,9 +1279,10 @@ export async function runCrossLensTask(
       safe: safeTotal,
       violations: [...violations],
       extra: {
-        repeated: repeatedThemes.length,
-        differences: differences.length,
-        questions: verificationQuestions.length,
+        repeated: keptOf('repeated').length,
+        differences: keptOf('differences').length,
+        questions: keptOf('questions').length,
+        repeat: varied.dropped,
       },
     });
 
@@ -1254,9 +1294,9 @@ export async function runCrossLensTask(
       ok: true,
       data: {
         narrative: {
-          repeatedThemes,
-          differences,
-          verificationQuestions,
+          repeatedThemes: keptOf('repeated'),
+          differences: keptOf('differences'),
+          verificationQuestions: keptOf('questions'),
           ...(closing ? { closing } : {}),
         },
         meta: metaFor(aiModeFor(config), provider.model),

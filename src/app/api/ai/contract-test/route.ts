@@ -10,6 +10,7 @@ import {
   echoesReferenceSentence,
   filterSafeItems,
   isRedundantNarrative,
+  limitStockPhraseRepeats,
   scanCompatibilityNarrative,
   scanCrossLensNarrative,
   scanDeepNarrativeWithTense,
@@ -78,6 +79,8 @@ interface ContractRequest {
   mode?: unknown;
   /** v1.46 AI Lens §31 — 되풀이 검사의 기준 문장. 없으면 그 검사를 건너뛴다 */
   deterministicText?: unknown;
+  /** v1.46.1 §4 — 상대가 있는지. 없으면 `false`(= '상대가 없어서' 문장이 정상) */
+  targetExists?: unknown;
 }
 
 const LENS_TASK_KIND: Record<string, PremiumLensKind> = {
@@ -460,6 +463,8 @@ export async function POST(request: Request): Promise<Response> {
     const mode = body.mode === 'self' ? 'self' : 'pair';
     const lensTense = body.tense === 'former' ? 'former' : 'current';
     const allowsOutwardQuestions = body.allowsOutwardQuestions !== false;
+    /** v1.46.1 — fixture가 주지 않으면 '상대 없음'이다. 그때는 이 검사가 돌지 않는다 */
+    const targetExists = body.targetExists === true;
 
     const parsed = parseLensNarrativeResponse(raw, kind, mode);
     if (!parsed) return Response.json({ ok: true, rejected: 'INVALID_OUTPUT' });
@@ -472,7 +477,7 @@ export async function POST(request: Request): Promise<Response> {
     const scan = filterSafeItems(
       gated,
       (unit) => unit.body,
-      (text) => scanLensNarrative(text, kind, lensTense),
+      (text) => scanLensNarrative(text, kind, lensTense, targetExists),
     );
 
     /** §31 — 결정론 본문을 그대로 옮겨 썼는지. fixture가 기준 문장을 주지 않으면 건너뛴다 */
@@ -481,8 +486,12 @@ export async function POST(request: Request): Promise<Response> {
       ? scan.items.filter((unit) => !echoesReferenceSentence(unit.body, reference))
       : scan.items;
 
+    /** §8 — 핸들러와 **같은 함수**를 쓴다. 판정 로직을 테스트용으로 복제하지 않는다 */
+    const varied = limitStockPhraseRepeats(novel, (unit) => unit.body);
+
     const summarySafe =
-      parsed.summary.length > 0 && scanLensNarrative(parsed.summary, kind, lensTense).safe;
+      parsed.summary.length > 0 &&
+      scanLensNarrative(parsed.summary, kind, lensTense, targetExists).safe;
 
     return Response.json({
       ok: true,
@@ -497,10 +506,11 @@ export async function POST(request: Request): Promise<Response> {
        * 화면 문자열까지 도달하는지는 문자열을 봐야만 검사할 수 있다.
        */
       summary: summarySafe ? parsed.summary : '',
-      units: novel.map((unit) => ({ id: unit.id, title: unit.title, body: unit.body })),
+      units: varied.items.map((unit) => ({ id: unit.id, title: unit.title, body: unit.body })),
       checkpoint: parsed.checkpoint ?? null,
       crossTheme: parsed.crossTheme ?? null,
       redundantCount: scan.items.length - novel.length,
+      repeatCount: varied.dropped,
       gatedCount: parsed.units.length - gated.length,
       violations: scan.violations,
     });
@@ -510,6 +520,7 @@ export async function POST(request: Request): Promise<Response> {
   if (task === 'premium-cross-lens') {
     const crossTense = body.tense === 'former' ? 'former' : 'current';
     const allowsOutwardQuestions = body.allowsOutwardQuestions !== false;
+    const targetExists = body.targetExists === true;
 
     const parsed = parseCrossLensResponse(raw);
     if (!parsed) return Response.json({ ok: true, rejected: 'INVALID_OUTPUT' });
@@ -517,13 +528,13 @@ export async function POST(request: Request): Promise<Response> {
     const violations = new Set<string>();
     const filter = (items: readonly string[]) =>
       items.filter((item) => {
-        const result = scanCrossLensNarrative(item, crossTense);
+        const result = scanCrossLensNarrative(item, crossTense, targetExists);
         if (!result.safe) result.violations.forEach((label) => violations.add(label));
         return result.safe;
       });
 
     const closing =
-      parsed.closing && scanCrossLensNarrative(parsed.closing, crossTense).safe
+      parsed.closing && scanCrossLensNarrative(parsed.closing, crossTense, targetExists).safe
         ? parsed.closing
         : null;
 
