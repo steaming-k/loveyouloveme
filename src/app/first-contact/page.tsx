@@ -28,6 +28,7 @@ import { SOLO_PREMIUM_HOOK } from '@/data/premium';
 import { useCrossSourceInsights } from '@/hooks/useAiNarrative';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { hasPremiumEvidence } from '@/lib/logic/premiumChapters';
+import { soloModeOf } from '@/lib/logic/soloMode';
 import { premiumFeatureState } from '@/services/premiumService';
 import { createEntryId } from '@/lib/historyRepository';
 import { historyCountBucket } from '@/lib/analytics';
@@ -170,7 +171,16 @@ export default function FirstContactPage() {
       declared: answers.declared,
       mirror,
     }),
-    solo: true,
+    /**
+     * UT-1 P0-A — **`true` 하드코딩이었다.**
+     *
+     * 이 Route는 `isFirstContactMode`(= `mode !== 'couple'`)로 들어오므로
+     * `no_target`뿐 아니라 `unknown_target`(사람은 있는데 아는 게 적다)도 받는다.
+     * 그 사용자에게 가장 가까운 길은 상대 4축을 하나 더 채우는 것인데, Solo 문구는
+     * MBTI·사진 관찰을 권했다 — 방향이 반대인 안내다. 판정 source를 `soloModeOf`
+     * 하나로 되돌린다.
+     */
+    solo: soloModeOf(answers) === 'no_target',
     allowsOutwardAction: jobAllowsOutwardAction(resolveRelationshipContext(answers).job),
   });
 

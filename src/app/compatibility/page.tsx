@@ -69,6 +69,7 @@ import {
 import { answeredAxisCount } from '@/lib/logic/relationshipEvidence';
 import { premiumFeatureState } from '@/services/premiumService';
 import { hasPremiumEvidence } from '@/lib/logic/premiumChapters';
+import { soloModeOf } from '@/lib/logic/soloMode';
 import {
   useCompatibilityNarrative,
   useCrossSourceInsights,
@@ -240,6 +241,12 @@ function CompatibilityView() {
       declared: answers.declared,
       mirror: mirrorForPremium,
     }),
+    /**
+     * UT-1 P0-A — 판정 source는 언제나 `soloModeOf` 하나다(§41). 이 화면의 본문은
+     * `couple`에서만 열리므로 지금은 항상 false지만, 값을 넘기지 않는 호출부를
+     * 남겨두지 않는다 — 그게 v1.40.1 §38.3이 닫은 실패 형태다.
+     */
+    solo: soloModeOf(answers) === 'no_target',
     // v1.40 §37.9 — 지키지 못할 약속을 목록에서 뺀다(`ended`는 그 섹션을 만들지 않는다).
     allowsOutwardAction: showOutwardAction,
   });

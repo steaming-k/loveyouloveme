@@ -21,6 +21,7 @@ import { historyCountBucket, trackEvent } from '@/lib/analytics';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { premiumFeatureState } from '@/services/premiumService';
 import { hasPremiumEvidence } from '@/lib/logic/premiumChapters';
+import { soloModeOf } from '@/lib/logic/soloMode';
 import { formatEntryDate } from '@/lib/historyFormat';
 import { ROUTES } from '@/lib/routes';
 import { useCrossSourceInsights, useHistoryNarrative } from '@/hooks/useAiNarrative';
@@ -273,6 +274,12 @@ function HistoryReportView() {
               declared: answers.declared,
               mirror: mirrorForPremium,
             }),
+            /**
+             * UT-1 P0-A — 이 화면은 상대가 지금 없어도 열린다(History는 Target
+             * lifecycle과 분리돼 있다 · v1.35 P4-B §4). 값을 넘기지 않던 동안
+             * `no_target` 사용자가 '상대 정보를 더 채우면'을 봤다.
+             */
+            solo: soloModeOf(answers) === 'no_target',
             // v1.40.1 §38.3 — v1.40에서 이 호출부가 게이트를 빼먹었다. 이 행은
             // `additions`를 그리지 않아 노출은 없었지만, 누락 자체를 남겨두지 않는다.
             allowsOutwardAction: outwardAllowed,

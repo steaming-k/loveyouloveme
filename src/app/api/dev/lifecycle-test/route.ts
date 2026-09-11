@@ -35,6 +35,7 @@ import {
   compatibilityAllowList,
 } from '@/services/ai/contextBuilders';
 import { resolvePrice } from '@/lib/premiumVariant';
+import { soloModeOf } from '@/lib/logic/soloMode';
 import { hasDeepConnection } from '@/services/premiumConnections';
 import {
   LOVY_MID_NOTE,
@@ -570,6 +571,9 @@ export async function POST(request: Request): Promise<Response> {
        */
       premiumAdditions: premiumFeatureState('relationship_deep_report', resolvePrice('A'), {
         deepReportAvailable: hasDeepConnection(insights),
+        // UT-1 P0-A — 화면과 **같은 술어**를 쓴다. 여기서 `true`를 굳히면 fixture가
+        // 화면과 다른 사용자를 검사하게 된다.
+        solo: soloModeOf(answers) === 'no_target',
         allowsOutwardAction: jobAllowsOutwardAction(job),
       }).additions,
     },

@@ -44,6 +44,7 @@ import { canUseAiAxisNarrative, canUseAiHeadline } from '@/lib/logic/mirror';
 import { isLowData } from '@/lib/validation';
 import { premiumFeatureState } from '@/services/premiumService';
 import { hasPremiumEvidence } from '@/lib/logic/premiumChapters';
+import { soloModeOf } from '@/lib/logic/soloMode';
 import { useCrossSourceInsights, useEvidenceContext, useRelationshipNarrative } from '@/hooks/useAiNarrative';
 import { useMirror, usePastObservation, useRelationshipProfile, useRepeatedSignals } from '@/hooks/useAnalysis';
 import { useHistory } from '@/state/HistoryProvider';
@@ -527,6 +528,15 @@ function MirrorView() {
                   declared: answers.declared,
                   mirror,
                 }),
+                /**
+                 * UT-1 P0-A — **갈 수 없는 길을 알려주지 않는다.**
+                 *
+                 * 이 화면은 상대가 하나도 없어도 열린다(Mirror는 Target을 계산에 쓰지
+                 * 않는다). 그래서 이 값을 넘기지 않던 동안, `solo_exp` + Target 없음인
+                 * 사용자가 "관계 경험이나 상대 정보를 더 채우면 볼 수 있어"를 봤다.
+                 * 자격 판정은 그대로고, 바뀌는 것은 안내 문구 하나다.
+                 */
+                solo: soloModeOf(answers) === 'no_target',
                 // v1.40 §37.9 — 지키지 못할 약속을 목록에서 뺀다.
                 allowsOutwardAction: showOutwardAction,
               })}

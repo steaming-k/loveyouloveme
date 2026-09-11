@@ -2199,6 +2199,117 @@ console.log('\nEVT-01 ~ EVT-14 — 관계 사건 (User-reported Relationship Eve
   );
 }
 
+/* ═══ UT-1 P0-A · Premium 진입 안내가 갈 수 있는 길만 말하는가 ═══════════
+
+   UT-1에서 나온 결함은 "자격이 잘못 섰다"가 아니었다. 자격(`gate`)은 맞았고,
+   **막혔을 때 화면이 알려주는 길**이 틀렸다:
+
+     no_target  + Experience O  →  "관계 경험이나 **상대 정보**를 더 채우면"
+                                   ← 상대가 없는 사용자에게 갈 수 없는 길이다
+
+   원인은 `premiumFeatureState()`의 `solo`가 optional이고 기본값이 '상대 있음'이라
+   호출부 4곳(`/mirror` · `/compatibility` · `/history/report` · dev lifecycle)이
+   값을 빠뜨린 것이다. `/first-contact`는 반대로 `true`를 하드코딩해서,
+   `unknown_target`(사람은 있는데 아는 게 적다) 사용자에게 MBTI·사진을 권했다.
+
+   ⚠️ **자격 규칙(`hasPremiumEvidence`)은 건드리지 않았다.** 아래 검사도 `eligible`이
+   아니라 **안내 문구가 가리키는 방향**을 값으로 고정한다. */
+{
+  const NO_EXP = { important: [], hardest: null, selfGap: null, skipped: true };
+  const NO_CUR = { signals: {}, askedAt: null };
+  /** 사람은 있는데 아는 게 2개뿐 — `unknown_target`(TARGET_MIN_KNOWN 미만) */
+  const PARTIAL_TARGET = {
+    ...NO_TARGET,
+    relation: 'crush',
+    contact: 'l',
+    conflict: 'h',
+  };
+
+  /** ① 상대가 하나도 없고 관계 경험만 있는 사용자 — 무료가 이미 그 축을 소비했다 */
+  const p0aNoTarget = await run({ ...FULL, status: 'solo_exp', target: NO_TARGET });
+  check(
+    'UT1-P0A-01 · Target X + Experience O — soloMode가 no_target으로 판정된다',
+    p0aNoTarget.premiumEntry.soloMode === 'no_target',
+    p0aNoTarget.premiumEntry,
+  );
+  check(
+    'UT1-P0A-02 · Target X에서 막힐 때 상대 정보를 요구하지 않는다 (갈 수 없는 길)',
+    p0aNoTarget.premiumEntry.status !== 'unavailable' ||
+      p0aNoTarget.premiumEntry.mentionsTargetInfo === false,
+    p0aNoTarget.premiumEntry.unavailableReason,
+  );
+
+  /** ② 사람은 있는데 아는 게 적은 사용자 — 가장 가까운 길이 **상대 4축**이다 */
+  const p0aPartial = await run({ ...FULL, status: 'dating', target: PARTIAL_TARGET });
+  check(
+    'UT1-P0A-03 · Target partial — soloMode가 unknown_target이다',
+    p0aPartial.premiumEntry.soloMode === 'unknown_target',
+    p0aPartial.premiumEntry,
+  );
+  check(
+    'UT1-P0A-04 · Target partial에서 막힐 때는 상대 정보를 알려준다 (Solo 문구 금지)',
+    p0aPartial.premiumEntry.status !== 'unavailable' ||
+      p0aPartial.premiumEntry.mentionsTargetInfo === true,
+    p0aPartial.premiumEntry.unavailableReason,
+  );
+
+  /** ③ Target O + 근거 O — CTA가 실제로 노출된다(fake-door = 결제 진입 가능 상태) */
+  check(
+    'UT1-P0A-05 · Target O + 근거 O — Premium CTA가 노출된다 (status=fake-door)',
+    full.gate.eligible === true && full.premiumEntry.status === 'fake-door',
+    full.premiumEntry,
+  );
+
+  /** ④ Target X + Self-only 근거 — 상대가 없어도 CTA가 선다(No Target Invariant) */
+  const p0aSelfOnly = await run({
+    ...FULL,
+    status: 'solo_none',
+    experience: NO_EXP,
+    currentRelationship: NO_CUR,
+    target: NO_TARGET,
+    entries: [],
+    observedAnalysis: null,
+    observations: {},
+    mbti: null,
+  });
+  check(
+    'UT1-P0A-06 · Target X + Self-only 근거 — 상대가 없어도 CTA가 선다',
+    p0aSelfOnly.gate.eligible === true && p0aSelfOnly.premiumEntry.status === 'fake-door',
+    p0aSelfOnly.premiumEntry,
+  );
+
+  /* ── source 고정 — 이 결함은 '호출부 누락'이 재발 형태다 ───────────────── */
+  check(
+    'UT1-P0A-07 · premiumFeatureState의 solo는 필수 파라미터다 (tsc가 누락을 막는다)',
+    /\n\s*solo: boolean;/.test(
+      stripComments(await readFile(join(ROOT, 'src/services/premiumService.ts'), 'utf8')),
+    ),
+  );
+  const P0A_CALLERS = [
+    'src/app/mirror/page.tsx',
+    'src/app/compatibility/page.tsx',
+    'src/app/history/report/page.tsx',
+    'src/app/first-contact/page.tsx',
+    'src/app/home/page.tsx',
+    'src/app/premium/page.tsx',
+    'src/app/lens/mbti/page.tsx',
+    'src/app/lens/astrology/page.tsx',
+  ];
+  const hardcoded = [];
+  const missing = [];
+  for (const path of P0A_CALLERS) {
+    const src = stripComments(await readFile(join(ROOT, path), 'utf8'));
+    if (/solo:\s*(true|false)\b/.test(src)) hardcoded.push(path);
+    if (!/solo:\s*soloModeOf\(answers\) === 'no_target'/.test(src)) missing.push(path);
+  }
+  check('UT1-P0A-08 · 호출부 8곳이 solo를 하드코딩하지 않는다', hardcoded.length === 0, hardcoded);
+  check(
+    'UT1-P0A-09 · 호출부 8곳이 전부 같은 술어(soloModeOf)로 판정한다',
+    missing.length === 0,
+    missing,
+  );
+}
+
 /* ═══ 결과 ══════════════════════════════════════════════════════════════ */
 console.log('\n' + '─'.repeat(72));
 if (failures.length > 0) {

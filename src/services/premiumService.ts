@@ -98,8 +98,20 @@ export function premiumFeatureState(
      * 상대가 없는 사용자에게 그건 갈 수 없는 길을 알려주는 것이다 — 실측에서 확인했다.
      * Solo가 이 리포트를 열 수 있는 경로는 MBTI(⑦)와 사진 관찰(⑥)이다 — v1.32에서
      * ⑦이 생기면서 **사진이 필수 입장권이 아니게 됐다.**
+     *
+     * ⚠️ **UT-1 P0-A에서 필수로 바꿨다.** optional + 기본값 허용이라 호출부 4곳이
+     * 값을 빠뜨리고 있었고, 이번에는 `allowsOutwardAction`(v1.40.1 §38.3)과 달리
+     * **사용자에게 그대로 노출됐다** — 상대가 하나도 없는 `solo_exp` 사용자가
+     * `/mirror`에서 "관계 경험이나 상대 정보를 더 채우면 볼 수 있어"를 봤다(브라우저
+     * 실측). 그 사용자에게 '상대 정보'는 갈 수 없는 길이다.
+     *
+     * ⚠️ `true`를 하드코딩하지 않는다. `/first-contact`가 그렇게 하고 있었는데,
+     * 그 Route는 `no_target`뿐 아니라 `unknown_target`(사람은 있는데 아는 게 적다)도
+     * 받는다 — 그 사용자에게 가장 가까운 길은 상대 4축을 하나 더 채우는 것인데
+     * 화면은 MBTI·사진을 권했다. 판정 source는 언제나
+     * `soloModeOf(answers) === 'no_target'` 하나다.
      */
-    solo?: boolean;
+    solo: boolean;
     /**
      * v1.40 §37.9 · **v1.40.1 §38.3에서 필수로 바꿨다** — 이 Job에서 상대를 향한 행동을
      * 제안해도 되는가(`jobAllowsOutwardAction(job)`).

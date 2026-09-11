@@ -29,7 +29,9 @@ import {
   lovyMidNoteAfter,
   resolveLovyPoses,
 } from '@/lib/premiumLovy';
-import { buildRelationshipDeepReport } from '@/services/premiumService';
+import { buildRelationshipDeepReport, premiumFeatureState } from '@/services/premiumService';
+import { resolvePrice } from '@/lib/premiumVariant';
+import { jobAllowsOutwardAction } from '@/lib/logic/relationshipStage';
 import { toValidatedObservations } from '@/services/aiService';
 import { createEmptyAnswers } from '@/state/defaultAnswers';
 import type {
@@ -256,6 +258,31 @@ export async function POST(request: Request): Promise<Response> {
       answeredDeclaredAxes: answeredDeclaredAxisCount(answers.declared),
       mirrorInsightCount: mirror.insights.length,
     },
+    /**
+     * UT-1 P0-A — **화면이 실제로 보여주는 Premium 진입 상태.**
+     *
+     * `gate`는 자격만 말한다. 사용자가 막혔을 때 화면이 **어느 길을 알려주는가**는
+     * `premiumFeatureState()`가 정하고, 그 분기는 `solo` 하나로 갈린다. 그 값을
+     * 호출부가 빠뜨려도 `gate`는 멀쩡하므로(v1.40.1 §38.3과 같은 실패 형태) 여기서
+     * 따로 낸다 — fixture가 안내 문구를 **값으로** 고정할 수 있어야 한다.
+     *
+     * ⚠️ 판정을 복제하지 않는다. 화면과 같은 함수를 같은 술어로 부른다.
+     */
+    premiumEntry: (() => {
+      const soloMode = soloModeOfTarget(answers.target);
+      const feature = premiumFeatureState('relationship_deep_report', resolvePrice('A'), {
+        deepReportAvailable: hasPremiumEvidence({ insights, declared: answers.declared, mirror }),
+        solo: soloMode === 'no_target',
+        allowsOutwardAction: jobAllowsOutwardAction(job),
+      });
+      return {
+        soloMode,
+        status: feature.status,
+        unavailableReason: feature.unavailableReason ?? null,
+        /** 상대가 없는 사용자에게 '상대 정보'를 요구하지 않는다 — 값으로 검사한다 */
+        mentionsTargetInfo: (feature.unavailableReason ?? '').includes('상대 정보'),
+      };
+    })(),
     /**
      * v1.46 §11 — **사건이 점수를 바꾸지 않는다**를 fixture가 값으로 확인할 수 있게
      * 이미 계산된 동기화율을 그대로 낸다. 여기서 다시 계산하지 않는다.
