@@ -120,6 +120,7 @@ export const TARGET_RELATION_LABEL: Record<TargetRelation, string> = {
   friend: '친구',
   work: '같이 일하는 사람',
   intro: '소개로 만남',
+  ex: '이전 관계',
   unsure: '잘 모름',
 };
 

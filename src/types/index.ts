@@ -619,7 +619,19 @@ export interface CurrentRelationshipEvidence {
  *   `unsure` = '이 사람과 나의 **관계 이름**을 모르겠다'는 뜻이다. 상대의 관계 행동을
  *   모른다는 뜻이 아니다 — 그건 4축의 `x`(모름)가 따로 담당하고, 그것만 점수에서 빠진다.
  */
-export type TargetRelation = 'crush' | 'talking' | 'friend' | 'work' | 'intro' | 'unsure';
+/**
+ * '이 사람과 나는'.
+ *
+ * ⚠️ **`ex`만 예외다.** 나머지 값은 판정에 들어가지 않지만(v1.22부터의 계약),
+ * `ex`(이전 관계)는 `resolveRelationshipStageOf()`에서 STAGE를 `ended`로 만든다 —
+ * 그래야 Ended Safety(재회 유도 금지 · 상대 현재 마음 추정 금지 · outward action 0)가
+ * 이 상대에게도 그대로 걸린다. 옵션만 늘리고 lifecycle을 연결하지 않으면, 헤어진
+ * 상대를 고른 사용자가 "먼저 연락해봐"를 받는다.
+ *
+ * ⚠️ 그래도 **동기화율·Mirror·History 판정에는 여전히 들어가지 않는다.** `ex`가 바꾸는
+ * 것은 JOB(문장과 제안의 종류)뿐이고, 그건 `status: 'ended'`를 고른 사용자와 같은 경로다.
+ */
+export type TargetRelation = 'crush' | 'talking' | 'friend' | 'work' | 'intro' | 'ex' | 'unsure';
 
 /** l / m / h, x = 잘 모르겠어요 (점수에 반영하지 않음) */
 export type TargetLevel = 'l' | 'm' | 'h' | 'x';

@@ -57,6 +57,16 @@ async function trail(steps) {
 
 const src = (rel) => readFile(join(ROOT, 'src', rel), 'utf8');
 
+/**
+ * 주석을 걷어낸 소스.
+ *
+ * ⚠️ **설명이 검사에 걸리면 안 된다.** '이 문구를 뺐다'고 적은 주석 때문에 '그 문구가
+ * 없다'는 검사가 실패한다(IA 블록을 쓰다 실제로 걸렸다). NAV-13이 줄 단위로 하던
+ * 조치와 같고, 블록 주석·JSX 주석까지 덮도록 범위만 넓혔다.
+ */
+const noComments = (code) =>
+  code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
 const push = (href) => ({ href, kind: 'push' });
 const pop = (href) => ({ href, kind: 'pop' });
 const replace = (href) => ({ href, kind: 'replace' });
@@ -314,6 +324,108 @@ async function main() {
     check(
       'NAV-14b Navigation 저장소에 사용자 답변이 들어가지 않는다 (경로 문자열만)',
       navTrail.includes('JSON.stringify(entries)') && !navTrail.includes('answers'),
+      null,
+    );
+  }
+
+  /* ═══ UT-1 P1-A — Information Architecture / Discoverability ═════════════
+
+     UT-1에서 나온 말은 '렌즈를 찾기 어렵다' · '복잡하다'였다. 둘 다 **화면 수**가
+     아니라 **같은 목적지로 가는 길의 개수**와 **가장 중요한 길의 깊이** 문제였다.
+
+     ⚠️ 여기서 디자인을 검사하지 않는다. 검사하는 것은 셀 수 있는 것 세 가지다:
+     같은 목적지 진입점의 개수 · 렌즈까지의 클릭 수 · 같은 것을 부르는 이름의 개수.
+     보이는 모습은 Browser QA가 확인한다(NAV fixture가 ②에서 세운 것과 같은 분업). */
+  {
+    const home = noComments(await src('app/home/page.tsx'));
+
+    /* ── IA-01 · Home에서 같은 프로필 목적지가 중복되지 않는다 ───────────── */
+    const profileEntries = (home.match(/revisitHref\(ROUTES\.profileResult, 'home'\)/g) ?? []).length;
+    check(
+      'IA-01 Home 본문에 프로필 중복 진입점이 없다 (헤더 아바타 1개만)',
+      profileEntries === 1,
+      { profileEntries },
+    );
+    check(
+      'IA-01 프로필 행 문구가 Home에 남아 있지 않다',
+      !home.includes('내 관계 프로필 보기'),
+      null,
+    );
+
+    /* ── IA-02 · relationship CTA 카피가 상태를 따라간다 ──────────────────
+       파괴적 동작(`resetTargetContext`)에 중립 라벨을 붙이지 않는다. */
+    check(
+      'IA-02 상대가 없을 때의 라벨이 관계 궁합 보기다',
+      home.includes("hasTargetContext ? '새로운 사람과 궁합 보기' : '관계 궁합 보기'"),
+      null,
+    );
+    check(
+      'IA-02 지울 상대 맥락이 있을 때만 초기화한다 (entitlement 키를 헛되이 바꾸지 않는다)',
+      home.includes('if (hasTargetContext) resetTargetContext();'),
+      null,
+    );
+    check(
+      'IA-02 판정 source는 soloModeOf 하나다 (새 술어를 만들지 않았다)',
+      home.includes("const hasTargetContext = soloModeOf(answers) !== 'no_target';"),
+      null,
+    );
+
+    /* ── IA-03 · 렌즈 discoverability ────────────────────────────────────
+       Home에서 렌즈 허브까지 **1탭**. 예전에는 궁합 결과 05 섹션 안쪽에만 있어서
+       결과 화면을 지나친 사용자에게는 진입점이 아예 없었다. */
+    check('IA-03 Home에 렌즈 허브 진입점이 있다', home.includes('router.push(ROUTES.lens)'), null);
+    check(
+      'IA-03 렌즈 행이 자기 문구를 새로 쓰지 않고 LENS_COPY를 읽는다 (이름이 갈리지 않게)',
+      home.includes('{LENS_COPY.title}') && home.includes('{LENS_COPY.caption}'),
+      null,
+    );
+    /* 결과 화면에서도 '다 읽고 나서'가 아니라 상단 Navigator에서 바로 닿는다 */
+    const compat = noComments(await src('app/compatibility/page.tsx'));
+    check(
+      'IA-03 궁합 결과 상단 Section Navigator에 렌즈 항목이 있다',
+      /ResultSectionNav[\s\S]*?RESULT_ANCHORS\.compatibilityLenses, label: '다른 렌즈'/.test(compat),
+      null,
+    );
+    /* 가격은 여전히 Bundle·Paywall 두 곳뿐이다 — 무료 허브 행에 붙지 않았다 */
+    check(
+      'IA-03 Home 렌즈 행에 가격을 붙이지 않는다 (bundle 1회 원칙)',
+      !/ROUTES\.lens\)[\s\S]{0,900}formatPrice/.test(home),
+      null,
+    );
+
+    /* ── IA-06 · contextual back regression ──────────────────────────────
+       v1.46.2 구조를 다시 만들지 않았다는 것을 값으로 확인한다. */
+    const header = await src('components/common/ScreenHeader.tsx');
+    check(
+      'IA-06 헤더 back은 여전히 useContextualBack이다',
+      header.includes('useContextualBack(backHref ?? ROUTES.home)'),
+      null,
+    );
+
+    /* ── IA-07 · direct entry fallback 미변경 ────────────────────────────
+       본문 CTA만 뺐고 `backHref`(직접 진입 fallback)는 그대로다. */
+    const lensHub = noComments(await src('app/lens/page.tsx'));
+    const compatLenses = noComments(await src('app/compatibility/lenses/page.tsx'));
+    check(
+      'IA-07 /lens의 직접 진입 fallback이 그대로다',
+      lensHub.includes('backHref={ROUTES.target}'),
+      null,
+    );
+    check(
+      'IA-07 /compatibility/lenses의 직접 진입 fallback이 그대로다',
+      compatLenses.includes('backHref={`${ROUTES.compatibility}#${RESULT_ANCHORS.compatibilityLenses}`}'),
+      null,
+    );
+
+    /* ── IA-05(중복 back) · 헤더 ←와 같은 일을 하는 본문 버튼 0 ──────────── */
+    check(
+      'IA-05 /lens 본문에 헤더와 같은 돌아가기 버튼이 없다',
+      !lensHub.includes('useContextualBack') && !lensHub.includes('돌아가기'),
+      null,
+    );
+    check(
+      'IA-05 /compatibility/lenses 본문에 궁합 결과로 돌아가기가 없다',
+      !compatLenses.includes('궁합 결과로 돌아가기'),
       null,
     );
   }

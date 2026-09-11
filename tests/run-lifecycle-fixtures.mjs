@@ -804,6 +804,73 @@ async function main() {
     );
   }
 
+  /* ═══ IA-04 · IA-05 — '이전 관계' 상대는 ENDED lifecycle을 그대로 받는다 ════
+
+     UT-1 P1-A §4가 `이 사람과 나는`에 `이전 관계`를 더했다. 위험은 옵션이 아니라
+     **연결**에 있다: 라벨만 늘리고 lifecycle을 연결하지 않으면, 헤어진 상대를 고른
+     사용자가 `dating` Job을 받아 `먼저 연락해봐`·`같이 해보자`를 본다.
+
+     그래서 여기서 검사하는 것은 문구가 아니라 **동치**다 —
+     `status: dating` + `relation: 'ex'`가 `status: 'ended'`와 **같은 Job·같은 금지**를
+     받는가. 새 규칙을 만들지 않았다는 사실을 값으로 고정한다. */
+  console.log('\nIA-04 · IA-05 — 이전 관계(ex) = ENDED lifecycle');
+  {
+    const EX_TARGET = { ...TARGET, relation: 'ex' };
+    /** ⚠️ status는 일부러 `dating`이다 — 상대 쪽 답이 더 구체적인 사실이다 */
+    const ex = await run({ status: 'dating', declared: DECLARED, experience: EXPERIENCE, target: EX_TARGET });
+    const ended = await run({ status: 'ended', ...SESSION });
+
+    check('IA-04 이전 관계를 고르면 JOB이 ended다 (status가 dating이어도)', ex.resolution.job === 'ended', ex.resolution);
+    /* STAGE 자체가 내려갔는지 — JOB만 보면 sufficiency로 우연히 맞을 수도 있다 */
+    check('IA-04 STAGE가 ended로 내려간다 (JOB이 아니라 STAGE에서 갈린다)', ex.resolution.stage === 'ended', ex.resolution);
+    check(
+      'IA-04 같은 상대 정보를 줘도 sufficiency는 그대로다 (판정은 건드리지 않는다)',
+      ex.resolution.sufficiency === 'couple',
+      ex.resolution,
+    );
+    check(
+      'IA-04 ended와 같은 Job 문맥을 받는다 (새 분기를 만들지 않았다)',
+      ex.context.actionSectionTitle === ended.context.actionSectionTitle &&
+        JSON.stringify(ex.context.actionKinds) === JSON.stringify(ended.context.actionKinds),
+      { ex: ex.context.actionSectionTitle, ended: ended.context.actionSectionTitle },
+    );
+
+    /* IA-05 — 재회 유도 · 상대를 향한 행동 · 상대에게 던지는 질문 전부 0 */
+    const hits = findForbidden(ex.context.renderedStrings, ENDED_FORBIDDEN);
+    check('IA-05 이전 관계 노출 문자열에 금지 어휘 0건', hits.length === 0, hits);
+    const premiumHits = findForbidden(ex.context.premiumAdditions, ENDED_FORBIDDEN);
+    check('IA-05 이전 관계 Premium 목록에 상대를 향한 약속 0건', premiumHits.length === 0, premiumHits);
+    check(
+      'IA-05 이전 관계에는 상대를 향한 행동을 만들지 않는다',
+      ex.context.allowsOutwardAction === false && ex.context.outwardHintCount === 0,
+      ex.context,
+    );
+    check(
+      'IA-05 이전 관계에는 상대에게 물어볼 질문을 추천하지 않는다',
+      ex.context.allowsOutwardQuestions === false,
+    );
+    const deepHits = findForbidden(ex.deepReport.renderedStrings, ENDED_FORBIDDEN);
+    check('IA-05 유료 리포트 본문에도 금지 어휘 0건', deepHits.length === 0, deepHits);
+    check(
+      'IA-05 유료 리포트의 outward action·question 0',
+      ex.deepReport.outwardActionCount === 0 && ex.deepReport.outwardQuestionCount === 0,
+      { a: ex.deepReport.outwardActionCount, q: ex.deepReport.outwardQuestionCount },
+    );
+
+    /* ⚠️ 안전 규칙은 **내리기만** 한다 — 다른 답변으로 해제되지 않는다 */
+    const endedButCrush = await run({
+      status: 'ended',
+      declared: DECLARED,
+      experience: EXPERIENCE,
+      target: { ...TARGET, relation: 'crush' },
+    });
+    check(
+      'IA-05 status=ended는 상대를 crush로 골라도 ended로 남는다 (해제 불가)',
+      endedButCrush.resolution.job === 'ended' && endedButCrush.context.allowsOutwardAction === false,
+      endedButCrush.resolution,
+    );
+  }
+
   /* ── 결과 ─────────────────────────────────────────────────────────────── */
   console.log('');
   if (failures.length > 0) {

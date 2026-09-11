@@ -82,6 +82,29 @@ export function resolveRelationshipStage(status: RelationshipStatus | null): Rel
   return STAGE_OF_STATUS[status] ?? 'none';
 }
 
+/**
+ * UT-1 P1-A §4 — **지금 보고 있는 상대가 '이전 관계'면 STAGE는 `ended`다.**
+ *
+ * S05(`answers.status`)는 *내 연애 상태*를 묻고, S19의 `이 사람과 나는`은 *이 상대와의
+ * 관계*를 묻는다. 두 답이 갈릴 수 있다 — 새 연애 중(`dating`)이면서 예전 사람을 한 번
+ * 돌아보는 사용자가 그렇다. 그때 STAGE를 `status`만으로 읽으면 **헤어진 상대에게
+ * `먼저 연락해봐`를 제안**하게 된다(`jobAllowsOutwardAction('dating') === true`).
+ *
+ * ⚠️ **새 규칙이 아니라 §37의 ②를 그대로 적용한 것이다** — "사용자가 고른 단계보다
+ * 실제로 넣은 데이터를 더 신뢰한다". `none` + `couple`을 `talking`으로 올리는 줄과
+ * 같은 근거이고, 방향만 반대다(더 안전한 쪽으로 내린다).
+ *
+ * ⚠️ **`ended`로 내리기만 한다.** `status: 'ended'`인 사용자가 상대를 `crush`로
+ * 고른다고 해서 `talking`으로 올리지 않는다 — 안전 규칙을 사용자의 다른 답변으로
+ * 해제하지 않는다.
+ *
+ * ⚠️ 판정(동기화율·Mirror·History)은 이 값을 읽지 않는다(이 파일 상단 주석).
+ */
+export function resolveRelationshipStageOf(answers: SessionAnswers): RelationshipStage {
+  if (answers.target.relation === 'ex') return 'ended';
+  return resolveRelationshipStage(answers.status);
+}
+
 /* ────────────────────────────────────── SUFFICIENCY (상대 정보가 충분한가) */
 
 /**
@@ -148,7 +171,7 @@ export interface RelationshipContextResolution {
 export function resolveRelationshipContext(
   answers: SessionAnswers,
 ): RelationshipContextResolution {
-  const stage = resolveRelationshipStage(answers.status);
+  const stage = resolveRelationshipStageOf(answers);
   const sufficiency = resolveTargetSufficiency(answers.target);
   return { stage, sufficiency, job: resolveRelationshipJob({ stage, sufficiency }) };
 }

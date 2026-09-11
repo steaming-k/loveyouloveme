@@ -94,6 +94,14 @@ export const ANALYTICS_EVENTS = [
   'saju_lens_view',
   'astrology_lens_view',
   'entertainment_lens_entry_click',
+  /**
+   * UT-1 P1-A §3 — 렌즈 **허브**(`/lens`) 진입. `source`로 어디서 들어왔는지 구분한다.
+   *
+   * ⚠️ `entertainment_lens_entry_click`을 재사용하지 않았다. 그 이벤트는 사주·별자리
+   * 개별 렌즈의 KPI(Entertainment Lens View Rate)의 분자라서, 허브 클릭을 같은 이름으로
+   * 보내면 기존 지표가 조용히 부풀어 오른다.
+   */
+  'lens_hub_entry_click',
   'entertainment_lens_birth_missing',
   'lens_conversation_question_save',
   /** @deprecated v1.4 — 별자리 직접 선택이 생년월일 기반 계산으로 대체됐다 */

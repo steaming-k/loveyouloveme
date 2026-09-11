@@ -3,7 +3,6 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
-import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
@@ -13,7 +12,6 @@ import { LENS_COPY, LOVY_LINES } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { isBirthDateUsable, lensAvailability } from '@/lib/logic/birth';
 import { ROUTES } from '@/lib/routes';
-import { useContextualBack } from '@/hooks/useContextualBack';
 import { useSession } from '@/state/SessionProvider';
 import type { EntertainmentLensType } from '@/types';
 
@@ -36,8 +34,6 @@ export default function LensPage() {
 
 function LensView() {
   const router = useRouter();
-  /** v1.46.2 §Navigation — 앱 안에서 왔으면 직전 화면, 아니면 `/target`(헤더와 같은 fallback) */
-  const goBack = useContextualBack(ROUTES.target);
   const { answers } = useSession();
   const [today] = useState(() => new Date());
 
@@ -95,11 +91,15 @@ function LensView() {
       header={
         <ScreenHeader backHref={ROUTES.target} action={<Tag tone="neutral">{LENS_COPY.badge}</Tag>} />
       }
-      footer={
-        <Button variant="secondary" onClick={goBack}>
-          돌아가기
-        </Button>
-      }
+      /*
+        UT-1 P1-A §5 — **본문 `돌아가기`를 뺐다.**
+
+        이 버튼은 `goBack`을 불렀는데, 그건 `ScreenHeader`가 `backHref`로 만드는 것과
+        **같은 훅·같은 fallback**(`useContextualBack(ROUTES.target)`)이었다 — 이름만
+        다른 같은 버튼 두 개가 한 화면에 있었다. 헤더 ←를 남긴다.
+
+        ⚠️ 직접 진입 fallback은 건드리지 않았다 — `backHref={ROUTES.target}` 그대로다.
+      */
       bodyClassName="pt-1.5 pb-4"
     >
       <div className="flex flex-col gap-5">

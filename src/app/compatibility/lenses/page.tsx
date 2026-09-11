@@ -3,7 +3,6 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
-import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
@@ -61,14 +60,17 @@ function CompatibilityLensesView() {
           title="다른 렌즈"
         />
       }
-      footer={
-        <Button
-          variant="secondary"
-          onClick={() => router.push(`${ROUTES.compatibility}#${RESULT_ANCHORS.compatibilityLenses}`)}
-        >
-          궁합 결과로 돌아가기
-        </Button>
-      }
+      /*
+        UT-1 P1-A §5 — **본문 `궁합 결과로 돌아가기`를 뺐다.**
+
+        목적지가 헤더 ←의 fallback(`/compatibility#lenses`)과 같았다. 다른 점은 하나,
+        이쪽은 `router.push`였다는 것이다 — 즉 뒤로 가는 대신 history를 **한 칸 더
+        쌓아서** 같은 화면으로 갔다. 그 다음 브라우저 back은 다시 이 렌즈 허브로
+        돌아온다(왕복). v1.46.2가 헤더에서 고친 실패 방식이 본문에 남아 있던 것이다.
+
+        ⚠️ 이 화면에는 앞으로 가는 행동(렌즈 3종)이 따로 있어서, 빼도 막다른 화면이
+        되지 않는다. 직접 진입 fallback은 그대로다.
+      */
       bodyClassName="pt-1.5 pb-4"
     >
       <div className="flex flex-col gap-5">

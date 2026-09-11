@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 
 import { cn } from '@/lib/cn';
 import { revisitHref } from '@/lib/resultView';
-import { resolveRelationshipStage } from '@/lib/logic/relationshipStage';
+import { resolveRelationshipStageOf } from '@/lib/logic/relationshipStage';
 import { soloModeOf } from '@/lib/logic/soloMode';
 import { ROUTES } from '@/lib/routes';
 import { useToast } from './ToastProvider';
@@ -86,7 +86,7 @@ export function BottomNavigation() {
     ⚠️ 조건도 `completed.profile`이다. Mirror는 내 답변만으로 만들어지므로 상대 입력
     완료(`completed.compatibility`)를 요구할 이유가 없다 — solo와 같은 이유다.
   */
-  const reflecting = resolveRelationshipStage(answers.status) === 'ended';
+  const reflecting = resolveRelationshipStageOf(answers) === 'ended';
   const analysisHref = reflecting
     ? ROUTES.mirror
     : solo

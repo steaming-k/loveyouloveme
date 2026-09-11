@@ -23,6 +23,18 @@ export interface StageJobCopy {
   readonly nowWhatTitle: string;
   /** LEVEL 3 섹션 캡션 */
   readonly nowWhatCaption: string;
+  /**
+   * UT-1 P1-A §1 — 상단 Section Navigator 칩 라벨(짧은 형태).
+   *
+   * ⚠️ **`nowWhatTitle`과 같은 곳을 가리키는 같은 말이어야 한다.** 예전에는 칩이
+   * `뭘 해볼까`로 **하드코딩**돼 있어서, `ended` 사용자는 `뭘 해볼까`를 눌러
+   * `그래서 뭐가 남았을까` 섹션에 도착했다 — 같은 것을 두 이름으로 부르는
+   * 상태이고, 회고 중인 사용자에게는 방향까지 반대였다.
+   *
+   * 칩은 `flex-wrap` 한 줄 목록이라 길어지면 줄만 늘어난다(잘리지 않는다).
+   * 그래도 6자 이내로 둔다 — 칩은 제목이 아니라 이정표다.
+   */
+  readonly navLabel: string;
   /** 04-a 서브블록 라벨 */
   readonly actionLabel: string;
   /** 04-b 서브블록 라벨 */
@@ -51,6 +63,7 @@ export const STAGE_JOB_COPY: Record<RelationshipJob, StageJobCopy> = {
     scoreUse: '지금은 비교할 상대가 없으니, 네 기준부터 정리해뒀어.',
     nowWhatTitle: '그래서 뭘 알아둘까',
     nowWhatCaption: '네가 답한 기준을 기준으로 정리했어. 상대에 대한 추측은 넣지 않았어.',
+    navLabel: '알아둘 것',
     actionLabel: '알아두면 좋은 것',
     questionLabel: '나에게 물어볼 질문',
     frictionVerb: '관찰',
@@ -61,6 +74,7 @@ export const STAGE_JOB_COPY: Record<RelationshipJob, StageJobCopy> = {
     scoreUse: '아직 아는 게 적어서 이 숫자는 참고용이야. 지금은 알아가는 게 먼저야.',
     nowWhatTitle: '그래서 뭘 물어볼까',
     nowWhatCaption: '네가 알려준 것만 기준으로 했어. 모르는 건 모른다고 두고 질문으로 만들었어.',
+    navLabel: '물어볼 것',
     actionLabel: '알아둘 것',
     questionLabel: '알아가며 물어볼 질문',
     frictionVerb: '확인',
@@ -71,6 +85,7 @@ export const STAGE_JOB_COPY: Record<RelationshipJob, StageJobCopy> = {
     scoreUse: '이 숫자는 결론이 아니야. 지금 확인해두면 좋은 게 어디인지 보는 데 써.',
     nowWhatTitle: '그래서 뭘 확인해볼까',
     nowWhatCaption: '네가 알려준 이 사람의 취향과 관계 방식을 기준으로 생각해봤어.',
+    navLabel: '확인할 것',
     actionLabel: '이 사람에게 다가갈 때',
     questionLabel: '이야기해볼 질문',
     frictionVerb: '확인',
@@ -81,6 +96,7 @@ export const STAGE_JOB_COPY: Record<RelationshipJob, StageJobCopy> = {
     scoreUse: '이 숫자보다, 지금 실제로 어디에서 기대가 다른지 보는 게 더 쓸모 있어.',
     nowWhatTitle: '그래서 뭘 맞춰볼까',
     nowWhatCaption: '네가 알려준 이 사람의 관계 방식을 기준으로, 지금 조율해볼 지점을 봤어.',
+    navLabel: '맞춰볼 것',
     actionLabel: '지금 관계에서 맞춰볼 것',
     questionLabel: '같이 이야기해볼 질문',
     frictionVerb: '조율',
@@ -91,6 +107,7 @@ export const STAGE_JOB_COPY: Record<RelationshipJob, StageJobCopy> = {
     scoreUse: '오래 함께한 관계에서 이 숫자는 요약일 뿐이야. 반복되는 지점을 보는 데 써.',
     nowWhatTitle: '그래서 반복되는 지점을 어떻게 다룰까',
     nowWhatCaption: '네가 알려준 관계 방식을 기준으로, 자주 반복될 수 있는 지점을 봤어.',
+    navLabel: '맞춰볼 것',
     actionLabel: '반복될 때 맞춰볼 것',
     /**
      * v1.40.1 — 이 라벨은 v1.40부터 그대로인데, **그동안 거짓이었다.**
@@ -111,6 +128,7 @@ export const STAGE_JOB_COPY: Record<RelationshipJob, StageJobCopy> = {
     // fixture가 그 어휘를 통째로 금지하고, 문구 하나를 위해 그 금지선을 느슨하게 만들지 않는다.
     // 뜻은 그대로 남는다.
     nowWhatCaption: '이 관계에서 네가 답한 기준을 정리했어. 왜 그렇게 됐는지는 여기서 알 수 없어.',
+    navLabel: '돌아볼 것',
     actionLabel: '돌아볼 것',
     questionLabel: '나에게 물어볼 질문',
     frictionVerb: '회고',

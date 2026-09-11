@@ -10,8 +10,9 @@ import { SectionLabel } from '@/components/common/primitives';
 import { useToast } from '@/components/common/ToastProvider';
 import { HomePremiumBundle } from '@/components/premium/HomePremiumBundle';
 import { Lovy } from '@/components/lovy/Lovy';
-import { BRAND, HOME_COPY } from '@/data/copy';
+import { BRAND, HOME_COPY, LENS_COPY } from '@/data/copy';
 import { clearAiCache } from '@/services/ai/aiClient';
+import { trackEvent } from '@/lib/analytics';
 import { clearDeepReportUt } from '@/lib/deepReportUtStore';
 import { UT_MODE } from '@/lib/env';
 import { clearPreviewUnlocks, hasPreviewUnlock } from '@/lib/premiumAccess';
@@ -26,7 +27,7 @@ import { homeHeroSummary } from '@/lib/logic/profile';
 import {
   jobAllowsOutwardAction,
   resolveRelationshipContext,
-  resolveRelationshipStage,
+  resolveRelationshipStageOf,
 } from '@/lib/logic/relationshipStage';
 import { soloModeOf } from '@/lib/logic/soloMode';
 import { ROUTES } from '@/lib/routes';
@@ -61,6 +62,11 @@ export default function HomePage() {
    * 만들어지지 않고, 상대가 있으면 궁합 결과와 겹친다.
    */
   const soloEntryVisible = answers.completed.profile && soloModeOf(answers) !== 'couple';
+  /**
+   * UT-1 P1-A §2 — 지금 **지울 상대 맥락이 있는가**. 하단 CTA의 라벨과 초기화 여부를
+   * 이 값 하나로 가른다(판정 source는 `soloModeOf` 하나 — P0-A와 같은 규칙).
+   */
+  const hasTargetContext = soloModeOf(answers) !== 'no_target';
   /*
     v1.40 §37.16 — `ended`에서도 '새로운 사람과 궁합 보기'를 primary로 두지 않는다.
 
@@ -69,7 +75,7 @@ export default function HomePage() {
     상태와 반대 방향을 가장 크게 말한다. **버튼을 없애지 않는다** — 그 사이에 마음이
     달라질 수 있고, 새 상대 기능 자체는 그대로다. 위계만 낮춘다.
   */
-  const reflecting = resolveRelationshipStage(answers.status) === 'ended';
+  const reflecting = resolveRelationshipStageOf(answers) === 'ended';
   const newTargetSecondary = soloEntryVisible || reflecting;
   const { entries, latest, clearAll: clearHistory } = useHistory();
   const report = useHistoryReport();
@@ -441,19 +447,47 @@ export default function HomePage() {
             </span>
           </button>
 
-          {/* v1.11 §24 — Relationship Profile(S18)도 언제든 다시 볼 수 있어야 한다 */}
-          {answers.completed.profile ? (
-            <button
-              type="button"
-              onClick={() => router.push(revisitHref(ROUTES.profileResult, 'home'))}
-              className="flex min-h-11 items-center justify-between rounded-row border border-line bg-surface px-4 text-sub active:bg-sunken"
-            >
-              내 관계 프로필 보기
-              <span className="text-ink-faint" aria-hidden>
-                →
+          {/*
+            UT-1 P1-A §2 · §3 — **자리를 바꿨다. 늘리지 않았다.**
+
+            여기에는 `내 관계 프로필 보기` 행이 있었는데, 그 행은 이 화면 헤더 우상단의
+            아바타(`나`)와 **같은 목적지·같은 인자**였고(`revisitHref(profileResult,'home')`
+            문자 그대로 동일), 하단 Navigation의 `나` 탭까지 합치면 같은 곳으로 가는
+            진입점이 한 화면에 3개였다. 상시 chrome 2개(헤더 아바타 · 하단 탭)를 남기고
+            본문 행만 뺀다.
+
+            비워진 자리에 렌즈 허브를 둔다. UT-1에서 렌즈를 '찾기 어렵다'고 한 이유는
+            진입점이 **궁합 결과 05 섹션 안**에만 있어서, 결과 화면을 지나쳤거나 상대가
+            없는 사용자에게는 존재 자체가 보이지 않았기 때문이다. 이제 Home에서 1탭이다.
+
+            ⚠️ 아래 Premium Bundle과 **파는 것이 다르다.** 이 행은 지금 무료로 볼 수 있는
+            렌즈 허브(`/lens`)이고 Bundle은 그 렌즈들의 유료 상세다. 그래서 이 행에는
+            가격을 붙이지 않는다 — 가격이 나오는 자리는 Bundle 헤더와 Paywall 둘뿐이다(§35).
+
+            ⚠️ 문구를 새로 쓰지 않고 `LENS_COPY`를 그대로 읽는다. 같은 것을 화면마다 다른
+            이름으로 부르지 않는다(P1-A §1 Audit 항목).
+          */}
+          <button
+            type="button"
+            onClick={() => {
+              trackEvent('lens_hub_entry_click', { source: 'home' });
+              router.push(ROUTES.lens);
+            }}
+            className="flex items-center justify-between gap-3 rounded-row border border-line bg-surface p-[15px] text-left active:bg-sunken"
+          >
+            <span className="flex min-w-0 flex-col gap-1">
+              <span className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
+                {LENS_COPY.badge}
               </span>
-            </button>
-          ) : null}
+              <span className="text-[13.5px] font-medium keep-all">{LENS_COPY.title}</span>
+              <span className="text-[12px] keep-all leading-relaxed text-ink-sub">
+                {LENS_COPY.caption}
+              </span>
+            </span>
+            <span className="flex-none rounded-[6px] bg-brand-tint px-2 py-1.5 text-label font-semibold text-brand-pressed">
+              보기
+            </span>
+          </button>
 
           {/*
             v1.46 PremiumLens §32~§35 — Premium Bundle.
@@ -477,14 +511,32 @@ export default function HomePage() {
             **위계만** 낮춘다 — 솔로라고 답했어도 그 사이에 누가 생길 수 있다.
           */}
           <div className="flex flex-col gap-1.5 pt-0.5">
+            {/*
+              UT-1 P1-A §2 — **라벨이 상태를 따라간다.**
+
+              이 버튼은 지금까지 언제나 `새로운 사람과 궁합 보기`였다. 그런데 상대를 한
+              번도 입력하지 않은 사용자에게는 `새로운`이 가리킬 이전 사람이 없다 —
+              첫 분석인데 화면이 두 번째인 것처럼 말한다(UT-1 '복잡하다' 응답 지점).
+
+              ⚠️ **그렇다고 항상 `관계 궁합 보기`로 바꾸면 안 된다.** 이 버튼은
+              `resetTargetContext()`를 부른다 — 지금 상대를 지우는 파괴적 동작이다.
+              상대가 있는 사용자에게 중립적인 라벨을 보여주면, '내 궁합 결과 다시 보기'로
+              읽고 눌러서 입력을 잃는다. 그 사용자에게는 경고를 담은 기존 라벨을 유지한다
+              (바로 아래 caption도 그 사실을 한 번 더 말한다).
+
+              ⚠️ 그리고 **지울 게 없으면 지우지 않는다.** `no_target`에서 초기화를 부르면
+              비우는 것은 없는데 `funnelAnalysisId`만 새로 발급된다 — 상대 없이 Self-only
+              근거로 연 Premium 리포트의 entitlement가 그 순간 끊긴다(P0-A에서 고정한
+              `hasPreviewUnlock(feature, analysisId)` 키가 바뀐다).
+            */}
             <Button
               variant={newTargetSecondary ? 'secondary' : 'primary'}
               onClick={() => {
-                resetTargetContext();
+                if (hasTargetContext) resetTargetContext();
                 router.push(ROUTES.target);
               }}
             >
-              새로운 사람과 궁합 보기
+              {hasTargetContext ? '새로운 사람과 궁합 보기' : '관계 궁합 보기'}
             </Button>
             {/* v1.11.1 §9 — 과도한 Confirm Modal 대신 작은 안내 문구로 대체한다 */}
             {compatibilityPreview ? (

@@ -540,7 +540,15 @@ function CompatibilityView() {
             items={[
               { id: RESULT_ANCHORS.compatibilityGood, label: '잘 맞는 신호' },
               { id: RESULT_ANCHORS.compatibilityFriction, label: '확인할 신호' },
-              { id: RESULT_ANCHORS.compatibilityApproach, label: '뭘 해볼까' },
+              /*
+                UT-1 P1-A §1 — **하드코딩된 `뭘 해볼까`였다.**
+
+                이 칩이 가리키는 섹션 제목은 Job에서 나오는데(`jobCopy.nowWhatTitle`)
+                칩만 고정 문자열이라, `ended` 사용자는 `뭘 해볼까`를 눌러
+                `그래서 뭐가 남았을까`에 도착했다 — 같은 것을 두 이름으로 부르는
+                상태다. 이제 같은 source(`STAGE_JOB_COPY`)를 읽는다.
+              */
+              { id: RESULT_ANCHORS.compatibilityApproach, label: jobCopy.navLabel },
               { id: RESULT_ANCHORS.compatibilityQuestions, label: '질문' },
               { id: RESULT_ANCHORS.compatibilityLenses, label: '다른 렌즈' },
             ]}
