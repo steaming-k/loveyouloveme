@@ -17,6 +17,7 @@ import { HISTORY_COPY, LOVY_LINES } from '@/data/copy';
 import { historyCountBucket, trackEvent } from '@/lib/analytics';
 import { formatEntryDate } from '@/lib/historyFormat';
 import { ROUTES } from '@/lib/routes';
+import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { useHistoryReport, useRepeatedSignals, useSoloHistoryReport, useSoloMode } from '@/hooks/useAnalysis';
 import { useHistory } from '@/state/HistoryProvider';
 import { filterHistoryByAudience, historyAudienceOf } from '@/lib/logic/soloHistory';
@@ -44,6 +45,16 @@ function HistoryView() {
   const router = useRouter();
   const { answers } = useSession();
   const { entries, latest } = useHistory();
+
+  /**
+   * v1.46.2 §Navigation — 기록 상세를 보고 Back으로 돌아오면 읽던 위치로 되돌린다.
+   * 기록이 쌓일수록 이 목록은 길어지고, 맨 위로 되던져지면 "방금 본 기록이 어디였지"를
+   * 매번 다시 찾아야 한다.
+   *
+   * 키에 분석 id를 넣지 않는다 — 이 화면은 특정 분석의 결과가 아니라 **전체 기록
+   * 목록**이라 분석마다 갈라야 할 위치가 아니다(§7).
+   */
+  useScrollRestore('history:list', entries.length > 0);
   const report = useHistoryReport();
   const soloReport = useSoloHistoryReport();
   const repeated = useRepeatedSignals();

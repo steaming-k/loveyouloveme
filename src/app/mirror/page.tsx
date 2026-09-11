@@ -23,6 +23,7 @@ import { UtRatingCard } from '@/components/ut/UtRatingCard';
 import { LOVY_LINES } from '@/data/copy';
 import { PREMIUM_HOOK_COPY } from '@/data/premium';
 import { useAnchorScroll } from '@/hooks/useAnchorScroll';
+import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { resolveEvidenceRefs } from '@/lib/aiEvidenceResolver';
 import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
@@ -47,6 +48,7 @@ import { useCrossSourceInsights, useEvidenceContext, useRelationshipNarrative } 
 import { useMirror, usePastObservation, useRelationshipProfile, useRepeatedSignals } from '@/hooks/useAnalysis';
 import { useHistory } from '@/state/HistoryProvider';
 import { useSession } from '@/state/SessionProvider';
+import { useNavReplace } from '@/hooks/useContextualBack';
 
 /**
  * Mirror Result (v1.11 · S27R — 구 S27 Map + S28 Core Insight)
@@ -71,6 +73,7 @@ export default function MirrorPage() {
 
 function MirrorView() {
   const router = useRouter();
+  const navReplace = useNavReplace();
   const searchParams = useSearchParams();
   const { showToast } = useToast();
   const { answers, setCoreVerdict, setCoreCorrection, markComplete, markResultViewed } =
@@ -207,9 +210,23 @@ function MirrorView() {
 
   useAnchorScroll(mirror.available && !lowData);
 
+  /**
+   * v1.46.2 §Navigation — Mirror에서 상세(MBTI 렌즈·Premium)로 들어갔다 Back으로
+   * 돌아오면 읽던 위치로 되돌린다. `/compatibility`에만 있던 복원을 여기에도 둔다 —
+   * 결과 화면에서 하위 화면을 열고 돌아오는 것은 이 화면에서도 똑같이 일어난다.
+   *
+   * 키가 `funnelAnalysisId`라서 **새 상대는 새 키**다(§7 — 분석 A의 위치가 분석 B로
+   * 새지 않는다). `/compatibility`와 접두사를 나눠 같은 분석 안에서도 화면끼리
+   * 섞이지 않는다.
+   */
+  useScrollRestore(
+    funnelAnalysisId ? `mirror:${funnelAnalysisId}` : null,
+    mirror.available && !lowData,
+  );
+
   useEffect(() => {
-    if (!mirror.available) router.replace(ROUTES.home);
-  }, [mirror.available, router]);
+    if (!mirror.available) navReplace(ROUTES.home);
+  }, [mirror.available, navReplace]);
 
   useEffect(() => {
     if (!mirror.available || lowData) return;

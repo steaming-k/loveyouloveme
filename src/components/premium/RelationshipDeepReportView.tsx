@@ -536,7 +536,16 @@ export function RelationshipDeepReportView({
         ⚠️ `available` 게이트에 걸지 않는다 — 이 화면이 그려지는 순간 이미 리포트가 열린
         상태고, 번들은 그 결제 하나로 함께 열린다(§2 · LENS-01).
       */}
-      <PremiumLensSection bundle={report.lensBundle} ai={lensAi} />
+      {/*
+        v1.46.2 §Navigation — 펼쳐둔 렌즈는 돌아왔을 때도 펼쳐져 있어야 한다.
+        스크롤 위치만 되돌리고 카드가 접혀 있으면 그 위치의 내용이 달라진다.
+        `funnelAnalysisId`가 없는 개발용 화면에서는 보관하지 않는다.
+      */}
+      <PremiumLensSection
+        bundle={report.lensBundle}
+        ai={lensAi}
+        stateKey={funnelAnalysisId ? `premium-lens:${funnelAnalysisId}` : undefined}
+      />
       {/*
         04 이번에 만들지 않은 것 (§14.1)
 

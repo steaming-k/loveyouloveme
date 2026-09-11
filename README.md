@@ -51,6 +51,7 @@ http://localhost:3000 · 기준 뷰포트 **393 × 852** (360px에서도 깨지�
 | `npm run test:history` | Logic Fixture 100건 — History H0~H10 + Observed 시간축 + 근거 묶음 + Solo Premium 게이트 + `네가 말한 너` 문구 무결성 + 샘플 근거 정합성 · S07 사진 게이트(v1.37) + **관찰 시퀀스 시간 예산**(v1.38) (Provider Key 불필요 · **dev 서버 필요**) |
 | `npm run test:trust` | Trust Boundary Fixture **205건** (v1.44) — **입력을 신뢰할 수 없을 때 무엇을 말하는가.** 손상 세션 강등 · AI `meta` 부재 방어 · 근거 없는 Home 단정 차단 · 근거 없는 시간적 변화 주장 차단. 유효 입력의 문구가 **그대로인지도 함께** 고정한다(과필터 방지) (**dev 서버 필요**) |
 | `npm run test:premium` | Premium Deep Report v2 Fixture **196건** (v1.45+ · PREM-V2-01~15 + LOVY-01~12 + POSTREV-01~18 + RELEASE-01~06 + PROD-UNLOCK-01~10) — 고데이터에서 Chapter **7~10개** · Chapter마다 독립 근거 2종 · 같은 축 반복 상한 · **FREE 중복 0** · Sparse **filler 0** · `ended` outward **0** · **AI 500·parse 실패에도 Chapter 유지** · 다른 Chapter 근거 차단 · 헤더 N = 실제 Chapter 수 · Accordion A11y·Analytics Privacy·Production Guard 정적 guard · **캐릭터 통합**(kind마다 러비 포즈 존재 · 인접 중복 0 · 원본↔runtime SHA-256 동일 · 러비 한마디가 세션에 따라 변하지 않음 · 중간 메모가 Chapter 수에 미포함 · Sparse 메모 0 · `ended` 안전 카피 · Provider 1회 · promptVersion 불변) (**dev 서버 필요**) |
+| `npm run test:nav` | Navigation Fixture **40건** (v1.46.2 · NAV-01~15) — **뒤로가기가 직전 맥락으로 가는가.** 결과→상세→복귀 · 진입 경로가 다르면 복귀도 다름 · 직접 진입일 때만 fallback · 가드 redirect·로딩 화면이 back 경로에 남지 않음 · back/forward 왕복 안정 · 스크롤/펼침 복원과 분석 범위 격리 (**dev 서버 필요**) |
 | `npm run test:ai:e2e` | 실제 `/api/ai/*` Route 왕복 (**dev 서버 필요** · Key 없으면 SKIPPED로 정직하게 보고) |
 | `node tests/run-observed-e2e.mjs` | `npm run test:observed`와 같은 스크립트 |
 
@@ -60,7 +61,7 @@ http://localhost:3000 · 기준 뷰포트 **393 × 852** (360px에서도 깨지�
 >
 > ```
 > 터미널 A:  npm run dev
-> 터미널 B:  npm run test:ai && npm run test:observed && npm run test:history && npm run test:lifecycle && npm run test:relationship-evidence && npm run test:trust && npm run test:premium
+> 터미널 B:  npm run test:ai && npm run test:observed && npm run test:history && npm run test:lifecycle && npm run test:relationship-evidence && npm run test:trust && npm run test:premium && npm run test:nav
 > ```
 >
 > `test:history`는 검증 로직을 스크립트에 복제하지 않고 개발 전용 Route

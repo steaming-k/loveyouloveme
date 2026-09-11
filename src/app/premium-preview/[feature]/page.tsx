@@ -47,6 +47,7 @@ import {
 } from '@/hooks/useAiNarrative';
 import { useSession } from '@/state/SessionProvider';
 import type { PremiumFeatureId } from '@/types';
+import { useNavReplace } from '@/hooks/useContextualBack';
 
 /**
  * 개발·UT용 Premium Detail 미리보기
@@ -75,6 +76,7 @@ const VALID: readonly PremiumFeatureId[] = [
 
 function PremiumPreviewView() {
   const router = useRouter();
+  const navReplace = useNavReplace();
   const params = useParams<{ feature: string }>();
   const searchParams = useSearchParams();
   const { answers } = useSession();
@@ -217,7 +219,7 @@ function PremiumPreviewView() {
     return (
       <ScreenLayout
         header={<ScreenHeader backHref={ROUTES.home} title="상세 미리보기" />}
-        footer={<Button onClick={() => router.replace(ROUTES.home)}>홈으로</Button>}
+        footer={<Button onClick={() => navReplace(ROUTES.home)}>홈으로</Button>}
       >
         <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
           <Lovy pose="laptop" size={110} decorative />
@@ -253,7 +255,7 @@ function PremiumPreviewView() {
               추가 질문에 답하기
             </Button>
           ) : null}
-          <Button variant="secondary" onClick={() => router.replace(ROUTES.home)}>
+          <Button variant="secondary" onClick={() => navReplace(ROUTES.home)}>
             홈으로
           </Button>
         </div>

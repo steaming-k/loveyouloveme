@@ -79,8 +79,9 @@ import type {
  *
  * ⚠️ 이 화면의 어떤 값도 동기화율에 영향을 주지 않는다. `buildMbtiLens`와
  * `buildCompatibility`는 한 줄도 바뀌지 않았고, 새 Route도 만들지 않았다.
- * ⚠️ Back은 `backHref` 없이 브라우저 히스토리로 돌아간다 — 그래야 `/compatibility`의
- * `useScrollRestore`가 읽던 위치를 복원한다(v1.22 §12 회귀 금지).
+ * ⚠️ Back은 **진입한 화면**으로 돌아간다(v1.46.2 §Navigation). 이 화면은 `/compatibility`·
+ * `/mirror`·`/first-contact`·`/lens` 어디서든 열리므로, 돌아갈 곳을 하드코딩하면 그 중
+ * 하나를 뺀 나머지 전부가 틀린다. `backHref`는 주소창으로 바로 들어왔을 때의 fallback이다.
  */
 export default function MbtiLensPage() {
   return (
@@ -143,7 +144,7 @@ function MbtiLensView() {
 
   return (
     <ScreenLayout
-      header={<ScreenHeader action={<Tag tone="neutral">{MBTI_LENS_COPY.badge}</Tag>} />}
+      header={<ScreenHeader backHref={ROUTES.lens} action={<Tag tone="neutral">{MBTI_LENS_COPY.badge}</Tag>} />}
       footer={
         <Button variant="secondary" onClick={() => router.push(ROUTES.lens)}>
           렌즈 목록으로

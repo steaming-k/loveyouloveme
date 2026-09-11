@@ -16,6 +16,7 @@ import { ROUTES } from '@/lib/routes';
 import { downloadShareCard } from '@/lib/shareCard';
 import { useMirror } from '@/hooks/useAnalysis';
 import { useShare } from '@/hooks/useShare';
+import { useNavReplace } from '@/hooks/useContextualBack';
 
 /**
  * SH2 Mirror 공유 카드
@@ -24,6 +25,7 @@ import { useShare } from '@/hooks/useShare';
  */
 export default function ShareMirrorPage() {
   const router = useRouter();
+  const navReplace = useNavReplace();
   const mirror = useMirror();
   const { showToast } = useToast();
   const { share } = useShare('mirror');
@@ -34,8 +36,8 @@ export default function ShareMirrorPage() {
 
   useEffect(() => {
     // 볼 게 없으면(관계 경험 없음 등) 조용히 Mirror로 돌려보낸다.
-    if (!mirror.available || mirror.insights.length === 0) router.replace(ROUTES.mirror);
-  }, [mirror.available, mirror.insights.length, router]);
+    if (!mirror.available || mirror.insights.length === 0) navReplace(ROUTES.mirror);
+  }, [mirror.available, mirror.insights.length, navReplace]);
 
   const focus =
     mirror.insights.find((insight) => insight.key === mirror.teaser?.axisKey) ?? mirror.insights[0];

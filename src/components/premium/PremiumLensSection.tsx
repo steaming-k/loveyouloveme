@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Lovy } from '@/components/lovy/Lovy';
 import { SectionLabel } from '@/components/common/primitives';
@@ -14,6 +14,7 @@ import {
 import { LENS_AI_COPY } from '@/data/premiumLensAi';
 import { EMPTY_PREMIUM_LENS_AI, lensAiStateOf, type PremiumLensAi } from '@/hooks/usePremiumLensAi';
 import { trackEvent } from '@/lib/analytics';
+import { readOpenState, writeOpenState } from '@/lib/openState';
 import { cn } from '@/lib/cn';
 import type {
   AiNarrativeState,
@@ -91,11 +92,29 @@ export function PremiumLensSection({
    * 그리지 않게 하기 위해서다(§32의 실패 문구도 뜨지 않는다).
    */
   ai = EMPTY_PREMIUM_LENS_AI,
+  /**
+   * v1.46.2 §Navigation — 펼침 상태를 보관할 키(보통 `premium:<분석 id>`).
+   *
+   * **optional이다.** 넘기지 않으면 예전처럼 화면을 떠날 때 접힌다 — 개발용
+   * `/premium-preview`는 왕복할 결과 화면이 없으므로 보관할 이유도 없다.
+   */
+  stateKey,
 }: {
   bundle: PremiumLensBundle;
   ai?: PremiumLensAi;
+  stateKey?: string;
 }) {
   const [open, setOpen] = useState<Set<string>>(() => new Set());
+
+  /**
+   * ⚠️ 초기값이 아니라 effect에서 읽는다. `useState` 초기값으로 sessionStorage를
+   * 읽으면 서버가 그린 것(접힘)과 첫 클라이언트 렌더가 달라진다.
+   */
+  useEffect(() => {
+    if (!stateKey) return;
+    const saved = readOpenState(stateKey);
+    if (saved.length > 0) setOpen(new Set(saved));
+  }, [stateKey]);
 
   const toggle = (key: string, onOpen: () => void) => {
     setOpen((prev) => {
@@ -106,6 +125,9 @@ export function PremiumLensSection({
         next.add(key);
         onOpen();
       }
+      // 열고 닫는 순간에만 쓴다 — 복원(effect)은 이 경로를 지나지 않으므로
+      // `premium_lens_open`이 다시 발생하지 않는다.
+      if (stateKey) writeOpenState(stateKey, [...next]);
       return next;
     });
   };

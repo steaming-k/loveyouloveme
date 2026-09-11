@@ -1,6 +1,6 @@
 'use client';
 
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/common/Button';
@@ -27,6 +27,7 @@ import { formatEntryDate } from '@/lib/historyFormat';
 import { buildHistoryChanges } from '@/lib/logic/history';
 import { displayStateOf } from '@/lib/logic/mirror';
 import { ROUTES } from '@/lib/routes';
+import { useContextualBack, useNavReplace } from '@/hooks/useContextualBack';
 import { useHistory } from '@/state/HistoryProvider';
 import type { RelationshipHistoryEntry } from '@/types';
 import {
@@ -51,7 +52,13 @@ export default function HistoryEntryPage() {
 }
 
 function HistoryEntryView() {
-  const router = useRouter();
+  const navReplace = useNavReplace();
+  /**
+   * v1.46.2 §Navigation — 헤더 back과 footer 버튼이 **같은 곳**으로 간다.
+   * 예전에는 footer가 `/history`를 push해서, 목록으로 '돌아간' 뒤 브라우저 back을
+   * 누르면 방금 나온 상세로 다시 들어갔다.
+   */
+  const goBack = useContextualBack(ROUTES.history);
   const params = useParams<{ id: string }>();
   const { showToast } = useToast();
   const { entries, getEntry, deleteEntry } = useHistory();
@@ -68,7 +75,7 @@ function HistoryEntryView() {
     return (
       <ScreenLayout
         header={<ScreenHeader backHref={ROUTES.history} title="관찰 기록" />}
-        footer={<Button onClick={() => router.replace(ROUTES.history)}>기록 목록으로</Button>}
+        footer={<Button onClick={() => navReplace(ROUTES.history)}>기록 목록으로</Button>}
       >
         <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
           <Lovy pose="question" size={110} decorative />
@@ -120,7 +127,7 @@ function HistoryEntryView() {
           />
         }
         footer={
-          <Button variant="secondary" onClick={() => router.push(ROUTES.history)}>
+          <Button variant="secondary" onClick={goBack}>
             기록 목록으로
           </Button>
         }
@@ -286,7 +293,7 @@ function HistoryEntryView() {
           deleteEntry(entry.id);
           setDeleteOpen(false);
           showToast('관찰 기록을 삭제했어');
-          router.replace(entries.length > 1 ? ROUTES.history : ROUTES.home);
+          navReplace(entries.length > 1 ? ROUTES.history : ROUTES.home);
         }}
       />
     </>

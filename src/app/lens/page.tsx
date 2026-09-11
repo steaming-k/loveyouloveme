@@ -13,6 +13,7 @@ import { LENS_COPY, LOVY_LINES } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { isBirthDateUsable, lensAvailability } from '@/lib/logic/birth';
 import { ROUTES } from '@/lib/routes';
+import { useContextualBack } from '@/hooks/useContextualBack';
 import { useSession } from '@/state/SessionProvider';
 import type { EntertainmentLensType } from '@/types';
 
@@ -35,6 +36,8 @@ export default function LensPage() {
 
 function LensView() {
   const router = useRouter();
+  /** v1.46.2 §Navigation — 앱 안에서 왔으면 직전 화면, 아니면 `/target`(헤더와 같은 fallback) */
+  const goBack = useContextualBack(ROUTES.target);
   const { answers } = useSession();
   const [today] = useState(() => new Date());
 
@@ -93,7 +96,7 @@ function LensView() {
         <ScreenHeader backHref={ROUTES.target} action={<Tag tone="neutral">{LENS_COPY.badge}</Tag>} />
       }
       footer={
-        <Button variant="secondary" onClick={() => router.back()}>
+        <Button variant="secondary" onClick={goBack}>
           돌아가기
         </Button>
       }

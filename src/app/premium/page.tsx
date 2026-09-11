@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BottomSheet } from '@/components/common/BottomSheet';
@@ -40,7 +40,9 @@ import { revisitHref, type RevisitSource } from '@/lib/resultView';
 import { ROUTES } from '@/lib/routes';
 import { useHistoryReport, useMbtiLens, useMirror } from '@/hooks/useAnalysis';
 import { useAnchorScroll } from '@/hooks/useAnchorScroll';
+import { useContextualBack, useNavReplace } from '@/hooks/useContextualBack';
 import { useDeepReport } from '@/hooks/useDeepReport';
+import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { lensAvailability } from '@/lib/logic/birth';
 import { premiumFeatureState } from '@/services/premiumService';
 import {
@@ -191,7 +193,7 @@ const BACK_BY_SOURCE: Record<string, string> = {
 };
 
 function PremiumView() {
-  const router = useRouter();
+  const navReplace = useNavReplace();
   const params = useSearchParams();
   const { showToast } = useToast();
   const { answers } = useSession();
@@ -212,6 +214,13 @@ function PremiumView() {
       : null;
   const baseBackHref = BACK_BY_SOURCE[source] ?? ROUTES.compatibility;
   const backHref = returnTo ? revisitHref(baseBackHref, returnTo) : baseBackHref;
+  /**
+   * v1.46.2 §Navigation — Paywall·리포트를 닫는 모든 경로가 같은 back을 쓴다.
+   * 예전에는 `router.replace(backHref)`였다 — Premium을 **어디서 열었든** 고정된
+   * 부모 결과 화면으로 갈아끼웠고, 그래서 Home 번들에서 연 사용자는 읽던 Home
+   * 위치가 아니라 `/compatibility` 맨 위에 떨어졌다.
+   */
+  const goBack = useContextualBack(backHref);
   // v1.15 §8 — 어느 Contextual Hook에서 들어왔는지. 순수 Analytics 구분용이라 없어도
   // Paywall이 보여줄 Feature 자체(FEATURE_BY_SOURCE)에는 영향을 주지 않는다.
   const hookVariant = params.get('hook') ?? undefined;
@@ -374,8 +383,8 @@ function PremiumView() {
 
   // Flag OFF — Paywall에 머무르지 않는다.
   useEffect(() => {
-    if (!PREMIUM_FAKE_DOOR) router.replace(backHref);
-  }, [router, backHref]);
+    if (!PREMIUM_FAKE_DOOR) navReplace(backHref);
+  }, [navReplace, backHref]);
 
   useEffect(() => {
     setNotified(hasNotifyIntent(featureId));
@@ -479,6 +488,21 @@ function PremiumView() {
    */
   useAnchorScroll(stage === 'report');
 
+  /**
+   * v1.46.2 §Navigation — 리포트를 읽다 다른 화면을 열고 돌아오면 읽던 위치로 되돌린다.
+   *
+   * ⚠️ **`report` stage에서만 켠다.** Paywall·Preparing은 같은 Route지만 다른 화면이고,
+   * 길이도 다르다 — 하나의 키로 묶으면 Paywall에 리포트 위치를 복원하게 된다.
+   *
+   * ⚠️ 키에 `source`가 들어간다. 같은 리포트라도 Home 번들에서 연 것과 Mirror에서 연
+   * 것은 화면 구성이 갈릴 수 있고, 무엇보다 `funnelAnalysisId`가 **새 분석마다 바뀌므로**
+   * 이전 분석의 위치가 새 분석으로 넘어오지 않는다(§7).
+   */
+  useScrollRestore(
+    funnelAnalysisId ? `premium:${source}:${funnelAnalysisId}` : null,
+    stage === 'report',
+  );
+
   if (!PREMIUM_FAKE_DOOR) return null;
 
   /* 상세를 만들 근거가 없으면 Paywall을 띄우지 않는다 — 가격도 CTA도 보여주지 않는다(§40) */
@@ -486,7 +510,7 @@ function PremiumView() {
     return (
       <ScreenLayout
         header={<ScreenHeader backHref={backHref} title="상세 분석" />}
-        footer={<Button variant="secondary" onClick={() => router.replace(backHref)}>돌아가기</Button>}
+        footer={<Button variant="secondary" onClick={goBack}>돌아가기</Button>}
       >
         <div className="flex h-full flex-col items-center justify-center gap-4 px-3.5 pb-10 text-center">
           <Lovy pose="mug" size={110} decorative />
@@ -590,7 +614,7 @@ function PremiumView() {
                   ...(hookVariant ? { hook_variant: hookVariant } : {}),
                   ...attribution,
                 });
-                router.replace(backHref);
+                goBack();
               }}
             >
               결과로 돌아가기
@@ -613,7 +637,7 @@ function PremiumView() {
                   ...(hookVariant ? { hook_variant: hookVariant } : {}),
       ...attribution,
                 });
-                router.replace(backHref);
+                goBack();
               }}
             >
               {copy.dismissCta}
@@ -1026,7 +1050,7 @@ function PremiumView() {
       ...attribution,
               });
               setSheetOpen(false);
-              router.replace(backHref);
+              goBack();
             }}
           >
             {copy.fakeDoorDismiss}

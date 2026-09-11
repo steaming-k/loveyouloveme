@@ -14,6 +14,7 @@ import { ROUTES } from '@/lib/routes';
 import { analyzeObservedProfile } from '@/services/aiService';
 import { useSession } from '@/state/SessionProvider';
 import type { AiFailureReason } from '@/types';
+import { useNavReplace } from '@/hooks/useContextualBack';
 
 /**
  * S08 Observed Me 로딩
@@ -38,6 +39,7 @@ export default function ObservedLoadingPage() {
 
 function ObservedLoadingView() {
   const router = useRouter();
+  const navReplace = useNavReplace();
   const searchParams = useSearchParams();
   const { answers, setObservedAnalysis } = useSession();
 
@@ -69,9 +71,9 @@ function ObservedLoadingView() {
 
   const goNext = useCallback(() => {
     if (analysisDone.current && sequenceDone.current) {
-      router.replace(withReturnTo(ROUTES.observed, searchParams));
+      navReplace(withReturnTo(ROUTES.observed, searchParams));
     }
-  }, [router, searchParams]);
+  }, [navReplace, searchParams]);
 
   useEffect(() => {
     const key = `${retryCount}:${answers.photos.map((photo) => photo.id).join(',')}`;

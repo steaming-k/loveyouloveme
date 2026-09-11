@@ -14,6 +14,7 @@ import { ROUTES } from '@/lib/routes';
 import { clearScrollPosition } from '@/lib/scrollRestore';
 import { calculateCompatibility } from '@/services/aiService';
 import { useSession } from '@/state/SessionProvider';
+import { useNavReplace } from '@/hooks/useContextualBack';
 
 /**
  * S20 궁합 관찰 — 두 지구인의 신호를 관찰하고 하나의 기록으로 모으는 과정 (v1.20)
@@ -21,6 +22,7 @@ import { useSession } from '@/state/SessionProvider';
  */
 export default function CompatibilityLoadingPage() {
   const router = useRouter();
+  const navReplace = useNavReplace();
   const { answers, markComplete } = useSession();
   const [failed, setFailed] = useState(false);
 
@@ -105,15 +107,15 @@ export default function CompatibilityLoadingPage() {
       trackEvent('compatibility_complete', { score: result.score, compared: result.compared });
     }
 
-    router.replace(ROUTES.compatibility);
-  }, [sequenceDone, result, markComplete, router]);
+    navReplace(ROUTES.compatibility);
+  }, [sequenceDone, result, markComplete, navReplace]);
 
   if (failed) {
     return (
       <ScreenLayout
         footer={
           <div className="flex flex-col gap-0.5">
-            <Button onClick={() => router.replace(ROUTES.compatibilityAnalyzing)}>
+            <Button onClick={() => navReplace(ROUTES.compatibilityAnalyzing)}>
               다시 시도
             </Button>
             <Button variant="text" onClick={() => router.push(ROUTES.target)}>

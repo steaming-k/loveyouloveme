@@ -1,7 +1,5 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-
 import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
@@ -13,6 +11,7 @@ import { HISTORY_COPY } from '@/data/copy';
 import { ROUTES } from '@/lib/routes';
 import { useHistoryReport } from '@/hooks/useAnalysis';
 import { useHistory } from '@/state/HistoryProvider';
+import { useNavReplace } from '@/hooks/useContextualBack';
 
 /**
  * F3 저장 직후 Change Moment (§8/§9)
@@ -30,7 +29,7 @@ export default function HistorySavedPage() {
 }
 
 function HistorySavedView() {
-  const router = useRouter();
+  const navReplace = useNavReplace();
   const { entries } = useHistory();
   const report = useHistoryReport();
 
@@ -38,7 +37,7 @@ function HistorySavedView() {
   if (entries.length === 0) {
     return (
       <ScreenLayout
-        footer={<Button onClick={() => router.replace(ROUTES.home)}>홈으로</Button>}
+        footer={<Button onClick={() => navReplace(ROUTES.home)}>홈으로</Button>}
       >
         <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
           <Lovy pose="question" size={110} decorative />
@@ -57,19 +56,19 @@ function HistorySavedView() {
         <div className="flex flex-col gap-2">
           {first ? (
             <>
-              <Button onClick={() => router.replace(ROUTES.history)}>
+              <Button onClick={() => navReplace(ROUTES.history)}>
                 {HISTORY_COPY.saved.firstCta}
               </Button>
-              <Button variant="secondary" onClick={() => router.replace(ROUTES.home)}>
+              <Button variant="secondary" onClick={() => navReplace(ROUTES.home)}>
                 홈으로
               </Button>
             </>
           ) : (
             <>
-              <Button onClick={() => router.replace(ROUTES.historyReport)}>
+              <Button onClick={() => navReplace(ROUTES.historyReport)}>
                 {HISTORY_COPY.saved.againCta}
               </Button>
-              <Button variant="text" onClick={() => router.replace(ROUTES.home)}>
+              <Button variant="text" onClick={() => navReplace(ROUTES.home)}>
                 나중에
               </Button>
             </>

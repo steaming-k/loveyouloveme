@@ -17,6 +17,7 @@ import {
 } from '@/lib/logic/relationshipStage';
 import { ROUTES } from '@/lib/routes';
 import { useSession } from '@/state/SessionProvider';
+import { useNavReplace } from '@/hooks/useContextualBack';
 
 /**
  * S30 · Current Relationship Me — `/profile/current` (v1.41 · §39.5~§39.7)
@@ -58,6 +59,7 @@ export default function CurrentRelationshipPage() {
 
 function CurrentRelationshipView() {
   const router = useRouter();
+  const navReplace = useNavReplace();
   const searchParams = useSearchParams();
   const { answers, setCurrentSignal, clearCurrentSignal, markCurrentEvidenceAsked } = useSession();
 
@@ -71,8 +73,8 @@ function CurrentRelationshipView() {
   }, [invited, markCurrentEvidenceAsked]);
 
   useEffect(() => {
-    if (!invited) router.replace(ROUTES.compatibility);
-  }, [invited, router]);
+    if (!invited) navReplace(ROUTES.compatibility);
+  }, [invited, navReplace]);
 
   if (!invited) return null;
 

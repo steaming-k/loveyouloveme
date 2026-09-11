@@ -1,12 +1,20 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 
+import { useContextualBack } from '@/hooks/useContextualBack';
 import { cn } from '@/lib/cn';
+import { ROUTES } from '@/lib/routes';
 
 interface ScreenHeaderProps {
-  /** 뒤로 갈 경로. 생략하면 브라우저 히스토리를 사용한다. */
+  /**
+   * **직접 진입 fallback**이다. 돌아갈 곳이 아니라, 돌아갈 곳이 없을 때 갈 곳이다.
+   *
+   * v1.46.2 §Navigation — 예전에는 이 값으로 `router.push()`를 했다. 그래서 앱 안에서
+   * 들어온 사용자도 항상 **고정된 부모 Route**로 떨어졌다(`/compatibility/lenses`에서
+   * 연 사주 렌즈가 `/lens`로 가는 식). 이제 앱 안에서 온 back은 실제 직전 화면으로
+   * 돌아가고, 이 값은 주소창으로 바로 들어온 경우에만 쓰인다.
+   */
   backHref?: string;
   onBack?: () => void;
   /** 진행률 0~100. 값이 있으면 progress bar를 보여준다. */
@@ -32,12 +40,12 @@ export function ScreenHeader({
   centerLabel,
   className,
 }: ScreenHeaderProps) {
-  const router = useRouter();
+  /** fallback이 선언되지 않은 화면은 Home으로 — 앱 안에서는 어차피 쓰이지 않는다 */
+  const goBack = useContextualBack(backHref ?? ROUTES.home);
 
   const handleBack = () => {
     if (onBack) return onBack();
-    if (backHref) return router.push(backHref);
-    router.back();
+    goBack();
   };
 
   return (

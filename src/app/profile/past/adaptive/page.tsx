@@ -15,6 +15,7 @@ import { pickAdaptiveTriggerAxis } from '@/lib/logic/mirror';
 import { withReturnTo } from '@/lib/returnTo';
 import { ROUTES } from '@/lib/routes';
 import { useSession } from '@/state/SessionProvider';
+import { useNavReplace } from '@/hooks/useContextualBack';
 
 /**
  * Adaptive Follow-up (S16과 S17 사이, 조건부)
@@ -33,6 +34,7 @@ export default function AdaptiveFollowupPage() {
 
 function AdaptiveFollowupView() {
   const router = useRouter();
+  const navReplace = useNavReplace();
   const searchParams = useSearchParams();
   const { answers, setAdaptiveAnswer } = useSession();
   const { declared, experience } = answers;
@@ -43,9 +45,9 @@ function AdaptiveFollowupView() {
 
   useEffect(() => {
     // 더는 물어볼 이유가 없으면(모순 후보가 사라졌으면) 조용히 다음 단계로 넘어간다.
-    if (!axis) router.replace(withReturnTo(ROUTES.past(3), searchParams));
+    if (!axis) navReplace(withReturnTo(ROUTES.past(3), searchParams));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [axis, router]);
+  }, [axis, navReplace]);
 
   if (!axis) return null;
 

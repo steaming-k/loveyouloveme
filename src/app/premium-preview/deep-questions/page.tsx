@@ -21,6 +21,7 @@ import { ROUTES } from '@/lib/routes';
 import { useCrossSourceInsights } from '@/hooks/useAiNarrative';
 import { useSession } from '@/state/SessionProvider';
 import type { DeepAnalysisAnswer } from '@/types';
+import { useNavReplace } from '@/hooks/useContextualBack';
 
 /**
  * Premium Adaptive Deep Question (v1.9 · §8~§11)
@@ -41,6 +42,7 @@ export default function DeepQuestionsPage() {
 
 function DeepQuestionsView() {
   const router = useRouter();
+  const navReplace = useNavReplace();
   const searchParams = useSearchParams();
   const isBetaUt = searchParams.get('mode') === 'ut';
   const reportHref = isBetaUt
@@ -88,7 +90,7 @@ function DeepQuestionsView() {
     return (
       <ScreenLayout
         header={<ScreenHeader backHref={ROUTES.home} title="추가 질문" />}
-        footer={<Button onClick={() => router.replace(ROUTES.home)}>홈으로</Button>}
+        footer={<Button onClick={() => navReplace(ROUTES.home)}>홈으로</Button>}
       >
         <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
           <Lovy pose="laptop" size={110} decorative />
@@ -105,7 +107,7 @@ function DeepQuestionsView() {
       <ScreenLayout
         header={<ScreenHeader backHref={reportHref} title="추가 질문" />}
         footer={
-          <Button onClick={() => router.replace(reportHref)}>
+          <Button onClick={() => navReplace(reportHref)}>
             리포트로 돌아가기
           </Button>
         }

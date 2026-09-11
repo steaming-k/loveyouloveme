@@ -39,7 +39,9 @@ import {
   resolveRelationshipContext,
 } from '@/lib/logic/relationshipStage';
 import { useRevealOnceInScreen } from '@/hooks/useRevealOnce';
+import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { useSession } from '@/state/SessionProvider';
+import { useNavReplace } from '@/hooks/useContextualBack';
 
 /**
  * First Contact Report — 상대 없이 나를 관찰한 보고서 (v1.29 · P4)
@@ -59,12 +61,19 @@ import { useSession } from '@/state/SessionProvider';
  */
 export default function FirstContactPage() {
   const router = useRouter();
+  const navReplace = useNavReplace();
   const { answers } = useSession();
   const mode = useSoloMode();
   const report = useFirstContact();
 
   /* v1.46 §27 — 보고서 섹션 scroll reveal (요소당 1회) */
   useRevealOnceInScreen();
+
+  /**
+   * v1.46.2 §Navigation — Solo 결과에서도 Premium·렌즈로 들어갔다 돌아온다.
+   * 같은 왕복이므로 같은 복원을 둔다.
+   */
+  useScrollRestore('first-contact', true);
 
   const hasMbti = Boolean(answers.mbti);
 
@@ -173,8 +182,8 @@ export default function FirstContactPage() {
    * Solo 리포트가 궁합 결과를 대체하지 않는다는 원칙과 같은 이유다.
    */
   useEffect(() => {
-    if (mode === 'couple') router.replace(ROUTES.compatibility);
-  }, [mode, router]);
+    if (mode === 'couple') navReplace(ROUTES.compatibility);
+  }, [mode, navReplace]);
 
   useEffect(() => {
     if (!report?.available) return;
