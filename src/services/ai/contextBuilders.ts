@@ -1,5 +1,7 @@
 import { adaptiveOptionLabel } from '@/data/adaptive';
 import { AXIS_DEFINITIONS, MIRROR_AXES } from '@/data/axes';
+import { LENS_THEME_LABEL } from '@/data/premiumLens';
+import { RELATIONSHIP_EVENT_LABEL } from '@/data/relationshipEvents';
 import {
   AFFECTION_LABEL,
   CONFLICT_LABEL,
@@ -18,6 +20,11 @@ import type {
   EvidenceRef,
   HistoryAxisChange,
   MirrorReport,
+  PremiumLensKind,
+  PremiumCrossLens,
+  PremiumLensReport,
+  RelationshipEvent,
+  RelationshipEventType,
   RelationshipExperience,
   SessionAnswers,
   ValidatedObservation,
@@ -35,6 +42,15 @@ import type {
  *   - 사진 원본 (Observed task 외 · §26)
  *   - 상대 이름 등 식별정보 — 애초에 저장하지 않는다 (§29)
  *   - MBTI / Zodiac (Core 분석과 분리)
+ *
+ * ⚠️ **v1.46 AI Lens — 위 목록은 Core Task(observed·relationship·compatibility·
+ * history·deep-report) 다섯 개에 대한 것이다.** 이 파일 아래쪽의 렌즈 Context Builder는
+ * 의도적으로 다르다: 렌즈 Task는 MBTI 4글자·일주 라벨·태양궁을 **받아야 하는 작업**이고,
+ * 그것이 없으면 할 일이 없다.
+ *
+ * 그래도 경계는 그대로다 — 렌즈 Task에도 **생년월일 원본은 나가지 않는다.** 나가는 것은
+ * 결정론 엔진이 이미 계산해 화면에 그리고 있는 `basis` 라벨(`갑자(甲子) · 일간 목`)뿐이고,
+ * Core Task 다섯 개의 context는 v1.46 AI Lens에서 **한 글자도 바뀌지 않았다.**
  */
 
 /* ------------------------------------------------ Observed (사진 분석) */
@@ -497,3 +513,202 @@ export function buildDeepReportContext(
 
 /** Mirror 축 라벨 — 화면·프롬프트에서 공통으로 쓴다 */
 export const MIRROR_AXIS_LABELS = MIRROR_AXES;
+
+/* -------------------- Premium Lens AI (v1.46 AI Lens · §8 · §19 · §26) --- */
+
+/**
+ * 렌즈 AI가 받는 것 (§26 토큰 절약)
+ *
+ * ⚠️ **보내지 않는 것**을 먼저 적는다 — §26이 금지한 목록이 이 타입의 설계 근거다:
+ *
+ * ```
+ * ❌ 전체 세션 JSON · 전체 History · Deep Report 본문 · 사진 분석 narrative
+ * ❌ 결정론 렌즈 본문 전체 (소제목만 보낸다 — 같은 말을 하지 않게 하는 데는 그걸로 족하다)
+ * ❌ 다른 렌즈의 데이터 (MBTI 호출에 생년월일을 넣지 않는다)
+ * ```
+ *
+ * 보내는 것은 **그 렌즈가 실제로 계산한 값**(`basis`)과, 해석을 관계 맥락에 묶는 데
+ * 필요한 최소한(`declared` · 관련 사건)뿐이다.
+ */
+export interface PremiumLensContext {
+  lens: PremiumLensKind;
+  mode: 'pair' | 'self';
+  tense: RelationshipTense;
+  /**
+   * 결정론 엔진이 계산한 값 그대로. **`AI_OUTPUT ⊆ DETERMINISTIC_LENS_EVIDENCE`의
+   * 실체가 이 배열이다** — 모델이 말할 수 있는 범위가 여기까지라고 프롬프트가 못박는다.
+   */
+  basis: { label: string; value: string }[];
+  /**
+   * 결정론 엔진이 붙인 테마 — **사람이 읽는 라벨로 보낸다.**
+   *
+   * ⚠️ enum 코드(`planning`)를 그대로 보내지 않는다. 브라우저 실측에서 Cross-Lens
+   * 모델이 그 코드를 **결과 문장에 그대로 복사**했고, 유료 화면에 `planning ·
+   * expression · pace` 세 단어가 영어로 나갔다. 모델은 받은 어휘로 쓴다 — 내부
+   * 식별자를 보내면 내부 식별자가 화면에 나온다.
+   */
+  themes: string[];
+  /**
+   * 결정론 설명의 **소제목만**(§31 중복 방지).
+   *
+   * ⚠️ 본문을 넣지 않는다. 본문을 넣으면 (a) 입력 토큰이 렌즈마다 3배가 되고
+   * (b) 모델이 그 문장을 다듬어 되풀이할 재료를 손에 쥔다. 되풀이 여부는 서버가
+   * `echoesReferenceSentence`로 직접 검사하므로 모델에게 원문을 줄 이유가 없다.
+   */
+  alreadySaid: string[];
+  /** 사용자가 직접 답한 내용. 렌즈 결과와 어긋나면 이쪽이 사실이다(§10 · §13 · §17) */
+  declared: Record<string, string | number | null>;
+  /**
+   * §19 — **이 렌즈와 관련 있는 사건만.** 모든 사건을 세 렌즈에 반복 전송하지 않는다.
+   *
+   * ⚠️ v1.46 PremiumLens까지 사건 자유 입력은 AI Provider로 나가지 않았다
+   * (`lib/logic/relationshipEvents.ts` 상단 Privacy 블록). v1.46 AI Lens §19·§20이
+   * 그 경계를 **의도적으로 옮긴다** — 그래서 그 블록도 함께 고쳤다. 문서와 코드가
+   * 다른 상태로 두지 않는다.
+   */
+  reportedEvents: { type: string; description: string; myReaction: string | null }[];
+}
+
+/**
+ * §19 — 렌즈별 관련 사건 종류.
+ *
+ * ⚠️ 새 판정이 아니다. `RelationshipEventType`은 이미 있는 enum이고 여기서 하는 일은
+ * "이 렌즈가 말하는 주제와 겹치는 종류는 어느 것인가"를 한 번 적어두는 것뿐이다.
+ * 어떤 사건도 점수·상태·Chapter에 들어가지 않는다는 성질은 그대로다(v1.46 §11).
+ *
+ * ⚠️ `other`는 어느 렌즈에도 넣지 않는다. 종류를 모르는 사건을 특정 렌즈의 근거처럼
+ * 쓰면 그 순간 사용자 보고가 렌즈 판정으로 읽힌다.
+ */
+const LENS_EVENT_TYPES: Record<PremiumLensKind, readonly RelationshipEventType[]> = {
+  /** 대화·연락·갈등 — 정보 처리와 결정 방식이 실제로 부딪히는 자리 */
+  mbti: ['contact_change', 'conflict', 'meeting'],
+  /** 거리감·가까워짐 — 관계 리듬 */
+  saju: ['distance', 'closer', 'meeting'],
+  /** 호감·애정 표현·거리감 — 표현 방식 */
+  zodiac: ['affection_felt', 'care_received', 'distance'],
+};
+
+/** 렌즈 하나에 넘기는 사건 상한. 사건은 최대 3개지만(§8) 프롬프트에는 2개까지만 */
+const LENS_EVENT_LIMIT = 2;
+
+function eventsForLens(
+  kind: PremiumLensKind,
+  events: readonly RelationshipEvent[],
+): PremiumLensContext['reportedEvents'] {
+  const allowed = LENS_EVENT_TYPES[kind];
+  return events
+    .filter((event) => allowed.includes(event.type))
+    .slice(0, LENS_EVENT_LIMIT)
+    .map((event) => ({
+      type: RELATIONSHIP_EVENT_LABEL[event.type],
+      // 자유 입력은 반드시 한 번 더 자르고 정규화해서 내보낸다(§34 · sanitizeFreeText)
+      description: sanitizeFreeText(event.description, 120) ?? '',
+      myReaction: sanitizeFreeText(event.myReaction, 80),
+    }))
+    .filter((event) => event.description.length > 0);
+}
+
+export function buildPremiumLensContext(input: {
+  report: PremiumLensReport;
+  declared: DeclaredPreference;
+  events: readonly RelationshipEvent[];
+  tense: RelationshipTense;
+}): PremiumLensContext {
+  const { report, declared, events, tense } = input;
+
+  return {
+    lens: report.kind,
+    mode: report.mode,
+    tense,
+    basis: report.basis.map((row) => ({ label: row.label, value: row.value })),
+    themes: report.themes.map((theme) => LENS_THEME_LABEL[theme]),
+    alreadySaid: report.sections.map((section) => section.title),
+    declared: declaredForContext(declared),
+    reportedEvents: eventsForLens(report.kind, events),
+  };
+}
+
+/* ------------------------------------------------------- Cross-Lens */
+
+/**
+ * §21 — **각 Lens AI의 긴 body를 다시 넣지 않는다.** 넣는 것은 렌즈마다 한 줄
+ * (`crossTheme`)과 결정론 테마 코드뿐이다.
+ *
+ * ⚠️ AI가 실패한 렌즈는 `aiTheme`가 없다. 그래도 `themes`는 있으므로 결정론 정보만으로
+ * 자리를 지킨다 — §5 부분 실패에서 Cross-Lens가 "성공한 렌즈 + deterministic context"로
+ * 제한된다는 규칙이 이 필드 두 개의 조합으로 표현된다.
+ */
+export interface CrossLensContext {
+  tense: RelationshipTense;
+  lenses: Array<{
+    lens: PremiumLensKind;
+    label: string;
+    mode: 'pair' | 'self';
+    themes: string[];
+    /** 해당 렌즈 AI가 만든 한 줄. 실패했으면 null */
+    aiTheme: string | null;
+    /** 그 렌즈가 계산한 핵심 값 한 줄 — basis 첫 두 행을 합친 것 */
+    computed: string;
+  }>;
+  declared: Record<string, string | number | null>;
+  reportedEvents: PremiumLensContext['reportedEvents'];
+  /**
+   * 결정론 Cross-Lens 카드가 **화면에서 바로 위에** 이미 그린 문장들.
+   *
+   * ⚠️ 브라우저 실측에서 AI 블록이 그 카드의 테마 목록을 거의 그대로 다시 냈다
+   * (`계획과 즉흥 사이 (MBTI, 사주, 별자리)`). 두 블록이 붙어 있어서 사용자는 같은
+   * 내용을 두 번 읽는다 — 렌즈 Task가 `alreadySaid`로 막는 것과 같은 문제이고
+   * (§31), Cross-Lens에만 그 필드가 없었다.
+   */
+  alreadySaid: string[];
+}
+
+export function buildCrossLensContext(input: {
+  reports: readonly PremiumLensReport[];
+  aiThemes: Partial<Record<PremiumLensKind, string | null>>;
+  declared: DeclaredPreference;
+  events: readonly RelationshipEvent[];
+  tense: RelationshipTense;
+  /** 결정론 Cross-Lens. 없으면 화면에 그 카드도 없다 */
+  deterministic: PremiumCrossLens | null;
+}): CrossLensContext {
+  const { reports, aiThemes, declared, events, tense, deterministic } = input;
+
+  /**
+   * 사건은 **렌즈별 목록의 합집합**에서 앞 2개만. 여기서 다시 전체 목록을 보내면
+   * §19가 막으려던 '모든 사건을 매 호출마다 반복 전송'이 Cross-Lens 한 곳에서
+   * 되살아난다.
+   */
+  const seen = new Set<string>();
+  const reportedEvents: PremiumLensContext['reportedEvents'] = [];
+  for (const report of reports) {
+    for (const event of eventsForLens(report.kind, events)) {
+      if (seen.has(event.description)) continue;
+      seen.add(event.description);
+      reportedEvents.push(event);
+      if (reportedEvents.length >= LENS_EVENT_LIMIT) break;
+    }
+    if (reportedEvents.length >= LENS_EVENT_LIMIT) break;
+  }
+
+  return {
+    tense,
+    lenses: reports.map((report) => ({
+      lens: report.kind,
+      label: report.label,
+      mode: report.mode,
+      themes: report.themes.map((theme) => LENS_THEME_LABEL[theme]),
+      aiTheme: aiThemes[report.kind] ?? null,
+      computed: report.basis
+        .slice(0, 2)
+        .map((row) => `${row.label}: ${row.value}`)
+        .join(' / '),
+    })),
+    declared: declaredForContext(declared),
+    reportedEvents,
+    /** 질문 3개는 넣지 않는다 — 같은 자리에 이미 있는 것은 테마 문장이다(토큰 §21) */
+    alreadySaid: deterministic
+      ? [...deterministic.repeatedThemes, ...deterministic.differences]
+      : [],
+  };
+}

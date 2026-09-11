@@ -16,8 +16,11 @@ import {
 import { analysisFingerprint } from '@/lib/logic/history';
 import {
   deepReportJobContext,
+  jobAllowsOutwardQuestions,
+  relationshipTenseOf,
   resolveRelationshipContext,
 } from '@/lib/logic/relationshipStage';
+import { usePremiumLensAi } from '@/hooks/usePremiumLensAi';
 import { buildRelationshipDeepReport } from '@/services/premiumService';
 import { useSession } from '@/state/SessionProvider';
 
@@ -77,6 +80,12 @@ export function useDeepReport(enabled: boolean) {
          * 늘어날 때마다 호출부를 고치면 또 한 곳이 빠진다 — 그게 v1.40의 결함이었다.
          */
         lifecycle: deepReportJobContext(resolveRelationshipContext(answers).job),
+        /**
+         * v1.46 PremiumLens — 관계 렌즈의 생년월일 유효성 판정에만 쓴다.
+         * 일주·태양궁 계산 결과는 날짜 문자열로만 결정되므로 오늘이 바뀜다고
+         * 렌즈 결과가 바뀌지 않는다.
+         */
+        today: new Date(),
       }),
     [
       insights,
@@ -90,5 +99,25 @@ export function useDeepReport(enabled: boolean) {
     ],
   );
 
-  return { report, insights, resolverContext, analysisId, narrative };
+  /**
+   * v1.46 AI Lens §3~§5 — **리포트가 조립된 뒤에** 렌즈 AI를 부른다.
+   *
+   * ⚠️ `report`를 바꾸지 않는다. `lensBundle`은 결정론 결과 그대로이고, AI는 화면에서
+   * 그 아래에 덧붙는 별도 상태다 — AI가 전부 실패해도 리포트는 지금과 똑같이 완결된다.
+   *
+   * ⚠️ 시제·질문 게이트는 **여기서 판정하지 않는다.** Core Task 다섯 개가 쓰는 것과
+   * 같은 술어(`relationshipTenseOf` · `jobAllowsOutwardQuestions`)를 같은 `job`에
+   * 적용한다 — 경로마다 다른 판정이 생기는 것이 v1.43 §43이 닫은 결함이다.
+   */
+  const job = resolveRelationshipContext(answers).job;
+  const lensAi = usePremiumLensAi({
+    bundle: report.lensBundle,
+    declared: answers.declared,
+    events: answers.target.events ?? [],
+    tense: relationshipTenseOf(job),
+    allowsOutwardQuestions: jobAllowsOutwardQuestions(job),
+    enabled,
+  });
+
+  return { report, insights, resolverContext, analysisId, narrative, lensAi };
 }

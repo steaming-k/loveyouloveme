@@ -7,6 +7,8 @@ import { NoticeBox, SectionLabel } from '@/components/common/primitives';
 import { AiNarrativeNotice, AiSourceLabel } from '@/components/ai/AiModeNotice';
 import { DeepReportValueCheck } from '@/components/premium/DeepReportValueCheck';
 import { PremiumChapterAccordion } from '@/components/premium/PremiumChapterAccordion';
+import { PremiumLensSection } from '@/components/premium/PremiumLensSection';
+import type { PremiumLensAi } from '@/hooks/usePremiumLensAi';
 import { Lovy } from '@/components/lovy/Lovy';
 import { DeepReportUtFlow } from '@/components/ut/DeepReportUtFlow';
 import { trackEvent } from '@/lib/analytics';
@@ -71,6 +73,7 @@ export function RelationshipDeepReportView({
   header,
   reveal = false,
   aiNarrative,
+  lensAi,
 }: {
   report: RelationshipDeepReport;
   /**
@@ -115,6 +118,13 @@ export function RelationshipDeepReportView({
     mode: AiMode | null;
     retry: () => void;
   };
+  /**
+   * v1.46 AI Lens §30 — 렌즈별 AI 해석 상태.
+   *
+   * ⚠️ **optional이다.** 넘기지 않으면 렌즈 섹션은 v1.46 PremiumLens와 똑같이
+   * 결정론 결과만 그린다 — `aiNarrative`가 v1.17에 들어올 때 세운 것과 같은 규칙이다.
+   */
+  lensAi?: PremiumLensAi;
 }) {
   /**
    * §45 — `deep_report_view`/`deep_report_complete`의 의미(분모/분자)는 바꾸지 않는다.
@@ -413,6 +423,69 @@ export function RelationshipDeepReportView({
       ) : null}
 
       {/*
+        02.5 네가 알려준 장면 (v1.46 §12) — **관계 맥락.**
+
+        ⚠️ **Chapter가 아니다.** 섹션 라벨 옆에 개수를 붙이지 않고, `전체 N개`
+        (Chapter 수)와 나란히 세지 않는다. 이 블록이 하는 일은 사용자가 직접 알려준
+        기억을 그대로 되짚는 것뿐이고, 서로 독립적인 자료 2종을 이은 연결이 아니다
+        (`approachInsight`와 같은 위계 · §8).
+
+        ⚠️ Chapter **앞**에 둔다. 연결 리포트를 읽기 전에 '내가 알려준 맥락'이 먼저
+        보여야 그 뒤 문장들이 무엇을 배경으로 하는지 알 수 있다. 반대로 뒤에 두면
+        사용자가 이미 다 읽은 다음에 자기 입력을 확인받는 순서가 된다.
+
+        ⚠️ **여기서 문장을 만들지 않는다.** `fact`·`interpretation`·`limitation`·
+        `lovyNote` 전부 `buildReportedScenes`(logic)가 만든 값이고 화면은 배치만 한다.
+      */}
+      {report.reportedScenes ? (
+        <section className="flex flex-col gap-2.5">
+          <SectionLabel>{report.reportedScenes.title}</SectionLabel>
+
+          <ul className="flex flex-col gap-2">
+            {report.reportedScenes.scenes.map((scene) => (
+              <li
+                key={scene.id}
+                className="flex flex-col gap-1.5 rounded-card border border-line bg-surface px-4 py-3.5"
+              >
+                <p className="text-[10.5px] font-semibold tracking-[0.04em] text-mint-ink">
+                  {scene.typeLabel}
+                </p>
+                {/*
+                  FACT — 사용자가 입력한 문장 **그대로**. 다듬지 않는다(§10).
+                  따옴표는 이것이 인용이라는 표시다.
+                */}
+                <p className="text-[13.5px] font-semibold keep-all leading-snug">
+                  {`'${scene.fact}'`}
+                </p>
+                {scene.myReaction ? (
+                  <p className="text-[12px] keep-all leading-relaxed text-ink-sub">
+                    그때 나는 · {scene.myReaction}
+                  </p>
+                ) : null}
+                {/* INTERPRETATION — 주어가 항상 사용자다. 상대의 의도로 넘어가지 않는다 */}
+                <p className="text-[12.5px] keep-all leading-relaxed text-ink-sub">
+                  {scene.interpretation}
+                </p>
+              </li>
+            ))}
+          </ul>
+
+          {/* 러비 체크포인트 (§12 우선순위 3) */}
+          <div className="flex items-center gap-2.5 rounded-card bg-mint-tint px-4 py-3">
+            <Lovy pose="note" size={36} decorative />
+            <p className="text-[11.5px] keep-all leading-relaxed text-mint-ink">
+              {report.reportedScenes.lovyNote}
+            </p>
+          </div>
+
+          {/* 경계 — **항상 보인다.** 이 블록에서 가장 중요한 한 줄이다(§35) */}
+          <p className="text-[11px] keep-all leading-relaxed text-ink-faint">
+            {report.reportedScenes.limitation}
+          </p>
+        </section>
+      ) : null}
+
+      {/*
         03 CHAPTERS (§13.1) — Accordion.
 
         ⚠️ **전체 N개가 사용자가 펼치기 전에 보여야 한다.** 섹션 라벨 옆의 `N개 챕터`와
@@ -453,6 +526,17 @@ export function RelationshipDeepReportView({
         </section>
       ) : null}
 
+      {/*
+        v1.46 PremiumLens §36 — **관계 렌즈 3종 + Cross-Lens.**
+
+        ⚠️ 자리가 곳 자체가 제품 결정이다. 렌즈는 Chapter·상대 정보 연결 **다음**이고
+        가장 위가 아니다 — Core를 대체하지 않는다는 §3을 IA로 지키는 방법이다.
+        반대로 '리포트의 한계'보다는 위다 — 마무리 문구 뒤에 내용이 또 나오면 끝이 두 번이 된다.
+
+        ⚠️ `available` 게이트에 걸지 않는다 — 이 화면이 그려지는 순간 이미 리포트가 열린
+        상태고, 번들은 그 결제 하나로 함께 열린다(§2 · LENS-01).
+      */}
+      <PremiumLensSection bundle={report.lensBundle} ai={lensAi} />
       {/*
         04 이번에 만들지 않은 것 (§14.1)
 

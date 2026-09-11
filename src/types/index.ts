@@ -653,6 +653,20 @@ export interface TargetProfile {
    * 다른 데이터에서 상대 취향을 추론해 채우지 않는다(§10/§51).
    */
   preferences: TargetPreferences;
+  /**
+   * v1.46 §5 — **사용자가 보고한 관계 사건.** 선택 입력이고 최대 3개다
+   * (`RELATIONSHIP_EVENT_MAX`).
+   *
+   * ⚠️ 동기화율(4축 similarity · comparedCount · TARGET_MIN_KNOWN)·Mirror
+   * MATCH/GAP/CHANGE·History 변화 판정에 **절대 들어가지 않는다**(§11 · §12).
+   * `preferences`(v1.13)가 세운 경계와 같고, 이유도 같다 — 사용자가 기억하는 장면은
+   * 관계의 성공 확률이나 상대의 의도에 대한 근거가 아니다.
+   *
+   * ⚠️ `TargetProfile` 안에 있으므로 `createEmptyTargetProfile()` 하나로 New Target에서
+   * 함께 비워진다(§14 — Target A의 사건이 Target B로 넘어가면 P1). 별도 초기화 코드를
+   * 만들지 않는다.
+   */
+  events: RelationshipEvent[];
 }
 
 export type TargetAxisKey = 'contact' | 'conflict' | 'alone' | 'affection';
@@ -686,6 +700,48 @@ export interface TargetInterest {
 
 export interface TargetPreferences {
   interests: TargetInterest[];
+}
+
+/* ------------------------- User-reported Relationship Event (v1.46) */
+
+/**
+ * 사용자가 **직접 기억해서 알려준** 관계 사건의 종류 (v1.46 §7)
+ *
+ * ⚠️ **결론을 고르게 하지 않는다.** `상대가 나를 좋아한다`·`상대가 밀당한다` 같은
+ * 항목은 없고, 앞으로도 만들지 않는다. 모든 값은 `호감이 느껴졌던 순간`처럼
+ * **사용자의 관찰·해석임이 이름에서 드러나는 표현**이다(§7).
+ *
+ * ⚠️ 이 값은 **판정에 쓰지 않는다.** 동기화율 4축·Mirror MATCH/GAP/CHANGE·History
+ * 변화 어디에도 분기를 만들지 않는다(§11 · §12). 그래서 종류를 늘려도 점수가
+ * 바뀌지 않는다 — `TargetRelation`이 v1.22부터 지켜온 것과 같은 성질이다.
+ */
+export type RelationshipEventType =
+  | 'affection_felt'
+  | 'conflict'
+  | 'contact_change'
+  | 'closer'
+  | 'distance'
+  | 'care_received'
+  | 'meeting'
+  | 'other';
+
+/**
+ * 관계 사건 하나 (v1.46 §8)
+ *
+ * ⚠️ **날짜·장소·상대 이름을 받지 않는다**(§8). 그 세 개를 받는 순간 History가
+ * 관계 일지/사람 CRM이 되고, 이 제품이 v1.0부터 거부해 온 방향이다.
+ *
+ * ⚠️ `description`은 **자유 입력**이다. 자유 입력이 갈 수 있는 곳의 경계는
+ * `lib/logic/relationshipEvents.ts` 상단에 적혀 있다 — 요약하면 화면과
+ * localStorage뿐이고, 외부 Analytics와 AI Provider로는 나가지 않는다.
+ */
+export interface RelationshipEvent {
+  id: string;
+  type: RelationshipEventType;
+  /** 무슨 일이 있었어? — 짧은 자유 입력 */
+  description: string;
+  /** 그때 나는 어떻게 반응했어? — 선택 */
+  myReaction?: string;
 }
 
 /**
@@ -1139,7 +1195,21 @@ export type AiTask =
   | 'compatibility-narrative'
   | 'history-insight'
   /** v1.9 — Cross-source Insight Narrative (§24).판정은 규칙이 이미 끝냈다. */
-  | 'deep-report-narrative';
+  | 'deep-report-narrative'
+  /**
+   * v1.46 AI Lens §3 — **관계 렌즈 3종을 각각 따로 부른다.**
+   *
+   * 하나의 `premium-lens` Task에 `kind`를 실어 보내는 방법도 있었지만 그렇게 하지
+   * 않았다. Task는 이 코드베이스에서 **계약의 단위**다 — `TASK_CONTRACT` 한 줄,
+   * `PROMPT_VERSIONS` 한 개, 캐시 키 한 개가 Task마다 붙는다(§28 렌즈별 fingerprint).
+   * kind를 payload로 넘기면 세 렌즈가 **같은 promptVersion과 같은 캐시 네임스페이스**를
+   * 쓰게 되고, MBTI 프롬프트만 고쳐도 사주·별자리 캐시가 함께 죽는다.
+   */
+  | 'premium-mbti-lens'
+  | 'premium-saju-lens'
+  | 'premium-zodiac-lens'
+  /** v1.46 AI Lens §21 — 세 렌즈 결과를 다시 연결한다. 렌즈 3개 이후에만 호출된다 */
+  | 'premium-cross-lens';
 
 /**
  * Provider에게 실제로 나가는 작업 단위 (v1.10).
@@ -1199,6 +1269,18 @@ export type EvidenceRef =
   | { source: 'history'; entryId: string; axis: string }
   /** v1.9 — 상대에 대해 사용자가 입력한 값(Target Person) */
   | { source: 'target'; field: string }
+  /**
+   * v1.46 §10 — 사용자가 직접 알려준 **관계 사건**(`RelationshipEvent`).
+   *
+   * ⚠️ `target`(상대에 대해 입력한 값)과 **같은 ref로 쓰지 않는다.** `target`은
+   * 사용자가 고른 4축 선택지이고 이쪽은 사용자가 기억해서 적은 장면이다 — 근거
+   * 목록에서 둘이 한 출처로 보이면 `자료 N종`이 거짓이 된다(v1.41 §39.9가 `relationship`
+   * 과 `current_relationship`을 가른 것과 같은 이유).
+   *
+   * ⚠️ **resolver가 돌려주는 것은 사용자가 입력한 문장 그대로다.** 상대의 의도·감정·
+   * 호감 확률로 번역하지 않는다(§10 NOT FACT 목록).
+   */
+  | { source: 'user_reported_event'; eventId: string }
   /** v1.9 — Premium Adaptive Deep Question 답변(§11) */
   | { source: 'deep_followup'; questionId: string }
   /**
@@ -1686,6 +1768,52 @@ export interface RelationshipDeepReportOverview {
   topSummaries: string[];
 }
 
+/* ------------------- User-reported Scene (v1.46 · §10 · §12) */
+
+/**
+ * 리포트에 그려지는 **사용자가 알려준 장면 한 줄.**
+ *
+ * ⚠️ 세 필드의 경계가 이 기능의 전부다(§10):
+ *
+ * ```
+ * FACT            사용자가 '연락 간격이 길어졌다'고 입력함        → fact
+ * INTERPRETATION  사용자는 그 변화를 중요한 신호로 기억하고 있음   → interpretation
+ * NOT FACT        상대가 마음이 식었다 / 밀당했다 / 호감을 숨겼다  → 어디에도 없다
+ * ```
+ *
+ * `fact`는 사용자가 입력한 문장 **그대로**다. 다듬거나 요약하거나 상대의 의도로
+ * 번역하지 않는다 — 그 순간 이 블록은 사용자의 기억이 아니라 서비스의 주장이 된다.
+ */
+export interface DeepReportedScene {
+  /** `RelationshipEvent.id`. `{source:'user_reported_event'}` ref가 이 값을 가리킨다 */
+  id: string;
+  typeLabel: string;
+  /** 사용자가 입력한 문장 그대로 */
+  fact: string;
+  /** 그때 나는 어떻게 반응했는가 — 사용자가 적지 않았으면 null */
+  myReaction: string | null;
+  /** 이 장면에 대해 **말할 수 있는 것까지**. 상대의 의도로 넘어가지 않는다 */
+  interpretation: string;
+}
+
+/**
+ * v1.46 §12 — Premium Deep Report의 **관계 맥락 블록.** 사건이 하나도 없으면 null이고,
+ * 그때 이 섹션은 화면에 존재하지 않는다(빈 상태 카피를 만들지 않는다).
+ *
+ * ⚠️ **Chapter가 아니다.** `approachInsight`(v1.15)와 같은 위계의 보조 블록이고,
+ * `chapters.length`·`available`·`omissions` 어디에도 세지 않는다. 이유도 같다 — 이건
+ * 서로 독립적인 자료 2종을 이은 **연결**이 아니라 사용자가 알려준 맥락 그 자체다.
+ * Chapter로 올리면 근거 2종 규칙을 만족하지 못한 것을 Chapter라고 부르게 된다(§8).
+ */
+export interface DeepReportedScenes {
+  title: string;
+  /** 러비 체크포인트 한 줄 (§12 우선순위 3) */
+  lovyNote: string;
+  /** 이 블록이 말할 수 없는 것. **항상 존재한다** */
+  limitation: string;
+  scenes: DeepReportedScene[];
+}
+
 /**
  * v1.15 §5 — Target Preference × Target Relationship Axis × User Relationship Style을
  * 연결한 Premium 전용 문장. 무료 Approach Hint(`ApproachHint`)를 대체하지 않는다 — 무료
@@ -1831,6 +1959,26 @@ export interface RelationshipDeepReport {
    */
   /** v1.15 §5 — Target Preference를 사용자 자신의 축과 연결한 Premium 전용 통찰. 없으면 null */
   approachInsight: DeepApproachInsight | null;
+  /**
+   * v1.46 §12 — 사용자가 알려준 관계 사건을 **그대로 되짚는** 맥락 블록. 사건이
+   * 없으면 null이다.
+   *
+   * ⚠️ `available`·`chapters`·`omissions`에 영향을 주지 않는다. 사건만 있고 연결이
+   * 하나도 없는 세션은 여전히 `available: false`다 — 사건은 연결의 대체물이 아니다.
+   */
+  /**
+   * v1.46 PremiumLens §2 — **같은 결제로 함께 열리는 관계 렌즈 3종.**
+   *
+   * ⚠️ `available`에 영향을 주지 않는다. 리포트가 열리는 조건은 여전히
+   * `builtChapters.some(isContentChapter)` 하나다 — MBTI만 있고 연결이 하나도
+   * 없는 세션이 Lens 때문에 열리면, 사용자는 정밀 관찰 리포트를 사고 렌즈만
+   * 받는다. 렌즈는 리포트의 대체물이 아니라 동봉물이다.
+   *
+   * ⚠️ 이 값은 Compatibility score·Mirror state·History 판정 어디에도 들어가지
+   * 않는다(§45). 그 사실을 LENS-11/LENS-12가 정적으로 고정한다.
+   */
+  lensBundle: PremiumLensBundle;
+  reportedScenes: DeepReportedScenes | null;
   /**
    * v1.26 P3-3 — 첫 viewport용. 연결이 하나도 없으면 null이고, 그때는 리포트가
    * 억지로 만들어지지 않는다(`available: false`).
@@ -2048,6 +2196,231 @@ export interface PremiumChapter {
 export interface PremiumOmission {
   id: string;
   text: string;
+}
+
+/* ============ Premium Relationship Lens (v1.46 PremiumLens · §2~§20) ======= */
+
+/**
+ * ══ Premium Bundle의 두 번째 절반 ══════════════════════════════════════════
+ *
+ * ₩1,900은 기능 하나가 아니라 **묶음 하나**의 가격이다(§2):
+ *
+ * ```
+ * ① 정밀 관찰 리포트   RelationshipDeepReport   ← Core Value
+ * ② MBTI 관계 렌즈  ┐
+ * ③ 사주 관계 렌즈  ├ PremiumLensBundle        ← 보조 해석 프레임
+ * ④ 별자리 관계 렌즈 ┘
+ * ```
+ *
+ * ⚠️ **Lens는 Core를 대체하지 않는다**(§3). 정밀 관찰 리포트는 사용자가 실제로
+ * 입력한 근거를 연결한 결과이고, Lens는 **같은 관계를 다른 프레임으로 다시
+ * 생각해보게 하는 장치**다. 그래서 화면에서 Lens가 리포트보다 위에 오지 않고
+ * (§36), 어떤 Lens 결과도 판정·점수에 들어가지 않는다(§45).
+ *
+ * ⚠️ **Lens 결과는 Evidence가 아니다**(§20). 세 렌즈가 같은 말을 해도 그것은
+ * '독립적인 근거 3개'가 아니라 '서로 다른 해석 프레임에서 반복된 테마'다.
+ */
+
+export type PremiumLensKind = 'mbti' | 'saju' | 'zodiac';
+
+/**
+ * Lens 하나의 가용 상태. **렌즈마다 독립적으로 판정한다**(§6).
+ *
+ * `Target 있음`이 곧 `pair`가 아니다 — 상대가 있어도 그 렌즈의 상대 데이터가
+ * 없으면 `self`다. 예: 상대 정보는 있는데 상대 MBTI를 모르면 MBTI는 `self`,
+ * 상대 생년월일은 알면 별자리는 `pair`가 된다. 세 렌즈가 서로 다른 mode를
+ * 갖는 상태가 **정상**이다.
+ */
+export type PremiumLensMode = 'pair' | 'self' | 'unavailable';
+
+/**
+ * 여러 렌즈에 걸쳐 반복될 수 있는 **관계 테마.**
+ *
+ * ⚠️ 새 판정 축이 아니다. Cross-Lens(§19)가 "서로 다른 프레임에서 같은 주제가
+ * 반복됐는가"를 세려면 비교 가능한 이름이 필요한데, 각 렌즈가 자기 문장으로만
+ * 말하면 셀 수가 없다. 그래서 **닫힌 목록**을 둔다.
+ *
+ * ⚠️ 각 렌즈는 **자기 데이터가 실제로 말하는 테마만** 낸다. 억지로 6개를 다
+ * 채우지 않는다 — 그러면 모든 렌즈가 모든 테마를 갖게 되어 '반복'이 무의미해진다.
+ */
+export type PremiumLensTheme =
+  | 'pace'
+  | 'alone_time'
+  | 'expression'
+  | 'planning'
+  | 'closeness'
+  | 'standard';
+
+/**
+ * '왜 이렇게 봤어?'에 들어가는 한 줄 (§30).
+ *
+ * ⚠️ 내부 debug JSON을 노출하지 않는다 — 사람이 읽는 라벨과 값만 담는다.
+ */
+export interface PremiumLensBasisRow {
+  label: string;
+  value: string;
+}
+
+export interface PremiumLensSectionUnit {
+  /** `mbti_rhythm` 처럼 렌즈별로 고유. 화면 key이자 중복 검사 단위다 */
+  id: string;
+  title: string;
+  body: string;
+  /**
+   * 이 섹션이 **사용자가 알려준 장면**을 근거로 쓸 때만 채워진다(§46).
+   *
+   * ⚠️ 값이 있으면 화면은 반드시 `네가 알려준 장면` 출처를 함께 그린다. AI가 아닌
+   * 결정론 생성기가 채우므로, 여기 들어가는 id는 항상 실제 `RelationshipEvent.id`다.
+   */
+  reportedEventId?: string;
+  /**
+   * 화면에 그대로 그리는 인용 문장. `reportedEventId`가 있으면 항상 같이 있다.
+   *
+   * ⚠️ 화면이 사건 문장을 조립하지 않게 하기 위해 여기에 넣는다. 사용자 원문을
+   * 다루는 문장이 두 곳에서 만들어지면 한쪽이 `네가 알려준 장면` 출처를 빼먹을 수 있고,
+   * 그 순간 사용자 보고가 마치 관찰 결과처럼 읽힐다(§46).
+   */
+  reportedEventLine?: string;
+}
+
+/** 결과가 만들어진 Lens */
+export interface PremiumLensReport {
+  kind: PremiumLensKind;
+  /** `MBTI 관계 렌즈` */
+  label: string;
+  mode: 'pair' | 'self';
+  headline: string;
+  overview: string;
+  /** §29 — pair는 4개 이상, self는 4개 이상(자기 3 + 불확실성 1) */
+  sections: PremiumLensSectionUnit[];
+  /** §29 — 항상 1개. 실제로 해볼 수 있는 동사가 들어간다(VALUE-06) */
+  checkpoint: string;
+  /** §30 — 접힘 영역 */
+  basis: PremiumLensBasisRow[];
+  /** 이 렌즈가 못 하는 것. 항상 1개 이상 */
+  limitations: string[];
+  /** §31 — 짧게 한 줄. 경고문처럼 만들지 않는다 */
+  disclaimer: string;
+  /** §19 — Cross-Lens가 세는 테마 */
+  themes: PremiumLensTheme[];
+}
+
+/** 만들 수 없는 Lens — 이유를 그대로 보여준다(§29 정직한 제한) */
+export interface PremiumLensUnavailable {
+  kind: PremiumLensKind;
+  label: string;
+  mode: 'unavailable';
+  /** 무엇이 있으면 볼 수 있는지까지 말한다 */
+  reason: string;
+}
+
+export type PremiumLensEntry = PremiumLensReport | PremiumLensUnavailable;
+
+/**
+ * §18~§20 — 두 개 이상의 Lens가 있을 때만 만들어진다.
+ *
+ * ⚠️ `repeatedThemes`를 '근거가 일치했다'로 표현하지 않는다(§20). 그래서 이
+ * 타입에는 `note`가 **필수**다 — 화면이 주의 문구를 빼먹을 수 없게 데이터에
+ * 넣었다.
+ */
+export interface PremiumCrossLens {
+  /** 몇 개 렌즈를 겹쳤는지 (2 또는 3) */
+  lensCount: number;
+  /** A. 서로 다른 프레임에서 반복된 테마 */
+  repeatedThemes: string[];
+  /** B. 렌즈마다 다르게 말하는 부분 — 이것도 가치다 */
+  differences: string[];
+  /** C. 실제 관계에서 확인할 것 2~3개 */
+  verificationQuestions: string[];
+  /** ⚠️ 필수. '3개 근거'가 아니라는 사실을 말한다 */
+  note: string;
+}
+
+export interface PremiumLensBundle {
+  /** 항상 3개 · mbti → saju → zodiac 순. `unavailable`도 자리를 지킨다 */
+  lenses: PremiumLensEntry[];
+  /** 결과가 만들어진 렌즈 수 (0~3) */
+  availableCount: number;
+  crossLens: PremiumCrossLens | null;
+}
+
+/* ------------- Premium Lens AI Narrative (v1.46 AI Lens · §3~§32) --------- */
+
+/**
+ * ══ 결정론 결과 **위에** 얹는다 ═══════════════════════════════════════════
+ *
+ * ```
+ * 계산 / 타입 판정      deterministic   PremiumLensReport      ← 이미 있다
+ * 관계 해석             AI              PremiumLensNarrative   ← 여기
+ * 최종 판단             사용자
+ * ```
+ *
+ * ⚠️ **AI가 실패해도 렌즈는 그대로 보인다**(§32). 그래서 이 타입은 `PremiumLensReport`
+ * 안이 아니라 **밖에** 있다 — 리포트 조립(`buildPremiumLensBundle`)은 AI를 기다리지
+ * 않고, 화면이 나중에 도착한 narrative를 같은 카드 안에 덧붙인다.
+ *
+ * ⚠️ **AI가 판정을 바꾸지 않는다**(§7). mode(pair/self) · themes · basis · limitations는
+ * 전부 결정론 엔진의 값이고 AI 응답에는 그 필드가 아예 없다. AI가 만들 수 있는 것은
+ * 문장뿐이다.
+ */
+export interface PremiumLensNarrativeUnit {
+  /**
+   * `mbti_pair_rhythm` 처럼 **닫힌 목록**에서만 온다(`data/premiumLensAi.ts`).
+   *
+   * ⚠️ v1.42 §41.14가 남긴 규칙이다 — 모델이 식별자를 자유롭게 짓게 두면 파서가
+   * 걸러 항목이 전멸하거나(그때는 한국어 label이었다) 화면 key가 충돌한다. 허용값을
+   * 프롬프트에 명시하고 파서가 같은 상수를 쓴다.
+   */
+  id: string;
+  title: string;
+  body: string;
+}
+
+export interface PremiumLensNarrative {
+  kind: PremiumLensKind;
+  mode: 'pair' | 'self';
+  /** 한 문단. 이 렌즈를 관계 맥락에서 어떻게 읽는지 */
+  summary: string;
+  /** §27 — 4~6개. 개수를 채우려고 만들지 않는다(§27 filler 금지) */
+  units: PremiumLensNarrativeUnit[];
+  /** §9-6 러비의 체크포인트. 없을 수 있다 */
+  checkpoint?: string;
+  /**
+   * §21 — Cross-Lens 호출에 넘기는 **한 줄 요약.**
+   *
+   * ⚠️ 화면에 그리지 않는다. Cross-Lens에 각 렌즈의 긴 body를 그대로 다시 넣지 않기
+   * 위한 필드이고(§21 토큰 절약), 그래서 짧다.
+   */
+  crossTheme?: string;
+}
+
+export interface PremiumLensNarrativeBundle {
+  narrative: PremiumLensNarrative | null;
+  meta: AiNarrativeMeta;
+}
+
+/**
+ * §22 — 단순 요약이 아니다. 세 가지를 찾는다:
+ * 반복된 테마 / 렌즈마다 다르게 읽히는 지점 / 실제 관계에서 확인할 질문.
+ *
+ * ⚠️ 결정론 `PremiumCrossLens`와 **필드 이름이 비슷하지만 다른 타입**이다. 결정론
+ * 쪽은 테마 코드를 세어 만든 것이고 이쪽은 AI 문장이다. 화면은 둘을 같은 카드 안에
+ * 위아래로 놓되 어느 쪽이 무엇인지 라벨로 구분한다(§30).
+ */
+export interface CrossLensNarrative {
+  /** §25 — 2~3개 */
+  repeatedThemes: string[];
+  /** §25 — 1~2개. '어느 쪽이 맞다'로 결론내지 않는다(§24) */
+  differences: string[];
+  /** §25 — 2~3개 */
+  verificationQuestions: string[];
+  /** §25 — 러비 한 문장 요약 */
+  closing?: string;
+}
+
+export interface CrossLensNarrativeBundle {
+  narrative: CrossLensNarrative | null;
+  meta: AiNarrativeMeta;
 }
 
 /* ------------------------------------------ Premium (v1.5, Fake Door) */

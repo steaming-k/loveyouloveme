@@ -27,7 +27,7 @@ export function SelectableRow({
   return (
     <label
       className={cn(
-        'flex cursor-pointer items-center justify-between gap-3 rounded-row border p-4 transition-colors duration-200',
+        'flex cursor-pointer items-center justify-between gap-3 rounded-row border p-4 press-scale',
         selected ? 'border-brand bg-brand-tint' : 'border-line bg-surface active:bg-sunken',
       )}
     >
@@ -57,7 +57,7 @@ export function SelectableRow({
       <span
         aria-hidden
         className={cn(
-          'flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border transition-colors',
+          'flex h-[18px] w-[18px] flex-none items-center justify-center rounded-full border transition-colors t-fast',
           selected ? 'border-brand bg-brand' : 'border-line-strong bg-transparent',
         )}
       >

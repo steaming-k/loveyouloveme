@@ -320,6 +320,94 @@ function deepReportResponse(payload: Record<string, unknown>): unknown {
   };
 }
 
+/* ------------------- Premium Lens AI mock (v1.46 AI Lens · §5) ----------- */
+
+/**
+ * ⚠️ **실제 해석을 하지 않는다.** context의 `basis` 값을 문장 틀에 끼워 넣을 뿐이고,
+ * 그래서 mock 결과는 렌즈의 실제 의미와 무관하다(`meta.mode='mock'`으로 표시된다).
+ *
+ * 그럼에도 basis 값을 실제로 읽는 이유: 전부 고정 문장이면 `echoesReferenceSentence`
+ * (§31 되풀이 검사)와 unit id 라우팅을 **눈으로 구분할 수 없다.** mock이라도 입력이
+ * 달라지면 출력이 달라져야 파이프라인을 검증할 수 있다(v1.7이 세운 방식 그대로).
+ */
+function lensNarrativeResponse(payload: Record<string, unknown>): unknown {
+  const context = (payload.context ?? {}) as {
+    lens?: string;
+    mode?: string;
+    basis?: { label?: string; value?: string }[];
+    themes?: string[];
+  };
+
+  const lens = typeof context.lens === 'string' ? context.lens : 'mbti';
+  const mode = context.mode === 'self' ? 'self' : 'pair';
+  const basis = Array.isArray(context.basis) ? context.basis : [];
+  const first = basis[0];
+  const second = basis[1];
+  const head = first ? `${first.label} ${first.value}` : '계산된 값';
+  const pairHead = second ? `${second.label} ${second.value}` : '상대 값 없음';
+
+  const ids = LENS_MOCK_UNIT_IDS[`${lens}_${mode}`] ?? [];
+
+  return {
+    summary: `${head} 기준으로 읽으면, 이 렌즈는 관계에서 무엇을 먼저 보는지를 한 갈래로 분류해. 분류가 맞는지는 네 실제 경험이 기준이야.`,
+    units: ids.map((id, index) => ({
+      id,
+      body:
+        index === 0
+          ? `${head} 쪽으로 분류됐어. 같은 상황을 어디서부터 다르게 보기 시작하는지를 이 자리에서 볼 수 있어.`
+          : `${pairHead}와 나란히 놓으면 이 칸에서 다른 각도가 하나 보여. 실제로 그런지는 네가 떠올리는 장면으로 확인해봐.`,
+    })),
+    checkpoint: '오늘 하루 중에 위 설명과 어긋났던 순간을 하나만 떠올려봐.',
+    crossTheme: `${head} 쪽 테마가 이 렌즈에서 반복돼.`,
+  };
+}
+
+/**
+ * 모드별 unit id. **`data/premiumLensAi.ts`에서 읽지 않고 여기 적었다** — mock은
+ * "허용 목록과 어긋난 id가 실제로 걸러지는가"도 재현할 수 있어야 하는 자리이고,
+ * 같은 상수를 읽으면 그 검사가 항상 통과해 아무것도 검증하지 못한다.
+ */
+const LENS_MOCK_UNIT_IDS: Record<string, readonly string[]> = {
+  mbti_pair: ['mbti_pair_rhythm', 'mbti_pair_dialogue', 'mbti_pair_misread', 'mbti_pair_verify'],
+  mbti_self: ['mbti_self_energy', 'mbti_self_signal', 'mbti_self_rhythm', 'mbti_self_verify'],
+  saju_pair: ['saju_pair_mine', 'saju_pair_theirs', 'saju_pair_together', 'saju_pair_verify'],
+  saju_self: ['saju_self_structure', 'saju_self_theme', 'saju_self_rhythm', 'saju_self_verify'],
+  zodiac_pair: [
+    'zodiac_pair_style',
+    'zodiac_pair_expectation',
+    'zodiac_pair_misread',
+    'zodiac_pair_verify',
+  ],
+  zodiac_self: [
+    'zodiac_self_theme',
+    'zodiac_self_closeness',
+    'zodiac_self_distance',
+    'zodiac_self_verify',
+  ],
+};
+
+function crossLensResponse(payload: Record<string, unknown>): unknown {
+  const context = (payload.context ?? {}) as {
+    lenses?: { label?: string; aiTheme?: string | null }[];
+  };
+  const lenses = Array.isArray(context.lenses) ? context.lenses : [];
+  const labels = lenses.map((item) => item.label ?? '렌즈');
+
+  return {
+    repeatedThemes: [
+      `${labels.slice(0, 2).join('와 ') || '두 렌즈'}에서 비슷한 주제가 한 번씩 더 보였어. 같은 말이 반복됐다는 것까지가 여기서 볼 수 있는 전부야.`,
+    ],
+    differences: [
+      `${labels[0] ?? '한 렌즈'}와 ${labels[1] ?? '다른 렌즈'}가 같은 자리를 다르게 읽어. 어느 쪽이 맞는지는 이걸로 알 수 없어.`,
+    ],
+    verificationQuestions: [
+      '최근에 답장이 늦었던 순간을 하나 떠올려보고, 그때 네가 먼저 무엇을 궁금해했는지 적어봐.',
+      '서로가 애정 표현이라고 생각하는 행동을 하나씩만 말해봐.',
+    ],
+    closing: '세 각도에서 본 건 서로 다른 이야기 세 개고, 맞춰보는 건 네 몫이야.',
+  };
+}
+
 export function createMockProvider(): AiProvider {
   return {
     model: MOCK_MODEL,
@@ -341,6 +429,12 @@ export function createMockProvider(): AiProvider {
           return historyResponse(payload);
         case 'deep-report-narrative':
           return deepReportResponse(payload);
+        case 'premium-mbti-lens':
+        case 'premium-saju-lens':
+        case 'premium-zodiac-lens':
+          return lensNarrativeResponse(payload);
+        case 'premium-cross-lens':
+          return crossLensResponse(payload);
       }
     },
   };

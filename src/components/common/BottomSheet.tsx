@@ -3,6 +3,8 @@
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useEffect, useRef, type ReactNode } from 'react';
 
+import { EASE, MOTION } from '@/lib/motion';
+
 interface BottomSheetProps {
   open: boolean;
   onClose: () => void;
@@ -45,7 +47,8 @@ export function BottomSheet({ open, onClose, title, description, children }: Bot
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: reduceMotion ? 0 : 0.2 }}
+            /* v1.46 §26 — backdrop fade. 숫자를 여기 적지 않고 토큰을 쓴다 */
+            transition={{ duration: reduceMotion ? 0 : MOTION.enter / 1000, ease: EASE.standard }}
           />
 
           <motion.div
@@ -54,7 +57,12 @@ export function BottomSheet({ open, onClose, title, description, children }: Bot
             initial={{ y: reduceMotion ? 0 : '100%' }}
             animate={{ y: 0 }}
             exit={{ y: reduceMotion ? 0 : '100%' }}
-            transition={{ duration: reduceMotion ? 0 : 0.3, ease: [0.22, 0.61, 0.36, 1] }}
+            /*
+              §26 — sheet translateY. 들어올 때는 감속(`observe`)이 맞다.
+              ⚠️ backdrop(220ms)보다 조금 길게 둔다 — 배경이 먼저 어두워지고 시트가
+              올라와야 두 요소가 같은 동작의 앞뒤로 읽힌다.
+            */
+            transition={{ duration: reduceMotion ? 0 : MOTION.normal / 1000, ease: EASE.observe }}
           >
             <div className="mx-auto mb-4 h-1 w-9 rounded-full bg-line-strong" aria-hidden />
             <h2 className="text-insight keep-all">{title}</h2>

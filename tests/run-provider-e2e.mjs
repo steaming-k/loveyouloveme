@@ -529,6 +529,268 @@ async function testDeepReportNarrative() {
   });
 }
 
+/* --------------------------------------------- Premium Lens (v1.46 AI Lens) */
+
+/**
+ * 렌즈 AI 4종을 **실제 Provider로** 한 번씩 통과시킨다 (§33 AI-LENS-08~12의 런타임 근거).
+ *
+ * ══ 왜 이 조합인가 ═══════════════════════════════════════════════════════
+ *
+ * 호출은 4건으로 고정하고, 그 4건 안에 검증 축을 최대한 담았다:
+ *
+ * ```
+ * MBTI    pair · tense=current · 질문 허용    → 정상 경로 · verify unit이 살아 있다
+ * 사주     pair · tense=former  · 질문 금지    → 게이트가 verify unit을 지운다 + 시제
+ * 별자리   self · tense=current · 질문 허용    → self 목차 · 상대 없는 상태
+ * Cross   ─── · tense=current · 질문 허용    → 반복 테마 · 다른 지점 · 확인 질문
+ * ```
+ *
+ * ⚠️ **문장 원문을 출력하지 않는다**(§10). 찍는 것은 개수·통과 여부·금지어 라벨뿐이다.
+ */
+
+/** 결과에 남으면 안 되는 말. 스캐너와 **같은 계약**을 밖에서 한 번 더 본다 */
+const LENS_FORBIDDEN = [
+  '운명',
+  '천생연분',
+  '상극',
+  '궁합 점수',
+  '성공 확률',
+  '연주',
+  '월주',
+  '시주',
+  '대운',
+  '달자리',
+  '상승궁',
+  '라이징',
+  '하우스',
+  '마음이 식',
+  /**
+   * v1.46 AI Lens — 내부 테마 enum. 실측에서 Cross-Lens 결과에 영어 코드가 그대로
+   * 나갔다(`planning · expression · pace`). 사람이 읽는 라벨만 나가야 한다.
+   */
+  'planning',
+  'expression',
+  'alone_time',
+  'closeness',
+];
+
+function lensTextOf(narrative) {
+  if (!narrative) return '';
+  return [
+    narrative.summary ?? '',
+    ...(narrative.units ?? []).map((unit) => unit.body ?? ''),
+    narrative.checkpoint ?? '',
+    narrative.crossTheme ?? '',
+  ].join(' ');
+}
+
+function crossTextOf(narrative) {
+  if (!narrative) return '';
+  return [
+    ...(narrative.repeatedThemes ?? []),
+    ...(narrative.differences ?? []),
+    ...(narrative.verificationQuestions ?? []),
+    narrative.closing ?? '',
+  ].join(' ');
+}
+
+function forbiddenHits(text) {
+  return LENS_FORBIDDEN.filter((word) => text.includes(word));
+}
+
+const LENS_CASES = [
+  {
+    task: 'premium-mbti-lens',
+    mode: 'pair',
+    tense: 'current',
+    allowsOutwardQuestions: true,
+    context: {
+      lens: 'mbti',
+      mode: 'pair',
+      tense: 'current',
+      basis: [
+        { label: '나', value: 'INFP' },
+        { label: '상대', value: 'ESTJ' },
+        { label: '같은 축', value: '없음' },
+        { label: '다른 축', value: '에너지 · 정보 · 판단 · 생활' },
+      ],
+      themes: ['alone_time', 'planning', 'expression'],
+      alreadySaid: ['함께 지내는 리듬', '대화가 엇갈리는 자리', '닮은 축 · 갈리는 축'],
+      declared: { contactImportance: 2, aloneNeed: 5, conflictStyle: '바로 이야기하는 편' },
+      reportedEvents: [
+        { type: '연락의 변화', description: '답장 간격이 하루 정도 길어졌어', myReaction: null },
+      ],
+    },
+  },
+  {
+    task: 'premium-saju-lens',
+    mode: 'pair',
+    /** 끝난 관계 — 시제 계약과 질문 게이트를 함께 지나간다 */
+    tense: 'former',
+    allowsOutwardQuestions: false,
+    context: {
+      lens: 'saju',
+      mode: 'pair',
+      tense: 'former',
+      basis: [
+        { label: '내 일주', value: '갑자(甲子) · 일간 목' },
+        { label: '상대 일주', value: '병인(丙寅) · 일간 화' },
+        { label: '두 일간의 관계', value: '목 → 화 · 전통 용어로 식상' },
+        { label: '계산한 기둥', value: '일주 1개 (연주·월주·시주 미계산)' },
+      ],
+      themes: ['expression', 'pace'],
+      alreadySaid: ['두 사람의 일주', '일간으로 본 각자', '둘을 같이 놓았을 때'],
+      declared: { contactImportance: 4, aloneNeed: 2 },
+      reportedEvents: [],
+    },
+  },
+  {
+    task: 'premium-zodiac-lens',
+    mode: 'self',
+    tense: 'current',
+    allowsOutwardQuestions: true,
+    context: {
+      lens: 'zodiac',
+      mode: 'self',
+      tense: 'current',
+      basis: [
+        { label: '내 태양궁', value: '물병자리 · 공기 · 고정' },
+        { label: '상대 태양궁', value: '입력 없음 — 이번엔 나만 봤어' },
+        { label: '계산 범위', value: '태양궁만 (달·상승궁 미계산)' },
+      ],
+      themes: ['expression', 'standard'],
+      alreadySaid: ['내 태양궁', '거리와 표현', '내 답과 나란히'],
+      declared: { contactImportance: 3, aloneNeed: 4 },
+      reportedEvents: [],
+    },
+  },
+];
+
+async function testPremiumLens(testCase) {
+  const { json, durationMs } = await callTask(testCase.task, {
+    inputFingerprint: `e2e_${testCase.task}_1`,
+    context: testCase.context,
+    mode: testCase.mode,
+    tense: testCase.tense,
+    allowsOutwardQuestions: testCase.allowsOutwardQuestions,
+    deterministicText: testCase.context.alreadySaid.join(' '),
+  });
+
+  const label = `${testCase.task} (${testCase.mode} · ${testCase.tense})`;
+
+  if (!json?.ok) {
+    reportRealMode({ task: label, json, durationMs });
+    return null;
+  }
+
+  const narrative = json.data.narrative;
+  const text = lensTextOf(narrative);
+  const hits = forbiddenHits(text);
+  const units = narrative?.units ?? [];
+  /** §9-5 게이트 — `ended`에서는 `*_verify` unit이 남아 있으면 안 된다 */
+  const verifyLeft = units.filter((unit) => unit.id.endsWith('_verify')).length;
+  const gateOk = testCase.allowsOutwardQuestions || verifyLeft === 0;
+
+  if (hits.length > 0 || !gateOk) {
+    log(
+      `  duration: ${durationMs}ms · units: ${units.length} · 금지어: ${hits.join(',') || '0'} · verify남음: ${verifyLeft}`,
+    );
+    verdict(
+      label,
+      hits.length > 0
+        ? `FAIL — 금지 표현이 통과했다 (${hits.join(', ')})`
+        : 'FAIL — ended인데 확인 질문 unit이 남았다',
+    );
+    return null;
+  }
+
+  const gateNote = narrative === null ? ' · ⚠️ 전부 게이트에서 걸러짐' : '';
+  reportRealMode({
+    task: label,
+    json,
+    durationMs,
+    extra: `· units: ${units.length} · forbidden: 0 · outwardGate: ${gateOk}${gateNote}`,
+  });
+
+  return narrative?.crossTheme ?? null;
+}
+
+async function testCrossLens(aiThemes) {
+  const { json, durationMs } = await callTask('premium-cross-lens', {
+    inputFingerprint: 'e2e_premium_cross_lens_1',
+    tense: 'current',
+    allowsOutwardQuestions: true,
+    context: {
+      tense: 'current',
+      lenses: [
+        {
+          lens: 'mbti',
+          label: 'MBTI 관계 렌즈',
+          mode: 'pair',
+          themes: ['alone_time', 'planning'],
+          aiTheme: aiThemes.mbti,
+          computed: '나: INFP / 상대: ESTJ',
+        },
+        {
+          lens: 'saju',
+          label: '사주 관계 렌즈',
+          mode: 'pair',
+          themes: ['expression', 'pace'],
+          aiTheme: aiThemes.saju,
+          computed: '내 일주: 갑자(甲子) · 일간 목 / 상대 일주: 병인(丙寅) · 일간 화',
+        },
+        {
+          lens: 'zodiac',
+          label: '별자리 관계 렌즈',
+          mode: 'self',
+          themes: ['expression'],
+          aiTheme: aiThemes.zodiac,
+          computed: '내 태양궁: 물병자리 · 공기 · 고정',
+        },
+      ],
+      declared: { contactImportance: 2, aloneNeed: 5 },
+      reportedEvents: [
+        { type: '연락의 변화', description: '답장 간격이 하루 정도 길어졌어', myReaction: null },
+      ],
+    },
+  });
+
+  if (!json?.ok) {
+    reportRealMode({ task: 'premium-cross-lens', json, durationMs });
+    return;
+  }
+
+  const narrative = json.data.narrative;
+  const text = crossTextOf(narrative);
+  const hits = forbiddenHits(text);
+  /**
+   * §23 — 이 Task에서 가장 중요한 검사. '근거 3개가 일치했다'로 읽히는 문장은
+   * 서버 스캐너가 이미 버리지만, **밖에서 한 번 더** 본다 — 이 한 줄이 무너지면
+   * 유료 결과가 잘못된 확신을 파는 것이 된다.
+   */
+  const corroboration = /(모두|전부|다)\s*(일치|증명|확인)|세\s*가지\s*근거|증명(했|됐)/.test(text);
+
+  if (hits.length > 0 || corroboration) {
+    log(`  duration: ${durationMs}ms · 금지어: ${hits.join(',') || '0'} · 근거일치주장: ${corroboration}`);
+    verdict(
+      'premium-cross-lens',
+      corroboration ? "FAIL — '근거가 모두 일치' 류 표현이 통과했다" : `FAIL — 금지 표현 (${hits.join(', ')})`,
+    );
+    return;
+  }
+
+  const counts = narrative
+    ? `repeated ${narrative.repeatedThemes.length} · diff ${narrative.differences.length} · question ${narrative.verificationQuestions.length}`
+    : '0 (전부 게이트에서 걸러짐)';
+
+  reportRealMode({
+    task: 'premium-cross-lens',
+    json,
+    durationMs,
+    extra: `· ${counts} · forbidden: 0`,
+  });
+}
+
 async function main() {
   log(`Real Provider E2E — ${BASE_URL}\n`);
 
@@ -538,6 +800,15 @@ async function main() {
     await testCompatibilityNarrative();
     await testHistoryInsight();
     await testDeepReportNarrative();
+    /**
+     * v1.46 AI Lens — 렌즈 4종. deep-report 뒤에 두는 이유는 순서가 아니라 **비용**이다:
+     * 앞의 호출이 Key 문제로 SKIPPED면 여기까지 오기 전에 그 사실이 로그에 남는다.
+     */
+    const aiThemes = { mbti: null, saju: null, zodiac: null };
+    for (const testCase of LENS_CASES) {
+      aiThemes[testCase.context.lens] = await testPremiumLens(testCase);
+    }
+    await testCrossLens(aiThemes);
   } catch (error) {
     log(`\n서버에 연결할 수 없음: ${error.message}`);
     log('npm run dev로 서버를 먼저 띄운 뒤 다시 실행하세요.');

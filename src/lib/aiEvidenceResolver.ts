@@ -16,6 +16,7 @@ import {
   SELF_GAP_LABEL,
 } from '@/data/labels';
 import { formatEntryDate } from '@/lib/historyFormat';
+import { relationshipEventEvidenceText } from '@/lib/logic/relationshipEvents';
 import { soloSnapshotSignalText } from '@/lib/logic/soloHistory';
 import { withObjectParticle, withTopicParticle } from '@/lib/korean';
 import type {
@@ -67,6 +68,12 @@ export type EvidenceSourceLabel =
   | '사용자 수정'
   | '과거 관찰'
   | '상대에 대해 입력한 내용'
+  /**
+   * v1.46 §10 — `상대에 대해 입력한 내용`(4축 선택지)과 **다른 라벨**이다. 같은
+   * 이름을 쓰면 근거 목록에서 '고른 값'과 '기억해서 적어준 장면'이 한 출처로 보이고,
+   * 그러면 `자료 N종`이 거짓이 된다(§39.9와 같은 규칙).
+   */
+  | '내가 알려준 장면'
   | '정밀 관찰 추가 답변'
   /** v1.26 — 이미 계산된 동기화율 축 판정 */
   | '동기화율 비교'
@@ -233,6 +240,8 @@ export function evidenceRefKey(ref: EvidenceRef): string {
       return `observed:${canonical.traitId}`;
     case 'history':
       return `history:${canonical.entryId}:${canonical.axis}`;
+    case 'user_reported_event':
+      return `${canonical.source}:${canonical.eventId}`;
     case 'deep_followup':
       return `deep_followup:${canonical.questionId}`;
     default:
@@ -579,6 +588,22 @@ export function resolveEvidenceRef(
     case 'target': {
       const text = resolveTarget(ref.field, context.answers);
       return text ? { key: `target:${ref.field}`, sourceLabel: '상대에 대해 입력한 내용', text } : null;
+    }
+    /**
+     * v1.46 §10 — 사용자가 알려준 관계 사건.
+     *
+     * ⚠️ **세션에 그 사건이 남아 있을 때만 해석된다.** New Target으로 넘어가면
+     * `createEmptyTargetProfile()`이 목록을 비우므로 이 ref는 조용히 null이 되고,
+     * 이전 상대의 장면이 새 상대의 근거 목록에 남을 수 없다(§14 · §35 참고).
+     */
+    case 'user_reported_event': {
+      const event = context.answers.target.events.find((item) => item.id === ref.eventId);
+      if (!event) return null;
+      return {
+        key: `user_reported_event:${ref.eventId}`,
+        sourceLabel: '내가 알려준 장면',
+        text: relationshipEventEvidenceText(event),
+      };
     }
     case 'deep_followup':
       return resolveDeepFollowup(ref.questionId, context.deepAnswers ?? []);

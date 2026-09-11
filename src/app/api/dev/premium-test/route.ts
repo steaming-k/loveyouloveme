@@ -37,6 +37,7 @@ import type {
   DeclaredPreference,
   DeepAnalysisAnswer,
   DeepNarrative,
+  BirthProfile,
   MbtiType,
   ObservationFeedback,
   ObservedProfileResult,
@@ -76,6 +77,8 @@ interface PremiumTestRequest {
   currentRelationship?: Partial<CurrentRelationshipEvidence>;
   target?: Partial<TargetProfile>;
   mbti?: MbtiType | null;
+  /** v1.46 PremiumLens — 관계 렌즈(사주·별자리)의 재료. 생략하면 두 렌즈가 unavailable이다 */
+  birthProfile?: Partial<BirthProfile>;
   /** 저장돼 있다고 가정할 기록 (오래된 것 → 최신) */
   entries?: RelationshipHistoryEntry[];
   observedAnalysis?: ObservedProfileResult | null;
@@ -98,6 +101,7 @@ function buildAnswers(body: PremiumTestRequest): SessionAnswers {
     currentRelationship: { ...base.currentRelationship, ...body.currentRelationship },
     target: { ...base.target, ...body.target },
     mbti: body.mbti ?? null,
+    birthProfile: { ...base.birthProfile, ...body.birthProfile },
     observedAnalysis: body.observedAnalysis ?? null,
     observations: body.observations ?? {},
     deepAnswers: body.deepAnswers ?? [],
@@ -202,6 +206,8 @@ export async function POST(request: Request): Promise<Response> {
     target: answers.target,
     mirror,
     lifecycle,
+    // v1.46 PremiumLens — 렌즈 생년월일 유효성 판정용. 일주·태양궁은 날짜 문자열로만 정해진다
+    today: new Date(),
   });
 
   /**
@@ -250,6 +256,18 @@ export async function POST(request: Request): Promise<Response> {
       answeredDeclaredAxes: answeredDeclaredAxisCount(answers.declared),
       mirrorInsightCount: mirror.insights.length,
     },
+    /**
+     * v1.46 §11 — **사건이 점수를 바꾸지 않는다**를 fixture가 값으로 확인할 수 있게
+     * 이미 계산된 동기화율을 그대로 낸다. 여기서 다시 계산하지 않는다.
+     */
+    compatibility: {
+      score: compatibility.score,
+      comparedCount: compatibility.comparedCount,
+      confidence: compatibility.confidence,
+      alignments: compatibility.dimensions.map((item) => [item.key, item.alignment]),
+    },
+    /** v1.46 §12 — Mirror 판정도 사건과 무관해야 한다 */
+    mirrorStates: mirror.insights.map((item) => [item.key, item.state]),
     insights: insights.map((insight) => ({
       id: insight.id,
       type: insight.type,
@@ -265,7 +283,9 @@ export async function POST(request: Request): Promise<Response> {
             ? `${ref.source}:${ref.traitId}`
             : 'entryId' in ref
               ? `${ref.source}:${ref.entryId}:${ref.axis}`
-              : `${ref.source}:${ref.questionId}`,
+              : 'eventId' in ref
+                ? `${ref.source}:${ref.eventId}`
+                : `${ref.source}:${ref.questionId}`,
       ),
       resolvedEvidenceCount: resolveEvidenceRefs(insight.evidenceRefs, resolverContext).length,
       strength: insight.strength,
@@ -363,6 +383,19 @@ export async function POST(request: Request): Promise<Response> {
       })),
       historyDeepAvailable: report.historyDeep?.available ?? false,
       approachInsight: report.approachInsight?.title ?? null,
+      /**
+       * v1.46 §12 — 사용자가 알려준 관계 맥락 블록. **Chapter 수와 별개다** —
+       * fixture가 `chapters.length`와 이 값이 서로 영향을 주지 않는지 본다(EVT-*).
+       */
+      reportedScenes: report.reportedScenes,
+      /**
+       * v1.46 PremiumLens — 관계 렌즈 3종 + Cross-Lens. `tests/run-lens-fixtures.mjs`가
+       * 이 값을 읽는다.
+       *
+       * ⚠️ **가공하지 않고 그대로 낸다.** 라우트가 요약하면 fixture가 보는 것과
+       * 화면이 그리는 것이 갈라진다 — v1.41 §39.9가 정확히 그 자리에서 시제를 놓쳤다.
+       */
+      lensBundle: report.lensBundle,
       lovyObservation: report.lovyObservation,
       limitations: report.limitations,
     },

@@ -9,6 +9,7 @@ import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { SegmentedField } from '@/components/common/SegmentedField';
 import { InlineError, NoticeBox, PageHeading, Tag } from '@/components/common/primitives';
+import { RelationshipEventSection } from '@/components/profile/RelationshipEventSection';
 import { PRIVACY } from '@/data/copy';
 import { MBTI_TYPES } from '@/data/mbti';
 import { TARGET_FIELDS, TARGET_MIN_KNOWN, TARGET_RELATION_OPTIONS } from '@/data/targetFields';
@@ -61,6 +62,11 @@ export default function TargetPage() {
     trackEvent('target_profile_complete', {
       relation: answers.target.relation ?? '',
       known_count: known,
+      /**
+       * v1.46 — 사건을 **몇 개** 알려줬는지. 원문은 보내지 않는다(§40).
+       * Event Input Rate를 이 한 값으로 셀 수 있어서 새 이벤트를 만들지 않았다.
+       */
+      event_count: answers.target.events.length,
     });
     router.push(ROUTES.compatibilityAnalyzing);
   };
@@ -281,6 +287,15 @@ export default function TargetPage() {
             </div>
           ) : null}
         </div>
+
+        {/*
+          v1.46 §6 — 관계 사건('기억나는 장면'). **MBTI·좋아하는 것 다음**에 둔다.
+
+          ⚠️ 4축 입력 카드보다 위로 올리지 않는다. 위로 올리면 화면이 처음부터
+          자유서술을 요구하는 것처럼 보이고, `known/4`(비교 가능한 항목)가 이 화면의
+          실제 진행 기준이라는 사실이 흐려진다 — 사건은 점수에 들어가지 않는다(§11).
+        */}
+        <RelationshipEventSection />
 
         <NoticeBox>{PRIVACY.target}</NoticeBox>
 

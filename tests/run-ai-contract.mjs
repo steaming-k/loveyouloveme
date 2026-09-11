@@ -60,6 +60,9 @@ async function run(fixture) {
        * 있지 않고 그것들이 검증하는 것은 시제·게이트·스키마다.
        */
       allowedEvidenceRefs: fixture.allowedEvidenceRefs,
+      // v1.46 AI Lens — 렌즈 fixture. 없으면 라우트가 'pair' / 되풀이 검사 건너뜀
+      mode: fixture.mode,
+      deterministicText: fixture.deterministicText,
     }),
   });
 
@@ -386,6 +389,69 @@ async function run(fixture) {
         `실제 ${item.interpretationLength}`);
       check(name, `근거 또는 한계 동반 (${item.insightId})`,
         item.evidenceCount > 0 || item.hasUncertainty);
+    }
+  }
+
+  /* ------------------------- Premium Lens AI · Cross-Lens (v1.46 AI Lens)
+
+     ⚠️ 이 블록만 **화면 문자열 자체**를 본다. 다른 Task는 길이·개수·라벨로
+     검사하는데, 내부 enum 노출은 그렇게 잡히지 않는다 — `planning`이 그대로 나간
+     응답도 unit 개수와 길이는 정상이었다(브라우저 실측 P1). 문자열을 보지 않으면
+     그 상태가 PASS 안에 남는다. */
+  if (fixture.task.startsWith('premium-')) {
+    const screenText = [
+      result.summary ?? '',
+      ...(result.units ?? []).map((unit) => unit.body ?? ''),
+      result.checkpoint ?? '',
+      result.crossTheme ?? '',
+      ...(result.repeatedThemes ?? []),
+      ...(result.differences ?? []),
+      ...(result.verificationQuestions ?? []),
+      result.closing ?? '',
+    ].join(' ');
+
+    if (expect.rejected !== undefined) {
+      check(name, `응답 폐기 ${expect.rejected}`, (result.rejected ?? null) === expect.rejected,
+        `실제 ${result.rejected ?? null}`);
+    }
+    /** 내부 코드가 **한 글자도** 남지 않아야 한다 */
+    for (const code of expect.forbiddenText ?? []) {
+      check(name, `'${code}' 사용자 노출 0`, !screenText.includes(code), '화면 문자열에 남았다');
+    }
+    /** 코드가 사라진 자리에 **사람이 읽는 라벨**이 있는지 — 지우기만 하면 문장이 깨진다 */
+    for (const label of expect.containsText ?? []) {
+      check(name, `'${label}' 라벨로 치환됨`, screenText.includes(label), '라벨이 없다');
+    }
+    if (expect.unitIds) {
+      check(name, `unit ${expect.unitIds.join(',')}`,
+        eq((result.units ?? []).map((unit) => unit.id), expect.unitIds),
+        `실제 ${(result.units ?? []).map((unit) => unit.id).join(',')}`);
+    }
+    if (expect.crossCounts) {
+      const actual = [
+        (result.repeatedThemes ?? []).length,
+        (result.differences ?? []).length,
+        (result.verificationQuestions ?? []).length,
+      ];
+      check(name, `Cross 블록 개수 [${expect.crossCounts.join(',')}]`, eq(actual, expect.crossCounts),
+        `실제 [${actual.join(',')}]`);
+    }
+    if (expect.summaryEmpty !== undefined) {
+      check(name, `summary ${expect.summaryEmpty ? '비었다' : '남았다'}`,
+        (result.summary === '') === expect.summaryEmpty, `실제 '${result.summary}'`);
+    }
+    if (fixture.tense !== undefined) {
+      check(name, `tense ${fixture.tense}로 실행됨`, result.tense === fixture.tense,
+        `실제 ${result.tense}`);
+    }
+    if (expect.violations) {
+      const actual = result.violations ?? [];
+      for (const label of expect.violations) {
+        check(name, `위반 라벨 '${label}' 감지`, actual.includes(label), `실제 [${actual.join(',')}]`);
+      }
+      if (expect.violations.length === 0) {
+        check(name, '위반 없음', actual.length === 0, `실제 [${actual.join(',')}]`);
+      }
     }
   }
 

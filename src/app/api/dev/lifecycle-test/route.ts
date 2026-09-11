@@ -275,6 +275,8 @@ export async function POST(request: Request): Promise<Response> {
     // v1.45 — Chapter Engine의 FREE 중복 게이트. 위 ①에서 이미 만든 것을 그대로 넘긴다
     mirror,
     lifecycle,
+    // v1.46 PremiumLens — 렌즈 생년월일 유효성 판정용
+    today: new Date(),
   });
 
   /* ── ⑤ AI Relationship Boundary (v1.42 · §40.17) ────────────────────

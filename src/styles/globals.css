@@ -121,14 +121,37 @@
   --text-label--letter-spacing: 0.08em;
   --text-label--font-weight: 600;
 
-  /* Motion — 기본 300~600ms, 과한 연출 금지 */
-  --ease-observe: cubic-bezier(0.22, 0.61, 0.36, 1);
+  /* ------------------------------------------------------------------------
+     Motion System (v1.46 · §25)
 
-  /* Duration 3단계. JS 쪽 대응 값은 src/lib/motion.ts `MOTION`에 같은 숫자로 있다.
-     fast   = press 피드백 · 즉각 반응
-     normal = 화면 안 상태 전환(Paywall → Success → Report)
-     slow   = 큰 표면(Report Header · Section) 등장 */
+     ⚠️ **페이지마다 duration/easing을 새로 만들지 않는다.** 화면 코드에 나타나는
+     시간 값은 전부 아래 5개 중 하나이고, easing은 3개뿐이다. 새 숫자가 필요해
+     보이면 그건 대개 새 duration이 아니라 잘못된 위계다.
+
+     Easing 3개 — 역할이 겹치지 않는다:
+       observe   감속(decelerate). **등장·reveal 전용.** 들어오는 것은 느려지며 멈춘다
+       standard  in-out. **상태 변화 전용**(색·테두리·press). 시작과 끝이 대칭이다
+       exit      가속(accelerate). **사라지는 것 전용.** 나가는 것은 빨라지며 사라진다
+     ------------------------------------------------------------------------ */
+  --ease-observe: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  /* Duration 5단계. JS 쪽 대응 값은 src/lib/motion.ts `MOTION`에 같은 숫자로 있다.
+     instant = press 피드백 (§26 80~140ms)
+     fast    = 색·테두리 같은 즉각 상태 반응
+     enter   = 화면 진입 · card/accordion 본문 등장 (§26 150~260ms)
+     normal  = 화면 안 상태 전환(Paywall → Success → Report)
+     slow    = 큰 표면(Report Header · Section) 등장
+
+     ⚠️ v1.46에서 `fast`/`normal`/`slow`의 **값은 바꾸지 않았다.** 세 값은 Premium
+     unlock 연출(stage-exit → unlock-enter → check-draw)과 관찰 시퀀스에 맞춰 이미
+     조정된 숫자다. §25의 예시 숫자(140/220/320)로 갈아끼우면 그 연출의 합이 함께
+     움직이는데, 그건 이번 사이클이 요구한 '절제된 추가'가 아니라 튜닝된 것을
+     되돌리는 변경이다. 필요한 두 칸(`instant`·`enter`)만 새로 뒀다. */
+  --motion-instant: 90ms;
   --motion-fast: 150ms;
+  --motion-enter: 220ms;
   --motion-normal: 300ms;
   --motion-slow: 400ms;
 }
@@ -548,6 +571,161 @@
   animation-delay: 340ms;
 }
 
+/* --------------------------------------------------------------------------
+   Motion Utilities (v1.46 · §26)
+
+   화면 코드가 duration/easing 숫자를 직접 적지 않도록 **역할 이름**만 노출한다.
+   Tailwind utility layer **밖**의 평범한 CSS라, 같은 요소에 `duration-200`이 함께
+   있어도 이쪽이 이긴다(layered < unlayered). 그래서 기존 클래스를 지우지 않고도
+   토큰으로 옮겨갈 수 있다.
+
+   ⚠️ 전부 `transition`이므로 아래 prefers-reduced-motion 블록 한 곳에서 꺼진다.
+   꺼져도 **최종 상태는 그대로**다 — 정보가 사라지는 모션은 여기 없다.
+   -------------------------------------------------------------------------- */
+
+/* 상태 변화(색·테두리·배경). `transition-colors` 등과 함께 쓴다 */
+.t-fast {
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--ease-standard);
+}
+
+/* 화면 진입·본문 등장 */
+.t-enter {
+  transition-duration: var(--motion-enter);
+  transition-timing-function: var(--ease-observe);
+}
+
+/*
+   §26 Button press — 1 → 0.98 → 1.
+
+   ⚠️ **hit area를 줄이지 않는다.** 가장 작은 대상이 `min-h-11`(44px)이고 0.98배는
+   43.1px이지만, 이 변형은 **누르고 있는 동안만** 존재한다 — 탭 시작 시점의 hit
+   test는 이미 끝나 있고, 손을 떼면 44px로 돌아온다. 레이아웃에는 영향이 없다
+   (transform은 layout을 바꾸지 않는다 → CLS 0).
+
+   ⚠️ `transform`은 **containing block을 만든다.** 그래서 이 클래스는 `button`처럼
+   자기 안에 absolute 오버레이를 두지 않는 **말단 요소에만** 붙인다 — BottomSheet /
+   ConfirmModal의 `absolute inset-0`이 기준점을 잃지 않아야 한다(AppShell의
+   `relative` 프레임이 그 기준이다).
+*/
+.press-scale {
+  /*
+    ⚠️ **색 전환까지 함께 선언한다.** `transition`은 단축 속성이라, 같은 요소에
+    `transition-colors`(Tailwind)와 이 클래스가 함께 걸리면 **뒤에 오는 쪽이
+    transition-property를 통째로 덮어쓴다.** 실측에서 그 결과가 나왔다:
+    버튼의 배경·테두리 색이 transition 없이 즉시 바뀌었다(0ms).
+
+    그래서 이 클래스 하나가 "눌리면 반응하고, 색도 부드럽게"를 전부 책임진다 —
+    호출부는 `press-scale` 하나만 붙이면 되고, 두 클래스의 순서를 신경 쓸 필요가 없다.
+  */
+  transition:
+    transform var(--motion-instant) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    opacity var(--motion-fast) var(--ease-standard);
+}
+.press-scale:active {
+  transform: scale(0.98);
+}
+
+/*
+   §26 Page — 화면 진입.
+
+   ⚠️ **opacity만 쓴다. translate/scale을 넣지 않는다.**
+
+   이 클래스는 `ScreenLayout`의 루트에 붙고, 그 안에는 BottomSheet·ConfirmModal의
+   `absolute inset-0`이 들어온다. `transform`을 넣으면 루트가 containing block이 되어
+   그 오버레이들이 **프레임 전체가 아니라 화면 본문 안쪽에만** 깔린다(실제로 화면이
+   덜 덮인다). `opacity`는 stacking context만 만들고 containing block은 만들지
+   않으므로 오버레이 기준점이 그대로다.
+
+   ⚠️ 그리고 `translateY`는 **스크롤 복원과 경쟁한다.** `useScrollRestore`는 mount
+   직후 `scrollTop`을 되돌리는데, 같은 순간 본문이 움직이면 되돌아온 위치가 흔들리는
+   것처럼 보인다. 세로 이동감이 필요한 자리는 결과 본문의 `reveal-up`이 이미 맡고 있다.
+*/
+@keyframes page-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.page-enter {
+  animation: page-enter var(--motion-enter) var(--ease-observe) both;
+}
+
+/*
+   §26 Card / Accordion — 펼친 본문 등장.
+
+   ⚠️ **height를 애니메이션하지 않는다.** 현재 Accordion은 조건부 렌더이고
+   (v1.45 `PremiumChapterAccordion` 주석), height를 애니메이션하려면 본문 높이를
+   측정해야 한다 — 그 측정이 §30이 금지한 `accordion measurement loop`와 scroll jump가
+   들어오는 자리다. 대신 이미 자란 자리에서 본문만 opacity + 6px로 들어온다.
+*/
+@keyframes body-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.body-enter {
+  animation: body-enter var(--motion-enter) var(--ease-observe) both;
+}
+
+/*
+   §26 Result scroll reveal — **한 번만** 재생된다.
+
+   자바스크립트 쪽 짝은 `hooks/useRevealOnce.ts`다. 이 클래스만으로는 아무 일도
+   일어나지 않고, 훅이 `data-reveal="in"`을 붙일 때 최종 상태로 들어온다.
+
+   ⚠️ 초기 상태를 `opacity: 0`으로 두는 위험(훅이 실패하면 본문이 영구히 안 보인다)은
+   훅 쪽에서 세 겹으로 막는다: ① 뷰포트 위/안에 있으면 mount 즉시 `in`,
+   ② IntersectionObserver가 없으면 즉시 `in`, ③ reduced-motion이면 즉시 `in`.
+*/
+.reveal-once {
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity var(--motion-normal) var(--ease-observe),
+    transform var(--motion-normal) var(--ease-observe);
+}
+
+.reveal-once[data-reveal='in'] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/*
+   §18 발견 blink — 러비가 무언가 알아챈 순간의 작대기 3개.
+
+   ⚠️ **`infinite`가 아니다**(§28). 한 번 등장할 때 2회만 깜빡이고 멈춘다.
+   frame이 교체되면 요소가 새로 mount되어 다시 2회 재생된다 — 재생 횟수를 JS로
+   세지 않아도 되는 이유다.
+*/
+@keyframes lovy-blink {
+  0%,
+  100% {
+    opacity: 0.15;
+    transform: scaleY(0.7);
+  }
+  50% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+.animate-lovy-blink {
+  animation: lovy-blink 620ms var(--ease-standard) 2 both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -569,5 +747,17 @@
     transition-duration: 0.01ms !important;
     transition-delay: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  /*
+   * v1.46 §29 — **장식 loop는 끄는 것으로 끝나지 않는다.**
+   *
+   * 위 블록은 `animation-iteration-count: 1`로 만들 뿐이라, 장식 애니메이션이
+   * `from` 상태(반투명·눌린 상태)에서 시작해 `both`로 굳으면 **꺼진 게 아니라
+   * 이상한 모양으로 멈춘다.** 러비 발견 작대기는 정보가 아니라 장식이므로
+   * reduced-motion에서는 아예 보이지 않는 것이 맞다.
+   */
+  .animate-lovy-blink {
+    display: none !important;
   }
 }

@@ -29,7 +29,7 @@ export function SegmentedField({ label, value, options, onChange, name }: Segmen
             <label
               key={option.value}
               className={cn(
-                'flex min-h-11 flex-1 cursor-pointer items-center justify-center rounded-[10px] border px-1 py-2.5 text-center text-[12.5px] transition-colors duration-200',
+                'flex min-h-11 flex-1 cursor-pointer items-center justify-center rounded-[10px] border px-1 py-2.5 text-center text-[12.5px] press-scale',
                 selected
                   ? 'border-brand bg-brand-tint font-semibold'
                   : 'border-line bg-surface active:bg-sunken',
@@ -50,7 +50,7 @@ export function SegmentedField({ label, value, options, onChange, name }: Segmen
 
         <label
           className={cn(
-            'flex min-h-11 w-[52px] flex-none cursor-pointer items-center justify-center rounded-[10px] border border-dashed px-1 py-2.5 text-center text-[12.5px] transition-colors duration-200',
+            'flex min-h-11 w-[52px] flex-none cursor-pointer items-center justify-center rounded-[10px] border border-dashed px-1 py-2.5 text-center text-[12.5px] press-scale',
             value === 'x'
               ? 'border-brand bg-brand-tint font-semibold text-brand-pressed'
               : 'border-line-strong bg-surface text-ink-muted active:bg-sunken',

@@ -19,6 +19,11 @@ const ALLOWED_TASKS: readonly AiTask[] = [
   'compatibility-narrative',
   'history-insight',
   'deep-report-narrative',
+  /** v1.46 AI Lens §3 — 렌즈별 해석 4종 */
+  'premium-mbti-lens',
+  'premium-saju-lens',
+  'premium-zodiac-lens',
+  'premium-cross-lens',
 ];
 
 export function isAllowedTask(task: string): task is AiTask {

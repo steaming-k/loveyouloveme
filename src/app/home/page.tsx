@@ -8,17 +8,26 @@ import { Button } from '@/components/common/Button';
 import { ConfirmModal } from '@/components/common/ConfirmModal';
 import { SectionLabel } from '@/components/common/primitives';
 import { useToast } from '@/components/common/ToastProvider';
+import { HomePremiumBundle } from '@/components/premium/HomePremiumBundle';
 import { Lovy } from '@/components/lovy/Lovy';
 import { BRAND, HOME_COPY } from '@/data/copy';
 import { clearAiCache } from '@/services/ai/aiClient';
 import { clearDeepReportUt } from '@/lib/deepReportUtStore';
 import { UT_MODE } from '@/lib/env';
-import { clearPreviewUnlocks } from '@/lib/premiumAccess';
+import { clearPreviewUnlocks, hasPreviewUnlock } from '@/lib/premiumAccess';
+import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
+import { hasPremiumEvidence } from '@/lib/logic/premiumChapters';
+import { premiumFeatureState } from '@/services/premiumService';
+import { useCrossSourceInsights } from '@/hooks/useAiNarrative';
 import { clearPremiumIntents } from '@/lib/premiumIntentStore';
 import { revisitHref } from '@/lib/resultView';
 import { displayStateOf } from '@/lib/logic/mirror';
 import { homeHeroSummary } from '@/lib/logic/profile';
-import { resolveRelationshipStage } from '@/lib/logic/relationshipStage';
+import {
+  jobAllowsOutwardAction,
+  resolveRelationshipContext,
+  resolveRelationshipStage,
+} from '@/lib/logic/relationshipStage';
 import { soloModeOf } from '@/lib/logic/soloMode';
 import { ROUTES } from '@/lib/routes';
 import { downloadUtExport } from '@/lib/utExport';
@@ -76,6 +85,34 @@ export default function HomePage() {
   const soloReport = useSoloHistoryReport();
   const soloEntryCount = filterHistoryByAudience(entries, 'solo').length;
   const coupleEntryCount = entries.length - soloEntryCount;
+  /**
+   * v1.46 PremiumLens §32 — Home 하단 Premium Bundle.
+   *
+   * ⚠️ **자격 판정을 Home이 새로 만들지 않는다.** 결과 화면과 같은
+   * `hasPremiumEvidence` · `premiumFeatureState`를 그대로 부른다 — 두 벌이 되면
+   * Home에서는 보이고 Paywall은 unavailable인 상태가 조용히 생긴다.
+   */
+  const crossSourceInsights = useCrossSourceInsights();
+  const [priceVariant] = useState(() => resolvePriceVariant());
+  const premiumBundleFeature = premiumFeatureState(
+    'relationship_deep_report',
+    resolvePrice(priceVariant),
+    {
+      deepReportAvailable: hasPremiumEvidence({
+        insights: crossSourceInsights,
+        declared: answers.declared,
+        mirror,
+      }),
+      solo: soloModeOf(answers) === 'no_target',
+      allowsOutwardAction: jobAllowsOutwardAction(resolveRelationshipContext(answers).job),
+    },
+  );
+  /** CTA 문구만 바꾼다('열기' ↔ '보기'). 접근 권한 자체는 Paywall이 판단한다 */
+  const bundleUnlocked = hasPreviewUnlock(
+    'relationship_deep_report',
+    answers.currentAnalysisMeta?.funnelAnalysisId ?? null,
+  );
+
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [utResetOpen, setUtResetOpen] = useState(false);
   /**
@@ -417,6 +454,17 @@ export default function HomePage() {
               </span>
             </button>
           ) : null}
+
+          {/*
+            v1.46 PremiumLens §32~§35 — Premium Bundle.
+
+            ⚠️ **자리가 제품 결정이다.** History·프로필 다음, 그리고 '새로운 사람과
+            궁합 보기' **앞**이다. 무료 결과를 다시 보는 길보다 위에 두면 Home이 상점이 되고,
+            primary CTA 아래로 내리면 지금처럼 못 찾는 상태가 그대로 남는다.
+
+            ⚠️ Button이 아니라 카드다 — Home의 primary를 이기지 않는다(§33 Guardrail).
+          */}
+          <HomePremiumBundle feature={premiumBundleFeature} unlocked={bundleUnlocked} />
 
           {/*
             새 분석 시작 — Revisit 기능이 생겼다고 이 CTA를 없애지 않는다(§46).

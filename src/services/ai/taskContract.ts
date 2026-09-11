@@ -102,7 +102,11 @@ export type IdentifierPolicy =
   /** 결정론 엔진이 만든 Insight id — label과 혼동될 수 없다 */
   | 'insight-id'
   /** 세션 내부 임의 이미지 id */
-  | 'image-id';
+  | 'image-id'
+  /** v1.46 AI Lens — 렌즈 unit id (`mbti_pair_rhythm` 등). `data/premiumLensAi.ts`의 닫힌 목록 */
+  | 'lens-unit'
+  /** v1.46 AI Lens — Cross-Lens 응답에는 항목 식별자가 없다. 블록 3개가 고정 필드다 */
+  | 'none';
 
 /**
  * `AI_OUTPUT ⊆ DETERMINISTIC_EVIDENCE`를 **어느 범위로** 강제하는가.
@@ -275,6 +279,93 @@ export const TASK_CONTRACT: Record<AiTask, AiTaskContract> = {
      * 않는다. 대신 장별 `usable`·violations를 이미 집계한다(`sanitizePhotoObservation`).
      */
     observability: 'per-photo',
+  },
+
+  /* --------------------------------------- v1.46 AI Lens (§3~§32) */
+
+  /**
+   * 세 렌즈가 **같은 계약**을 갖는다. 값이 하나만 다르다(promptVersion).
+   *
+   * ⚠️ 그래도 `lensContract(version)` 같은 생성기를 쓰지 않고 세 번 적었다. 이 표는
+   * 읽는 사람이 "이 Task에 이 차원이 적용되는가"를 **눈으로** 확인하는 곳이고,
+   * 생성된 값은 grep에도 구조 테스트(TC0)에도 걸리지 않는다 —
+   * `Record<AiTask, …>`가 강제하는 것은 '값이 있다'이지 '사람이 그 값을 봤다'가 아니다.
+   *
+   * 아래 주석 네 개가 세 Task 전부에 대한 설명이고, 나머지 둘은 같은 값을 가리킨다.
+   */
+  'premium-mbti-lens': {
+    promptVersion: PROMPT_VERSIONS.premiumMbtiLens,
+    /**
+     * §7 — 이 Task의 출력은 **관계를 부르는 문장 전부**다. 끝난 관계 사용자에게
+     * '앞으로 둘이'가 나가면 결정론 렌즈가 지켜온 톤이 AI 문단 하나로 무너진다.
+     *
+     * ⚠️ 결정론 렌즈 본문은 시제 중립으로 쓰여 있다(`logic/premiumLens.ts`).
+     * 그래서 이 계약이 없으면 **AI 문단만** 시제를 어긴다 — v1.43 §47.5가
+     * deep-report에서 고친 것과 정확히 같은 형태의 결함이다.
+     */
+    tense: 'required',
+    /**
+     * §9-5 · §12-6 · §16-6 — 각 렌즈의 마지막 unit이 '실제로 확인해볼 것'이고,
+     * 그건 상대에게 물어보는 질문이다. `ended`에서는 갈 수 없는 길이다.
+     *
+     * ⚠️ `applyOutwardQuestionGate`를 쓰지 않는다. 그 헬퍼는 **항목의 한 필드**를
+     * 지우는데, 여기서 지워야 하는 것은 **항목 자체**(`*_verify` unit)다. 필드를
+     * 비우면 제목만 남은 빈 칸이 화면에 그려진다.
+     */
+    outwardQuestions: 'gated',
+    identifier: 'lens-unit',
+    /**
+     * §7 — 이 Task의 출력에 `EvidenceRef`가 없다. 렌즈 결과는 Evidence가 아니고
+     * (v1.46 PremiumLens §20 · §45) Core 판정에 들어가지 않으므로 ref를 만들 이유가
+     * 없다. `AI_OUTPUT ⊆ DETERMINISTIC_LENS_EVIDENCE`는 다른 방식으로 강제한다:
+     * 모델이 받는 것이 결정론 엔진이 계산한 `basis` 행뿐이고(context builder),
+     * 계산하지 않은 값을 말하면 `scanLensNarrative`가 그 unit을 버린다.
+     */
+    evidence: 'no-evidence-refs',
+    /** 게이트가 최종 응답을 바꾼다 — 캐시 identity에 반드시 들어간다(v1.42 §8.13) */
+    cacheIdentity: ['tense', 'allowsOutwardQuestions'],
+    observability: 'raw+parsed+safe',
+  },
+
+  /** MBTI 렌즈와 같은 계약. 다른 것은 프롬프트 버전뿐이다(§6 — 캐시를 갈라 두려고) */
+  'premium-saju-lens': {
+    promptVersion: PROMPT_VERSIONS.premiumSajuLens,
+    tense: 'required',
+    outwardQuestions: 'gated',
+    identifier: 'lens-unit',
+    evidence: 'no-evidence-refs',
+    cacheIdentity: ['tense', 'allowsOutwardQuestions'],
+    observability: 'raw+parsed+safe',
+  },
+
+  /** 같은 계약 */
+  'premium-zodiac-lens': {
+    promptVersion: PROMPT_VERSIONS.premiumZodiacLens,
+    tense: 'required',
+    outwardQuestions: 'gated',
+    identifier: 'lens-unit',
+    evidence: 'no-evidence-refs',
+    cacheIdentity: ['tense', 'allowsOutwardQuestions'],
+    observability: 'raw+parsed+safe',
+  },
+
+  'premium-cross-lens': {
+    promptVersion: PROMPT_VERSIONS.premiumCrossLens,
+    /** 세 렌즈와 같은 이유(§7). 이 Task도 관계를 부르는 문장만 만든다 */
+    tense: 'required',
+    /**
+     * §22-3 · §25 — `verificationQuestions` 2~3개가 이 Task 출력의 절반이다.
+     * `ended`에서는 그 배열을 통째로 비운다.
+     */
+    outwardQuestions: 'gated',
+    /**
+     * §25 — 응답이 고정 필드 3개(repeatedThemes · differences · verificationQuestions)
+     * + closing이다. 모델이 항목을 **지목**하지 않으므로 식별자 어휘가 없다.
+     */
+    identifier: 'none',
+    evidence: 'no-evidence-refs',
+    cacheIdentity: ['tense', 'allowsOutwardQuestions'],
+    observability: 'raw+parsed+safe',
   },
 };
 

@@ -315,3 +315,88 @@ export function deepReportFingerprint(input: {
     ),
   ])}`;
 }
+
+/* -------------------- Premium Lens AI (v1.46 AI Lens · §28 · §29) -------- */
+
+/**
+ * 렌즈 하나의 지문. **렌즈마다 따로 만든다** (§28).
+ *
+ * ══ 왜 렌즈별인가 ════════════════════════════════════════════════════════
+ *
+ * ```
+ * 상대 MBTI만 수정
+ *   → MBTI 지문 변경     → 재호출
+ *   → Cross-Lens 지문 변경 → 재호출 (MBTI 테마가 입력이므로)
+ *   → 사주·별자리 지문 그대로 → 캐시 유지 ✅
+ * ```
+ *
+ * 세 렌즈가 지문 하나를 공유하면 위 줄의 마지막이 성립하지 않는다. Task도 캐시 키도
+ * 따로인 이유가 이것이다(`aiClient.cacheKey`).
+ *
+ * ══ 무엇을 넣는가 ════════════════════════════════════════════════════════
+ *
+ * ⚠️ 이 파일 상단이 "MBTI·Birth Profile을 절대 넣지 않는다"고 적어둔 것은 **Core
+ * Narrative 지문**에 대한 규칙이다. 그 이유는 위계다 — MBTI를 입력했다고 Core 설명이
+ * 다시 만들어지면 보조 렌즈가 Core를 흔드는 것이 된다.
+ *
+ * 이 지문은 그 반대쪽이다. **MBTI가 바로 이 Task의 입력**이고, 넣지 않으면 상대
+ * 유형을 바꿔도 같은 문장이 캐시에서 나온다. 그래도 원본은 넣지 않는다 — 넣는 것은
+ * 결정론 엔진이 이미 만든 `basis` 라벨과 `themes`다(생년월일은 지문에도 없다).
+ *
+ * ⚠️ `tense`·`allowsOutwardQuestions`는 **최종 응답을 바꾸는 policy input**이므로
+ * 반드시 들어간다(v1.42 §8.13 · TC6).
+ */
+export function premiumLensFingerprint(input: {
+  kind: string;
+  mode: 'pair' | 'self';
+  tense: RelationshipTense;
+  allowsOutwardQuestions: boolean;
+  basis: readonly { label: string; value: string }[];
+  themes: readonly string[];
+  declared: DeclaredPreference;
+  /**
+   * §19 — 이 렌즈에 실제로 전달되는 사건만. **원문을 넣지 않는다** — 길이와 종류만
+   * 넣어도 "사건이 바뀌었다"를 감지하기에 충분하고, 지문 문자열에 자유 입력이 남지
+   * 않는다(§34 Privacy).
+   */
+  eventSignature: readonly string[];
+}): string {
+  const { kind, mode, tense, allowsOutwardQuestions, basis, themes, declared, eventSignature } =
+    input;
+
+  return `lens_${kind}_${digest([
+    mode,
+    tense,
+    allowsOutwardQuestions ? 'q1' : 'q0',
+    ...basis.map((row) => `${row.label}=${row.value}`),
+    ...themes,
+    ...declaredParts(declared),
+    ...eventSignature,
+  ])}`;
+}
+
+/**
+ * Cross-Lens 지문 (§28 · §29).
+ *
+ * ⚠️ **입력이 세 렌즈의 지문 그 자체다.** 렌즈 하나가 바뀌면 그 지문이 바뀌고,
+ * 따라서 Cross-Lens도 자동으로 무효화된다 — 어떤 값을 넣어야 하는지 손으로 다시
+ * 세지 않아도 된다(빠뜨릴 자리가 없다).
+ *
+ * ⚠️ `aiThemes`도 들어간다. 같은 렌즈 입력이라도 AI가 실패해 테마가 없으면 Cross-Lens가
+ * 받는 것이 다르고(§5 부분 실패), 그건 다른 응답을 만든다.
+ */
+export function crossLensFingerprint(input: {
+  tense: RelationshipTense;
+  allowsOutwardQuestions: boolean;
+  lensFingerprints: readonly string[];
+  aiThemes: readonly (string | null)[];
+}): string {
+  const { tense, allowsOutwardQuestions, lensFingerprints, aiThemes } = input;
+
+  return `xlens_${digest([
+    tense,
+    allowsOutwardQuestions ? 'q1' : 'q0',
+    ...lensFingerprints,
+    ...aiThemes.map((theme) => (theme ? `t${theme.length}` : '-')),
+  ])}`;
+}

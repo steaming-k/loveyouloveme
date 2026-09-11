@@ -1,0 +1,30 @@
+{
+  "name": "lens_enum_02_expression",
+  "description": "AI-LENS-ENUM-02 — 렌즈 Task에서도 같은 guard가 돈다. Cross-Lens에서만 막으면 MBTI·사주·별자리 카드 세 곳이 그대로 열려 있고, 실측에서 코드가 나온 자리가 Cross-Lens였다는 것은 거기서만 나올 수 있다는 뜻이 아니다.",
+  "task": "premium-mbti-lens",
+  "mode": "pair",
+  "tense": "current",
+  "allowsOutwardQuestions": true,
+  "raw": {
+    "summary": "expression 쪽으로 묶이는 자리가 이 렌즈에서 한 번 보여. 분류가 맞는지는 네 실제 경험이 기준이야.",
+    "units": [
+      {
+        "id": "mbti_pair_rhythm",
+        "body": "너는 INFP, 상대는 ESTJ로 분류됐어. 두 값을 나란히 놓으면 같은 장면을 어디서부터 다르게 보기 시작하는지가 보여."
+      },
+      {
+        "id": "mbti_pair_verify",
+        "body": "최근 일주일에서 서로 애정 표현으로 알아들은 행동을 하나씩 골라 말해봐."
+      }
+    ],
+    "checkpoint": "오늘 하루 중 위 분류와 어긋났던 순간을 하나만 떠올려봐.",
+    "crossTheme": "expression 쪽 자리가 이 렌즈에서 한 번 보였어."
+  },
+  "expect": {
+    "forbiddenText": ["expression", "_"],
+    "containsText": ["마음을 표현하는 방식"],
+    "unitIds": ["mbti_pair_rhythm", "mbti_pair_verify"],
+    "summaryEmpty": false,
+    "violations": []
+  }
+}

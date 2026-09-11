@@ -13,10 +13,16 @@ import {
 
 import { MAX_PAST_FACTORS } from '@/data/labels';
 import { PHOTO_MAX_COUNT } from '@/data/samplePhotos';
+import {
+  RELATIONSHIP_EVENT_DESCRIPTION_MAX_LENGTH,
+  RELATIONSHIP_EVENT_MAX,
+  RELATIONSHIP_EVENT_REACTION_MAX_LENGTH,
+} from '@/data/relationshipEvents';
 import { TARGET_INTEREST_MAX, TARGET_CUSTOM_INTEREST_MAX_LENGTH } from '@/data/targetPreferences';
 import { clearSessionDedup, trackEvent } from '@/lib/analytics';
 import { createEmptyBirthProfile } from '@/lib/logic/birth';
 import { sameAnalysisFingerprint } from '@/lib/aiMeta';
+import { sanitizeRelationshipEvents } from '@/lib/logic/relationshipEvents';
 import { clearPreviewUnlocks } from '@/lib/premiumAccess';
 import {
   sanitizeAffection,
@@ -45,6 +51,8 @@ import type {
   MirrorAxisKey,
   PastFactor,
   PhotoAsset,
+  RelationshipEvent,
+  RelationshipEventType,
   RelationshipStatus,
   SelfGapAnswer,
   SessionAnswers,
@@ -111,6 +119,23 @@ interface SessionContextValue {
   /** v1.13 — 직접 입력. 빈 문자열이거나 최대 개수 초과 시 false */
   addCustomTargetInterest: (text: string) => boolean;
   removeTargetInterest: (id: string) => void;
+
+  /**
+   * v1.46 §8 — 관계 사건 추가. 본문이 비었거나 최대 개수(3)를 넘으면 false.
+   *
+   * ⚠️ 상대에 종속된 값이라 `resetTargetContext()`가 함께 비운다(§14).
+   */
+  addRelationshipEvent: (
+    type: RelationshipEventType,
+    description: string,
+    myReaction?: string,
+  ) => boolean;
+  /** v1.46 §14 — 이미 적은 사건 수정. 본문이 비면 아무 일도 하지 않는다(삭제는 별도) */
+  updateRelationshipEvent: (
+    id: string,
+    patch: { type?: RelationshipEventType; description?: string; myReaction?: string },
+  ) => void;
+  removeRelationshipEvent: (id: string) => void;
 
   toggleSavedQuestion: (id: ConversationQuestionId) => boolean;
 
@@ -255,6 +280,14 @@ function deserialize(raw: string): SessionAnswers | null {
             ? parsed.target.preferences.interests
             : [],
         },
+        /**
+         * v1.46 §14 — v1.45 이전 세션에는 `events`가 없다. 빈 배열로 복원하고
+         * **소급 추정하지 않는다**(v1.41 `currentRelationship` 복원과 같은 규칙).
+         *
+         * ⚠️ 모양만 보지 않고 값도 본다 — 종류가 유효하지 않거나 본문이 빈 항목은
+         * 목록에서 빠진다(v1.44 BUG-002).
+         */
+        events: sanitizeRelationshipEvents(parsed.target?.events),
       },
       birthProfile: { ...base.birthProfile, ...parsed.birthProfile },
       legacyZodiac,
@@ -636,6 +669,95 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  /* ───────────────────────── v1.46 관계 사건 (User-reported Relationship Event) */
+
+  /**
+   * §8 — 사건 추가. 최대 개수를 넘으면 **조용히 무시한다**(false만 돌려준다) —
+   * validation 조건으로 흐름을 막지 않는다. `preferences`(v1.13 §9)와 같은 규칙이다.
+   *
+   * ⚠️ Analytics에는 **종류와 개수만** 보낸다. `description`·`myReaction`은 사용자가
+   * 직접 쓴 문장이므로 외부로 나가지 않는다(§40 · `lib/logic/relationshipEvents.ts` 참고).
+   */
+  const addRelationshipEvent = useCallback(
+    (type: RelationshipEventType, description: string, myReaction?: string) => {
+      const trimmed = description.trim().slice(0, RELATIONSHIP_EVENT_DESCRIPTION_MAX_LENGTH);
+      if (!trimmed) return false;
+      const reaction = (myReaction ?? '').trim().slice(0, RELATIONSHIP_EVENT_REACTION_MAX_LENGTH);
+
+      let added = true;
+      let nextCount = 0;
+      setAnswers((prev) => {
+        if (prev.target.events.length >= RELATIONSHIP_EVENT_MAX) {
+          added = false;
+          return prev;
+        }
+        const event: RelationshipEvent = {
+          id: `evt-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4).toString(36)}`,
+          type,
+          description: trimmed,
+          ...(reaction ? { myReaction: reaction } : {}),
+        };
+        const events = [...prev.target.events, event];
+        nextCount = events.length;
+        return { ...prev, target: { ...prev.target, events } };
+      });
+
+      if (added) {
+        trackEvent('target_event_add', {
+          event_type: type,
+          has_reaction: reaction.length > 0,
+          event_count: nextCount,
+        });
+      }
+      return added;
+    },
+    [],
+  );
+
+  /** §14 — 수정. 본문을 비우는 것은 삭제가 아니므로 **무시한다**(삭제는 명시적 버튼) */
+  const updateRelationshipEvent = useCallback(
+    (
+      id: string,
+      patch: { type?: RelationshipEventType; description?: string; myReaction?: string },
+    ) => {
+      setAnswers((prev) => {
+        const index = prev.target.events.findIndex((item) => item.id === id);
+        if (index < 0) return prev;
+        const current = prev.target.events[index]!;
+
+        const description =
+          patch.description === undefined
+            ? current.description
+            : patch.description.trim().slice(0, RELATIONSHIP_EVENT_DESCRIPTION_MAX_LENGTH);
+        if (!description) return prev;
+
+        const reaction =
+          patch.myReaction === undefined
+            ? current.myReaction
+            : patch.myReaction.trim().slice(0, RELATIONSHIP_EVENT_REACTION_MAX_LENGTH) || undefined;
+
+        const next: RelationshipEvent = {
+          id: current.id,
+          type: patch.type ?? current.type,
+          description,
+          ...(reaction ? { myReaction: reaction } : {}),
+        };
+        const events = [...prev.target.events];
+        events[index] = next;
+        return { ...prev, target: { ...prev.target, events } };
+      });
+    },
+    [],
+  );
+
+  const removeRelationshipEvent = useCallback((id: string) => {
+    setAnswers((prev) => ({
+      ...prev,
+      target: { ...prev.target, events: prev.target.events.filter((item) => item.id !== id) },
+    }));
+    trackEvent('target_event_remove');
+  }, []);
+
   /** @returns 저장된 상태인지 (true = 방금 저장, false = 저장 해제) */
   const toggleSavedQuestion = useCallback((id: ConversationQuestionId) => {
     let saved = true;
@@ -915,6 +1037,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       toggleTargetInterest,
       addCustomTargetInterest,
       removeTargetInterest,
+      addRelationshipEvent,
+      updateRelationshipEvent,
+      removeRelationshipEvent,
       toggleSavedQuestion,
       setCoreVerdict,
       setCoreCorrection,
@@ -959,6 +1084,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       toggleTargetInterest,
       addCustomTargetInterest,
       removeTargetInterest,
+      addRelationshipEvent,
+      updateRelationshipEvent,
+      removeRelationshipEvent,
       toggleSavedQuestion,
       setCoreVerdict,
       setCoreCorrection,

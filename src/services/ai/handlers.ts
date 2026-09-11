@@ -12,14 +12,21 @@ import {
   DEEP_REPORT_SYSTEM_PROMPT,
   HISTORY_SYSTEM_PROMPT,
   PHOTO_OBSERVATION_SYSTEM_PROMPT,
+  PREMIUM_CROSS_LENS_SYSTEM_PROMPT,
+  PREMIUM_MBTI_LENS_SYSTEM_PROMPT,
+  PREMIUM_SAJU_LENS_SYSTEM_PROMPT,
+  PREMIUM_ZODIAC_LENS_SYSTEM_PROMPT,
   PROMPT_VERSIONS,
   RELATIONSHIP_SYSTEM_PROMPT,
 } from './promptTemplates';
 import {
   applyOutwardQuestionGate,
+  echoesReferenceSentence,
   filterSafeItems,
   isRedundantNarrative,
   scanCompatibilityNarrative,
+  scanCrossLensNarrative,
+  scanLensNarrative,
   scanDeepNarrativeWithTense,
   scanHistoryNarrative,
   scanPhotoObservation,
@@ -36,11 +43,14 @@ import {
  * **항목 단위**로 좁힌 것이고, deep-report도 이제 같은 술어를 쓴다.
  */
 import { refsWithinAllowed, rejectedRefSources } from '@/lib/logic/allowedEvidence';
+import { lensAiUnitIds } from '@/data/premiumLensAi';
 import {
   attachRuleStates,
   parseCompatibilityResponse,
+  parseCrossLensResponse,
   parseDeepReportResponse,
   parseHistoryResponse,
+  parseLensNarrativeResponse,
   parsePhotoObservationResponse,
   parseRelationshipResponse,
 } from './schemas';
@@ -56,9 +66,11 @@ import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import type {
   AiFailureReason,
   AiMode,
+  AiTask,
   AiObservedTrait,
   CompatibilityNarrative,
   CompatibilityNarrativeBundle,
+  CrossLensNarrativeBundle,
   CrossSourceInsight,
   DeepNarrative,
   DeepNarrativeBundle,
@@ -72,6 +84,8 @@ import type {
   ObservedProfileResult,
   ObservedSignalCategory,
   PhotoObservation,
+  PremiumLensKind,
+  PremiumLensNarrativeBundle,
   RelationshipNarrativeBundle,
 } from '@/types';
 
@@ -954,4 +968,326 @@ export async function runDeepReportTask(
   } catch (error) {
     return failureFrom(error);
   }
+}
+
+/* ============== Premium Lens AI (v1.46 AI Lens · §7 · §27 · §31 · §32) ==== */
+
+/**
+ * 세 렌즈 Task가 **하나의 핸들러**를 쓴다. 다른 것은 셋뿐이다:
+ * 프롬프트 상수 · promptVersion · 금지 목록(`scanLensNarrative`의 kind).
+ *
+ * ⚠️ `AiTask`를 인자로 받지 않고 `kind`를 받는다. Task 문자열에서 kind를 다시
+ * 도출하면(`task.replace('premium-','')`) 판정이 두 벌이 된다 — 라우트가 이미
+ * 자기가 어느 렌즈인지 알고 있으므로 그 값을 그대로 내려보낸다.
+ */
+export interface PremiumLensRequest {
+  inputFingerprint: string;
+  kind: PremiumLensKind;
+  mode: 'pair' | 'self';
+  context: unknown;
+  /** v1.43 §47.5와 같은 계약 — 요청 최상위에서 따로 받는다(`context: unknown`이므로) */
+  tense: RelationshipTense;
+  /**
+   * §9-5 — `false`면 `*_verify` unit을 지운다.
+   *
+   * ⚠️ 프롬프트에 들어가지 않는다. 모델에게 Job을 알려주지 않는다(v1.42 §40.7).
+   */
+  allowsOutwardQuestions: boolean;
+  /**
+   * §31 — 결정론 본문. **프롬프트에는 들어가지 않는다.**
+   *
+   * 모델에게는 소제목만 보내고(`context.alreadySaid`), 실제 되풀이 여부는 여기서
+   * 서버가 직접 검사한다. 원문을 모델에게 주면 그건 되풀이할 재료를 손에 쥐여주는
+   * 것이고, 입력 토큰도 렌즈마다 3배가 된다(§26).
+   */
+  deterministicText: string;
+}
+
+const LENS_PROMPT: Record<PremiumLensKind, string> = {
+  mbti: PREMIUM_MBTI_LENS_SYSTEM_PROMPT,
+  saju: PREMIUM_SAJU_LENS_SYSTEM_PROMPT,
+  zodiac: PREMIUM_ZODIAC_LENS_SYSTEM_PROMPT,
+};
+
+const LENS_PROMPT_VERSION: Record<PremiumLensKind, string> = {
+  mbti: PROMPT_VERSIONS.premiumMbtiLens,
+  saju: PROMPT_VERSIONS.premiumSajuLens,
+  zodiac: PROMPT_VERSIONS.premiumZodiacLens,
+};
+
+const LENS_TASK: Record<PremiumLensKind, AiTask> = {
+  mbti: 'premium-mbti-lens',
+  saju: 'premium-saju-lens',
+  zodiac: 'premium-zodiac-lens',
+};
+
+/** `*_verify` — §9-5 · §12-6 · §16-6의 '실제로 확인해볼 것' unit */
+const VERIFY_UNIT_SUFFIX = '_verify';
+
+export async function runPremiumLensTask(
+  request: PremiumLensRequest,
+): Promise<TaskResult<PremiumLensNarrativeBundle>> {
+  const config = readAiConfig();
+  const provider = resolveProvider(false);
+  const { kind, mode } = request;
+
+  const metaFor = (aiMode: AiMode, model?: string) =>
+    buildMeta({
+      mode: aiMode,
+      promptVersion: LENS_PROMPT_VERSION[kind],
+      inputFingerprint: request.inputFingerprint,
+      model,
+    });
+
+  if (!provider) {
+    if (config.mode === 'real') return { ok: false, reason: 'CONFIG_ERROR' };
+    /**
+     * Demo에서는 렌즈 narrative를 만들지 않는다. 화면은 결정론 렌즈를 그대로 그리고
+     * AI 블록만 없다 — deep-report가 demo에서 하는 것과 같다(§32와도 같은 모양).
+     */
+    return { ok: true, data: { narrative: null, meta: metaFor('demo') } };
+  }
+
+  try {
+    const raw = await provider.generateStructured({
+      task: LENS_TASK[kind],
+      systemPrompt: LENS_PROMPT[kind],
+      userPayload: wrapUserData({ context: request.context }),
+    });
+
+    const parsed = parseLensNarrativeResponse(raw, kind, mode);
+
+    if (!parsed) {
+      logAiFilter({
+        task: LENS_TASK[kind],
+        policy: { mode, tense: request.tense, outwardQ: request.allowsOutwardQuestions },
+        raw: rawUnitCount(raw),
+        parsed: 0,
+        safe: 0,
+        violations: [],
+      });
+      return { ok: true, data: { narrative: null, meta: metaFor(aiModeFor(config), provider.model) } };
+    }
+
+    /**
+     * Quality Gate ① — **질문 게이트가 안전 검사보다 앞에 온다** (v1.42 §41.9).
+     *
+     * 순서가 정책이다. 스캔을 먼저 돌리면 `ended` 사용자에게는 어차피 지울 unit
+     * 하나의 위반 라벨이 로그에 남고, 반대로 게이트가 지운 뒤라면 그 unit은 애초에
+     * 검사 대상이 아니다.
+     */
+    const gated = request.allowsOutwardQuestions
+      ? parsed.units
+      : parsed.units.filter((unit) => !unit.id.endsWith(VERIFY_UNIT_SUFFIX));
+
+    /** Quality Gate ② — 금지 주장 · 계산하지 않은 값 · 시제 */
+    const scan = filterSafeItems(
+      gated,
+      (unit) => unit.body,
+      (text) => scanLensNarrative(text, kind, request.tense),
+    );
+
+    /**
+     * Quality Gate ③ — **결정론 문장을 그대로 옮겨 썼는지** (§31).
+     *
+     * ⚠️ `isRedundantNarrative`가 아니라 `echoesReferenceSentence`만 쓴다.
+     * `noveltyRatio`의 기준값(0.35)은 v1.26에서 **한 Insight의 규칙 문장 한 줄**을
+     * reference로 잡고 캘리브레이션한 값이다. 여기 reference는 렌즈 본문 전체
+     * (1,000자 이상)라 bigram 집합이 훨씬 크고, 한국어 흔한 2글자가 대부분 매치되어
+     * 정상 문장도 낮은 점수를 받는다 — 검증되지 않은 기준값을 다른 분포에 그대로
+     * 옮기면 과필터가 된다(그 상수 주석이 `NOT VALIDATED`라고 적어둔 이유다).
+     *
+     * 문장 단위 복사(10자 이상 그대로 포함)는 분포와 무관하게 명백한 되풀이다.
+     */
+    const novel = scan.items.filter(
+      (unit) => !echoesReferenceSentence(unit.body, request.deterministicText),
+    );
+
+    const summarySafe =
+      parsed.summary.length > 0 &&
+      scanLensNarrative(parsed.summary, kind, request.tense).safe &&
+      !echoesReferenceSentence(parsed.summary, request.deterministicText);
+
+    /**
+     * §9-6 — 체크포인트는 사용자가 **직접 해보는 것**이라 outward 질문 게이트의
+     * 대상이 아니다. 다만 안전 검사는 똑같이 받는다.
+     */
+    const checkpointSafe =
+      parsed.checkpoint && scanLensNarrative(parsed.checkpoint, kind, request.tense).safe
+        ? parsed.checkpoint
+        : undefined;
+
+    logAiFilter({
+      task: LENS_TASK[kind],
+      policy: { mode, tense: request.tense, outwardQ: request.allowsOutwardQuestions },
+      /**
+       * ⚠️ `rawIdentifiers`를 넣는다. 이 Task의 식별자는 **우리 enum**(`mbti_pair_rhythm`)
+       * 이라 세션 데이터가 아니고, v1.42 §41.14가 증명했듯 `parsed=0`의 원인을 고를 수
+       * 있게 해주는 유일한 정보다.
+       */
+      raw: rawUnitCount(raw),
+      rawIdentifiers: rawUnitIds(raw),
+      allowedIdentifiers: lensAiUnitIds(kind, mode),
+      parsed: parsed.units.length,
+      safe: scan.items.length,
+      violations: scan.violations,
+      extra: { gated: gated.length, novel: novel.length, summary: summarySafe ? 1 : 0 },
+    });
+
+    /** 남은 것이 하나도 없으면 narrative를 만들지 않는다 — 빈 블록을 그리지 않는다 */
+    if (!summarySafe && novel.length === 0) {
+      return { ok: true, data: { narrative: null, meta: metaFor(aiModeFor(config), provider.model) } };
+    }
+
+    return {
+      ok: true,
+      data: {
+        narrative: {
+          kind,
+          mode,
+          summary: summarySafe ? parsed.summary : '',
+          units: novel,
+          ...(checkpointSafe ? { checkpoint: checkpointSafe } : {}),
+          ...(parsed.crossTheme ? { crossTheme: parsed.crossTheme } : {}),
+        },
+        meta: metaFor(aiModeFor(config), provider.model),
+      },
+    };
+  } catch (error) {
+    return failureFrom(error);
+  }
+}
+
+/* --------------------------------------------------------- Cross-Lens */
+
+export interface CrossLensRequest {
+  inputFingerprint: string;
+  context: unknown;
+  tense: RelationshipTense;
+  allowsOutwardQuestions: boolean;
+}
+
+export async function runCrossLensTask(
+  request: CrossLensRequest,
+): Promise<TaskResult<CrossLensNarrativeBundle>> {
+  const config = readAiConfig();
+  const provider = resolveProvider(false);
+
+  const metaFor = (aiMode: AiMode, model?: string) =>
+    buildMeta({
+      mode: aiMode,
+      promptVersion: PROMPT_VERSIONS.premiumCrossLens,
+      inputFingerprint: request.inputFingerprint,
+      model,
+    });
+
+  if (!provider) {
+    if (config.mode === 'real') return { ok: false, reason: 'CONFIG_ERROR' };
+    return { ok: true, data: { narrative: null, meta: metaFor('demo') } };
+  }
+
+  try {
+    const raw = await provider.generateStructured({
+      task: 'premium-cross-lens',
+      systemPrompt: PREMIUM_CROSS_LENS_SYSTEM_PROMPT,
+      userPayload: wrapUserData({ context: request.context }),
+    });
+
+    const parsed = parseCrossLensResponse(raw);
+
+    if (!parsed) {
+      logAiFilter({
+        task: 'premium-cross-lens',
+        policy: { tense: request.tense, outwardQ: request.allowsOutwardQuestions },
+        raw: 0,
+        parsed: 0,
+        safe: 0,
+        violations: [],
+      });
+      return { ok: true, data: { narrative: null, meta: metaFor(aiModeFor(config), provider.model) } };
+    }
+
+    const keep = (text: string) => scanCrossLensNarrative(text, request.tense).safe;
+    const violations = new Set<string>();
+    const filter = (items: readonly string[]) =>
+      items.filter((item) => {
+        const result = scanCrossLensNarrative(item, request.tense);
+        if (!result.safe) result.violations.forEach((label) => violations.add(label));
+        return result.safe;
+      });
+
+    const repeatedThemes = filter(parsed.repeatedThemes);
+    const differences = filter(parsed.differences);
+    /**
+     * §22-3 — 상대에게 확인하는 질문이다. `ended`에서는 **블록째** 비운다.
+     * 게이트가 스캔보다 앞이므로(v1.42 §41.9) 지워질 항목의 위반 라벨은 세지 않는다.
+     */
+    const verificationQuestions = request.allowsOutwardQuestions
+      ? filter(parsed.verificationQuestions)
+      : [];
+
+    const closing = parsed.closing && keep(parsed.closing) ? parsed.closing : undefined;
+
+    const rawTotal =
+      parsed.repeatedThemes.length + parsed.differences.length + parsed.verificationQuestions.length;
+    const safeTotal = repeatedThemes.length + differences.length + verificationQuestions.length;
+
+    logAiFilter({
+      task: 'premium-cross-lens',
+      policy: { tense: request.tense, outwardQ: request.allowsOutwardQuestions },
+      raw: rawTotal,
+      parsed: rawTotal,
+      safe: safeTotal,
+      violations: [...violations],
+      extra: {
+        repeated: repeatedThemes.length,
+        differences: differences.length,
+        questions: verificationQuestions.length,
+      },
+    });
+
+    if (safeTotal === 0) {
+      return { ok: true, data: { narrative: null, meta: metaFor(aiModeFor(config), provider.model) } };
+    }
+
+    return {
+      ok: true,
+      data: {
+        narrative: {
+          repeatedThemes,
+          differences,
+          verificationQuestions,
+          ...(closing ? { closing } : {}),
+        },
+        meta: metaFor(aiModeFor(config), provider.model),
+      },
+    };
+  } catch (error) {
+    return failureFrom(error);
+  }
+}
+
+/** mock/real 구분 — 네 핸들러가 같은 식으로 쓰던 표현을 한 곳으로 모았다 */
+function aiModeFor(config: { mode: string }): AiMode {
+  return config.mode === 'mock' ? 'mock' : 'real';
+}
+
+function rawUnitCount(raw: unknown): number {
+  if (raw === null || typeof raw !== 'object') return 0;
+  const units = (raw as { units?: unknown }).units;
+  return Array.isArray(units) ? units.length : 0;
+}
+
+/** 모델이 실제로 쓴 unit id — 우리 enum이라 로그에 남겨도 된다(§44 Privacy) */
+function rawUnitIds(raw: unknown): string[] {
+  if (raw === null || typeof raw !== 'object') return [];
+  const units = (raw as { units?: unknown }).units;
+  if (!Array.isArray(units)) return [];
+  return units
+    .map((unit) =>
+      typeof unit === 'object' && unit !== null && typeof (unit as { id?: unknown }).id === 'string'
+        ? ((unit as { id: string }).id)
+        : '?',
+    )
+    .slice(0, 8);
 }

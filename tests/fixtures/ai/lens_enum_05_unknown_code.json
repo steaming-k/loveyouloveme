@@ -1,0 +1,28 @@
+{
+  "name": "lens_enum_05_unknown_code",
+  "description": "AI-LENS-ENUM-05 — 매핑표에 없는 내부 코드(unit id·새 코드)는 바꿀 말이 없다. '이 테마' 같은 대체어를 끼워 넣으면 문장은 남지만 무슨 말인지 모르는 문장이 유료 화면에 남으므로, 그 **항목만** 버리고 나머지는 그대로 둔다. 응답 전체를 버리지 않는 것이 §32와 같은 규칙이다.",
+  "task": "premium-mbti-lens",
+  "mode": "pair",
+  "tense": "current",
+  "allowsOutwardQuestions": true,
+  "raw": {
+    "summary": "some_new_theme 쪽으로 묶이는 자리가 이 렌즈에서 한 번 보여.",
+    "units": [
+      {
+        "id": "mbti_pair_rhythm",
+        "body": "mbti_pair_rhythm 칸에서는 너와 상대가 하루를 정리하는 순서가 다르게 읽혀."
+      },
+      {
+        "id": "mbti_pair_dialogue",
+        "body": "너는 INFP, 상대는 ESTJ로 분류됐어. 한쪽이 결론부터 말할 때 다른 쪽은 아직 배경을 듣고 있는 모양으로 보일 수 있어."
+      }
+    ],
+    "checkpoint": "오늘 하루 중 위 분류와 어긋났던 순간을 하나만 떠올려봐."
+  },
+  "expect": {
+    "forbiddenText": ["some_new_theme", "mbti_pair_rhythm", "_"],
+    "unitIds": ["mbti_pair_dialogue"],
+    "summaryEmpty": true,
+    "violations": []
+  }
+}

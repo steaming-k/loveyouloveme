@@ -189,6 +189,8 @@ function PremiumPreviewView() {
           // v1.45 — Chapter Engine의 FREE 중복 게이트. 이 화면은 이미 `mirror`를 갖고 있다
           mirror,
           lifecycle,
+          // v1.46 PremiumLens — 렌즈 생년월일 유효성 판정용
+          today: new Date(),
         });
     }
   }, [

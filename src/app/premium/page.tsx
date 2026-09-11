@@ -17,6 +17,7 @@ import { PremiumUnlockSuccess } from '@/components/premium/PremiumUnlockSuccess'
 import { RelationshipDeepReportView } from '@/components/premium/RelationshipDeepReportView';
 import { ReportHeader } from '@/components/report/ReportShell';
 import { DEEP_REPORT_COPY, PREMIUM_COPY, PREMIUM_FEATURES } from '@/data/premium';
+import { LENS_PAYWALL_COPY } from '@/data/premiumLens';
 import { PREMIUM_FAKE_DOOR, PREMIUM_PREVIEW, UT_MODE } from '@/lib/env';
 import { UtRatingCard } from '@/components/ut/UtRatingCard';
 import { trackEvent } from '@/lib/analytics';
@@ -38,6 +39,7 @@ import {
 import { revisitHref, type RevisitSource } from '@/lib/resultView';
 import { ROUTES } from '@/lib/routes';
 import { useHistoryReport, useMbtiLens, useMirror } from '@/hooks/useAnalysis';
+import { useAnchorScroll } from '@/hooks/useAnchorScroll';
 import { useDeepReport } from '@/hooks/useDeepReport';
 import { lensAvailability } from '@/lib/logic/birth';
 import { premiumFeatureState } from '@/services/premiumService';
@@ -46,6 +48,7 @@ import {
   resolveRelationshipContext,
 } from '@/lib/logic/relationshipStage';
 import { hasPremiumEvidence } from '@/lib/logic/premiumChapters';
+import { soloModeOf } from '@/lib/logic/soloMode';
 import { useSession } from '@/state/SessionProvider';
 import type { PremiumFeatureId, PremiumSource } from '@/types';
 
@@ -98,19 +101,25 @@ const REDUCED_HOLD_MS = 500;
 /**
  * PostReview §4-2 — '관찰을 연결하는 중' 장면의 체류 시간.
  *
- * 요청받은 전체 transition 길이는 **1.2~2.0초**다. 이 화면 앞에 이미 두 stage가 있으므로
- * 합으로 맞춘다:
+ * ══ v1.46 PremiumLens §39~§41 — 조금 늘렸다 ══════════════════════════
+ *
+ * 실측에서 이 화면은 사용자가 본 줄 모르고 지나갔다(standard 1.96초 · reduced 1.10초).
+ * 번들이 리포트 + 렌즈 3종으로 커졌으므로, 열리는 것이 얼마만큼인지 인지할
+ * 시간을 조금만 준다:
  *
  * ```
- * leaving 200  +  success 560  +  preparing 900  +  revealing ~300  ≈ 1.96초
- * reduced-motion:  0 + 500 + 600 + 0            = 1.10초   (동작을 줄인 환경은 더 짧게)
+ * leaving 200  +  success 560  +  preparing 1300  +  revealing ~300  ≈ 2.36초
+ * reduced-motion:  0 + 500 + 1000 + 0             = 1.50초
  * ```
  *
- * ⚠️ **여기서 무엇도 기다리지 않는다**(§4-5). 고정 타이머다 — AI를 기다리면 실패한 AI가
- * 리포트를 못 열게 만드는 경로가 생긴다. Deep Report 계산은 Unlock 시점에 이미 시작됐다.
+ * ⚠️ **3초를 넘지 않는다**(§40). 그 이상은 '열리는 중'이 아니라 '느리다'가 된다.
+ *
+ * ⚠️ **여기서 무엇도 기다리지 않는다**(§4-5 · §40 'AI 처리 시간을 위장하지 않는다').
+ * 고정 타이머다 — AI를 기다리면 실패한 AI가 리포트를 못 열게 만드는 경로가 생긴다.
+ * Deep Report 계산은 Unlock 시점에 이미 시작됐고, 관계 렌즈는 AI를 아예 부르지 않는다.
  */
-const PREPARING_MS = 900;
-const PREPARING_REDUCED_MS = 600;
+const PREPARING_MS = 1300;
+const PREPARING_REDUCED_MS = 1000;
 
 type UnlockStage = 'paywall' | 'leaving' | 'success' | 'preparing' | 'revealing' | 'report';
 export default function PremiumPage() {
@@ -141,10 +150,32 @@ const FEATURE_BY_SOURCE: Record<string, PremiumFeatureId> = {
    * 그게 `내 기준 ↔ 사진 관찰`(생성기 ⑥)이다.
    */
   first_contact: 'relationship_deep_report',
-  mbti: 'mbti_detail',
-  astrology: 'astrology_detail',
-  // 직접 URL로 들어오면 unavailable 안내로 이어진다 — 사주 상세는 팔 수 있는 상태가 아니다.
-  saju: 'saju_detail',
+  /**
+   * ══ v1.46 PremiumLens §2 · §34 · §35 — 세 렌즈가 같은 번들로 모인다 ══════════
+   *
+   * v1.45까지 세 source는 각각 다른 상품을 가리켰다(`mbti_detail` ·
+   * `astrology_detail` · `saju_detail`). 그러면 사용자가 보는 화면은 이렇게 된다:
+   *
+   * ```
+   * MBTI 렌즈 상세   ₩1,900
+   * 별자리 렌즈 상세 ₩1,900     ← 세 번 결제해야 하는 것처럼 읽힐다(§35 금지)
+   * 사주 렌즈 상세   준비 중
+   * ```
+   *
+   * 이제 셋 다 **같은 flagship**을 가리킨다. 한 번 unlock하면 정밀 관찰 리포트와
+   * 렌즈 3종이 함께 열린다(LENS-01). 가격은 번들 기준으로 한 번만 나온다(LENS-02).
+   *
+   * ⚠️ **`source` key는 그대로 둔다.** 상품은 하나가 됐지만 '어디서 지불 의향이
+   * 생겼는가'는 여전히 구분해야 한다(§31) — `premium_entry_click`의 `source`가
+   * 그 데이터고, 그래서 Home의 렌즈 버튼 3개에 새 이벤트를 만들지 않았다.
+   *
+   * ⚠️ `saju`도 같은 번들로 보낸다. 사주 렌즈는 이제 일주 계산이 연결도어
+   * 리포트 안에서 실제 결과를 만든다(`logic/sajuPillars.ts`). 양력 생년월일이 없는
+   * 사용자에게는 렌즈 카드가 이유를 적어 보여준다 — 번들 자체는 그와 무관하게 열린다.
+   */
+  mbti: 'relationship_deep_report',
+  astrology: 'relationship_deep_report',
+  saju: 'relationship_deep_report',
 };
 
 /** source → 닫았을 때 돌아갈 곳 */
@@ -247,6 +278,18 @@ function PremiumView() {
           declared: answers.declared,
           mirror,
         }),
+        /**
+         * v1.46 PremiumLens — **상대가 없는 사용자에게 '상대 정보를 채우라'고 말하지 않는다.**
+         *
+         * `premiumFeatureState`는 이 값으로 unavailable 안내 문구를 가른다. 지금까지
+         * 이 화면만 그 값을 넘기지 않아서, 상대가 없는 사용자가 Paywall에서
+         * '관계 경험이나 상대 정보를 더 채우면 볼 수 있어'를 봤다(브라우저 실측).
+         * `premiumService`의 주석이 그걸 명시적으로 금지하고 있고(갈 수 없는 길),
+         * 결과 화면·Home은 이미 넘기고 있다 — 여기만 빠져 있었다.
+         *
+         * ⚠️ 자격 판정을 바꾸지 않는다. 바뀌는 것은 **안내 문구 하나**뿐이다.
+         */
+        solo: soloModeOf(answers) === 'no_target',
         // v1.40 §37.9 — Paywall 목록에서도 지키지 못할 약속을 뺀다.
         allowsOutwardAction: jobAllowsOutwardAction(resolveRelationshipContext(answers).job),
       }),
@@ -418,6 +461,23 @@ function PremiumView() {
     previewViewSent.current = true;
     trackEvent('premium_preview_view', { feature: featureId });
   }, [stage, featureId]);
+
+  /**
+   * v1.46 PremiumLens §34 — **unlock 후 해당 Lens 섹션으로 이동.**
+   *
+   * Home의 렌즈 버튼 3개는 `#lens-mbti` 같은 hash를 붙여 이 Route로 보낸다.
+   * 여기서는 리포트가 **실제로 렌더된 뒤에만** 그 hash를 따라간다 — paywall
+   * 단계에는 그 anchor가 아직 DOM에 없다.
+   *
+   * ⚠️ **새 훅도 새 이벤트도 만들지 않았다.** `useAnchorScroll`은 결과 화면들이
+   * 이미 쓰던 훅이고, 이동 지표도 기존 `result_anchor_navigation`이 그대로 남긴다.
+   * 다른 Route에서는 hash가 없으므로 아무 일도 일어나지 않는다.
+   *
+   * ⚠️ **`if (!PREMIUM_FAKE_DOOR) return null` 위에 있어야 한다.** 처음에는
+   * `showReport` 옵에 둔다가 eslint `rules-of-hooks`가 잡았다 — 그 자리는 early
+   * return 뒤이라 Hook 순서가 렌더마다 달라질 수 있다.
+   */
+  useAnchorScroll(stage === 'report');
 
   if (!PREMIUM_FAKE_DOOR) return null;
 
@@ -598,6 +658,11 @@ function PremiumView() {
               mode: deep.narrative.mode,
               retry: deep.narrative.retry,
             }}
+            /**
+             * v1.46 AI Lens §3 — 렌즈별 AI 해석. `useDeepReport`가 리포트와 같은
+             * `enabled` 게이트로 함께 만들어 준다(Paywall에서는 호출하지 않는다).
+             */
+            lensAi={deep.lensAi}
           />
         ) : showPreparing ? (
           /*
@@ -748,6 +813,64 @@ function PremiumView() {
               <p className="px-1 text-meta keep-all text-ink-muted">
                 {DEEP_REPORT_COPY.chapterListNote}
               </p>
+            </section>
+          )}
+
+          {/*
+            v1.46 PremiumLens §34 — **같이 열리는 관계 렌즈.**
+
+            Home에서 'MBTI 관계 분석'을 누른 사용자가 이 화면에 왔는데 MBTI가 한 글자도
+            없으면, 그건 오하려 '잘못 들어왔나'로 읽힌다(브라우저 실측에서 확인).
+
+            ⚠️ **목록을 문구로 적지 않는다.** 위 Chapter 목록과 같은 방식으로 실제
+            `deep.report.lensBundle`을 그린다 — 사주 양력 생년월일이 없는 사용자에게
+            사주 렌즈를 약속하는 상태가 구조적으로 만들어지지 않는다(v1.26 원칙).
+          */}
+          {isDeepReport && (
+            <section className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <SectionLabel>{LENS_PAYWALL_COPY.label}</SectionLabel>
+                <span className="text-[11px] font-semibold tnum text-ink-muted">
+                  {deep.report.lensBundle.availableCount}개
+                </span>
+              </div>
+              <ul className="flex flex-col gap-1.5 rounded-card border border-line bg-surface p-4">
+                {deep.report.lensBundle.lenses.map((lens) => (
+                  <li key={lens.kind} className="flex items-baseline gap-2">
+                    <span
+                      className={cn(
+                        'flex-none',
+                        lens.mode === 'unavailable' ? 'text-ink-faint' : 'text-brand-pressed',
+                      )}
+                      aria-hidden
+                    >
+                      {lens.mode === 'unavailable' ? '·' : '✓'}
+                    </span>
+                    <span
+                      className={cn(
+                        'min-w-0 text-[12.5px] keep-all',
+                        lens.mode === 'unavailable' ? 'text-ink-faint' : 'text-ink',
+                      )}
+                    >
+                      {lens.label}
+                      <span className="ml-1.5 text-[10.5px] text-ink-muted">
+                        {lens.mode === 'pair'
+                          ? LENS_PAYWALL_COPY.modePair
+                          : lens.mode === 'self'
+                            ? LENS_PAYWALL_COPY.modeSelf
+                            : LENS_PAYWALL_COPY.modeUnavailable}
+                      </span>
+                      {/* 못 만드는 렌즈는 **이유까지** 적는다 — 빈 칸만 남기지 않는다 */}
+                      {lens.mode === 'unavailable' ? (
+                        <span className="mt-0.5 block text-[11px] keep-all leading-relaxed text-ink-faint">
+                          {lens.reason}
+                        </span>
+                      ) : null}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="px-1 text-meta keep-all text-ink-muted">{LENS_PAYWALL_COPY.note}</p>
             </section>
           )}
 

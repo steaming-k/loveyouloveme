@@ -1,0 +1,25 @@
+{
+  "name": "lens_enum_03_pace",
+  "description": "AI-LENS-ENUM-03 — `pace`는 영어 단어이자 우리 내부 코드다. 매핑표에 있는 값이므로 지우지 않고 라벨로 바꾼다. 조사도 함께 고친다 — `pace를`을 라벨로 갈아끼우면 받침이 달라져서 문장이 깨지는데, 그건 코드가 남은 것 다음으로 나쁜 상태다.",
+  "task": "premium-cross-lens",
+  "tense": "current",
+  "allowsOutwardQuestions": true,
+  "raw": {
+    "repeatedThemes": [
+      "pace를 두 렌즈는 서로 다른 각도에서 한 번씩 짚었어."
+    ],
+    "differences": [
+      "pace가 한쪽에서는 먼저 말을 꺼내는 자리로, 다른 쪽에서는 며칠 두고 보는 자리로 읽혀."
+    ],
+    "verificationQuestions": [
+      "무언가를 정해야 했던 최근 일에서 누가 먼저 말을 꺼냈는지 둘이 맞춰봐."
+    ],
+    "closing": "같은 자리를 두 번 본 것까지가 여기서 말할 수 있는 전부야."
+  },
+  "expect": {
+    "forbiddenText": ["pace", "_"],
+    "containsText": ["움직이는 속도"],
+    "crossCounts": [1, 1, 1],
+    "violations": []
+  }
+}

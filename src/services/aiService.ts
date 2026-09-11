@@ -18,8 +18,10 @@ import { buildHomeHighlights, buildRelationshipProfile } from '@/lib/logic/profi
 import { callAiTask } from '@/services/ai/aiClient';
 import {
   buildCompatibilityContext,
+  buildCrossLensContext,
   buildDeepReportContext,
   buildHistoryContext,
+  buildPremiumLensContext,
   buildRelationshipContext,
   compatibilityAllowList,
 } from '@/services/ai/contextBuilders';
@@ -35,6 +37,7 @@ import type {
   CompatibilityNarrativeBundle,
   CompatibilityResult,
   ConversationQuestion,
+  CrossLensNarrativeBundle,
   CrossSourceInsight,
   DeclaredPreference,
   DeepNarrativeBundle,
@@ -46,6 +49,11 @@ import type {
   ObservationFeedback,
   ObservedProfileResult,
   PhotoAsset,
+  PremiumLensKind,
+  PremiumLensNarrativeBundle,
+  PremiumCrossLens,
+  PremiumLensReport,
+  RelationshipEvent,
   RelationshipExperience,
   RelationshipNarrativeBundle,
   RelationshipProfile,
@@ -480,3 +488,89 @@ export const aiSelectors = {
   profile: buildRelationshipProfile,
   homeHighlights: buildHomeHighlights,
 };
+
+/* -------------------- Premium Lens AI (v1.46 AI Lens · §3~§32) ---------- */
+
+/**
+ * 결정론 렌즈 본문 전체 — **§31 되풀이 검사의 기준.**
+ *
+ * ⚠️ 이 문자열은 프롬프트에 들어가지 않는다. 서버가 `echoesReferenceSentence`로
+ * 대조하는 데만 쓴다(핸들러 주석 참고). 모델에게는 소제목만 간다.
+ */
+function lensDeterministicText(report: PremiumLensReport): string {
+  return [
+    report.headline,
+    report.overview,
+    ...report.sections.map((section) => section.body),
+    report.checkpoint,
+  ].join('\n');
+}
+
+/**
+ * §19 — 지문에 넣는 사건 서명. **자유 입력 원문을 넣지 않는다.**
+ * 종류와 길이만으로 "사건이 바뀌었다"를 감지한다.
+ */
+export function lensEventSignature(events: readonly RelationshipEvent[]): string[] {
+  return events.map((event) => `${event.type}:${event.description.length}`);
+}
+
+export function requestPremiumLensNarrative(input: {
+  report: PremiumLensReport;
+  declared: DeclaredPreference;
+  events: readonly RelationshipEvent[];
+  tense: RelationshipTense;
+  allowsOutwardQuestions: boolean;
+  fingerprint: string;
+}): Promise<
+  { ok: true; data: PremiumLensNarrativeBundle } | { ok: false; reason: AiFailureReason }
+> {
+  const { report, declared, events, tense, allowsOutwardQuestions, fingerprint } = input;
+
+  const context = buildPremiumLensContext({ report, declared, events, tense });
+
+  return requestNarrative<PremiumLensNarrativeBundle>(LENS_AI_TASK[report.kind], fingerprint, {
+    context,
+    mode: report.mode,
+    tense,
+    allowsOutwardQuestions,
+    deterministicText: lensDeterministicText(report),
+  });
+}
+
+/** kind → Task. `aiClient.ENDPOINT`가 이 값으로 라우트를 찾는다 */
+const LENS_AI_TASK: Record<PremiumLensKind, AiTask> = {
+  mbti: 'premium-mbti-lens',
+  saju: 'premium-saju-lens',
+  zodiac: 'premium-zodiac-lens',
+};
+
+export function requestCrossLensNarrative(input: {
+  reports: readonly PremiumLensReport[];
+  aiThemes: Partial<Record<PremiumLensKind, string | null>>;
+  declared: DeclaredPreference;
+  events: readonly RelationshipEvent[];
+  tense: RelationshipTense;
+  allowsOutwardQuestions: boolean;
+  fingerprint: string;
+  /** 화면에서 AI 블록 바로 위에 있는 결정론 카드 — 같은 말을 두 번 하지 않기 위해(§31) */
+  deterministic: PremiumCrossLens | null;
+}): Promise<
+  { ok: true; data: CrossLensNarrativeBundle } | { ok: false; reason: AiFailureReason }
+> {
+  const { reports, aiThemes, declared, events, tense, allowsOutwardQuestions, fingerprint } = input;
+
+  const context = buildCrossLensContext({
+    reports,
+    aiThemes,
+    declared,
+    events,
+    tense,
+    deterministic: input.deterministic,
+  });
+
+  return requestNarrative<CrossLensNarrativeBundle>('premium-cross-lens', fingerprint, {
+    context,
+    tense,
+    allowsOutwardQuestions,
+  });
+}

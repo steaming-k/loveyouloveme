@@ -168,6 +168,13 @@ function refKey(ref: EvidenceRef): string {
   if ('field' in ref) return `${ref.source}:${ref.field}`;
   if ('traitId' in ref) return `${ref.source}:${ref.traitId}`;
   if ('entryId' in ref) return `${ref.source}:${ref.entryId}:${ref.axis}`;
+  /**
+   * v1.46 — `user_reported_event`가 여기로 온다. Insight의 `evidenceRefs`에는 절대
+   * 들어오지 않지만(사건은 판정 근거가 아니다 · §11), 이 함수가 `EvidenceRef`를 받는
+   * 이상 union 전체를 다뤄야 한다 — `default`로 뭉개면 새 source가 조용히
+   * `undefined` 키를 만들고 FREE 중복 판정이 그 키를 소비하지 않은 것으로 센다.
+   */
+  if ('eventId' in ref) return `${ref.source}:${ref.eventId}`;
   return `${ref.source}:${ref.questionId}`;
 }
 

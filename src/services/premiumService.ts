@@ -3,6 +3,9 @@ import { withObjectParticle } from '@/lib/korean';
 import { PREMIUM_FEATURES } from '@/data/premium';
 import { HISTORY_STATE_LABEL } from '@/data/copy';
 import { PREMIUM_FAKE_DOOR, SAJU_ENGINE_READY } from '@/lib/env';
+import { buildPremiumLensBundle } from '@/lib/logic/premiumLens';
+import { soloModeOfTarget } from '@/lib/logic/soloMode';
+import { buildReportedScenes } from '@/lib/logic/relationshipEvents';
 import type { EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
 import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import { buildApproachHints } from '@/lib/logic/approachHints';
@@ -656,6 +659,13 @@ export function buildRelationshipDeepReport(input: {
    * (§37 stage는 evidence가 아니다).
    */
   lifecycle: DeepReportJobContext;
+  /**
+   * v1.46 PremiumLens §6 — 관계 렌즈의 가용성 판정(생년월일이 미래인가)에만 쓴다.
+   *
+   * ⚠️ **필수다.** 기본값으로 `new Date()`를 두면 fixture가 날짜를 고정할 수 없고,
+   * 그러면 생일이 오늘인 사용자에서만 거지는 테스트가 된다. 호출부가 명시한다.
+   */
+  today: Date;
 }): RelationshipDeepReport {
   const {
     insights,
@@ -667,6 +677,7 @@ export function buildRelationshipDeepReport(input: {
     target,
     mirror,
     lifecycle,
+    today,
   } = input;
   const { allowsOutwardAction, allowsOutwardQuestions, actionSectionTitle } = lifecycle;
 
@@ -788,6 +799,46 @@ export function buildRelationshipDeepReport(input: {
     lovyObservation,
     historyDeep,
     approachInsight: allowsOutwardAction ? approachInsightFor(target, compatibility) : null,
+    /**
+     * v1.46 §12 — 사용자가 알려준 관계 사건의 **관계 맥락 블록.**
+     *
+     * ⚠️ `allowsOutwardAction`으로 가리지 않는다 — `approachInsight`(다가가는 힌트)와
+     * 달리 이 블록은 상대에게 다가가는 방법이 아니라 **사용자가 스스로 알려준 기억**을
+     * 되짚는 것이다. 관계가 끝났다고 답한 사용자에게도 그 기억은 여전히 자기 것이고,
+     * 시제만 `tense`를 따른다(v1.42 §41.4와 같은 규칙).
+     *
+     * ⚠️ `available`·`chapters`·`omissions`에 넣지 않는다. 사건은 연결이 아니므로
+     * 사건만으로 리포트가 열리지 않는다.
+     */
+    reportedScenes: buildReportedScenes(target.events, lifecycle.tense),
+    /**
+     * v1.46 PremiumLens §2 — **같은 결제로 함께 열리는 관계 렌즈 3종.**
+     *
+     * ⚠️ `allowsOutwardAction`으로 가리지 않는다. 렌즈는 상대에게 다가가는 방법이
+     * 아니라 **같은 관계를 다른 프레임으로 다시 보는 것**이고, 관계가 끝난 사용자에게도
+     * 자기 생년월일·MBTI는 그대로 자기 것이다(`reportedScenes`와 같은 판단).
+     *
+     * ⚠️ `available`·`chapters`·`omissions`에 영향을 주지 않는다. MBTI만 있고 연결이
+     * 하나도 없는 세션이 렌즈 때문에 열리면, 사용자는 정밀 관찰 리포트를 사고 렌즈만 받는다.
+     */
+    lensBundle: buildPremiumLensBundle({
+      selfMbti: resolverContext.answers.mbti,
+      targetMbti: target.mbti,
+      selfBirth: resolverContext.answers.birthProfile,
+      targetBirth: target.birthProfile,
+      /**
+       * ⚠️ §6 — '상대가 있다'는 pair의 필요조건일 뿐이다. 여기서는 대상 자체가
+       * 있는지만 알려주고, 렌즈별 데이터 유무는 엔진이 각자 판정한다.
+       *
+       * ⚠️ 술어를 새로 만들지 않는다 — `soloModeOfTarget`이 이미 '사람은 있는가'를
+       * 판정한다(`unknown_target`도 사람은 있다는 뜻이다). 두 벌을 만들면 화면과
+       * 렌즈가 서로 다른 사용자로 취급하게 된다.
+       */
+      hasTarget: soloModeOfTarget(target) !== 'no_target',
+      declared: resolverContext.answers.declared,
+      events: target.events,
+      today,
+    }),
     limitations: deepReportLimitations({ historyReport, compatibility }),
     chapters,
     omissions: buildOmissions({

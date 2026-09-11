@@ -36,7 +36,15 @@ export function ScreenLayout({
   children,
 }: ScreenLayoutProps) {
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    /*
+      v1.46 §26 — 화면 진입 fade(`page-enter`).
+
+      ⚠️ **opacity만 움직인다.** 이 div 안에 `BottomSheet`/`ConfirmModal`의
+      `absolute inset-0`가 들어오는데, 여기에 `transform`을 걸면 이 요소가
+      containing block이 되어 오버레이가 **프레임 전체가 아니라 본문 안쪽만** 덮는다.
+      자세한 이유는 `globals.css`의 `.page-enter` 주석 참고.
+    */
+    <div className="page-enter flex h-full min-h-0 flex-col">
       {header ? <div className="flex-none">{header}</div> : null}
 
       {/*

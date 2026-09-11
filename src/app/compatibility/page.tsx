@@ -49,6 +49,7 @@ import {
 } from '@/data/lovyNotes';
 import { PREMIUM_HOOK_COPY } from '@/data/premium';
 import { useAnchorScroll } from '@/hooks/useAnchorScroll';
+import { useRevealOnceInScreen } from '@/hooks/useRevealOnce';
 import { useScrollRestore } from '@/hooks/useScrollRestore';
 import { hasShowableNarrative, narrativeIsShowable } from '@/lib/aiEvidenceResolver';
 import { trackEvent, trackOnce, trackOncePerAnalysis } from '@/lib/analytics';
@@ -244,6 +245,12 @@ function CompatibilityView() {
   });
 
   useAnchorScroll(result.score !== null);
+
+  /*
+    v1.46 §26 · §27 — 번호가 붙은 보고서 섹션이 스크롤에 맞춰 **한 번씩** 등장한다.
+    대상은 `ReportSection`의 `.reveal-once` 하나뿐이고, 재생은 요소당 1회다.
+  */
+  useRevealOnceInScreen();
 
   const funnelAnalysisId = answers.currentAnalysisMeta?.funnelAnalysisId ?? null;
 

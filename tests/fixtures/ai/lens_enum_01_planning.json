@@ -1,0 +1,26 @@
+{
+  "name": "lens_enum_01_planning",
+  "description": "AI-LENS-ENUM-01 (v1.46 AI Lens · 브라우저 실측 P1) — 모델이 `planning`을 문장에 그대로 썼을 때 사용자 화면에 영어 코드가 남지 않는다. context를 라벨로 바꾼 것은 입력 한 겹이고, 모델이 쓰는 어휘까지 통제하지는 못한다 — 그래서 출력 뒤에도 결정론 매핑이 있어야 하고 이 fixture가 그 자리를 고정한다. 지우는 것이 아니라 **바꾸는** 것이므로 라벨이 실제로 들어갔는지도 함께 본다.",
+  "task": "premium-cross-lens",
+  "tense": "current",
+  "allowsOutwardQuestions": true,
+  "raw": {
+    "repeatedThemes": [
+      "planning이 MBTI 관계 렌즈와 사주 관계 렌즈 양쪽에서 한 번씩 더 보였어.",
+      "같은 자리를 두 번 본 것까지가 여기서 말할 수 있는 전부야."
+    ],
+    "differences": [
+      "'planning'을 두 렌즈는 서로 다른 자리에서 읽어."
+    ],
+    "verificationQuestions": [
+      "다음 약속을 며칠 전에 정해두면 편한지 각자 숫자로 말해봐."
+    ],
+    "closing": "세 각도에서 본 이야기를 맞춰보는 건 네 몫이야."
+  },
+  "expect": {
+    "forbiddenText": ["planning", "_"],
+    "containsText": ["계획과 즉흥 사이"],
+    "crossCounts": [2, 1, 1],
+    "violations": []
+  }
+}

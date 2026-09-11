@@ -7,11 +7,14 @@ import { sanitizePhotoObservation } from '@/services/ai/handlers';
 import { PROMPT_VERSIONS } from '@/services/ai/promptVersions';
 import {
   applyOutwardQuestionGate,
+  echoesReferenceSentence,
   filterSafeItems,
   isRedundantNarrative,
   scanCompatibilityNarrative,
+  scanCrossLensNarrative,
   scanDeepNarrativeWithTense,
   scanHistoryNarrative,
+  scanLensNarrative,
   scanRelationshipNarrative,
 } from '@/services/ai/safety';
 /** v1.43 §46 — 네 Task가 공유하는 근거 귀속 술어 */
@@ -20,13 +23,21 @@ import {
   applyObservedBusinessRules,
   attachRuleStates,
   parseCompatibilityResponse,
+  parseCrossLensResponse,
   parseDeepReportResponse,
   parseHistoryResponse,
+  parseLensNarrativeResponse,
   parseObservedResponse,
   parsePhotoObservationResponse,
   parseRelationshipResponse,
 } from '@/services/ai/schemas';
-import type { EvidenceRef, MirrorAxisKey, MirrorState, PhotoObservation } from '@/types';
+import type {
+  EvidenceRef,
+  MirrorAxisKey,
+  MirrorState,
+  PhotoObservation,
+  PremiumLensKind,
+} from '@/types';
 
 /**
  * POST /api/ai/contract-test — **개발 전용** AI Contract Test 실행기 (v1.7 · §55 · §56)
@@ -63,7 +74,17 @@ interface ContractRequest {
    * dev 검증기 전용 호환 경로다.
    */
   allowedEvidenceRefs?: unknown;
+  /** v1.46 AI Lens — 렌즈 fixture용. 없으면 `'pair'` */
+  mode?: unknown;
+  /** v1.46 AI Lens §31 — 되풀이 검사의 기준 문장. 없으면 그 검사를 건너뛴다 */
+  deterministicText?: unknown;
 }
+
+const LENS_TASK_KIND: Record<string, PremiumLensKind> = {
+  'premium-mbti-lens': 'mbti',
+  'premium-saju-lens': 'saju',
+  'premium-zodiac-lens': 'zodiac',
+};
 
 function notFound(): Response {
   return new Response(JSON.stringify({ ok: false, reason: 'NOT_FOUND' }), {
@@ -430,6 +451,91 @@ export async function POST(request: Request): Promise<Response> {
         hasUncertainty: Boolean(item.uncertainty),
       })),
       violations: scan.violations,
+    });
+  }
+
+  /* ------------------------------ v1.46 AI Lens — 렌즈 3종 (§27 · §31) */
+  if (task in LENS_TASK_KIND) {
+    const kind = LENS_TASK_KIND[task]!;
+    const mode = body.mode === 'self' ? 'self' : 'pair';
+    const lensTense = body.tense === 'former' ? 'former' : 'current';
+    const allowsOutwardQuestions = body.allowsOutwardQuestions !== false;
+
+    const parsed = parseLensNarrativeResponse(raw, kind, mode);
+    if (!parsed) return Response.json({ ok: true, rejected: 'INVALID_OUTPUT' });
+
+    /** 순서가 정책이다 — 게이트가 스캔보다 앞에 온다(v1.42 §41.9 · 핸들러와 같다) */
+    const gated = allowsOutwardQuestions
+      ? parsed.units
+      : parsed.units.filter((unit) => !unit.id.endsWith('_verify'));
+
+    const scan = filterSafeItems(
+      gated,
+      (unit) => unit.body,
+      (text) => scanLensNarrative(text, kind, lensTense),
+    );
+
+    /** §31 — 결정론 본문을 그대로 옮겨 썼는지. fixture가 기준 문장을 주지 않으면 건너뛴다 */
+    const reference = typeof body.deterministicText === 'string' ? body.deterministicText : '';
+    const novel = reference
+      ? scan.items.filter((unit) => !echoesReferenceSentence(unit.body, reference))
+      : scan.items;
+
+    const summarySafe =
+      parsed.summary.length > 0 && scanLensNarrative(parsed.summary, kind, lensTense).safe;
+
+    return Response.json({
+      ok: true,
+      promptVersion: PROMPT_VERSIONS[
+        kind === 'mbti' ? 'premiumMbtiLens' : kind === 'saju' ? 'premiumSajuLens' : 'premiumZodiacLens'
+      ],
+      mode,
+      tense: lensTense,
+      /**
+       * ⚠️ 본문을 그대로 돌려준다. 이 라우트는 Provider를 부르지 않으므로 여기 있는
+       * 문장은 **fixture가 넣은 우리 텍스트**이지 사용자 데이터가 아니다 — 내부 코드가
+       * 화면 문자열까지 도달하는지는 문자열을 봐야만 검사할 수 있다.
+       */
+      summary: summarySafe ? parsed.summary : '',
+      units: novel.map((unit) => ({ id: unit.id, title: unit.title, body: unit.body })),
+      checkpoint: parsed.checkpoint ?? null,
+      crossTheme: parsed.crossTheme ?? null,
+      redundantCount: scan.items.length - novel.length,
+      gatedCount: parsed.units.length - gated.length,
+      violations: scan.violations,
+    });
+  }
+
+  /* ------------------------------- v1.46 AI Lens — Cross-Lens (§22 · §25) */
+  if (task === 'premium-cross-lens') {
+    const crossTense = body.tense === 'former' ? 'former' : 'current';
+    const allowsOutwardQuestions = body.allowsOutwardQuestions !== false;
+
+    const parsed = parseCrossLensResponse(raw);
+    if (!parsed) return Response.json({ ok: true, rejected: 'INVALID_OUTPUT' });
+
+    const violations = new Set<string>();
+    const filter = (items: readonly string[]) =>
+      items.filter((item) => {
+        const result = scanCrossLensNarrative(item, crossTense);
+        if (!result.safe) result.violations.forEach((label) => violations.add(label));
+        return result.safe;
+      });
+
+    const closing =
+      parsed.closing && scanCrossLensNarrative(parsed.closing, crossTense).safe
+        ? parsed.closing
+        : null;
+
+    return Response.json({
+      ok: true,
+      promptVersion: PROMPT_VERSIONS.premiumCrossLens,
+      tense: crossTense,
+      repeatedThemes: filter(parsed.repeatedThemes),
+      differences: filter(parsed.differences),
+      verificationQuestions: allowsOutwardQuestions ? filter(parsed.verificationQuestions) : [],
+      closing,
+      violations: [...violations],
     });
   }
 

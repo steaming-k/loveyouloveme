@@ -1,0 +1,66 @@
+{
+  "name": "relationship_r8_user_event_ref_rejected",
+  "description": "R8 (v1.46 §10 · §13) — 파서는 `user_reported_event`를 알지만, 이 값을 허용집합에 넣는 Task는 하나도 없다. 사건은 어떤 AI Task의 context에도 실려 가지 않으므로(모델은 eventId를 알 방법이 없다) 모델이 그 ref를 만들었다면 그건 지어낸 것이고, 항목째로 버려져야 한다. 이 fixture가 고정하는 것은 'EVIDENCE_SOURCES에 source를 추가하는 것이 AI에게 새 근거를 주는 것이 아니다'라는 계약이다 — 파서 통과와 근거 허용은 다른 층이다(v1.42 §41.2 주석과 같은 규칙).",
+  "task": "relationship-insight",
+  "tense": "current",
+  "allowsOutwardQuestions": true,
+  "judgements": [
+    {
+      "axis": "contact",
+      "state": "GAP"
+    },
+    {
+      "axis": "alone",
+      "state": "MATCH"
+    }
+  ],
+  "focusAxis": "contact",
+  "allowedEvidenceRefs": {
+    "contact": [
+      {
+        "source": "declared",
+        "field": "contact"
+      },
+      {
+        "source": "current_relationship",
+        "field": "contact"
+      }
+    ],
+    "alone": [
+      {
+        "source": "declared",
+        "field": "alone"
+      },
+      {
+        "source": "relationship",
+        "field": "important"
+      }
+    ]
+  },
+  "raw": {
+    "narratives": [
+      {
+        "axis": "contact",
+        "state": "GAP",
+        "headline": "연락 간격 변화가 눈에 띄어",
+        "explanation": "연락이 줄었다고 알려준 장면이 있었어.",
+        "evidenceRefs": [
+          {
+            "source": "user_reported_event",
+            "eventId": "evt-a"
+          }
+        ],
+        "uncertainty": "근거가 약해서 단정할 수 없어"
+      }
+    ],
+    "core": null
+  },
+  "expect": {
+    "narrativeCount": 0,
+    "refChecked": 0,
+    "rejectedRefSources": [
+      "user_reported_event"
+    ],
+    "violations": []
+  }
+}

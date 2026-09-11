@@ -36,6 +36,13 @@ export const ANALYTICS_EVENTS = [
   // Secondary: Approach Hint View Rate = approach_hint_view / compatibility_result_view
   // ⚠️ raw interest 텍스트·힌트 문장 원문은 절대 property로 보내지 않는다(§40).
   'target_preference_add',
+  // User-reported Relationship Event (v1.46 §5~§9) — Primary KPI에는 넣지 않는다.
+  // Secondary: Event Input Rate = target_event_add(1회 이상) / target_profile_complete
+  // ⚠️ property는 categorical/count뿐이다: event_type · has_reaction · event_count.
+  //    `description`·`myReaction`은 사용자가 직접 쓴 문장이라 **절대 보내지 않는다** —
+  //    `target_preference_add`가 raw interest 텍스트에 세운 경계와 같다(§40).
+  'target_event_add',
+  'target_event_remove',
   'approach_hint_view',
   'approach_hint_expand',
   'approach_hint_question_click',
@@ -195,6 +202,18 @@ export const ANALYTICS_EVENTS = [
    * ⚠️ 원문·자유서술·근거 문장·AI 문장은 보내지 않는다(§18 금지 목록).
    */
   'premium_chapter_open',
+  /**
+   * v1.46 PremiumLens — 관계 렌즈 카드를 열었을 때. properties: lens_kind · lens_mode
+   *
+   * ⚠️ **이벤트를 하나만 늘렸다.** Home의 렌즈 버튼 3개는 새 이벤트가 필요 없다 —
+   * `premium_entry_click`이 이미 `source`(mbti|saju|astrology)로 어느 진입점인지를
+   * 구분하고 있고, 그게 바로 '무엇에 돈을 내고 싶어하는가'를 보는 핵심 데이터다(§31).
+   * 이름만 다른 이벤트를 늘리면 Funnel의 분모가 두 벌이 된다(v1.10 §47).
+   *
+   * ⚠️ Cross-Lens는 `lens_kind='cross'`로 같은 이벤트에 실는다.
+   * ⚠️ 렌즈 본문·생년월일·일주·MBTI 유형은 보내지 않는다 — kind와 mode뿐이다.
+   */
+  'premium_lens_open',
   'deep_insight_evidence_expand',
   'deep_insight_feedback',
   'deep_insight_correction_submit',

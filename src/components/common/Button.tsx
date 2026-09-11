@@ -43,7 +43,17 @@ export function Button({
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       className={cn(
-        'inline-flex select-none items-center justify-center gap-1.5 transition-colors duration-200',
+        /*
+          v1.46 §26 — press scale 1 → 0.98 → 1 (90ms) + 색 전환(150ms).
+
+          ⚠️ **클래스 하나다.** `transition-colors`를 따로 붙이지 않는다 —
+          `transition`은 단축 속성이라 두 규칙이 겹치면 뒤엣것이 앞엣것의
+          transition-property를 통째로 덮어쓰고, 실측에서 실제로 버튼 색 전환이
+          0ms가 됐다(globals.css `.press-scale` 주석 참고).
+          ⚠️ `disabled`에는 press 반응이 붙지 않아야 하지만, 눌리지 않는 버튼은
+          `:active`가 발생하지 않으므로 별도 분기가 필요 없다.
+        */
+        'inline-flex select-none items-center justify-center gap-1.5 press-scale',
         fullWidth && 'w-full',
         VARIANT_CLASS[variant],
         className,

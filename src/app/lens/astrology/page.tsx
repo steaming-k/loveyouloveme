@@ -23,6 +23,10 @@ import { trackEvent } from '@/lib/analytics';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { premiumFeatureState } from '@/services/premiumService';
 import { lensAvailability } from '@/lib/logic/birth';
+import { hasPremiumEvidence } from '@/lib/logic/premiumChapters';
+import { soloModeOf } from '@/lib/logic/soloMode';
+import { useCrossSourceInsights } from '@/hooks/useAiNarrative';
+import { useMirror } from '@/hooks/useAnalysis';
 import { ROUTES } from '@/lib/routes';
 import {
   buildAstrologyCompatibility,
@@ -58,6 +62,12 @@ function AstrologyLensView() {
   const mine = answers.birthProfile;
   const theirs = answers.target.birthProfile;
   const availability = lensAvailability(mine, theirs, today);
+  /**
+   * v1.46 PremiumLens §2 — Bundle 자격 판정. **새 기준을 만들지 않고** 결과
+   * 화면·Home과 같은 `hasPremiumEvidence`를 그대로 부른다.
+   */
+  const crossSourceInsights = useCrossSourceInsights();
+  const mirror = useMirror();
 
   const self = useMemo(() => buildAstrologySelfLens(mine, today), [mine, today]);
   // getSunSign 기반 계산을 self/target에 대칭적으로 적용한다 — TARGET도 단독 Result를 가진다(§9/§10)
@@ -217,10 +227,27 @@ function AstrologyLensView() {
         {/* Natal Chart를 가짜로 만들지 않으므로, 상세도 현재 구현 가능한 범위만 제안한다(§20) */}
         <PremiumEntryRow
           /* v1.40.1 §38.3 — 필수 파라미터. 하드코딩하지 않고 실제 Job에서 도출한다 */
-          feature={premiumFeatureState('astrology_detail', resolvePrice(variant), {
+          /*
+            v1.46 PremiumLens §2 · §35 — **이 화면은 더 이상 자기 상세를 팔지 않는다.**
+
+            예전에는 여기서 `mbti_detail`·`astrology_detail`을 각각 ₩1,900에 팔았고,
+            그러면 렌즈를 둘러본 사용자에게는 같은 가격이 세 번 보였다 — 세 번 결제해야
+            하는 상품으로 읽힌다(§35 금지). 이제 세 렌즈가 전부 같은 Bundle을 가리키고,
+            그 Bundle 안에 이 렌즈의 **Pair/Self 결과가 실제로 들어 있다**(`logic/premiumLens.ts`).
+
+            ⚠️ `source`는 그대로 남긴다 — 상품은 하나지만 지불 의향이 어디서 생겼는지는
+            여전히 구분해야 한다(§31).
+          */
+          feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
             allowsOutwardAction: jobAllowsOutwardAction(resolveRelationshipContext(answers).job),
-            astrologyAvailable: availability.couple,
+            deepReportAvailable: hasPremiumEvidence({
+              insights: crossSourceInsights,
+              declared: answers.declared,
+              mirror,
+            }),
+            solo: soloModeOf(answers) === 'no_target',
           })}
+          source="astrology"
         />
 
         <LovyMessage pose="crystal" size={52}>

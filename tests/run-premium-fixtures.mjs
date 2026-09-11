@@ -263,6 +263,30 @@ function chapterStrings(result) {
     ]),
     ...result.omissions.map((item) => item.text),
     ...result.report.limitations,
+    /**
+     * v1.46 §12 — **관계 맥락 블록도 화면에 그려지는 문자열이다.**
+     *
+     * ⚠️ `fact`는 뺀다. 그건 사용자가 직접 입력한 문장이라 fixture가 무엇을 넣느냐에
+     * 따라 금지 어휘가 들어올 수 있고(그게 §35가 다루는 상황이다), 그 인용을
+     * 서비스의 주장으로 세면 검사의 의미가 뒤집힌다 — 여기서 봐야 하는 것은
+     * **서비스가 그 인용 위에 무엇을 덧붙였는가**다.
+     */
+    ...reportedSceneStrings(result),
+  ];
+}
+
+/**
+ * 관계 맥락 블록에서 **서비스가 만든** 문자열만. 사용자 인용(`fact`·`myReaction`)은 제외.
+ */
+function reportedSceneStrings(result) {
+  const block = result.report.reportedScenes;
+  if (!block) return [];
+  return [
+    block.title,
+    block.lovyNote,
+    block.limitation,
+    ...block.scenes.map((scene) => scene.typeLabel),
+    ...block.scenes.map((scene) => scene.interpretation),
   ];
 }
 
@@ -1858,6 +1882,320 @@ console.log('\nPROD-UNLOCK-01~10 — Production Deep Report Unlock · payment �
     'PROD-UNLOCK-10 · unlock 조건이 hasPremiumEvidence를 재구현하지 않는다',
     /deepReportAvailable: hasPremiumEvidence\(/.test(paywallSrc) &&
       !/const canUnlockDeepReport =[^;]*hasPremiumEvidence/s.test(paywallSrc),
+  );
+}
+
+/* ═══ EVT-01 ~ EVT-14 · User-reported Relationship Event (v1.46 · §11 · §12 · §14 · §34) ══
+
+   ══ 이 섹션이 고정하는 세 문장 ═════════════════════════════════════════════
+
+   > **사건은 점수를 바꾸지 않는다.**            (§11)
+   > **사건은 연결의 대체물이 아니다.**          (§12 — available/chapters 불변)
+   > **사건 위에 상대의 마음을 얹지 않는다.**    (§35 Trust)
+
+   ⚠️ 1차 판정은 전부 **구조화된 값**이다(동기화율 숫자 · Mirror 판정 · Chapter 수).
+   금지 어휘 스캔은 2차 guard로만 쓴다 — v1.45가 세운 순서 그대로다.
+   ══════════════════════════════════════════════════════════════════════════ */
+console.log('\nEVT-01 ~ EVT-14 — 관계 사건 (User-reported Relationship Event)');
+{
+  const EVENT_1 = {
+    id: 'evt-a',
+    type: 'contact_change',
+    description: '답장 간격이 하루 정도 길어졌어',
+  };
+  const EVENT_2 = {
+    id: 'evt-b',
+    type: 'conflict',
+    description: '약속 시간 얘기로 서운했던 일이 있었어',
+    myReaction: '아무 말 안 하고 넘겼어',
+  };
+  const EVENT_3 = { id: 'evt-c', type: 'care_received', description: '아플 때 챙겨줬어' };
+
+  const withEvents = (events) => ({ ...FULL, target: { ...TARGET, events } });
+
+  /* ── EVT-01 · 0개 ─────────────────────────────────────────────────────── */
+  check(
+    'EVT-01 · 사건 0개면 관계 맥락 블록이 아예 없다 (빈 상태 카피를 만들지 않는다)',
+    full.report.reportedScenes === null,
+    full.report.reportedScenes,
+  );
+
+  /* ── EVT-02 · 1개 ─────────────────────────────────────────────────────── */
+  const one = await run(withEvents([EVENT_1]));
+  const oneBlock = one.report.reportedScenes;
+  check('EVT-02 · 사건 1개 → 장면 1개', oneBlock?.scenes.length === 1, oneBlock);
+  check(
+    'EVT-02 · FACT는 사용자가 입력한 문장 그대로다 (요약·가공 0)',
+    oneBlock?.scenes[0]?.fact === EVENT_1.description,
+    oneBlock?.scenes[0],
+  );
+  check(
+    'EVT-02 · INTERPRETATION의 주어가 사용자다 (`너는 … 기억`)',
+    typeof oneBlock?.scenes[0]?.interpretation === 'string' &&
+      oneBlock.scenes[0].interpretation.startsWith('너는') &&
+      oneBlock.scenes[0].interpretation.includes('기억'),
+    oneBlock?.scenes[0]?.interpretation,
+  );
+  check(
+    'EVT-02 · 경계 문장과 러비 체크포인트가 항상 있다',
+    Boolean(oneBlock?.limitation) && Boolean(oneBlock?.lovyNote),
+    { limitation: oneBlock?.limitation, lovyNote: oneBlock?.lovyNote },
+  );
+
+  /* ── EVT-03 · 3개 · 반응 포함 ─────────────────────────────────────────── */
+  const three = await run(withEvents([EVENT_1, EVENT_2, EVENT_3]));
+  const threeBlock = three.report.reportedScenes;
+  check('EVT-03 · 사건 3개 → 장면 3개', threeBlock?.scenes.length === 3, threeBlock?.scenes.length);
+  check(
+    'EVT-03 · 순서를 바꾸지 않는다 (서비스가 중요도를 매기지 않는다)',
+    threeBlock?.scenes.map((scene) => scene.id).join(',') === 'evt-a,evt-b,evt-c',
+    threeBlock?.scenes.map((scene) => scene.id),
+  );
+  check(
+    'EVT-03 · myReaction은 적은 항목에만 있다',
+    threeBlock?.scenes[0]?.myReaction === null &&
+      threeBlock?.scenes[1]?.myReaction === EVENT_2.myReaction &&
+      threeBlock?.scenes[2]?.myReaction === null,
+    threeBlock?.scenes.map((scene) => scene.myReaction),
+  );
+
+  /* ── EVT-04 · 상한 초과 ───────────────────────────────────────────────── */
+  const over = await run(
+    withEvents([
+      EVENT_1,
+      EVENT_2,
+      EVENT_3,
+      { id: 'evt-d', type: 'closer', description: '처음으로 오래 통화했어' },
+    ]),
+  );
+  check(
+    'EVT-04 · 상한(3)을 넘겨도 3개만 리포트에 들어간다',
+    over.report.reportedScenes?.scenes.length === 3,
+    over.report.reportedScenes?.scenes.length,
+  );
+
+  /* ── EVT-05 · 손상된 항목 ─────────────────────────────────────────────── */
+  const broken = await run(
+    withEvents([
+      { id: 'evt-empty', type: 'conflict', description: '   ' },
+      { id: 'evt-bogus', type: 'NOT_A_TYPE', description: '뭔가 있었어' },
+      EVENT_1,
+    ]),
+  );
+  check(
+    'EVT-05 · 빈 본문·알 수 없는 종류는 그 항목만 빠진다 (추정하지 않는다)',
+    broken.report.reportedScenes?.scenes.length === 1 &&
+      broken.report.reportedScenes.scenes[0].id === 'evt-a',
+    broken.report.reportedScenes?.scenes,
+  );
+
+  /* ── EVT-06 ~ EVT-09 · §11 Score/판정 불변 ───────────────────────────── */
+  check(
+    'EVT-06 · 동기화율이 사건 때문에 달라지지 않는다',
+    JSON.stringify(three.compatibility) === JSON.stringify(full.compatibility),
+    { withEvents: three.compatibility, without: full.compatibility },
+  );
+  check(
+    'EVT-07 · Mirror 판정(MATCH/GAP/CHANGE)이 사건 때문에 달라지지 않는다',
+    JSON.stringify(three.mirrorStates) === JSON.stringify(full.mirrorStates),
+    { withEvents: three.mirrorStates, without: full.mirrorStates },
+  );
+  check(
+    'EVT-08 · Chapter 구성(kind·순서·근거 수)이 사건 때문에 달라지지 않는다',
+    JSON.stringify(three.chapters) === JSON.stringify(full.chapters),
+    {
+      withEvents: three.chapters.map((c) => [c.kind, c.evidenceCount]),
+      without: full.chapters.map((c) => [c.kind, c.evidenceCount]),
+    },
+  );
+  check(
+    'EVT-09 · AI 요청 항목 수가 그대로다 (사건은 Provider로 나가지 않는다)',
+    three.ai.itemsSent === full.ai.itemsSent && three.ai.providerCalls === full.ai.providerCalls,
+    { withEvents: three.ai, without: full.ai },
+  );
+
+  /* ── EVT-10 · 사건은 연결의 대체물이 아니다 ───────────────────────────── */
+  const NO_CUR = { signals: {}, askedAt: null };
+  const eventsOnly = await run({
+    ...FULL,
+    status: 'solo_none',
+    experience: { important: [], hardest: null, selfGap: null, skipped: true },
+    currentRelationship: NO_CUR,
+    target: { ...NO_TARGET, events: [EVENT_1, EVENT_2] },
+    entries: [],
+    observedAnalysis: null,
+    observations: {},
+    mbti: null,
+    declared: { contact: null, conflict: null, alone: null, affection: null, hobby: null },
+  });
+  check(
+    'EVT-10 · 근거가 없는 세션은 사건이 있어도 리포트가 열리지 않는다',
+    eventsOnly.gate.eligible === false && eventsOnly.report.available === false,
+    eventsOnly.gate,
+  );
+  check(
+    'EVT-10 · 리포트가 닫혀 있으면 Chapter도 0개다 (사건이 Chapter를 만들지 않는다)',
+    eventsOnly.chapters.length === 0,
+    eventsOnly.chapters.map((c) => c.kind),
+  );
+
+  /* ── EVT-11 · ended 시제 · 금지 어휘 (2차 guard) ──────────────────────── */
+  const endedEvents = await run({ ...withEvents([EVENT_1, EVENT_2]), status: 'ended' });
+  check(
+    'EVT-11 · ended에서도 장면 블록은 남는다 (사용자의 기억은 여전히 자기 것이다)',
+    endedEvents.report.reportedScenes?.scenes.length === 2,
+    endedEvents.report.reportedScenes?.scenes.length,
+  );
+  const endedSceneHits = scan(reportedSceneStrings(endedEvents), FORMER_FORBIDDEN);
+  check(
+    'EVT-11 · ended 장면 블록에 현재형 호칭 0건',
+    endedSceneHits.length === 0,
+    endedSceneHits.slice(0, 4),
+  );
+  const endedActionHits = scan(reportedSceneStrings(endedEvents), ENDED_FORBIDDEN);
+  check(
+    'EVT-11 · ended 장면 블록에 금지된 행동 제안 0건 (러비 체크포인트가 행동을 지시하지 않는다)',
+    endedActionHits.length === 0,
+    endedActionHits.slice(0, 4),
+  );
+
+  /* ── EVT-12 · Trust — 사용자가 결론을 입력해도 서비스가 재확정하지 않는다 ── */
+  const loaded = await run(
+    withEvents([
+      {
+        id: 'evt-claim',
+        type: 'contact_change',
+        /**
+         * §35 — 사용자가 **직접 상대의 의도를 단정해서 입력한** 경우다. 그 문장은
+         * 인용으로 남지만, 서비스가 만든 문장(해석·체크포인트·경계) 어디에도
+         * 그것을 사실로 재확정하는 표현이 있으면 안 된다.
+         */
+        description: '상대가 일부러 연락을 줄였고 마음이 식었어',
+      },
+    ]),
+  );
+  /**
+   * ⚠️ `limitation`은 이 스캔에서 **뺀다.** 그 문장은 상대를 언급하지만
+   * (`상대가 무슨 마음이었는지는 여기서 알 수 없어`) 주장이 아니라 **주장의 부정**이고,
+   * 그 존재 자체는 바로 아래 별도 검사가 본다. 경계 문장을 주장으로 세면 경계를
+   * 쓸수록 검사가 빨개진다 — 그건 검사가 뒤집힌 것이다.
+   */
+  const claimSurface = reportedSceneStrings(loaded).filter(
+    (text) => text !== loaded.report.reportedScenes?.limitation,
+  );
+  const claimHits = scan(claimSurface, [
+    ...FORBIDDEN_COPY,
+    '일부러',
+    '마음이 식',
+    '밀당',
+    '회피형',
+    '상대는',
+    '상대가',
+  ]);
+  check(
+    'EVT-12 · 서비스가 만든 문장에 상대의 의도·감정 주장 0건',
+    claimHits.length === 0,
+    claimHits.slice(0, 4),
+  );
+  check(
+    'EVT-12 · 사용자 입력 자체는 지우지 않고 인용으로 남긴다',
+    loaded.report.reportedScenes?.scenes[0]?.fact === '상대가 일부러 연락을 줄였고 마음이 식었어',
+    loaded.report.reportedScenes?.scenes[0]?.fact,
+  );
+  check(
+    'EVT-12 · 그 인용 아래에 경계 문장이 반드시 붙는다',
+    typeof loaded.report.reportedScenes?.limitation === 'string' &&
+      loaded.report.reportedScenes.limitation.includes('알 수 없어'),
+    loaded.report.reportedScenes?.limitation,
+  );
+
+  /* ── EVT-13 · 정적 guard — 판정 계층이 사건을 보지 않는다 (§11 구조 보증) ── */
+  const scoreLayers = ['compatibility', 'mirror', 'history', 'crossSourceInsights'];
+  for (const name of scoreLayers) {
+    const source = stripComments(await readFile(join(ROOT, `src/lib/logic/${name}.ts`), 'utf8'));
+    check(
+      `EVT-13 · logic/${name}.ts가 관계 사건을 읽지 않는다`,
+      !source.includes('relationshipEvents') && !/\btarget\.events\b/.test(source),
+      name,
+    );
+  }
+
+  /* ── EVT-14 · 정적 guard — 자유 입력이 나가지 않는 경계 ──────────────── */
+  const providerSrc = stripComments(
+    await readFile(join(ROOT, 'src/services/ai/contextBuilders.ts'), 'utf8'),
+  );
+  /**
+   * ⚠️ **v1.46 AI Lens §19 — 이 검사가 바뀌었다.**
+   *
+   * v1.46 PremiumLens까지는 `contextBuilders.ts` 전체에 `events`가 한 번도 없어야
+   * 했다. v1.46 AI Lens가 그 경계를 **렌즈 Task에 한해** 옮겼다(§19 · §20).
+   *
+   * 경계를 지운 것이 아니라 좁혔으므로 검사도 좁힌다 — Core Task 다섯 개의 builder
+   * **본문**에는 여전히 사건이 한 글자도 없어야 한다. 전체 파일 검사로 두면 이 규칙이
+   * 사라지고, 나중에 누가 `buildDeepReportContext`에 사건을 넣어도 아무도 모른다.
+   */
+  const coreBuilders = [
+    'buildObservedContext',
+    'buildRelationshipContext',
+    'buildCompatibilityContext',
+    'buildHistoryContext',
+    'buildDeepReportContext',
+  ];
+  for (const name of coreBuilders) {
+    const start = providerSrc.indexOf(`export function ${name}(`);
+    /** 함수 하나의 본문만 — 닫는 중괄호가 줄 맨 앞에 오는 첫 지점까지다 */
+    const rest = start >= 0 ? providerSrc.slice(start) : '';
+    const endAt = rest.indexOf('\n}');
+    const body = start < 0 ? '' : endAt >= 0 ? rest.slice(0, endAt) : rest;
+    check(
+      `EVT-14 · Core Task builder ${name}가 사건을 싣지 않는다 (Provider 경계)`,
+      body.length > 0 && !body.includes('event') && !body.includes('Event'),
+      name,
+    );
+  }
+  /**
+   * 렌즈 Task는 사건을 싣는다. 대신 **세 가지 제한**이 코드에 실제로 있어야 한다 —
+   * 종류 필터 · 건수 상한 · 자유 입력 재절단(§19).
+   */
+  check(
+    'EVT-14 · 렌즈 builder가 렌즈별 종류 필터를 거친다 (모든 사건을 반복 전송하지 않는다)',
+    /const LENS_EVENT_TYPES: Record</.test(providerSrc) &&
+      /allowed\.includes\(event\.type\)/.test(providerSrc),
+  );
+  check(
+    'EVT-14 · 렌즈 builder가 건수 상한을 건다',
+    /const LENS_EVENT_LIMIT = \d+;/.test(providerSrc) &&
+      /\.slice\(0, LENS_EVENT_LIMIT\)/.test(providerSrc),
+  );
+  check(
+    'EVT-14 · 렌즈 builder가 자유 입력을 한 번 더 자른다 (sanitizeFreeText)',
+    /sanitizeFreeText\(event\.description, \d+\)/.test(providerSrc) &&
+      /sanitizeFreeText\(event\.myReaction, \d+\)/.test(providerSrc),
+  );
+  /** 지문에도 원문이 들어가지 않는다 — 종류와 길이만(§34) */
+  const serviceSrc = stripComments(
+    await readFile(join(ROOT, 'src/services/aiService.ts'), 'utf8'),
+  );
+  check(
+    'EVT-14 · 렌즈 지문에 사건 원문이 들어가지 않는다 (종류:길이만)',
+    /\$\{event\.type\}:\$\{event\.description\.length\}/.test(serviceSrc) &&
+      !/\$\{event\.description\}/.test(serviceSrc),
+  );
+  const sessionSrc = stripComments(
+    await readFile(join(ROOT, 'src/state/SessionProvider.tsx'), 'utf8'),
+  );
+  check(
+    'EVT-14 · Analytics에 사건 원문을 싣지 않는다 (categorical/count만)',
+    /trackEvent\('target_event_add', \{[^}]*event_type[^}]*\}/s.test(sessionSrc) &&
+      !/trackEvent\('target_event_[^']*',\s*\{[^}]*description/s.test(sessionSrc),
+  );
+  const typesSrc = stripComments(await readFile(join(ROOT, 'src/types/index.ts'), 'utf8'));
+  const historyEntryBlock =
+    /export interface RelationshipHistoryEntry \{[\s\S]*?\n\}/.exec(typesSrc)?.[0] ?? '';
+  check(
+    'EVT-14 · History Snapshot에 사건을 저장하지 않는다 (§8 · §9 CRM 금지)',
+    historyEntryBlock.length > 0 && !historyEntryBlock.includes('event'),
+    historyEntryBlock.slice(0, 120),
   );
 }
 

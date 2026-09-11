@@ -18,6 +18,8 @@ export function createEmptyTargetProfile(): TargetProfile {
     mbti: null,
     birthProfile: createEmptyBirthProfile(),
     preferences: { interests: [] },
+    // v1.46 §14 — New Target에서 이전 상대의 사건이 넘어가지 않는 지점이 정확히 여기다.
+    events: [],
   };
 }
 
@@ -120,6 +122,12 @@ export function createSampleAnswers(): SessionAnswers {
       mbti: null,
       birthProfile: createEmptyBirthProfile(),
       preferences: { interests: [] },
+      /**
+       * v1.46 — 샘플 세션에도 사건을 넣지 않는다. `preferences`를 비워둔 것과 같은
+       * 이유다: 선택 입력은 **사용자가 직접 적었을 때만** 리포트에 나타나는 것이
+       * 이 기능의 성질이고, 데모가 미리 채워두면 그 성질이 화면에서 사라진다.
+       */
+      events: [],
     },
     completed: {
       onboarding: true,

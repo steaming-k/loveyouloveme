@@ -38,6 +38,7 @@ import {
   jobAllowsOutwardAction,
   resolveRelationshipContext,
 } from '@/lib/logic/relationshipStage';
+import { useRevealOnceInScreen } from '@/hooks/useRevealOnce';
 import { useSession } from '@/state/SessionProvider';
 
 /**
@@ -61,6 +62,9 @@ export default function FirstContactPage() {
   const { answers } = useSession();
   const mode = useSoloMode();
   const report = useFirstContact();
+
+  /* v1.46 §27 — 보고서 섹션 scroll reveal (요소당 1회) */
+  useRevealOnceInScreen();
 
   const hasMbti = Boolean(answers.mbti);
 

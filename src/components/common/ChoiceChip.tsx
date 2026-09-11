@@ -27,7 +27,8 @@ export function ChoiceChip({
       disabled={disabled}
       onClick={onToggle}
       className={cn(
-        'min-h-11 rounded-full border px-[15px] py-[11px] text-sub transition-colors duration-200',
+        // v1.46 §26 Selection — 테두리·배경 transition + press scale
+        'min-h-11 rounded-full border px-[15px] py-[11px] text-sub press-scale',
         selected
           ? 'border-brand bg-brand-tint font-semibold text-ink'
           : 'border-line bg-surface text-ink active:bg-sunken',

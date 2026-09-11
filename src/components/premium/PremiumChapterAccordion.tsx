@@ -285,7 +285,18 @@ function ChapterRow({
         길게 계산된다(스크롤 깊이 이벤트가 오염된다).
       */}
       {open ? (
-        <div id={panelId} className="flex flex-col gap-3 pb-5">
+        /*
+          v1.46 §26 — 펼친 본문이 opacity + 6px로 들어온다(`body-enter` · 220ms).
+
+          ⚠️ **height를 애니메이션하지 않는다.** 위 주석이 v1.45에 적어둔 대로 이
+          Accordion은 조건부 렌더이고, height 연출을 붙이려면 본문 높이를 측정해야
+          한다 — 그 측정이 §30이 금지한 `accordion measurement loop`와 scroll jump가
+          들어오는 자리다. 헤더는 제자리에 있고 본문만 아래로 자라는 동작은 그대로다.
+
+          ⚠️ transform이 걸리므로 이 요소는 containing block이 된다. 본문 안에
+          `absolute inset-0` 오버레이는 없다(근거 목록·문장·러비 한마디뿐).
+        */
+        <div id={panelId} className="body-enter flex flex-col gap-3 pb-5">
           {/* §12.1 — 근거는 대표 2~3개만. Evidence Transparency가 Premium의 핵심이다 */}
           {chapter.evidence.length > 0 ? (
             <div className="flex flex-col gap-2 rounded-[10px] bg-sunken px-3.5 py-3">

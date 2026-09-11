@@ -88,7 +88,18 @@ export function ReportSection({
   className?: string;
 }) {
   return (
-    <section id={id} className={cn('flex flex-col scroll-mt-3', className)}>
+    /*
+      v1.46 §26 · §27 — Result scroll reveal. **한 번만** 재생된다.
+
+      ⚠️ 클래스만으로는 아무 일도 일어나지 않는다. `useRevealOnce`가 이 화면의
+      컨테이너에서 `.reveal-once`를 찾아 `data-reveal="in"`을 붙일 때 최종 상태가
+      되고, 훅이 없거나 실패하면 훅 쪽 3중 안전장치가 즉시 최종 상태로 만든다
+      (`hooks/useRevealOnce.ts` 참고). 연출 때문에 보고서가 사라지지 않는다.
+
+      ⚠️ **번호가 붙은 섹션에만 건다.** 보고서 안의 카드 하나하나까지 걸면 스크롤할
+      때마다 화면이 계속 무언가를 재생하고, 그건 §24가 말한 '모든 것을 움직이는 것'이다.
+    */
+    <section id={id} className={cn('reveal-once flex flex-col scroll-mt-3', className)}>
       <div className="mt-6 mb-4 h-px bg-line-soft" aria-hidden />
 
       <div className="flex items-center gap-2 px-1">

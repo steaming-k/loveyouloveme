@@ -2004,6 +2004,15 @@ async function main() {
       'history-insight',
       'deep-report-narrative',
       'observed-profile',
+      /**
+       * v1.46 AI Lens §3 — 렌즈 4종. `Record<AiTask, …>`가 누락을 이미 막지만,
+       * 이 목록에 적어야 **차원 개수 검사**(아래 DIMENSIONS 루프)가 9개 Task를 센다.
+       * 그게 렌즈 계약을 생성기로 만들지 않고 세 번 적어 둔 이유다(taskContract.ts).
+       */
+      'premium-mbti-lens',
+      'premium-saju-lens',
+      'premium-zodiac-lens',
+      'premium-cross-lens',
     ];
     const DIMENSIONS = [
       'promptVersion',
@@ -2038,7 +2047,7 @@ async function main() {
     for (const dimension of DIMENSIONS) {
       const occurrences = countOf(contract, new RegExp(`\\n\\s+${dimension}:`, 'g'));
       check(
-        `TC0 — ${dimension} 차원이 5개 Task 전부에 있다 (발견 ${occurrences})`,
+        `TC0 — ${dimension} 차원이 ${TASKS.length}개 Task 전부에 있다 (발견 ${occurrences})`,
         occurrences >= TASKS.length,
         `${dimension}: ${occurrences}건`,
       );
@@ -2072,12 +2081,26 @@ async function main() {
         `${label}에 status 직접 분기가 있다`,
       );
     }
-    /** 시제 프롬프트 문구의 단일 source — 복사본 3개가 갈라지지 않게 한다(§47.2) */
+    /**
+     * 시제 프롬프트 문구의 단일 source — 복사본이 갈라지지 않게 한다(§47.2)
+     *
+     * ⚠️ v1.46 AI Lens — **3 → 5.** 삽입 지점이 두 개 늘었다:
+     *
+     * ```
+     * relationship · compatibility · deep-report   3   (v1.43)
+     * lensSystemPrompt(kind)                       1   ← 세 렌즈 Task가 공유한다
+     * PREMIUM_CROSS_LENS_SYSTEM_PROMPT             1
+     * ```
+     *
+     * 렌즈 세 개가 삽입 1건인 것이 핵심이다 — 프롬프트 본문이 함수 하나에서 나오므로
+     * MBTI·사주·별자리가 **구조적으로** 같은 시제 계약을 받는다. 여기 숫자가 7이 되면
+     * 누군가 렌즈별로 프롬프트를 복사한 것이고, 그때 이 검사가 알려준다.
+     */
     const tenseInserts = countOf(prompts, /\$\{TENSE_CONTRACT\}/g);
     check(
       `TC1 — 시제 프롬프트가 TENSE_CONTRACT 상수 하나에서 나온다 (삽입 ${tenseInserts})`,
-      /const TENSE_CONTRACT = `/.test(prompts) && tenseInserts === 3,
-      `TENSE_CONTRACT 삽입 ${tenseInserts}건 (기대 3)`,
+      /const TENSE_CONTRACT = `/.test(prompts) && tenseInserts === 5,
+      `TENSE_CONTRACT 삽입 ${tenseInserts}건 (기대 5)`,
     );
     check(
       'TC1 — 시제 블록 원문이 프롬프트에 한 번만 있다 (복사본 0)',
@@ -2340,12 +2363,27 @@ async function main() {
       'useHistoryNarrative가 비교 기록을 따로 고르고 있다',
     );
 
-    /** observability: enforcement보다 로그가 먼저다(§19 rollout) */
+    /**
+     * observability: enforcement보다 로그가 먼저다(§19 rollout)
+     *
+     * ⚠️ v1.46 AI Lens — **4 → 8.** Task가 늘어난 만큼이 아니라 그보다 많다:
+     *
+     * ```
+     * relationship · compatibility · history · deep-report   4   (v1.43 · Task당 1)
+     * runPremiumLensTask                                     2   (parse 실패 · 정상)
+     * runCrossLensTask                                       2   (parse 실패 · 정상)
+     * ```
+     *
+     * 렌즈 핸들러가 2건인 이유: `parsed=null`로 빠지는 조기 return 경로에도 로그를
+     * 남긴다. 그 경로에 로그가 없으면 "AI 블록이 안 보인다"를 봤을 때 **모델이 안
+     * 만든 것인지 파서가 버린 것인지** 구분할 수 없다 — v1.42 §41.14가 정확히
+     * 그 상태에서 원인을 못 찾았다.
+     */
     const logCalls = countOf(handlers, /logAiFilter\(\{/g);
     check(
-      `TC6 — 4개 Narrative Task 전부 logAiFilter로 관측된다 (호출 ${logCalls})`,
-      logCalls === 4,
-      `logAiFilter 호출 ${logCalls}건 (기대 4)`,
+      `TC6 — 8개 Narrative 경로 전부 logAiFilter로 관측된다 (호출 ${logCalls})`,
+      logCalls === 8,
+      `logAiFilter 호출 ${logCalls}건 (기대 8)`,
     );
     check(
       'TC6 — 관측 로그가 production에서 아무것도 남기지 않는다',

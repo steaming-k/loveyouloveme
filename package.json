@@ -16,6 +16,7 @@
     "test:relationship-evidence": "node tests/run-relationship-evidence-fixtures.mjs",
     "test:trust": "node tests/run-trust-fixtures.mjs",
     "test:premium": "node tests/run-premium-fixtures.mjs",
+    "test:lens": "node tests/run-lens-fixtures.mjs",
     "test:ai:e2e": "node tests/run-provider-e2e.mjs"
   },
   "dependencies": {

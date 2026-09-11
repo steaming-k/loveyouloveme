@@ -1,4 +1,14 @@
+import { LENS_THEME_LABEL } from '@/data/premiumLens';
+import {
+  subjectParticleOf,
+  topicParticleOf,
+  withCompanionParticle,
+  withCopula,
+  withInstrumentParticle,
+  withObjectParticle,
+} from '@/lib/korean';
 import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
+import type { PremiumLensKind, PremiumLensTheme } from '@/types';
 
 /**
  * AI Safety (§43 · §69 · §89 · §90)
@@ -687,4 +697,282 @@ export function clampNarrativeText(text: string, maxLength: number): string {
     return window.slice(0, boundary + 1).trim();
   }
   return `${window.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+/* ------------------- Premium Lens AI 전용 검사 (v1.46 AI Lens · §7 · §14 · §18) */
+
+/**
+ * ══ 왜 `scanDeepNarrative`를 그대로 쓰지 않는가 ═══════════════════════════
+ *
+ * 딱 하나가 반대다. `scanCoreNarrative`는 `scanForLensLeak`를 포함하는데, 그건
+ * **Core 설명에 MBTI·사주·별자리 어휘가 새어 나오는 것**을 막는 검사다(§36).
+ * 이 Task에서는 그 어휘가 바로 본문이다 — 그대로 쓰면 모든 unit이 버려진다.
+ *
+ * 그래서 겹치는 부분은 **같은 술어를 재사용**하고 누출 검사만 뺀다:
+ *
+ * ```
+ * scanForForbiddenInference   민감 추론 · 마음 읽기 · 성공 확률 · 천생연분   ⭕ 그대로
+ * scanClaimBoundary           인과 · 예측 · 의도 · 가치판정                 ⭕ 그대로
+ * isGenericSentence           '소통이 중요합니다'                          ⭕ 그대로
+ * hasUnsupportedCertainty     분명 · 항상 · 절대                           ⭕ 그대로
+ * scanRelationshipTense       former에서 현재형 금지                       ⭕ 그대로
+ * scanForLensLeak             렌즈 어휘 금지                               ❌ 뺀다
+ * GROWTH_NARRATIVE_PATTERNS   성장 서사                                    ❌ 뺀다(주석)
+ * ```
+ *
+ * 성장 서사 검사를 빼는 이유: 이 Task는 **시간에 따른 변화**를 다루지 않는다.
+ * `너는 항상` 같은 형태는 `pattern_verdict`가 아니라 `UNSUPPORTED_CERTAINTY`가 이미
+ * 잡고, 나머지 패턴(극복했다·치유됐다)은 렌즈 본문에서 나올 자리가 없다. 안 쓰는
+ * 검사를 붙여두면 언젠가 정상 문장을 버린다.
+ */
+
+/**
+ * 렌즈별 **계산하지 않은 것**을 아는 척하는지 (§11 · §15) + 금지 어휘 (§14 · §18).
+ *
+ * ⚠️ 이 표가 v1.46 사주 엔진의 범위와 **짝이다.** `lib/logic/sajuPillars.ts`는 일주
+ * 하나만 계산하고 연주·월주·시주·음력 환산은 하지 않는다. 엔진 범위가 넓어지면 이
+ * 목록도 함께 줄어야 하고, 둘 중 하나만 바뀌면 정직하지 않은 결과가 나간다.
+ *
+ * ⚠️ 부정문 예외를 두지 않는다. `LIMITATION_MARKERS` 같은 완화를 여기에 붙이면
+ * '시주는 모르지만 아마 ~일 거야'가 통과한다. 없는 것은 **언급 자체를 하지 않는다**가
+ * 이 렌즈의 규칙이고(§11 · §15), 한계는 결정론 `limitations`가 이미 화면에 쓰고 있다.
+ */
+const LENS_UNSUPPORTED_PATTERNS: Record<
+  PremiumLensKind,
+  readonly { label: string; pattern: RegExp }[]
+> = {
+  mbti: [
+    /** 인지기능·에니어그램은 계산하지 않는다 — 4글자 분류가 전부다 */
+    {
+      label: 'mbti_unsupported_function',
+      pattern: /주기능|부기능|열등기능|인지\s*기능|\bFe\b|\bFi\b|\bTe\b|\bTi\b|\bNe\b|\bNi\b|\bSe\b|\bSi\b|에니어그램/,
+    },
+  ],
+  saju: [
+    {
+      label: 'saju_unsupported_pillar',
+      pattern: /연주|월주|시주|년주|사주\s*팔자|팔자|전체\s*명식|대운|세운|신살|용신|격국|공망|음력으로|절기\s*보정/,
+    },
+    {
+      label: 'saju_forbidden_fortune',
+      pattern: /운명|천생연분|상극|결혼운|배우자운|재회운|연애운|재물운|바람기|외도|궁합\s*점수|사주가\s*(좋|나쁘)/,
+    },
+  ],
+  zodiac: [
+    {
+      label: 'zodiac_unsupported_chart',
+      pattern: /달자리|문\s*사인|Moon\s*sign|상승궁|어센던트|라이징|Rising|하우스|어스펙트|행성\s*배치|수성|금성|화성/i,
+    },
+    {
+      label: 'zodiac_forbidden_fortune',
+      pattern: /운세|연애운|이번\s*달\s*운|오늘의\s*운|궁합\s*점수|성공\s*확률|천생연분|상극/,
+    },
+  ],
+};
+
+/**
+ * 프롬프트 문구가 그대로 화면에 도달하는 것 (v1.46 AI Lens · 브라우저 실측)
+ *
+ * 실측에서 MBTI 렌즈 AI의 summary가 이렇게 나왔다:
+ *
+ * > **'이 렌즈를 관계 맥락에서 어떻게 읽는지 3문장 이내'**
+ *
+ * 프롬프트 출력 JSON 예시의 **필드 설명을 값으로 옮겨 적은 것**이다. 내용이 위험한
+ * 것도 아니고 금지 어휘도 없어서 기존 스캐너는 전부 통과시켰다 — 유료 화면에
+ * 지시문이 그려지는데 위반 라벨은 0이었다.
+ *
+ * 프롬프트 쪽도 자리 표시를 꺾쇠로 바꿨지만(`promptTemplates.ts`) 그건 확률을
+ * 낮추는 것이지 막는 것이 아니다. 내부 enum과 같은 종류의 결함이라 같은 방식으로
+ * 처리한다 — **AI 출력 뒤에 결정론 검사가 한 겹 더 있어야 한다.**
+ */
+const PROMPT_ECHO_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
+  {
+    label: 'prompt_echo',
+    pattern: /\d\s*문장\s*이내|\d+\s*자\s*이내|위\s*목록의\s*id|출력\s*JSON|자리\s*표시/,
+  },
+  /** `<문장 3개 이내>` — 꺾쇠 자리 표시는 사람이 읽는 문장에 나올 자리가 없다 */
+  { label: 'prompt_placeholder', pattern: /<[^<>]{1,40}>/ },
+];
+
+/**
+ * 렌즈 AI 문장 검사 (v1.46 AI Lens).
+ *
+ * @param kind 어느 렌즈인가 — 렌즈마다 '계산하지 않은 것'이 다르다
+ * @param tense `former`면 현재형 관계 서술을 막는다
+ */
+export function scanLensNarrative(
+  text: string,
+  kind: PremiumLensKind,
+  tense: RelationshipTense,
+): SafetyScanResult {
+  const violations = [...scanForForbiddenInference(text).violations];
+
+  if (isGenericSentence(text)) violations.push('generic_sentence');
+  if (hasUnsupportedCertainty(text)) violations.push('unsupported_certainty');
+
+  violations.push(...scanClaimBoundary(text).violations);
+  violations.push(...scanRelationshipTense(text, tense).violations);
+
+  for (const { label, pattern } of LENS_UNSUPPORTED_PATTERNS[kind]) {
+    if (pattern.test(text)) violations.push(label);
+  }
+
+  for (const { label, pattern } of PROMPT_ECHO_PATTERNS) {
+    if (pattern.test(text)) violations.push(label);
+  }
+
+  return { safe: violations.length === 0, violations: [...new Set(violations)] };
+}
+
+/**
+ * Cross-Lens 문장 검사 (§23).
+ *
+ * 세 렌즈의 금지 목록을 **전부** 적용한다 — 이 Task는 세 렌즈를 함께 말하므로
+ * 어느 쪽 금지어가 나와도 같은 문제다.
+ *
+ * ⚠️ 여기에만 있는 검사가 하나 있다: **'근거 3개가 일치했다'** 류의 표현이다(§23).
+ * MBTI·사주·별자리는 독립적인 과학적 근거 3개가 아니다. 이 문장이 통과하면 유료
+ * 결과가 '세 번 확인했으니 맞다'는 잘못된 확신을 파는 것이 된다 — v1.46 PremiumLens
+ * §20이 결정론 Cross-Lens에서 `note`를 필수 필드로 만든 것과 같은 이유다.
+ */
+const CROSS_LENS_CORROBORATION_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
+  {
+    label: 'cross_corroboration',
+    pattern:
+      /(근거|증거|관점|렌즈|가지)\s*(가|이|도)?\s*(모두|전부|다)\s*(일치|같|증명|확인)|세\s*가지\s*근거|삼중\s*확인|교차\s*검증(됐|되었|된)/,
+  },
+  { label: 'cross_proof', pattern: /증명(했|됐|되었|된다)|입증(했|됐|된)|확실해졌/ },
+];
+
+export function scanCrossLensNarrative(
+  text: string,
+  tense: RelationshipTense,
+): SafetyScanResult {
+  const violations = [...scanForForbiddenInference(text).violations];
+
+  if (isGenericSentence(text)) violations.push('generic_sentence');
+  if (hasUnsupportedCertainty(text)) violations.push('unsupported_certainty');
+
+  violations.push(...scanClaimBoundary(text).violations);
+  violations.push(...scanRelationshipTense(text, tense).violations);
+
+  for (const kind of ['mbti', 'saju', 'zodiac'] as const) {
+    for (const { label, pattern } of LENS_UNSUPPORTED_PATTERNS[kind]) {
+      if (pattern.test(text)) violations.push(label);
+    }
+  }
+
+  for (const { label, pattern } of CROSS_LENS_CORROBORATION_PATTERNS) {
+    if (pattern.test(text)) violations.push(label);
+  }
+
+  for (const { label, pattern } of PROMPT_ECHO_PATTERNS) {
+    if (pattern.test(text)) violations.push(label);
+  }
+
+  return { safe: violations.length === 0, violations: [...new Set(violations)] };
+}
+
+/* --------- 내부 enum 노출 차단 (v1.46 AI Lens · 브라우저 실측 P1) --------- */
+
+/**
+ * ══ context를 라벨로 바꾼 것으로 왜 끝나지 않는가 ════════════════════════
+ *
+ * 실측에서 Cross-Lens 결과에 `planning · expression · pace`가 **영어 코드 그대로**
+ * 유료 화면에 나갔다. 1차 원인은 context가 테마를 enum 코드로 보낸 것이고, 그건
+ * `contextBuilders`가 `LENS_THEME_LABEL`로 바꿔 막았다(AI-LENS-12b).
+ *
+ * 그런데 그것은 **입력 쪽 한 겹**이다. 모델이 받는 어휘를 통제해도 모델이 쓰는
+ * 어휘까지 통제되는 것은 아니다 — 프롬프트에 남은 예시 한 줄, 캐시에 남아 있던
+ * 이전 버전 응답, 다른 Task에서 옮겨온 문장 하나로 같은 코드가 다시 나올 수 있고,
+ * 그때 화면에는 **다시 영어 식별자가 그려진다.**
+ *
+ * 그래서 AI 출력 뒤에 결정론 매핑을 한 겹 더 둔다. 번역을 모델에게 맡기지 않는
+ * 것이 요점이다:
+ *
+ * ```
+ * 내부 enum  →  LENS_THEME_LABEL  →  화면
+ * ```
+ *
+ * ⚠️ **알 수 있는 코드는 바꾸고, 알 수 없는 코드는 그 항목을 버린다.** 매핑표에
+ * 없는 식별자(`mbti_pair_rhythm` 같은 unit id, 또는 아직 라벨이 없는 새 코드)는
+ * 사람이 읽을 말로 바꿀 방법이 없다. 그 자리에 '이 테마' 같은 대체어를 넣으면
+ * 문장은 남지만 **무슨 말인지 모르는 문장**이 유료 화면에 남는다.
+ */
+const THEME_CODE_PATTERN = new RegExp(
+  `['"\`]?\\b(${(Object.keys(LENS_THEME_LABEL) as PremiumLensTheme[])
+    .sort((a, b) => b.length - a.length)
+    .join('|')})\\b['"\`]?`,
+  'gi',
+);
+
+/** `mbti_pair_rhythm` 처럼 밑줄로 이어진 ASCII 토큰 — 우리 식별자의 모양이다 */
+const INTERNAL_ID_PATTERN = /[a-z][a-z0-9]*(?:_[a-z0-9]+)+/i;
+
+/**
+ * 코드 **바로 뒤**에 붙은 조사. 코드를 라벨로 바꾸면 받침이 달라져서
+ * `'계획과 즉흥 사이'이 반복됐어`가 된다 — 실측에서 같은 계열의 오류를 이미
+ * 한 번 고쳤다(`lib/korean.ts` 상단).
+ *
+ * ⚠️ 뒤에 한글이 이어지면 조사가 아니다(`planning이라는` 의 `이`). 그걸 조사로
+ * 보면 `'…'가라는`이 되어 더 나빠진다.
+ */
+const PARTICLE_AFTER_CODE = /^(으로|이야|은|는|이|가|을|를|과|와|로|야)(?![가-힣])/;
+
+function particleFor(label: string, found: string): string {
+  switch (found) {
+    case '은':
+    case '는':
+      return topicParticleOf(label);
+    case '이':
+    case '가':
+      return subjectParticleOf(label);
+    case '을':
+    case '를':
+      return withObjectParticle(label).slice(label.length);
+    case '과':
+    case '와':
+      return withCompanionParticle(label).slice(label.length);
+    case '으로':
+    case '로':
+      return withInstrumentParticle(label).slice(label.length);
+    default:
+      return withCopula(label).slice(label.length);
+  }
+}
+
+/**
+ * AI 문장에서 내부 식별자를 걷어낸다.
+ *
+ * @returns 매핑된 문장. 라벨로 바꿀 수 없는 내부 코드가 남으면 `null` —
+ *          호출부는 **그 항목만** 버린다(응답 전체를 버리지 않는다).
+ *          빈 값도 `null`이다 — 파서의 `str()`이 빈 문자열을 `null`로 주므로
+ *          두 경우를 같은 자리에서 처리한다.
+ */
+export function maskInternalCodes(text: string | null): string | null {
+  if (!text) return null;
+
+  let out = '';
+  let cursor = 0;
+
+  for (const match of text.matchAll(THEME_CODE_PATTERN)) {
+    const at = match.index ?? 0;
+    const label = LENS_THEME_LABEL[match[1]!.toLowerCase() as PremiumLensTheme];
+
+    out += text.slice(cursor, at);
+    cursor = at + match[0].length;
+
+    // 결정론 Cross-Lens가 테마를 그리는 모양과 같게 — 따옴표 안에 라벨
+    out += `'${label}'`;
+
+    const particle = PARTICLE_AFTER_CODE.exec(text.slice(cursor));
+    if (particle) {
+      out += particleFor(label, particle[1]!);
+      cursor += particle[0].length;
+    }
+  }
+
+  out += text.slice(cursor);
+
+  return INTERNAL_ID_PATTERN.test(out) ? null : out;
 }

@@ -28,14 +28,18 @@ import { MBTI_LENS_COPY } from '@/data/copy';
 import { selectMbtiLensHeadline } from '@/data/lovyNotes';
 import { trackEvent } from '@/lib/analytics';
 import { buildMbtiSelfLens } from '@/lib/logic/mbtiLens';
+import { hasPremiumEvidence } from '@/lib/logic/premiumChapters';
+import { soloModeOf } from '@/lib/logic/soloMode';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { premiumFeatureState } from '@/services/premiumService';
 import { RESULT_ANCHORS, ROUTES } from '@/lib/routes';
-import { useMbtiBridge, useMbtiLens, useMbtiPattern } from '@/hooks/useAnalysis';
+import { useCrossSourceInsights } from '@/hooks/useAiNarrative';
+import { useMbtiBridge, useMbtiLens, useMbtiPattern, useMirror } from '@/hooks/useAnalysis';
 import {
   jobAllowsOutwardAction,
   resolveRelationshipContext,
 } from '@/lib/logic/relationshipStage';
+import { useRevealOnceInScreen } from '@/hooks/useRevealOnce';
 import { useSession } from '@/state/SessionProvider';
 import type {
   MbtiBridgeReport,
@@ -90,8 +94,17 @@ function MbtiLensView() {
   const router = useRouter();
   const { answers } = useSession();
   const report = useMbtiLens();
+  /**
+   * v1.46 PremiumLens §2 — Bundle 자격 판정. **새 기준을 만들지 않고** 결과
+   * 화면·Home과 같은 `hasPremiumEvidence`를 그대로 부른다.
+   */
+  const crossSourceInsights = useCrossSourceInsights();
+  const mirror = useMirror();
   const bridge = useMbtiBridge();
   const pattern = useMbtiPattern();
+
+  /* v1.46 §27 — 보고서 섹션 scroll reveal (요소당 1회) */
+  useRevealOnceInScreen();
   const [variant] = useState(() => resolvePriceVariant());
 
   const selfLens = useMemo(() => buildMbtiSelfLens(answers.mbti), [answers.mbti]);
@@ -175,10 +188,27 @@ function MbtiLensView() {
             하드코딩하지 않는다** — 나중에 이 feature에 outward 약속이 추가되면
             하드코딩한 곳만 조용히 새기 때문이다. 실제 Job에서 도출한다.
           */
-          feature={premiumFeatureState('mbti_detail', resolvePrice(variant), {
+          /*
+            v1.46 PremiumLens §2 · §35 — **이 화면은 더 이상 자기 상세를 팔지 않는다.**
+
+            예전에는 여기서 `mbti_detail`·`astrology_detail`을 각각 ₩1,900에 팔았고,
+            그러면 렌즈를 둘러본 사용자에게는 같은 가격이 세 번 보였다 — 세 번 결제해야
+            하는 상품으로 읽힌다(§35 금지). 이제 세 렌즈가 전부 같은 Bundle을 가리키고,
+            그 Bundle 안에 이 렌즈의 **Pair/Self 결과가 실제로 들어 있다**(`logic/premiumLens.ts`).
+
+            ⚠️ `source`는 그대로 남긴다 — 상품은 하나지만 지불 의향이 어디서 생겼는지는
+            여전히 구분해야 한다(§31).
+          */
+          feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
             allowsOutwardAction: jobAllowsOutwardAction(resolveRelationshipContext(answers).job),
-            mbtiAvailable: Boolean(report),
+            deepReportAvailable: hasPremiumEvidence({
+              insights: crossSourceInsights,
+              declared: answers.declared,
+              mirror,
+            }),
+            solo: soloModeOf(answers) === 'no_target',
           })}
+          source="mbti"
         />
 
         <NoticeBox>{MBTI_LENS_COPY.scoreNotice}</NoticeBox>

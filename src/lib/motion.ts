@@ -8,12 +8,32 @@
  * 늦추는 데 쓰지 않는다 — 이미 확정된 상태 변화를 사용자가 인지하게 만드는 용도다.
  */
 export const MOTION = {
-  /** 버튼 press 등 즉각 피드백 */
+  /** v1.46 §26 — press 피드백. CSS `--motion-instant` */
+  instant: 90,
+  /** 색·테두리 같은 즉각 상태 반응 */
   fast: 150,
+  /** v1.46 §26 — 화면 진입 · card/accordion 본문 등장. CSS `--motion-enter` */
+  enter: 220,
   /** 화면 안 상태 전환 */
   normal: 300,
   /** 큰 표면(Report 등) 등장 */
   slow: 400,
+} as const;
+
+/**
+ * Easing — **3개뿐이다** (v1.46 §25). CSS `--ease-observe` / `--ease-standard` /
+ * `--ease-exit`와 같은 값이다.
+ *
+ * ⚠️ 역할이 겹치지 않는다. 등장에 `standard`를 쓰거나 색 변화에 `observe`를 쓰면
+ * 화면마다 미묘하게 다른 감각이 생기고, 그게 '페이지마다 따로 만든 모션'의 시작이다.
+ */
+export const EASE = {
+  /** 감속 — 등장·reveal 전용 */
+  observe: [0.22, 0.61, 0.36, 1],
+  /** in-out — 상태 변화 전용 */
+  standard: [0.4, 0, 0.2, 1],
+  /** 가속 — 사라지는 것 전용 */
+  exit: [0.4, 0, 1, 1],
 } as const;
 
 /**

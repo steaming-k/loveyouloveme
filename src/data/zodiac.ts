@@ -62,6 +62,33 @@ export const ZODIAC_ELEMENT: Record<ZodiacSign, ZodiacElement> = {
   pisces: 'water',
 };
 
+/**
+ * 3양태(modality) — v1.46 PremiumLens §16에서 추가.
+ *
+ * ⚠️ **계산이 아니다.** 태양궁이 정해지면 곧바로 정해지는 전통 점성술의
+ * 고정 분류표다 — 출생 시각도 지역도 필요 없다. 그래서 `생년월일만으로
+ * 계산하지 못하는 것을 만들지 않는다`(§15)를 어기지 않는다.
+ *
+ * ⚠️ 달·상승궁(Moon/Rising)은 여전히 만들지 않는다 — 그건 행성 위치 계산이
+ * 필요해서 이 표처럼 곧바로 따라오지 않는다.
+ */
+export type ZodiacModality = 'cardinal' | 'fixed' | 'mutable';
+
+export const ZODIAC_MODALITY: Record<ZodiacSign, ZodiacModality> = {
+  aries: 'cardinal',
+  cancer: 'cardinal',
+  libra: 'cardinal',
+  capricorn: 'cardinal',
+  taurus: 'fixed',
+  leo: 'fixed',
+  scorpio: 'fixed',
+  aquarius: 'fixed',
+  gemini: 'mutable',
+  virgo: 'mutable',
+  sagittarius: 'mutable',
+  pisces: 'mutable',
+};
+
 export const ELEMENT_LABEL: Record<ZodiacElement, string> = {
   fire: '불',
   earth: '흙',
@@ -77,12 +104,26 @@ export const ELEMENT_NOTE: Record<ZodiacElement, string> = {
   water: '감정의 흐름과 정서적 유대를 먼저 보는 쪽으로 이야기되기도 해.',
 };
 
-/** 두 원소가 다를 때 이야기해볼 주제 (양방향 동일하게 쓴다) */
+/**
+ * 두 원소가 다를 때 이야기해볼 주제 (양방향 동일하게 쓴다)
+ *
+ * ⚠️ **key는 알파벳 정렬 순서다** — `air` < `earth` < `fire` < `water`.
+ * 호출부가 `[a, b].sort().join('|')`로 key를 만들기 때문이다
+ * (`astrologyService.elementPairKey` · `logic/premiumLens.elementPairKey`).
+ *
+ * v1.46 PremiumLens 실측에서 발견한 결함: 예전 key는 `fire|earth`·`fire|air`·
+ * `earth|air`처럼 **정렬되지 않은 순서**였고, 그래서 6쌍 중 3쌍이 조회에 실패해
+ * `?? ''`로 떨어졌다. 화면에는 `불과 흙으로 원소가 달라. `처럼 **문장이 끊긴 채**
+ * 나갔다(v1.4부터 있던 결함이고, 무료 별자리 렌즈에도 그대로 있었다).
+ *
+ * 키를 정렬 순서로 맞춰 두 호출부를 함께 고친다 — 조회 함수를 고치는 대신 데이터를
+ * 고른 이유는, 새 호출부가 또 `sort()`를 쓸 때 자동으로 맞기 때문이다.
+ */
 export const ELEMENT_PAIR_TOPIC: Record<string, string> = {
-  'fire|earth': '속도가 다르게 느껴질 수 있어. 결정을 언제 내리고 싶은지 이야기해봐.',
-  'fire|air': '둘 다 움직임을 좋아하는 쪽으로 이야기되지만, 무엇에 열이 붙는지는 다를 수 있어.',
+  'earth|fire': '속도가 다르게 느껴질 수 있어. 결정을 언제 내리고 싶은지 이야기해봐.',
+  'air|fire': '둘 다 움직임을 좋아하는 쪽으로 이야기되지만, 무엇에 열이 붙는지는 다를 수 있어.',
   'fire|water': '표현의 온도가 다르게 느껴질 수 있어. 서운함을 어떻게 알리는지 이야기해봐.',
-  'earth|air': '계획과 즉흥성 사이에서 편한 지점이 다를 수 있어.',
+  'air|earth': '계획과 즉흥성 사이에서 편한 지점이 다를 수 있어.',
   'earth|water': '둘 다 안정을 중요하게 보는 쪽으로 이야기되지만, 안정의 기준이 다를 수 있어.',
   'air|water': '거리감과 밀착 사이에서 편한 지점이 다를 수 있어.',
 };

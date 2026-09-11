@@ -26,6 +26,17 @@ const ENDPOINT: Record<AiTask, string> = {
   'compatibility-narrative': '/api/ai/compatibility-narrative',
   'history-insight': '/api/ai/history-insight',
   'deep-report-narrative': '/api/ai/deep-report-narrative',
+  /**
+   * v1.46 AI Lens §3 — **렌즈마다 별도 라우트.**
+   *
+   * 캐시 키가 `task::promptVersion::fingerprint`이므로 Task가 나뉘어야 §28이 요구하는
+   * "변하지 않은 Lens는 재호출하지 않는다"가 성립한다 — 상대 MBTI만 고치면 MBTI와
+   * Cross-Lens만 무효화되고 사주·별자리 캐시는 그대로 남는다.
+   */
+  'premium-mbti-lens': '/api/ai/premium-mbti-lens',
+  'premium-saju-lens': '/api/ai/premium-saju-lens',
+  'premium-zodiac-lens': '/api/ai/premium-zodiac-lens',
+  'premium-cross-lens': '/api/ai/premium-cross-lens',
 };
 
 /** 같은 (task, fingerprint)에 대한 진행 중 요청 */

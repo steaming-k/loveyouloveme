@@ -1,6 +1,7 @@
 import { AXIS_DEFINITIONS } from '@/data/axes';
 import { MIRROR_AXES } from '@/data/axes';
-import { clampNarrativeText } from './safety';
+import { lensAiUnitsFor } from '@/data/premiumLensAi';
+import { clampNarrativeText, maskInternalCodes } from './safety';
 import type {
   AiObservedTrait,
   CompatibilityNarrative,
@@ -13,6 +14,7 @@ import type {
   MirrorState,
   ObservedCategory,
   ObservedLabel,
+  PremiumLensKind,
   PhotoObservation,
   RelationshipNarrative,
   TargetAxisKey,
@@ -93,6 +95,20 @@ const EVIDENCE_SOURCES = [
   'observed',
   'history',
   'target',
+  /**
+   * v1.46 §10 — 사용자가 알려준 관계 사건.
+   *
+   * ⚠️ **v1.46에서 이 값을 인용할 수 있는 Task는 하나도 없다.** 사건은 어떤 AI Task의
+   * context에도 실려 가지 않으므로(`lib/logic/relationshipEvents.ts` 상단 참고) 모델은
+   * `eventId`를 알 방법이 없고, 설령 지어내도 네 Task의 허용집합
+   * (`allowedRelationshipRefs`·`allowedCompatibilityRefs`·`allowedHistoryRefs`·
+   * Insight의 `evidenceRefs`) 중 어디에도 없어서 `refsWithinAllowed`가 항목째로 버린다.
+   *
+   * 그래도 여기 적어두는 이유는 위 규칙이다 — 이 목록은 `EvidenceRef` 타입과 **항상
+   * 같이 움직여야 한다.** 타입에만 있고 파서에 없던 상태가 v1.26·v1.41에서 두 번
+   * 결함을 만들었고, 이제 구조 테스트(TC5)가 그 어긋남을 직접 검사한다.
+   */
+  'user_reported_event',
   'deep_followup',
   /** v1.26 — 이미 계산된 동기화율 축 판정 */
   'compatibility',
@@ -147,6 +163,10 @@ function parseEvidenceRef(raw: unknown): EvidenceRef | null {
     const entryId = str(raw.entryId ?? raw.field, 80);
     const axis = str(raw.axis, 40);
     return entryId && axis ? { source, entryId, axis } : null;
+  }
+  if (source === 'user_reported_event') {
+    const eventId = str(raw.eventId ?? raw.field, 80);
+    return eventId ? { source, eventId } : null;
   }
   if (source === 'deep_followup') {
     const questionId = str(raw.questionId ?? raw.field, 80);
@@ -556,4 +576,133 @@ export function attachRuleStates(
       return state ? { ...narrative, state } : null;
     })
     .filter((item): item is RelationshipNarrative => item !== null);
+}
+
+/* ------------------- Premium Lens AI (v1.46 AI Lens · §27 · §30) --------- */
+
+/** §27 — unit 본문 상한. 넘치면 `clampNarrativeText`가 문장 경계에서 자른다 */
+const LENS_UNIT_MAX = 260;
+const LENS_SUMMARY_MAX = 240;
+const LENS_CHECKPOINT_MAX = 140;
+const LENS_CROSS_THEME_MAX = 100;
+
+/**
+ * 렌즈 AI 응답 파서 (v1.46 AI Lens)
+ *
+ * ⚠️ **제목을 받지 않는다.** 모델은 `id`와 `body`만 만들고 제목은
+ * `data/premiumLensAi.ts`에서 온다 — 이유는 그 파일 상단에 있다.
+ *
+ * ⚠️ **순서를 모델에게 맡기지 않는다.** 허용 목록의 순서로 다시 정렬한다. 같은
+ * 리포트를 두 번 열었을 때 목차가 달라지면 그건 결과가 달라진 것처럼 읽힌다.
+ *
+ * ⚠️ 허용 목록에 없는 id · 중복 id · 빈 body는 **그 unit만** 버린다. 응답 전체를
+ * 버리지 않는다 — 여섯 칸 중 하나가 틀렸다고 나머지 다섯을 지울 이유가 없다(§32).
+ *
+ * ⚠️ 모든 문장이 `maskInternalCodes`를 지난다. **파서에 둔 이유**는 `crossTheme`이다 —
+ * 그 값은 화면이 아니라 Cross-Lens 호출의 context로 들어간다. 화면 앞에서만 걸러내면
+ * 내부 코드가 다음 호출의 입력으로 되살아나고, 그건 이 결함이 처음 생긴 경로다.
+ */
+export function parseLensNarrativeResponse(
+  raw: unknown,
+  kind: PremiumLensKind,
+  mode: 'pair' | 'self',
+): {
+  summary: string;
+  units: { id: string; title: string; body: string }[];
+  checkpoint?: string;
+  crossTheme?: string;
+} | null {
+  if (!isObject(raw)) return null;
+
+  const summary = maskInternalCodes(str(raw.summary, 1200)) ?? '';
+  const specs = lensAiUnitsFor(kind, mode);
+  const order = new Map(specs.map((spec, index) => [spec.id, index]));
+
+  const seen = new Set<string>();
+  const units: { id: string; title: string; body: string; at: number }[] = [];
+
+  if (Array.isArray(raw.units)) {
+    for (const item of raw.units) {
+      if (!isObject(item)) continue;
+      const id = str(item.id, 60);
+      if (!id || !order.has(id) || seen.has(id)) continue;
+      const body = maskInternalCodes(str(item.body, 1200));
+      if (!body) continue;
+      seen.add(id);
+      units.push({
+        id,
+        title: specs[order.get(id)!]!.title,
+        body: clampNarrativeText(body, LENS_UNIT_MAX),
+        at: order.get(id)!,
+      });
+    }
+  }
+
+  units.sort((a, b) => a.at - b.at);
+
+  /**
+   * summary도 unit도 없으면 이 응답에는 화면에 그릴 것이 없다. `null`을 돌려주면
+   * 핸들러가 `narrative: null`로 내리고, 화면은 결정론 결과만 그린다(§32).
+   */
+  if (!summary && units.length === 0) return null;
+
+  const checkpoint = maskInternalCodes(str(raw.checkpoint, 600));
+  const crossTheme = maskInternalCodes(str(raw.crossTheme, 400));
+
+  return {
+    summary: summary ? clampNarrativeText(summary, LENS_SUMMARY_MAX) : '',
+    units: units.map(({ id, title, body }) => ({ id, title, body })),
+    ...(checkpoint ? { checkpoint: clampNarrativeText(checkpoint, LENS_CHECKPOINT_MAX) } : {}),
+    ...(crossTheme ? { crossTheme: clampNarrativeText(crossTheme, LENS_CROSS_THEME_MAX) } : {}),
+  };
+}
+
+/** §25 — 블록별 상한. 모델이 더 보내면 앞에서부터 자른다 */
+const CROSS_LIMITS = { repeatedThemes: 3, differences: 2, verificationQuestions: 3 } as const;
+const CROSS_ITEM_MAX = 180;
+const CROSS_CLOSING_MAX = 140;
+
+function stringList(value: unknown, limit: number): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const item of value) {
+    /** 내부 코드가 실제로 화면까지 나갔던 자리다 — 여기가 그 회귀 지점이다 */
+    const text = maskInternalCodes(str(item, 900));
+    if (!text) continue;
+    const clamped = clampNarrativeText(text, CROSS_ITEM_MAX);
+    // 같은 문장을 두 블록에 나눠 담는 모델이 있다 — 블록 안 중복만 여기서 막는다.
+    if (out.includes(clamped)) continue;
+    out.push(clamped);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+export function parseCrossLensResponse(raw: unknown): {
+  repeatedThemes: string[];
+  differences: string[];
+  verificationQuestions: string[];
+  closing?: string;
+} | null {
+  if (!isObject(raw)) return null;
+
+  const repeatedThemes = stringList(raw.repeatedThemes, CROSS_LIMITS.repeatedThemes);
+  const differences = stringList(raw.differences, CROSS_LIMITS.differences);
+  const verificationQuestions = stringList(
+    raw.verificationQuestions,
+    CROSS_LIMITS.verificationQuestions,
+  );
+
+  if (repeatedThemes.length === 0 && differences.length === 0 && verificationQuestions.length === 0) {
+    return null;
+  }
+
+  const closing = maskInternalCodes(str(raw.closing, 600));
+
+  return {
+    repeatedThemes,
+    differences,
+    verificationQuestions,
+    ...(closing ? { closing: clampNarrativeText(closing, CROSS_CLOSING_MAX) } : {}),
+  };
 }

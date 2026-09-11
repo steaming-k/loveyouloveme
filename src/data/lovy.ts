@@ -159,3 +159,63 @@ export const LOVY_ASSETS: Record<LovyPose, LovyAsset> = {
     alt: '러비가 수첩에 이번 관찰을 적는 모습',
   },
 };
+
+/**
+ * 포즈 하나의 실제 렌더 크기. `Lovy`와 `LovySequence`가 **같은 함수**를 쓴다.
+ *
+ * ⚠️ 두 곳이 각자 계산하면 시퀀스 박스와 이미지 크기가 어긋나고, 그 어긋남은
+ * 프레임이 바뀔 때 **레이아웃이 튀는 것**으로 나타난다(§30 CLS 금지).
+ */
+export function lovyRenderSize(pose: LovyPose, size: number): { width: number; height: number } {
+  const asset = LOVY_ASSETS[pose];
+  const width = Math.round(size * (LOVY_VISUAL_SCALE[pose] ?? 1));
+  return { width, height: Math.round((width * asset.height) / asset.width) };
+}
+
+/* ────────────────────────────── Home 관찰 시퀀스 (v1.46 · §15~§19) */
+
+/**
+ * 첫 화면에서 러비가 반복하는 **관찰 루프.**
+ *
+ * ```
+ * 기본 관찰 → 무언가 발견 → 돋보기 관찰 → 수첩에 기록 → (다시 기본 관찰)
+ * ```
+ *
+ * 이건 장식이 아니라 **세계관의 요약**이다 — 러비는 사랑을 다 아는 전문가가 아니라
+ * 관찰하고 기록하는 외계인이고, 그 다섯 글자(관찰·수집·연결·보고·기억)가 첫 화면에서
+ * 4장으로 재생된다.
+ *
+ * ⚠️ **새 이미지를 만들지 않았다.** 네 장 전부 이미 runtime에 있던 에셋이다
+ * (`chart`·`notice`·`observe`·`record`). `docs/캐릭터`의 나머지 이미지는 (a) 이미 있는
+ * 포즈와 겹치거나 (b) 이 시퀀스의 서사에 들어갈 자리가 없어서 가져오지 않았다 —
+ * 같은 역할의 에셋을 두 벌 두면 화면마다 다른 러비가 나온다(v1.45 주석과 같은 규칙).
+ *
+ * ══ v1.46 PremiumLens §42~§44 — 첫 프레임을 `hero` → `chart`로 바꿨다 ══════
+ *
+ * `hero`(= `docs/캐릭터/1.png`, SHA-256 동일)는 소품 없이 그냥 서 있는 기본 포즈라,
+ * 뒤에 오는 세 장(전구 · 돋보기 · 기록판)과 이어지지 않고 관찰 루프가
+ * '서 있다 → 갑자기 일한다'로 끊겨 읽혔다. `chart`는 관찰 기록 차트를 보며 턱을 괸
+ * 모습이라 **이미 관찰 중인 idle**이고, 거기서 무언가를 알아채는 다음 장으로 자연스럽게
+ * 이어진다. 감정이 강하지 않고(하트·축하·울음·잠 아님) 소품도 나머지 셋과 겹치지 않는다.
+ *
+ * ⚠️ **`hero.png` 파일 자체는 지우지 않았다**(§42) — Splash와 Onboarding이 쓴다.
+ *
+ * ⚠️ 이제 네 장이 전부 정방형 캔버스지만(291×298 · 1254×1254) `LovySequence`가
+ * 네 장의 렌더 크기를 전부 구해 **가장 큰 박스**를 고정으로 잡는 로직은 그대로 둔다 —
+ * `LOVY_VISUAL_SCALE`이 포즈마다 달라서 렌더 크기는 여전히 같지 않고, 프레임마다
+ * 박스가 달라지면 crossfade 도중에 주변 텍스트가 밀린다.
+ */
+export interface LovySequenceFrame {
+  pose: LovyPose;
+  /** 이 프레임에서 러비가 무엇을 하는 중인지 — 스크린리더가 읽는 한 줄 */
+  caption: string;
+  /** §18 — 옆에 작대기 3개가 한 번 깜빡이는 프레임 (발견) */
+  discovery?: true;
+}
+
+export const LOVY_HOME_SEQUENCE: readonly LovySequenceFrame[] = [
+  { pose: 'chart', caption: '러비가 관찰 기록을 보고 있는 중' },
+  { pose: 'notice', caption: '러비가 무언가를 알아챈 순간', discovery: true },
+  { pose: 'observe', caption: '러비가 돋보기로 자세히 보는 중' },
+  { pose: 'record', caption: '러비가 관찰한 것을 적는 중' },
+];

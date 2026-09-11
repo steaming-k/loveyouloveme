@@ -170,6 +170,32 @@ export const PROMPT_VERSIONS = {
    * 사용자가 **검사받지 않은 현재형 본문**을 유료 리포트에서 계속 받는다.
    */
   deepReport: 'deep-report-v4-tense',
+  /**
+   * v1.46 AI Lens §6 — **렌즈별 프롬프트 4개.**
+   *
+   * ⚠️ 세 렌즈가 하나의 버전 문자열을 공유하지 않는다. 캐시 키는
+   * `task::promptVersion::fingerprint`(v1.42 §40.12)라 버전을 공유하면 MBTI 프롬프트만
+   * 고쳐도 사주·별자리 캐시가 함께 죽는다 — §28이 요구하는 '변하지 않은 Lens는
+   * 재호출하지 않는다'가 프롬프트 수정 한 번으로 무너진다.
+   *
+   * ⚠️ `deep-report-v4-tense`는 이번에 한 글자도 건드리지 않는다(§6). 새 Task가
+   * 늘어난 것이지 기존 Task의 계약이 바뀐 것이 아니다.
+   */
+  /**
+   * v2 — 출력 JSON 예시의 **필드 설명을 값 자리에서 뺐다.**
+   *
+   * 브라우저 실측에서 MBTI 렌즈 summary가 `이 렌즈를 관계 맥락에서 어떻게 읽는지
+   * 3문장 이내`로 나왔다. 예시의 설명문을 그대로 옮겨 적은 것이고, 금지 어휘가 없어서
+   * 스캐너 네 개를 전부 통과했다. 자리 표시를 꺾쇠로 바꾸고 설명은 JSON 밖 표로 옮겼다.
+   *
+   * ⚠️ 버전을 올리는 이유는 **캐시다.** 키가 `task::promptVersion::fingerprint`라서
+   * 버전을 그대로 두면 이미 그 문장을 받은 세션이 새 프롬프트의 결과를 영영 보지
+   * 못한다(v1.42 §40.12).
+   */
+  premiumMbtiLens: 'premium-mbti-v2',
+  premiumSajuLens: 'premium-saju-v2',
+  premiumZodiacLens: 'premium-zodiac-v2',
+  premiumCrossLens: 'premium-cross-lens-v2',
 } as const;
 
 export const ANALYSIS_VERSION = '1.0';
