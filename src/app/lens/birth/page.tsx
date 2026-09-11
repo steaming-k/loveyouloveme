@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 
 import { Button } from '@/components/common/Button';
@@ -15,6 +15,7 @@ import { BIRTH_COPY } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { hasAnyBirthInput, isBirthDateUsable } from '@/lib/logic/birth';
 import { ROUTES } from '@/lib/routes';
+import { useContextualBack } from '@/hooks/useContextualBack';
 import { useSession } from '@/state/SessionProvider';
 
 /**
@@ -36,15 +37,21 @@ export default function BirthProfilePage() {
 }
 
 function BirthProfileView() {
-  const router = useRouter();
   const params = useSearchParams();
   const { showToast } = useToast();
   const { answers, setBirthProfile, clearBirthProfile } = useSession();
 
-  // 어느 렌즈에서 넘어왔는지 — 저장 후 그 렌즈로 돌려보낸다.
+  /**
+   * 어느 렌즈에서 넘어왔는지 — **주소창으로 바로 들어온 경우의 fallback**이다.
+   *
+   * v1.46.3 — 이 화면은 이제 렌즈 목록 말고도 Premium 리포트의 '볼 수 없는 렌즈'
+   * 카드와 프로필 수정 시트에서 열린다. 그 경로들을 `from` 값으로 하나씩 늘리는
+   * 대신 **앱 안에서 왔으면 직전 화면으로 돌아간다**(v1.46.2 §Navigation).
+   */
   const from = params.get('from');
   const backHref =
     from === 'saju' ? ROUTES.lensSaju : from === 'astrology' ? ROUTES.lensAstrology : ROUTES.lens;
+  const goBack = useContextualBack(backHref);
 
   // 시간·날짜는 로직 파일이 아니라 화면에서 주입한다(순수 함수는 시간을 모른다).
   const [today] = useState(() => new Date());
@@ -56,7 +63,7 @@ function BirthProfileView() {
   const handleDone = () => {
     if (selfReady) trackEvent('birth_profile_complete', { subject: 'self' });
     if (targetReady) trackEvent('birth_profile_complete', { subject: 'target' });
-    router.push(backHref);
+    goBack();
   };
 
   return (

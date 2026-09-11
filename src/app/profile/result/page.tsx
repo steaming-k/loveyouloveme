@@ -16,6 +16,7 @@ import { ProfileLayerStack } from '@/components/profile/ProfileLayerStack';
 import { PRIVACY } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
+import { formatBirthSummary } from '@/lib/logic/birth';
 import { PROFILE_REVISIT_RETURN, RETURN_TO_PARAM } from '@/lib/returnTo';
 import { isRevisit, revisitHref, revisitSource } from '@/lib/resultView';
 import { ROUTES } from '@/lib/routes';
@@ -270,6 +271,23 @@ function ProfileResultView() {
             onClick={() => {
               if (revisit) trackEvent('result_edit_entry', { section: 'experience' });
               router.push(editHref(ROUTES.past(1)));
+            }}
+          />
+          {/*
+            v1.46.3 — 생년월일은 **한 번 넣으면 다시 보이지 않는 값**이었다.
+            입력 화면(`/lens/birth`)이 렌즈 목록 안쪽에 있어서, 오타를 고치거나
+            음력으로 잘못 넣은 걸 바꾸려면 그 경로를 기억하고 있어야 했다.
+            수정 허브에 현재 값과 함께 둔다 — 없으면 `입력 없음`이라고 말한다.
+
+            ⚠️ 이 값은 동기화율·Mirror 판정에 들어가지 않는다(렌즈 전용).
+            그래서 시트 설명의 '다시 계산돼' 문장에도 넣지 않았다.
+          */}
+          <FillDataRow
+            label={`생년월일 · ${formatBirthSummary(answers.birthProfile)}`}
+            actionLabel="이동"
+            onClick={() => {
+              if (revisit) trackEvent('result_edit_entry', { section: 'birth' });
+              router.push(ROUTES.lensBirth);
             }}
           />
           <Button variant="secondary" className="mt-1.5" onClick={() => setEditOpen(false)}>

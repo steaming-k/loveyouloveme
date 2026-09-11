@@ -61,6 +61,7 @@ import type {
   PremiumCrossLens,
   PremiumLensBundle,
   PremiumLensEntry,
+  PremiumLensFix,
   PremiumLensKind,
   PremiumLensReport,
   PremiumLensSectionUnit,
@@ -919,8 +920,12 @@ export function buildCrossLens(reports: readonly PremiumLensReport[]): PremiumCr
 
 /* ══════════════════════════════════════════════════════════ 조립 */
 
-function unavailable(kind: PremiumLensKind, reason: string): PremiumLensEntry {
-  return { kind, label: LENS_LABEL[kind], mode: 'unavailable', reason };
+function unavailable(
+  kind: PremiumLensKind,
+  reason: string,
+  fix: PremiumLensFix,
+): PremiumLensEntry {
+  return { kind, label: LENS_LABEL[kind], mode: 'unavailable', reason, fix };
 }
 
 /**
@@ -943,7 +948,7 @@ export function buildPremiumLensBundle(input: PremiumLensInput): PremiumLensBund
 
   /* ── MBTI ─────────────────────────────────────────────────────────── */
   const mbti: PremiumLensEntry = !selfMbti
-    ? unavailable('mbti', LENS_UNAVAILABLE_REASON.mbtiNoSelf)
+    ? unavailable('mbti', LENS_UNAVAILABLE_REASON.mbtiNoSelf, 'mbti')
     : hasTarget && targetMbti
       ? buildMbtiPair(selfMbti, targetMbti, events)
       : buildMbtiSelf(selfMbti, declared, selfReason);
@@ -957,6 +962,7 @@ export function buildPremiumLensBundle(input: PremiumLensInput): PremiumLensBund
         isLunarBlocked(selfBirth, today)
           ? LENS_UNAVAILABLE_REASON.sajuLunar
           : LENS_UNAVAILABLE_REASON.sajuNoSelf,
+        'birth',
       )
     : theirsSaju
       ? buildSajuPair(mineSaju.pillar, theirsSaju.pillar, mineSaju.limitations, events)
@@ -967,7 +973,7 @@ export function buildPremiumLensBundle(input: PremiumLensInput): PremiumLensBund
   const theirsSign = hasTarget ? getSunSign(targetBirth.date) : null;
   const cusp = nearCusp(selfBirth.date) || (theirsSign !== null && nearCusp(targetBirth.date));
   const zodiac: PremiumLensEntry = !mineSign
-    ? unavailable('zodiac', LENS_UNAVAILABLE_REASON.zodiacNoSelf)
+    ? unavailable('zodiac', LENS_UNAVAILABLE_REASON.zodiacNoSelf, 'birth')
     : theirsSign
       ? buildZodiacPair(mineSign, theirsSign, cusp)
       : buildZodiacSelf(mineSign, nearCusp(selfBirth.date), declared, selfReason);

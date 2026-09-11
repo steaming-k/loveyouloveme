@@ -352,6 +352,18 @@ export const LENS_SELF_COPY = {
 export const LENS_TARGET_HINT =
   '상대 정보를 알게 되면 그때 둘을 나란히 놓고 다시 볼 수 있어. 지금 모른다고 결과가 덜 맞는 건 아니야.';
 
+/**
+ * `unavailable` 카드의 버튼 문구 (v1.46.3)
+ *
+ * 카드는 '왜 못 보는지'만 말하고 끝났었다. 읽고 나면 **어디서 채우는지**를
+ * 사용자가 직접 찾아야 했고, 출생정보 입력은 렌즈 화면 안쪽에 있어서 리포트에서는
+ * 보이지 않는다. 이유 바로 아래에 그 길을 둔다.
+ */
+export const LENS_FIX_CTA = {
+  birth: '생년월일 입력하기',
+  mbti: 'MBTI 입력하기',
+} as const;
+
 export const LENS_UNAVAILABLE_REASON = {
   mbtiNoSelf: '네 MBTI를 입력하면 이 렌즈를 볼 수 있어. 모르면 비워둬도 괜찮아 — 없는 유형을 내가 정하진 않을게.',
   sajuNoSelf: '네 생년월일(양력)이 있어야 일주를 계산할 수 있어.',

@@ -8,7 +8,7 @@
 | 항목 | 내용 |
 |---|---|
 | 문서 종류 | QA 체크리스트 + 테스트케이스 (실행 가능) |
-| 대상 버전 | **v1.46.2** (구현 `dc29d64` · 동결 `90e680d`) |
+| 대상 버전 | **v1.46.2** (구현 `dc29d64` · 동결 `90e680d`) + v1.46.3 렌즈 입력 동선(미릴리스) |
 | 최근 실행 | 2026-09-11 · dev(localhost:3000) 393×852 · Production(loveyouloveme.vercel.app) |
 | 관련 문서 | [기능명세_현행](./기능명세_현행.md) · [versions/README](./versions/README.md) |
 | 실행 결과 | [§4 요약](#4-이번-실행-결과-2026-09-11) · [§5 결함](#5-발견된-결함) |
@@ -41,7 +41,7 @@ QA는 세 겹이고, **위에서 걸리면 아래로 내려가지 않는다.**
 - [ ] `npm run typecheck` → 0
 - [ ] `npx eslint src tests --ext .ts,.tsx,.mjs` → 0 (⚠️ `npm run lint`는 종료 코드가 0이 아니다)
 - [ ] `npm run test:ai` → **577**
-- [ ] `npm run test:lens` → **197**
+- [ ] `npm run test:lens` → **206**
 - [ ] `npm run test:premium` → **233**
 - [ ] `npm run test:relationship-evidence` → **286**
 - [ ] `npm run test:trust` → **205**
@@ -170,6 +170,9 @@ location.reload();
 | C-06 | 출생정보 입력 | F4 | `/lens/birth` | 나/상대 각각 입력 · 시간 모름 허용 | 수동 |
 | C-07 | 렌즈 허브 | F6 | `/compatibility/lenses` | CORE 점수를 먼저 보여주고 렌즈는 참고로 | 수동 |
 | C-08 | 별자리 legacy | — | `/lens/zodiac` | `/lens/astrology`로 redirect | 수동 |
+| C-09 | 볼 수 없는 렌즈의 길 | F0(내 MBTI·생년월일 없음) | Premium 리포트 하단 카드 | 이유 아래 `생년월일 입력하기`·`MBTI 입력하기` 버튼 | 수동 + 자동(FIX-05~07) |
+| C-10 | 입력 후 복귀 | 〃 | 카드 버튼 → 입력 → `이 정보로 볼게` | **같은 리포트**로 복귀하고 그 렌즈가 열린다 | 수동 + 자동(FIX-09) |
+| C-11 | 생년월일 수정 | F6 | `/profile/result` → `수정` | `생년월일 · 1995.04.12 · 양력 · 시간 모름` 행이 보인다 | 수동 + 자동(FIX-08) |
 
 ### D. Premium
 
@@ -249,7 +252,7 @@ location.reload();
 | suite | 결과 | suite | 결과 |
 |---|---|---|---|
 | `test:ai` | 577 | `test:trust` | 205 |
-| `test:lens` | 197 | `test:lifecycle` | 144 |
+| `test:lens` | 206 | `test:lifecycle` | 144 |
 | `test:premium` | 233 | `test:history` | 100 |
 | `test:relationship-evidence` | 286 | `test:observed` | 10 |
 | `test:nav` | 40 | `test:ai:e2e` | 10/10 |
@@ -261,13 +264,13 @@ location.reload();
 |---|---|---|---|
 | A 진입·입력 | 10 | 9 | A-08 실패 → DEF-02 |
 | B 결과 | 11 | 10 | B-11 실패 → DEF-01 |
-| C 렌즈 | 8 | 8 | C-04는 '엔진 미연결'이 **현재 사양** |
+| C 렌즈 | 11 | 11 | C-04는 '엔진 미연결'이 **현재 사양** · C-09~11은 v1.46.3 |
 | D Premium | 8 | 8 | 자격 O/X · 부분정보 · MBTI만 전부 기대대로 |
 | E History | 5 | 5 | 0건 / 1건 / 2건 분기 |
 | F Navigation | 13 | 13 | 복원 오차 0~8px |
 | G 엣지·환경 | 7 | 7 | 360px 가로 오버플로 0 |
 | H 안전 | 5 | 5 | dev 라우트 6종 Production 404 |
-| **합계** | **67** | **65** | 실패 2건은 §5 |
+| **합계** | **70** | **68** | 실패 2건은 §5 |
 
 **주요 실측값**
 

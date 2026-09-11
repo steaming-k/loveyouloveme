@@ -280,6 +280,38 @@ console.log('\nLENS-03~10 · 렌즈별 독립 mode 판정');
   );
   check('LENS-05e 그래도 MBTI는 pair다', lensOf(noSelfBirth, 'mbti').mode === 'pair');
 
+  /* ── FIX-01~04 · 볼 수 없는 렌즈에서 '채우러 가는 길' (v1.46.3) ────────────
+     이유만 적힌 카드는 사용자를 막다른 곳에 둔다. 무엇을 채우면 되는지는
+     **값(`fix`)으로** 정해져야 한다 — 화면이 이유 문구를 읽어 목적지를
+     추측하면 문구를 고치는 순간 이동이 조용히 깨진다. */
+  check(
+    "FIX-01 MBTI unavailable의 fix가 'mbti'다",
+    lensOf(noSelfMbti, 'mbti').fix === 'mbti',
+    lensOf(noSelfMbti, 'mbti').fix,
+  );
+  check(
+    "FIX-02 사주·별자리 unavailable의 fix가 'birth'다",
+    lensOf(noSelfBirth, 'saju').fix === 'birth' && lensOf(noSelfBirth, 'zodiac').fix === 'birth',
+    [lensOf(noSelfBirth, 'saju').fix, lensOf(noSelfBirth, 'zodiac').fix],
+  );
+
+  const lunarOnly = await run({
+    ...BASE,
+    birthProfile: { date: '1995-04-12', calendarType: 'lunar', time: null, timeUnknown: true },
+    target: TARGET,
+  });
+  check(
+    "FIX-03 음력 차단도 같은 곳으로 보낸다 (fix 'birth')",
+    lensOf(lunarOnly, 'saju').mode === 'unavailable' && lensOf(lunarOnly, 'saju').fix === 'birth',
+    lensOf(lunarOnly, 'saju').fix,
+  );
+  check(
+    'FIX-04 unavailable 항목은 이유와 fix를 **둘 다** 갖는다',
+    [lensOf(noSelfMbti, 'mbti'), lensOf(noSelfBirth, 'saju'), lensOf(noSelfBirth, 'zodiac')].every(
+      (lens) => typeof lens.reason === 'string' && lens.reason.length > 0 && Boolean(lens.fix),
+    ),
+  );
+
   /**
    * LENS-07 — 출생 시간이 없어도 시간이 필요한 해석을 만들지 않는다.
    *
@@ -1313,6 +1345,49 @@ console.log('\nAI-LENS-01 ~ AI-LENS-20 — 렌즈별 AI 해석 (v1.46 AI Lens)')
 }
 
 
+
+/* ══════════════════════════════════════════════════════════════════════
+   FIX-05 ~ FIX-09 · 막다른 카드를 만들지 않는다 (v1.46.3 · 소스 스캔)
+
+   런타임으로 증명되는 것은 '값이 붙어 있다'까지다. **화면이 그 값을 쓰는가**와
+   **생년월일을 나중에 고칠 수 있는가**는 의존 관계의 성질이라 소스로 고정한다.
+   ══════════════════════════════════════════════════════════════════════ */
+console.log('\nFIX-05 ~ FIX-09 — 볼 수 없는 렌즈에서 채우러 가는 길 (v1.46.3)');
+{
+  const section = await src('src/components/premium/PremiumLensSection.tsx');
+  const cardBlock = section.slice(
+    section.indexOf('function UnavailableCard'),
+    section.indexOf('function CrossLensCard'),
+  );
+
+  check(
+    'FIX-05 볼 수 없는 렌즈 카드가 누를 수 있는 버튼을 그린다',
+    /<button/.test(cardBlock) && cardBlock.includes('LENS_FIX_CTA[lens.fix]'),
+  );
+  check(
+    'FIX-06 목적지를 fix 값으로 정한다 (이유 문구를 읽지 않는다)',
+    cardBlock.includes("lens.fix === 'birth'") &&
+      !/lens\.reason\.(includes|match|test)/.test(cardBlock),
+    cardBlock.match(/lens\.reason\.[a-z]+/)?.[0] ?? 'clean',
+  );
+  check(
+    'FIX-07 두 목적지가 실제 입력 화면이다 (출생정보 · MBTI)',
+    cardBlock.includes('ROUTES.lensBirth') && cardBlock.includes('ROUTES.declared(4)'),
+  );
+
+  const profileResult = await src('src/app/profile/result/page.tsx');
+  check(
+    'FIX-08 프로필 수정에 생년월일 행이 있고 현재 값을 함께 보여준다',
+    profileResult.includes('formatBirthSummary(answers.birthProfile)') &&
+      profileResult.includes('ROUTES.lensBirth'),
+  );
+
+  const birth = await src('src/app/lens/birth/page.tsx');
+  check(
+    'FIX-09 출생정보 입력을 마치면 진입한 화면으로 돌아간다',
+    birth.includes('useContextualBack(backHref)') && /goBack\(\);/.test(birth),
+  );
+}
 
 /* ══════════════════════════════════════════════════════════════════════ */
 

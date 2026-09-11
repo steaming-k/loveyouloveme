@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import { Lovy } from '@/components/lovy/Lovy';
@@ -7,6 +8,7 @@ import { SectionLabel } from '@/components/common/primitives';
 import type { LovyPose } from '@/data/lovy';
 import {
   CROSS_LENS_COPY,
+  LENS_FIX_CTA,
   LENS_TARGET_HINT,
   LENS_ANCHOR,
   LENS_SECTION_COPY,
@@ -15,6 +17,7 @@ import { LENS_AI_COPY } from '@/data/premiumLensAi';
 import { EMPTY_PREMIUM_LENS_AI, lensAiStateOf, type PremiumLensAi } from '@/hooks/usePremiumLensAi';
 import { trackEvent } from '@/lib/analytics';
 import { readOpenState, writeOpenState } from '@/lib/openState';
+import { ROUTES } from '@/lib/routes';
 import { cn } from '@/lib/cn';
 import type {
   AiNarrativeState,
@@ -342,7 +345,22 @@ function BasisBlock({ rows }: { rows: PremiumLensReport['basis'] }) {
  * 만들 수 없는 렌즈. **자리를 지운 채 숨기지 않는다** — 번들에 셋이 들어 있다고
  * 말했으면 셋이 다 보여야 하고, 못 만든 하나는 이유를 말해야 한다(§29 · §52).
  */
+/**
+ * 볼 수 없는 렌즈 — **이유 다음에 길을 둔다** (v1.46.3)
+ *
+ * 예전에는 이유만 적힌 정적 카드였다. `네 생년월일(양력)이 있어야 일주를 계산할 수
+ * 있어`를 읽은 사용자가 **그 생년월일을 어디서 넣는지**는 화면 어디에도 없었다 —
+ * 입력 화면(`/lens/birth`)은 렌즈 목록 안쪽에 있어서 리포트에서는 보이지 않는다.
+ *
+ * ⚠️ 목적지는 `lens.fix`(결정론 값)로 정한다. 이유 **문구를 읽어** 판단하지 않는다 —
+ * 문구를 고치는 순간 이동이 조용히 깨진다.
+ *
+ * ⚠️ 카드 전체를 버튼으로 만들지 않는다. 이유 문장은 읽는 것이고 버튼은 누르는
+ * 것이라, 한 덩어리로 묶으면 스크린리더에서 이유까지 버튼 이름이 된다.
+ */
 function UnavailableCard({ lens }: { lens: Extract<PremiumLensEntry, { mode: 'unavailable' }> }) {
+  const router = useRouter();
+
   return (
     <div className="flex flex-col gap-1 rounded-card border border-dashed border-line-strong bg-sunken px-4 py-3.5">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -352,6 +370,19 @@ function UnavailableCard({ lens }: { lens: Extract<PremiumLensEntry, { mode: 'un
         </span>
       </div>
       <p className="text-[11.5px] keep-all leading-relaxed text-ink-sub">{lens.reason}</p>
+
+      <button
+        type="button"
+        onClick={() =>
+          router.push(lens.fix === 'birth' ? ROUTES.lensBirth : ROUTES.declared(4))
+        }
+        className="mt-1.5 flex min-h-11 w-full items-center justify-between rounded-row border border-line bg-surface px-3.5 text-left active:bg-sunken"
+      >
+        <span className="text-[12.5px] font-medium">{LENS_FIX_CTA[lens.fix]}</span>
+        <span className="flex-none text-meta font-semibold text-brand" aria-hidden>
+          →
+        </span>
+      </button>
     </div>
   );
 }

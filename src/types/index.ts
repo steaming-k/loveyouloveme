@@ -2327,12 +2327,23 @@ export interface PremiumLensReport {
 }
 
 /** 만들 수 없는 Lens — 이유를 그대로 보여준다(§29 정직한 제한) */
+/**
+ * `unavailable`을 **풀 수 있는 방법** (v1.46.3)
+ *
+ * 이유 문장(`reason`)은 사람에게 하는 말이고, 이 값은 화면이 **어디로 보낼지**를
+ * 정하는 근거다. 화면이 문구를 읽어 목적지를 추측하면(‘생년월일’이라는 단어가
+ * 들어 있으면 출생정보로) 문구를 고칠 때마다 이동이 조용히 깨진다.
+ */
+export type PremiumLensFix = 'birth' | 'mbti';
+
 export interface PremiumLensUnavailable {
   kind: PremiumLensKind;
   label: string;
   mode: 'unavailable';
   /** 무엇이 있으면 볼 수 있는지까지 말한다 */
   reason: string;
+  /** 그 값을 채우러 갈 곳 */
+  fix: PremiumLensFix;
 }
 
 export type PremiumLensEntry = PremiumLensReport | PremiumLensUnavailable;
