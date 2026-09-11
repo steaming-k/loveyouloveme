@@ -205,6 +205,25 @@ export function RelationshipEventSection() {
                   />
                 ))}
               </div>
+              {/*
+                UT-1 P1-B §5 — **종류는 선택 입력이다.**
+
+                지금까지 종류를 고르지 않으면 본문 칸 자체가 열리지 않았다. 그래서
+                '분류하기는 애매한데 기억나는 장면'을 가진 사용자는 아무것도 적지
+                못했다 — 선택 입력이라고 말해놓고 통과 조건으로 쓰고 있었다.
+
+                ⚠️ **분류를 우리가 대신 하지 않는다.** 이 길로 들어오면 종류는
+                `other`(기타)로 저장되고, 그 값도 **사용자가 고른 것**이다(이 버튼을
+                눌렀다는 사실이 선택이다). 본문을 읽고 종류를 추론하는 코드는
+                만들지 않는다 — 그게 §5의 attribution 규칙이다.
+              */}
+              <button
+                type="button"
+                onClick={() => setDraftType('other')}
+                className="flex min-h-11 items-center text-[11.5px] text-ink-muted press-scale"
+              >
+                고르기 애매하면 그냥 적어도 돼 →
+              </button>
             </div>
           ) : (
             <div className="flex flex-col gap-2.5">

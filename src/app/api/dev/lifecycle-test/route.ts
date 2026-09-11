@@ -20,7 +20,7 @@ import {
   resolveRelationshipContext,
 } from '@/lib/logic/relationshipStage';
 import { buildApproachHints } from '@/lib/logic/approachHints';
-import { buildConversationQuestions } from '@/lib/logic/compatibility';
+import { buildConversationQuestions } from '@/lib/logic/conversationQuestions';
 import {
   compatibilityNarrativeFingerprint,
   deepReportFingerprint,
@@ -244,7 +244,16 @@ export async function POST(request: Request): Promise<Response> {
   /* ── ② 문맥에 따라 달라지는 것 ────────────────────────────────────────── */
   const copy = STAGE_JOB_COPY[job];
   const approachHints = buildApproachHints(target, compatibility);
-  const questions = buildConversationQuestions(compatibility);
+  /**
+   * UT-1 P1-B §3 — 화면과 **같은 맥락**을 넘긴다. 여기서 job을 빼면 fixture는
+   * 실제 사용자가 받는 것과 다른 질문을 검사하게 된다.
+   */
+  const questions = buildConversationQuestions(compatibility, {
+    job,
+    declared,
+    target,
+    currentSignals: currentRelationship,
+  });
 
   /* ── ③ Premium Deep Report 본문 (v1.40.1 · §38.2) ───────────────────────
      v1.40 fixture는 무료 화면 문구 + Paywall `additions`만 훑었다. 그래서 유료
@@ -561,6 +570,14 @@ export async function POST(request: Request): Promise<Response> {
       ],
       outwardHintCount: jobAllowsOutwardAction(job) ? approachHints.length : 0,
       questionCount: questions.length,
+      /**
+       * UT-1 P1-B §3 — fixture가 **어떤 문장이 골라졌는지**를 값으로 본다.
+       *
+       * 개수만 내면 variant 선택이 맥락을 따라가는지 확인할 수 없다. `id`는 축이고
+       * `text`는 `pickQuestionVariant`가 고른 문장이다 — 둘 다 결정론이라 같은
+       * 입력에는 항상 같은 값이 나온다.
+       */
+      questions: questions.map((question) => ({ id: question.id, text: question.text })),
       /**
        * v1.40 §37.9 — **Premium까지 같은 안전 규칙을 받는다.**
        *

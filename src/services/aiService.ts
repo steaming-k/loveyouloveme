@@ -1,4 +1,8 @@
-import { buildCompatibility, buildConversationQuestions } from '@/lib/logic/compatibility';
+import { buildCompatibility } from '@/lib/logic/compatibility';
+import {
+  buildConversationQuestions,
+  type ConversationQuestionContext,
+} from '@/lib/logic/conversationQuestions';
 import { buildMbtiBridge } from '@/lib/logic/mbtiBridge';
 import { buildMbtiLens, buildMbtiSelfLens, buildMbtiQuestions } from '@/lib/logic/mbtiLens';
 import { buildFirstContactReport } from '@/lib/logic/firstContact';
@@ -427,8 +431,9 @@ export async function calculateCompatibility(input: {
 
 export async function generateConversationQuestions(
   result: CompatibilityResult,
+  context: ConversationQuestionContext,
 ): Promise<ConversationQuestion[]> {
-  return withLatency(buildConversationQuestions(result));
+  return withLatency(buildConversationQuestions(result, context));
 }
 
 /** Supporting Lens — 두 MBTI가 모두 있을 때만 결과가 있다(없으면 null). */

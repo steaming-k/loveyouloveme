@@ -1,0 +1,44 @@
+{
+  "name": "deep_report_empty_closer",
+  "description": "CONTENT-01 · CONTENT-03 — UT-1 브라우저 실측 원문. 앞 문장은 규칙 문장을 바꿔 말한 것이고 뒤 문장은 내용이 없다. 문단 전체 novelty는 기준을 넘어 v1.27 게이트를 통과했다 — 즉 '내용 없는 말을 덧붙일수록 중복 필터를 쉽게 통과'하던 구조. 두 문장 다 빠지면 남는 게 없으므로 narrative 자체가 버려져야 한다",
+  "task": "deep-report-narrative",
+  "allowed": [
+    {
+      "id": "cs_mirror_alone",
+      "ruleSummary": "지금 상대와 개인 시간에 대한 기대는 비슷한데, 이 축은 지금 관계에서 신호가 있는 축이야. 비슷하게 답한 축이라도 네게는 계속 신호가 있던 자리야.",
+      "evidenceRefs": [
+        {
+          "source": "declared",
+          "field": "alone"
+        },
+        {
+          "source": "current",
+          "field": "alone"
+        }
+      ]
+    }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "insightId": "cs_mirror_alone",
+        "headline": "개인 시간에서 겹치는 신호",
+        "interpretation": "지금 상대와 개인 시간에 대한 기대가 비슷하다는 점이 연결되고 있어. 두 신호가 함께 나타나고 있다는 것이 흥미로워.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "alone"
+          },
+          {
+            "source": "current",
+            "field": "alone"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 0,
+    "redundantCount": 1
+  }
+}

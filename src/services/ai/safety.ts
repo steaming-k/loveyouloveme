@@ -665,6 +665,94 @@ export function isRedundantNarrative(text: string, reference: string): boolean {
   return noveltyRatio(text, reference) < MIN_NARRATIVE_NOVELTY;
 }
 
+/* ── UT-1 P1-B §1 · §2 — 문장 단위로 걸러낸다 ──────────────────────────────
+
+   ⚠️ **왜 문단 단위로는 못 잡았나.**
+
+   `isRedundantNarrative`는 narrative **전체**의 novelty를 본다. 그래서 실측에서 이런
+   문단이 통과했다(브라우저, Premium Chapter 01):
+
+     규칙:  `지금 상대와 개인 시간에 대한 기대는 비슷한데, 이 축은 지금 관계에서
+             신호가 있는 축이야.`
+     AI:    `지금 상대와 개인 시간에 대한 기대가 비슷하다는 점이 연결되고 있어.
+             두 신호가 함께 나타나고 있다는 것이 흥미로워.`
+
+   앞 문장은 규칙을 바꿔 말한 것이고 뒤 문장은 아무 내용이 없다. 그런데 **뒤 문장의
+   bigram이 전부 새롭기 때문에** 문단 전체의 novelty가 기준을 넘어 통과했다.
+   즉 내용 없는 말을 덧붙일수록 중복 필터를 쉽게 통과하는 구조였다.
+
+   그래서 두 단계로 나눈다. 순서가 중요하다 — 구조가 1차, 어휘가 2차다
+   (v1.40.1이 배운 순서 그대로: blacklist를 1차로 쓰면 놓친다).
+
+     ① 규칙 문장을 바꿔 말한 **문장**을 뺀다      (구조 — novelty)
+     ② 근거 없이 평가만 하는 **맺음 문장**을 뺀다  (어휘 — 2차 guard) */
+
+/**
+ * 근거를 하나도 더하지 않고 '인상'만 말하는 맺음말.
+ *
+ * ⚠️ **2차 guard다.** 이 목록으로 중복을 판정하지 않는다 — ①이 통과시킨 문장 중에서
+ * '새롭지만 비어 있는' 것만 걷어낸다. 목록을 늘리는 것으로 문체 문제를 해결하려 들면
+ * v1.40이 했던 실수를 반복하는 것이다.
+ *
+ * ⚠️ 한계 문장(`~는 알 수 없어`)은 여기 넣지 않는다. 그건 비어 있는 말이 아니라
+ * 반드시 남아야 하는 경계 문장이다(`LIMITATION_MARKERS`).
+ */
+const EMPTY_CLOSER_PATTERNS: readonly RegExp[] = [
+  /(흥미로워|흥미롭다|인상적이야|인상적이다)[.!]?$/,
+  /(눈에\s*띄어|눈에\s*띈다|주목할\s*만해|주목된다)[.!]?$/,
+  /(것이|점이|점은|부분이)\s*(흥미|인상|주목)/,
+  /(라는\s*점이|다는\s*점이)\s*(보여|드러나|나타나)/,
+];
+
+/** 이 문장이 근거 없이 인상만 말하는가 */
+export function isEmptyCloserSentence(sentence: string): boolean {
+  return EMPTY_CLOSER_PATTERNS.some((pattern) => pattern.test(sentence.trim()));
+}
+
+/**
+ * 문장 단위 novelty 하한. **문단 기준(`MIN_NARRATIVE_NOVELTY` 0.35)보다 높다.**
+ *
+ * ⚠️ 감으로 올린 값이 아니다. UT-1 실측 문단을 그대로 재어서 정했다
+ * (규칙 문장 = `deep_report_empty_closer` fixture의 `ruleSummary`):
+ *
+ * ```
+ * 규칙을 바꿔 말한 문장            0.44
+ * 실제로 새 관찰을 말한 문장        0.90 · 1.00
+ * 내용 없는 맺음말                0.89   ← novelty로는 못 잡는다(어휘 guard가 잡는다)
+ * 문단 전체                       0.61   ← 그래서 문단 기준 0.35를 통과했다
+ * ```
+ *
+ * 0.44와 0.90 사이가 비어 있어서 **0.6**을 골랐다. 양쪽 모두 여유가 넓다.
+ *
+ * ⚠️ **문단 기준은 건드리지 않았다.** 문단은 주변 맥락을 함께 담으므로 겹침이 더
+ * 자연스럽다 — 두 값이 다른 것은 실수가 아니라 단위가 다르기 때문이다.
+ */
+const MIN_SENTENCE_NOVELTY = 0.6;
+
+/**
+ * 규칙 문장을 되풀이한 문장과 내용 없는 맺음 문장을 빼고 남은 본문.
+ *
+ * @returns 남은 문장을 이어 붙인 문자열. **전부 빠지면 빈 문자열**이고, 호출부는 그때
+ *          이 narrative를 화면에 올리지 않는다(규칙 문장으로 이미 완결돼 있다).
+ *
+ * ⚠️ 문장 하나짜리 narrative도 같은 규칙을 받는다 — 짧다는 이유로 봐주지 않는다.
+ * ⚠️ 순서를 바꾸지 않는다. 남은 문장을 원래 순서로 이어 붙인다(결정론).
+ */
+export function stripRedundantSentences(text: string, reference: string): string {
+  const sentences = splitSentences(text);
+  if (sentences.length === 0) return '';
+
+  const kept = sentences.filter((sentence) => {
+    if (isEmptyCloserSentence(sentence)) return false;
+    if (reference.trim().length === 0) return true;
+    // 짧은 문장은 우연히 겹칠 수 있으니 문단 기준과 같은 하한(10자)을 쓴다
+    if (normalizeForCompare(sentence).length < 10) return true;
+    return noveltyRatio(sentence, reference) >= MIN_SENTENCE_NOVELTY;
+  });
+
+  return kept.join(' ').trim();
+}
+
 /**
  * 여러 문장을 한 번에 검사하고, 위반된 항목만 걸러낸다.
  * @returns 통과한 항목과 위반 라벨 목록

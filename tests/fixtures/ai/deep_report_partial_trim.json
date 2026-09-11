@@ -1,0 +1,47 @@
+{
+  "name": "deep_report_partial_trim",
+  "description": "CONTENT-02 — 전부 버리지 않는다. 규칙 문장을 되풀이한 문장과 내용 없는 맺음말만 빠지고, 실제로 새로운 관찰을 말한 문장은 그대로 남아야 한다. 남은 문장이 원래 순서대로 이어져야 한다(결정론)",
+  "task": "deep-report-narrative",
+  "allowed": [
+    {
+      "id": "cs_mirror_alone",
+      "ruleSummary": "지금 상대와 개인 시간에 대한 기대는 비슷한데, 이 축은 지금 관계에서 신호가 있는 축이야.",
+      "evidenceRefs": [
+        {
+          "source": "declared",
+          "field": "alone"
+        },
+        {
+          "source": "current",
+          "field": "alone"
+        }
+      ]
+    }
+  ],
+  "raw": {
+    "narratives": [
+      {
+        "insightId": "cs_mirror_alone",
+        "headline": "개인 시간에서 겹치는 신호",
+        "interpretation": "지금 상대와 개인 시간에 대한 기대는 비슷한데, 이 축은 지금 관계에서 신호가 있는 축이야. 쉬는 날을 어떻게 나누는지는 아직 서로 맞춰본 적이 없다고 답했어. 두 신호가 함께 나타난다는 점이 흥미로워.",
+        "evidenceRefs": [
+          {
+            "source": "declared",
+            "field": "alone"
+          },
+          {
+            "source": "current",
+            "field": "alone"
+          }
+        ]
+      }
+    ]
+  },
+  "expect": {
+    "narrativeCount": 1,
+    "redundantCount": 0,
+    "interpretations": [
+      "쉬는 날을 어떻게 나누는지는 아직 서로 맞춰본 적이 없다고 답했어."
+    ]
+  }
+}

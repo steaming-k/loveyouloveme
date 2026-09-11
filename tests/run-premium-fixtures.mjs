@@ -2199,6 +2199,83 @@ console.log('\nEVT-01 ~ EVT-14 — 관계 사건 (User-reported Relationship Eve
   );
 }
 
+/* ═══ EVENT-01~03 · 기억나는 장면의 종류는 '사용자가 고른 것'이다 (P1-B §5) ══
+
+   P1-B §5가 요구한 것은 카테고리 자체가 아니라 **귀속**이다: 종류는 AI가 만든
+   판단이 아니라 사용자가 직접 지정한 attribution이어야 하고, 지정은 선택이어야
+   한다. 앞의 둘은 v1.46이 이미 세웠고, **선택 가능성만 빠져 있었다**(종류를
+   고르기 전에는 본문 칸 자체가 열리지 않았다). */
+{
+  const eventSrc = stripComments(
+    await readFile(join(ROOT, 'src/components/profile/RelationshipEventSection.tsx'), 'utf8'),
+  );
+  const logicSrc = stripComments(
+    await readFile(join(ROOT, 'src/lib/logic/relationshipEvents.ts'), 'utf8'),
+  );
+  const sessionSrc = stripComments(
+    await readFile(join(ROOT, 'src/state/SessionProvider.tsx'), 'utf8'),
+  );
+
+  /* EVENT-01 — 저장한 종류가 복원에서 살아남는다 */
+  const restored = await run({
+    ...FULL,
+    target: { ...TARGET, events: [{ id: 'ev-1', type: 'conflict', description: '약속 얘기로 다퉜어' }] },
+  });
+  check(
+    'EVENT-01 · 사용자가 고른 종류가 리포트까지 그대로 온다',
+    restored.report.reportedScenes?.scenes[0]?.typeLabel === '갈등 · 서운했던 일',
+    restored.report.reportedScenes?.scenes[0],
+  );
+  check(
+    'EVENT-01 · 복원이 종류를 값으로 검사한다 (모양만 보지 않는다)',
+    sessionSrc.includes('events: sanitizeRelationshipEvents(parsed.target?.events)'),
+    null,
+  );
+
+  /* EVENT-02 — 주어가 항상 사용자다. 상대의 의도로 넘어가는 문장이 없다 */
+  const interpretations = restored.report.reportedScenes?.scenes.map((scene) => scene.interpretation) ?? [];
+  check(
+    'EVENT-02 · 해석 문장의 주어가 사용자다 (상대의 의도가 아니다)',
+    interpretations.length > 0 && interpretations.every((text) => text.startsWith('너는')),
+    interpretations,
+  );
+  /**
+   * 종류가 늘어도 상대의 의도로 넘어갈 자리가 없는 이유는 **문장 틀이 하나**이기
+   * 때문이다 — `INTERPRETATION`의 모든 값이 `너는 …`으로 시작한다. 그 사실을 값으로 본다.
+   *
+   * ⚠️ 파일 전체를 훑지 않는다. 경계 문장(`상대가 무슨 마음이었는지는 알 수 없어`)은
+   * **반드시 남아야 하는 문장**이라 금지 검사의 대상이 아니다 — 처음에 파일 전체를
+   * 훑었다가 그 문장에 걸렸다.
+   */
+  const interpretationBlock =
+    /const INTERPRETATION: Record<RelationshipEventType, string> = \{[\s\S]*?\n\};/.exec(
+      logicSrc,
+    )?.[0] ?? '';
+  const interpretationValues = [...interpretationBlock.matchAll(/: '([^']+)'/g)].map(
+    (match) => match[1],
+  );
+  check(
+    'EVENT-02 · 종류별 문장이 전부 같은 틀이다 (종류가 늘어도 상대 의도로 새지 않는다)',
+    interpretationValues.length >= 8 &&
+      interpretationValues.every((text) => text.startsWith('너는')),
+    interpretationValues.filter((text) => !text.startsWith('너는')),
+  );
+
+  /* EVENT-03 — 종류는 선택 입력이다 */
+  check(
+    'EVENT-03 · 종류를 고르지 않고도 장면을 적을 수 있는 길이 있다',
+    /setDraftType\('other'\)/.test(eventSrc),
+    null,
+  );
+  check(
+    "EVENT-03 · 그 길의 종류도 '사용자가 고른 값'이다 (본문을 읽어 분류하지 않는다)",
+    !/description[\s\S]{0,200}(includes|match|test)\([\s\S]{0,40}\)\s*\?\s*'(conflict|affection_felt|closer)'/.test(
+      eventSrc,
+    ),
+    null,
+  );
+}
+
 /* ═══ UT-1 P0-A · Premium 진입 안내가 갈 수 있는 길만 말하는가 ═══════════
 
    UT-1에서 나온 결함은 "자격이 잘못 섰다"가 아니었다. 자격(`gate`)은 맞았고,

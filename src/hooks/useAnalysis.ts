@@ -123,14 +123,25 @@ export function useMbtiBridge(): MbtiBridgeReport | null {
  * MBTI 질문은 항상 관계 신호 질문 **뒤에** 붙고, 기존 질문을 대체하지 않는다.
  */
 export function useConversationQuestions(): ConversationQuestion[] {
+  const { answers } = useSession();
   const result = useCompatibility();
   const mbtiLens = useMbtiLens();
+  /**
+   * UT-1 P1-B §3 — 질문 variant 선택에 쓰는 맥락. **판정을 여기서 만들지 않는다** —
+   * 화면들이 이미 쓰는 `resolveRelationshipContext(answers).job`과 같은 값이다.
+   */
+  const job = resolveRelationshipContext(answers).job;
   return useMemo(
     () => [
-      ...aiSelectors.conversationQuestions(result),
+      ...aiSelectors.conversationQuestions(result, {
+        job,
+        declared: answers.declared,
+        target: answers.target,
+        currentSignals: answers.currentRelationship,
+      }),
       ...aiSelectors.mbtiQuestions(mbtiLens),
     ],
-    [result, mbtiLens],
+    [result, mbtiLens, job, answers.declared, answers.target, answers.currentRelationship],
   );
 }
 

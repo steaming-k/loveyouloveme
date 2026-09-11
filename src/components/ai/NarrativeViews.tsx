@@ -53,7 +53,21 @@ export function CompatibilityAxisNarrative({
       explanation={narrative.explanation}
       scenario={narrative.scenario}
       uncertainty={narrative.uncertainty}
-      question={narrative.conversationQuestion}
+      /*
+        UT-1 P1-B §1 — **질문을 여기서 그리지 않는다.**
+
+        `conversationQuestion`은 이 블록에 한 번 그려지고, 같은 화면 04-b의
+        `러비가 덧붙인 질문`에서 **같은 문장이 그대로 한 번 더** 그려졌다
+        (브라우저 실측: 4축 전부, 한 화면에 8줄). 사용자가 본 것은 "러비가 아까
+        한 말을 또 한다"였고, UT-1의 '같은 말 반복' 응답이 정확히 여기다.
+
+        역할 고정(§1)대로 자른다 — 02 섹션은 `무엇이 보였는가`이고 질문은
+        `실제로 확인할 행동`이라 04-b의 몫이다. 문장을 지우는 게 아니라
+        **한 자리에만** 둔다.
+
+        ⚠️ `MirrorAxisNarrative`는 그대로 질문을 그린다. 그 화면에는 질문 목록
+        블록이 따로 없어서 중복이 생기지 않는다.
+      */
       evidence={resolveEvidenceRefs(narrative.evidenceRefs, context)}
     />
   );

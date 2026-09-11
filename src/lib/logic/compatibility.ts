@@ -1,11 +1,10 @@
-import { AXIS_DEFINITIONS, QUESTION_BY_AXIS } from '@/data/axes';
+import { AXIS_DEFINITIONS } from '@/data/axes';
 import { AFFECTION_LABEL, CONFLICT_LABEL } from '@/data/labels';
 import { TARGET_MIN_KNOWN } from '@/data/targetFields';
 import type {
   CompatibilityDimension,
   CompatibilityResult,
   Confidence,
-  ConversationQuestion,
   DeclaredPreference,
   SignalTone,
   TargetAxisKey,
@@ -120,35 +119,6 @@ export function buildCompatibility(
     totalCount: dimensions.length,
     confidence: confidenceOf(compared.length, dimensions.length),
   };
-}
-
-/**
- * 대화 질문 (S25)
- * 차이가 보이는 항목을 먼저 넣고, 부족하면 관계에서 자주 부딪히는 축으로 채운다.
- */
-const QUESTION_FALLBACK_ORDER: TargetAxisKey[] = ['contact', 'conflict', 'alone'];
-export const CONVERSATION_QUESTION_COUNT = 3;
-
-export function buildConversationQuestions(result: CompatibilityResult): ConversationQuestion[] {
-  const frictionKeys = result.frictionSignals.map((f) => f.key);
-  const keys: TargetAxisKey[] = [...frictionKeys];
-
-  for (const key of QUESTION_FALLBACK_ORDER) {
-    if (!keys.includes(key)) keys.push(key);
-  }
-
-  return keys.slice(0, CONVERSATION_QUESTION_COUNT).map((key) => {
-    const dimension = result.dimensions.find((d) => d.key === key);
-    const label = dimension?.label ?? key;
-    const fromFriction = frictionKeys.includes(key);
-
-    return {
-      id: key,
-      tag: `${label} · ${fromFriction ? '차이가 보이는 항목' : '확인해보면 좋은 항목'}`,
-      text: QUESTION_BY_AXIS[key],
-      fromFriction,
-    };
-  });
 }
 
 /** 게이지 세그먼트 색 — 색만으로 구분하지 않도록 UI에서 라벨을 함께 노출한다 */

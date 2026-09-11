@@ -17,6 +17,7 @@ import {
   scanHistoryNarrative,
   scanLensNarrative,
   scanRelationshipNarrative,
+  stripRedundantSentences,
 } from '@/services/ai/safety';
 /** v1.43 §46 — 네 Task가 공유하는 근거 귀속 술어 */
 import { refsWithinAllowed, rejectedRefSources } from '@/lib/logic/allowedEvidence';
@@ -437,8 +438,23 @@ export async function POST(request: Request): Promise<Response> {
      * 실제 핸들러와 **같은 함수**를 쓴다 — 판정 로직을 테스트용으로 복제하지 않는다.
      */
     const ruleSummaryById = new Map(insights.map((item) => [item.id, item.ruleSummary ?? '']));
-    const novel = scan.items.filter(
-      (item) => !isRedundantNarrative(item.interpretation, ruleSummaryById.get(item.insightId) ?? ''),
+    /**
+     * UT-1 P1-B §1 — **핸들러와 같은 순서로 문장을 먼저 걷어낸다.**
+     *
+     * 이 라우트가 핸들러의 필터 사슬을 그대로 따라가지 않으면, fixture는 사용자가
+     * 실제로 보는 것과 다른 결과를 검사하게 된다(이 파일이 처음부터 피하려던 실패).
+     */
+    const trimmed = scan.items.map((item) => ({
+      ...item,
+      interpretation: stripRedundantSentences(
+        item.interpretation,
+        ruleSummaryById.get(item.insightId) ?? '',
+      ),
+    }));
+    const novel = trimmed.filter(
+      (item) =>
+        item.interpretation.length > 0 &&
+        !isRedundantNarrative(item.interpretation, ruleSummaryById.get(item.insightId) ?? ''),
     );
 
     return Response.json({
@@ -450,6 +466,11 @@ export async function POST(request: Request): Promise<Response> {
         insightId: item.insightId,
         headlineLength: item.headline.length,
         interpretationLength: item.interpretation.length,
+        /**
+         * UT-1 P1-B §2 — fixture가 **값으로** 검사할 수 있어야 한다. 이 문자열은
+         * fixture가 스스로 넣은 것이고 사용자 데이터가 아니다(dev 전용 라우트).
+         */
+        interpretation: item.interpretation,
         evidenceCount: item.evidenceRefs.length,
         hasUncertainty: Boolean(item.uncertainty),
       })),

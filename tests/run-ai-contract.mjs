@@ -369,6 +369,17 @@ async function run(fixture) {
         eq(narratives.map((n) => n.insightId), expect.insightIds),
         `실제 ${narratives.map((n) => n.insightId).join(',')}`);
     }
+    /**
+     * UT-1 P1-B §1 · §2 — **남은 본문을 값으로 고정한다.**
+     *
+     * 개수만 보면 '문장 하나만 빠졌는지, 통째로 남았는지'를 구분하지 못한다.
+     * 어느 문장이 빠지고 어느 문장이 남았는지가 이 변경의 전부이므로 문자열로 본다.
+     */
+    if (expect.interpretations) {
+      check(name, `남은 본문 ${expect.interpretations.length}개가 일치`,
+        eq(narratives.map((n) => n.interpretation), expect.interpretations),
+        `실제 ${JSON.stringify(narratives.map((n) => n.interpretation))}`);
+    }
     /* v1.43 §47.5 — 시제 계약. relationship과 같은 방식으로 먼저 실행 값을 본다 */
     if (fixture.tense !== undefined) {
       check(name, `tense ${fixture.tense}로 실행됨`, result.tense === fixture.tense,

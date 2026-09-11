@@ -32,6 +32,7 @@ import {
   scanHistoryNarrative,
   scanPhotoObservation,
   scanRelationshipNarrative,
+  stripRedundantSentences,
   wrapUserData,
 } from './safety';
 import {
@@ -693,6 +694,24 @@ export async function runCompatibilityTask(
       (text) => scanCompatibilityNarrative(text, request.tense),
     );
 
+    /**
+     * UT-1 P1-B §2 — 내용 없는 맺음 문장을 뺀다.
+     *
+     * ⚠️ 여기에는 비교할 **규칙 문장이 없다**(이 Task의 근거는 축별 값이고 요약 문장이
+     * 아니다). 그래서 ①(novelty)은 적용하지 않고 ②(빈 맺음말)만 적용한다 —
+     * `reference`를 빈 문자열로 넘기면 `stripRedundantSentences`가 정확히 그렇게 한다.
+     *
+     * ⚠️ 설명이 통째로 비면 그 축은 AI 문장 없이 규칙 문장만 남는다. 그게 맞다 —
+     * 빈 카드를 만들지 않는 기존 원칙(`NarrativeViews` 상단)과 같다.
+     */
+    const trimmed = scan.items
+      .map((item) => ({
+        ...item,
+        explanation: stripRedundantSentences(item.explanation, ''),
+        scenario: stripRedundantSentences(item.scenario, ''),
+      }))
+      .filter((item) => item.explanation.length > 0);
+
     logAiFilter({
       task: 'compatibility-narrative',
       policy: { tense: request.tense, outwardQ: request.allowsOutwardQuestions ? 'on' : 'off' },
@@ -704,12 +723,16 @@ export async function runCompatibilityTask(
       rejectedRefSources: rejectedRefs,
       safe: scan.items.length,
       violations: scan.violations,
-      extra: request.allowsOutwardQuestions
-        ? {}
-        : { questionsStripped: refChecked.filter((item) => item.conversationQuestion).length },
+      extra: {
+        ...(request.allowsOutwardQuestions
+          ? {}
+          : { questionsStripped: refChecked.filter((item) => item.conversationQuestion).length }),
+        /** UT-1 P1-B §2 — 빈 맺음말로 통째로 비워진 축 수 */
+        emptied: scan.items.length - trimmed.length,
+      },
     });
 
-    return { ok: true, data: { narratives: scan.items, meta: metaFor(config.mode === 'mock' ? 'mock' : 'real', provider.model) } };
+    return { ok: true, data: { narratives: trimmed, meta: metaFor(config.mode === 'mock' ? 'mock' : 'real', provider.model) } };
   } catch (error) {
     return failureFrom(error);
   }
@@ -919,9 +942,27 @@ export async function runDeepReportTask(
      * 차지한다. 그래서 여기서 떨어뜨리고, 화면은 규칙 문장으로 완결시킨다.
      */
     const ruleSummaryById = new Map(request.insights.map((item) => [item.id, item.ruleSummary]));
-    const novel = scan.items.filter(
-      (item) => !isRedundantNarrative(item.interpretation, ruleSummaryById.get(item.insightId) ?? ''),
-    );
+    /**
+     * UT-1 P1-B §1 · §2 — **문단 통과 / 문장 탈락을 구분한다.**
+     *
+     * v1.27의 문단 단위 판정만 있을 때, '규칙을 바꿔 말한 문장 + 내용 없는 맺음말'
+     * 조합이 통과했다(브라우저 실측 — `stripRedundantSentences` 주석에 원문). 내용 없는
+     * 말을 덧붙일수록 필터를 쉽게 통과하는 구조였다.
+     *
+     * 이제 문장을 먼저 걷어내고, **남은 게 없으면** 그 narrative를 버린다.
+     * 문단 단위 검사(`isRedundantNarrative`)는 그대로 둔다 — 글자 그대로 옮겨온
+     * 경우는 여전히 그쪽이 먼저 잡는다.
+     */
+    const novel = scan.items
+      .map((item) => {
+        const reference = ruleSummaryById.get(item.insightId) ?? '';
+        return { ...item, interpretation: stripRedundantSentences(item.interpretation, reference) };
+      })
+      .filter(
+        (item) =>
+          item.interpretation.length > 0 &&
+          !isRedundantNarrative(item.interpretation, ruleSummaryById.get(item.insightId) ?? ''),
+      );
 
     /**
      * v1.27 — **필터링 결과를 관측할 수 있게 한다.**

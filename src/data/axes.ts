@@ -116,13 +116,16 @@ export const AXIS_DEFINITIONS: readonly AxisDefinition[] = [
   },
 ];
 
-/** 대화 질문 (S25) — 축별로 실제 행동으로 이어지는 질문 */
-export const QUESTION_BY_AXIS: Record<TargetAxisKey, string> = {
-  conflict: '싸웠을 때 어느 정도 시간이 필요해?',
-  contact: '연락이 줄어들면 어떤 의미로 받아들이는 편이야?',
-  alone: '혼자 있고 싶을 때 상대에게 어떻게 알려주는 게 편해?',
-  affection: '애정 표현은 어떤 방식이 제일 편해?',
-};
+/**
+ * 대화 질문은 이제 **축마다 문자열 하나가 아니다.**
+ *
+ * UT-1 P1-B §3 · §4 — `QUESTION_BY_AXIS`(축당 1문장, 총 4개)를 없애고
+ * `data/conversationQuestions.ts`의 variant bank로 옮겼다. 같은 축이라도 관계 단계 ·
+ * 상대를 아는 정도 · 내가 답한 단계 · 지금 관계 근거 · 사용자가 적어준 사건에 따라
+ * 다른 문장이 나온다. 선택은 결정론이다(랜덤 없음).
+ *
+ * ⚠️ 여기에 문장을 다시 두지 않는다 — 두 곳에 있으면 한쪽만 고쳐진다.
+ */
 
 /* ------------------------------------------------ Relationship Mirror (S27) */
 

@@ -871,6 +871,111 @@ async function main() {
     );
   }
 
+  /* ═══ QUESTION-01~ · 질문이 맥락을 따라간다 (UT-1 P1-B §3 · §4) ═════════
+
+     UT-1에서 **가장 가치 있다고 평가된 것**이 '상대에게 확인할 질문'이었다. 그런데
+     그 질문은 축마다 문자열 하나씩(총 4개)이라, 누가 어떤 관계 단계에 있든 무엇을
+     답했든 똑같은 네 문장이 나왔다.
+
+     ⚠️ 여기서 검사하는 것은 **문장의 좋음**이 아니라 셀 수 있는 세 가지다:
+     ① 맥락이 다르면 문장이 달라지는가 ② 같은 맥락이면 항상 같은 문장인가(결정론)
+     ③ 안전 경계를 넘지 않는가. */
+  console.log('\nQUESTION — 축 × 관계 단계 × 상대 정보 × 사건');
+  {
+    const textOf = (result, axis) =>
+      result.context.questions.find((question) => question.id === axis)?.text ?? null;
+
+    /** 상대를 아는 세션(couple) · 알아가는 중 */
+    const talking = await run({ status: 'crush', ...SESSION });
+    /** 같은 축인데 상대를 하나도 모르는 세션 — target availability */
+    const unknownTarget = await run({ status: 'crush', ...THIN_TARGET_SESSION });
+    /** 같은 축인데 오래된 관계 — lifecycle */
+    const longTerm = await run({ status: 'married', ...SESSION });
+    /** 같은 축인데 사용자가 갈등 장면을 적어준 세션 — user-reported event */
+    const withEvent = await run({
+      status: 'crush',
+      declared: DECLARED,
+      experience: EXPERIENCE,
+      target: {
+        ...TARGET,
+        events: [{ id: 'ev-1', type: 'conflict', description: '약속 시간 얘기로 다퉜어' }],
+      },
+    });
+
+    check(
+      'QUESTION-01 · 상대를 모르면 다른 질문이 나온다 (target availability)',
+      textOf(talking, 'conflict') !== null &&
+        textOf(unknownTarget, 'conflict') !== null &&
+        textOf(talking, 'conflict') !== textOf(unknownTarget, 'conflict'),
+      { couple: textOf(talking, 'conflict'), unknown: textOf(unknownTarget, 'conflict') },
+    );
+    check(
+      'QUESTION-02 · 관계 단계가 다르면 다른 질문이 나온다 (lifecycle)',
+      textOf(talking, 'conflict') !== textOf(longTerm, 'conflict'),
+      { talking: textOf(talking, 'conflict'), long_term: textOf(longTerm, 'conflict') },
+    );
+    check(
+      'QUESTION-03 · 사용자가 적어준 사건이 있으면 다른 질문이 나온다 (user-reported event)',
+      textOf(withEvent, 'conflict') !== textOf(talking, 'conflict'),
+      { event: textOf(withEvent, 'conflict'), none: textOf(talking, 'conflict') },
+    );
+    check(
+      'QUESTION-04 · 같은 입력에는 항상 같은 질문이 나온다 (결정론 · 랜덤 없음)',
+      textOf(await run({ status: 'crush', ...SESSION }), 'conflict') ===
+        textOf(talking, 'conflict'),
+    );
+
+    /* §4 — 교체 대상 두 문장이 **어느 조합에서도** 다시 나오지 않는다 */
+    const RETIRED = [
+      '싸웠을 때 어느 정도 시간이 필요해?',
+      '혼자 있고 싶을 때 상대에게 어떻게 알려주는 게 편해?',
+    ];
+    const allTexts = [talking, unknownTarget, longTerm, withEvent].flatMap((result) =>
+      result.context.questions.map((question) => question.text),
+    );
+    check(
+      'QUESTION-05 · UT-1이 지목한 옛 문장이 남아 있지 않다',
+      RETIRED.every((text) => !allTexts.includes(text)),
+      allTexts.filter((text) => RETIRED.includes(text)),
+    );
+
+    /* Safety — 상대의 의도·마음을 묻는 질문은 만들지 않는다 */
+    const INTENT_WORDS = ['무슨 생각', '왜 그랬', '마음이 어떤', '어떻게 생각하는지 알'];
+    check(
+      'QUESTION-06 · 상대의 의도를 추정하는 질문이 0건이다 (Safety)',
+      allTexts.every((text) => !INTENT_WORDS.some((word) => text.includes(word))),
+      allTexts.filter((text) => INTENT_WORDS.some((word) => text.includes(word))),
+    );
+
+    /* QUESTION-ENDED — 생성기 자체가 빈 배열을 돌려준다(화면 게이트와 이중 방어) */
+    for (const [label, session] of [
+      ['couple', SESSION],
+      ['no_target', NO_TARGET_SESSION],
+      ['unknown_target', THIN_TARGET_SESSION],
+    ]) {
+      const ended = await run({ status: 'ended', ...session });
+      check(
+        `QUESTION-ENDED · ended에서 상대에게 던지는 질문이 0개다 (${label})`,
+        ended.context.questions.length === 0,
+        ended.context.questions,
+      );
+    }
+    const none = await run({ status: 'solo_none', ...NO_TARGET_SESSION });
+    check(
+      'QUESTION-ENDED · none에서도 0개다 (없는 상대에게 물어볼 것을 만들지 않는다)',
+      none.context.questions.length === 0,
+      none.context.questions,
+    );
+
+    /* AI가 실패해도 결정론 질문은 그대로다 — 이 라우트는 Provider를 부르지 않는다 */
+    check(
+      'QUESTION-07 · AI 없이도 질문이 만들어진다 (결정론 경로만으로 완결)',
+      talking.context.questions.length > 0 &&
+        talking.context.questions.every((question) => question.text.trim().length > 0),
+      talking.context.questions,
+    );
+  }
+
   /* ── 결과 ─────────────────────────────────────────────────────────────── */
   console.log('');
   if (failures.length > 0) {
