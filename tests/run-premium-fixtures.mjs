@@ -1090,9 +1090,15 @@ console.log('\nLOVY-01~12 — 캐릭터 통합 · 러비 한마디 · 중간 메
 
   /* ── LOVY-11 · promptVersion 불변 · 표현 계층이 AI에 닿지 않는다 ────────── */
   const promptVersions = await readFile(join(ROOT, 'src/services/ai/promptVersions.ts'), 'utf8');
+  /**
+   * ⚠️ **v1.46.4 HARDENING PHASE 4에서 기대값이 바뀌었다.** 이 검사의 뜻("이 작업이
+   * Core AI 계약을 건드리지 않았다")은 그대로지만, PHASE 4는 공유 `TENSE_CONTRACT`에
+   * `former` 행동 제안 금지를 추가했으므로 deep-report 프롬프트도 실제로 달라졌다.
+   * 버전을 올리지 않으면 안전 수정이 캐시된 세션에 적용되지 않는다.
+   */
   check(
-    'LOVY-11 · deepReport promptVersion은 deep-report-v4-tense 그대로다',
-    promptVersions.includes("deepReport: 'deep-report-v4-tense'"),
+    'LOVY-11 · deepReport promptVersion이 고정돼 있다',
+    promptVersions.includes("deepReport: 'deep-report-v5-ended-action'"),
   );
   const promptTemplates = await readFile(join(ROOT, 'src/services/ai/promptTemplates.ts'), 'utf8');
   const contextBuilders = await readFile(join(ROOT, 'src/services/ai/contextBuilders.ts'), 'utf8');
@@ -1502,7 +1508,7 @@ console.log('\nPOSTREV-01~18 — Eligibility 불변 · 체크포인트 · Self-o
   const promptVersions = await readFile(join(ROOT, 'src/services/ai/promptVersions.ts'), 'utf8');
   check(
     'POSTREV-17 · deepReport promptVersion 불변',
-    promptVersions.includes("deepReport: 'deep-report-v4-tense'"),
+    promptVersions.includes("deepReport: 'deep-report-v5-ended-action'"),
   );
   const envSource = await readFile(join(ROOT, 'src/lib/env.ts'), 'utf8');
   check(
@@ -1858,8 +1864,8 @@ console.log('\nPROD-UNLOCK-01~10 — Production Deep Report Unlock · payment �
   check('PROD-UNLOCK-08 · Provider 호출 1회', full.ai.providerCalls === 1, full.ai);
   const promptVersions = await readFile(join(ROOT, 'src/services/ai/promptVersions.ts'), 'utf8');
   check(
-    'PROD-UNLOCK-09 · deepReport promptVersion은 deep-report-v4-tense 그대로다',
-    promptVersions.includes("deepReport: 'deep-report-v4-tense'"),
+    'PROD-UNLOCK-09 · deepReport promptVersion이 고정돼 있다',
+    promptVersions.includes("deepReport: 'deep-report-v5-ended-action'"),
   );
 
   /* ── PROD-UNLOCK-10 · Premium eligibility invariant 유지 ───────────────── */
@@ -2451,9 +2457,18 @@ console.log('\nEVT-01 ~ EVT-14 — 관계 사건 (User-reported Relationship Eve
     restored.report.reportedScenes?.scenes[0]?.typeLabel === '갈등 · 서운했던 일',
     restored.report.reportedScenes?.scenes[0],
   );
+  /**
+   * ⚠️ **v1.46.4 HARDENING에서 호출 형태가 바뀌었다(검사 대상은 그대로다).**
+   *
+   * `sanitizeRelationshipEvents`가 `RelationshipEvent[]` 대신
+   * `{ events, dropped }`를 돌려준다 — 복원 파서가 버린 항목 수를 화면이 말할 수
+   * 있어야 하기 때문이다(Candidate에서는 조용히 사라졌다). 고정하려는 사실은
+   * 여전히 "복원이 종류를 값으로 검사한다"이므로, 호출부를 찾는 문자열만 고쳤다.
+   */
   check(
     'EVENT-01 · 복원이 종류를 값으로 검사한다 (모양만 보지 않는다)',
-    sessionSrc.includes('events: sanitizeRelationshipEvents(parsed.target?.events)'),
+    sessionSrc.includes('sanitizeRelationshipEvents(parsed.target?.events)') &&
+      sessionSrc.includes('events: restoredEvents.events'),
     null,
   );
 

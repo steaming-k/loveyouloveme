@@ -11,7 +11,22 @@ import { formatPrice, priceForScreenReader, resolvePrice, resolvePriceVariant } 
 import { isRevisit, revisitSource } from '@/lib/resultView';
 import { ROUTES } from '@/lib/routes';
 import { useSession } from '@/state/SessionProvider';
-import type { PremiumFeature, PremiumSource } from '@/types';
+import type { PremiumFeature, PremiumFeatureFixKind, PremiumSource } from '@/types';
+
+/**
+ * `fix` 종류 → 실제 Route (v1.46.4 HARDENING PHASE 3)
+ *
+ * ⚠️ **`ROUTES`를 거친다.** 경로 문자열을 여기 직접 적으면 Route가 바뀔 때 이 표만
+ * 조용히 낡는다 — 그러면 CTA는 보이는데 404로 간다(PREMIUM-FIX-02).
+ */
+const PREMIUM_FIX_ROUTE: Record<PremiumFeatureFixKind, string> = {
+  target: ROUTES.target,
+  experience: ROUTES.pastIntro,
+  /** 내 MBTI를 묻는 자리는 Declared 4단계다 — 관계 렌즈 카드와 같은 목적지 */
+  mbti: ROUTES.declared(4),
+  birth: ROUTES.lensBirth,
+  photos: ROUTES.photos,
+};
 
 /**
  * Premium 진입점 — **항상 Secondary**
@@ -118,12 +133,47 @@ export function PremiumEntryRow({
     return (
       <section className="flex flex-col gap-2">
         <SectionLabel as={headingLevel}>{copy.entryLabel}</SectionLabel>
-        <div className="rounded-row border border-dashed border-line-strong bg-sunken px-4 py-3.5">
+        <div className="flex flex-col rounded-row border border-dashed border-line-strong bg-sunken px-4 py-3.5">
           <p className="text-[12.5px] font-medium">{copy.unavailableTitle}</p>
           {feature.unavailableReason ? (
             <p className="mt-1 text-[11.5px] keep-all leading-relaxed text-ink-sub">
               {feature.unavailableReason}
             </p>
+          ) : null}
+
+          {/*
+            ══ v1.46.4 HARDENING PHASE 3 — **dead-end를 닫는다** ═══════════════
+
+            이 카드는 v1.46.4까지 '왜 못 보는지'만 말하고 끝났다. 읽고 나면 사용자가
+            **어디서 채우는지 직접 찾아야** 했고, 목적지는 전부 퍼널 안쪽 화면이라
+            결과 화면에서는 보이지 않는다 — 읽고 나서 할 수 있는 일이 없으면 그건
+            안내가 아니라 막다른 길이다.
+
+            v1.46.3이 관계 렌즈에서 같은 문제를 `PremiumLensUnavailable.fix`로 풀었고
+            (FIX-05 ~ FIX-07), 여기서는 **그 패턴을 그대로 재사용한다.** 새 abstraction을
+            만들지 않는다.
+
+            ⚠️ **`feature.fix`가 없으면 버튼도 없다.** 사주 엔진 미연결·기록 2건
+            필요처럼 지금 풀 수 없는 상태가 그렇다. 없는 해결책을 약속하지 않는다.
+            ⚠️ **이유 문구를 읽어 목적지를 정하지 않는다**(FIX-06과 같은 규칙).
+          */}
+          {feature.fix ? (
+            <button
+              type="button"
+              onClick={() => {
+                trackEvent('premium_unavailable_fix_click', {
+                  feature: feature.id,
+                  fix: feature.fix!.kind,
+                });
+                router.push(PREMIUM_FIX_ROUTE[feature.fix!.kind]);
+              }}
+              className="mt-2.5 flex min-h-11 w-full items-center justify-between rounded-row border border-line bg-surface px-3.5 text-left active:bg-sunken"
+            >
+              <span className="text-[12.5px] font-medium">{feature.fix.label}</span>
+              <span className="flex-none text-meta font-semibold text-brand" aria-hidden>
+                →
+              </span>
+            </button>
           ) : null}
         </div>
       </section>

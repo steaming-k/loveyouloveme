@@ -39,6 +39,7 @@ import {
   eventTypeHistogram,
   openQuestionFor,
 } from '@/lib/logic/insightCandidates';
+import { sanitizeRelationshipEvents } from '@/lib/logic/relationshipEvents';
 import { buildSelfLevels } from '@/lib/logic/firstContact';
 import { buildCrossLensContext, buildPremiumLensContext } from '@/services/ai/contextBuilders';
 import { buildConversationQuestions } from '@/lib/logic/conversationQuestions';
@@ -49,6 +50,7 @@ import { toValidatedObservations } from '@/services/aiService';
 import { createEmptyAnswers } from '@/state/defaultAnswers';
 import type {
   CurrentRelationshipEvidence,
+  PremiumFeatureId,
   DeclaredPreference,
   DeepAnalysisAnswer,
   DeepNarrative,
@@ -328,8 +330,48 @@ export async function POST(request: Request): Promise<Response> {
         unavailableReason: feature.unavailableReason ?? null,
         /** 상대가 없는 사용자에게 '상대 정보'를 요구하지 않는다 — 값으로 검사한다 */
         mentionsTargetInfo: (feature.unavailableReason ?? '').includes('상대 정보'),
+        /**
+         * v1.46.4 HARDENING PHASE 3 — **막혔을 때 갈 곳.** null이면 CTA가 없다는 뜻이고,
+         * 그건 '지금 풀 수 없는 상태'여야 한다(PREMIUM-FIX-03).
+         */
+        fix: feature.fix ?? null,
       };
     })(),
+    /**
+     * v1.46.4 HARDENING PHASE 3 — **모든 Premium feature의 unavailable 상태표.**
+     *
+     * fixture가 "dead-end가 0인가"를 한 세션에서 전수로 볼 수 있어야 한다. 화면과
+     * 같은 함수(`premiumFeatureState`)를 같은 문맥으로 부른다.
+     */
+    premiumStates: (
+      [
+        'relationship_deep_report',
+        'compatibility_detail',
+        'mirror_detail',
+        'history_detail',
+        'mbti_detail',
+        'astrology_detail',
+        'saju_detail',
+      ] as PremiumFeatureId[]
+    ).map((id) => {
+      const feature = premiumFeatureState(id, resolvePrice('A'), {
+        mirrorAvailable: mirror.available,
+        historyComparable: historyReport.comparable,
+        mbtiAvailable: mbtiLens !== null,
+        astrologyAvailable: Boolean(
+          answers.birthProfile.date && answers.target.birthProfile?.date,
+        ),
+        deepReportAvailable: hasPremiumEvidence({ insights, declared: answers.declared, mirror }),
+        solo: soloModeOfTarget(answers.target) === 'no_target',
+        allowsOutwardAction: jobAllowsOutwardAction(job),
+      });
+      return {
+        id,
+        status: feature.status,
+        unavailableReason: feature.unavailableReason ?? null,
+        fix: feature.fix ?? null,
+      };
+    }),
     /**
      * v1.46 §11 — **사건이 점수를 바꾸지 않는다**를 fixture가 값으로 확인할 수 있게
      * 이미 계산된 동기화율을 그대로 낸다. 여기서 다시 계산하지 않는다.
@@ -366,11 +408,129 @@ export async function POST(request: Request): Promise<Response> {
       eligibleForNarrative: insight.eligibleForNarrative,
       ruleSummary: insight.ruleSummary,
     })),
-    /** AI에게 보내는 항목 수. **호출 수는 언제나 1이다**(`runDeepReportTask` 한 번) */
-    ai: {
-      providerCalls: aiContext.insights.length > 0 ? 1 : 0,
-      itemsSent: aiContext.insights.length,
-    },
+    /**
+     * ══ v1.46.4 HARDENING PHASE 5 — **FULL PREMIUM FLOW 기준으로 센다** ══════
+     *
+     * ⚠️ Candidate 보고의 `providerCalls: 1`은 **Deep Report Task 하나**만 센 값이었다.
+     * 필드 이름이 `ai.providerCalls`라 전체 호출 수처럼 읽혔지만, 실제 Premium 번들은
+     * 렌즈 3종과 Cross-Lens를 따로 부른다 — 최대 5회다. 숫자가 아니라 **이름이**
+     * 틀렸던 것이고, 그래서 Task별로 나눠 낸다.
+     *
+     * ⚠️ 여기서 실제 Provider를 부르지 않는다. 세는 것은 **이 세션이 만들 호출의 수**이고,
+     * 각 Task의 게이트(재료가 없으면 호출하지 않는다)를 화면과 같은 규칙으로 적용한다.
+     */
+    ai: (() => {
+      /** Deep Report — 보낼 Insight가 하나도 없으면 부르지 않는다 */
+      const deepReportCalls = aiContext.insights.length > 0 ? 1 : 0;
+
+      /** 렌즈 — `unavailable`이 아닌 렌즈마다 1회 */
+      const lensReports = report.lensBundle.lenses.filter((lens) => lens.mode !== 'unavailable');
+      const lensContexts = lensReports.map((lens) =>
+        buildPremiumLensContext({
+          report: lens,
+          declared: answers.declared,
+          events: answers.target.events,
+          tense,
+          targetExists: soloModeOfTarget(answers.target) !== 'no_target',
+        }),
+      );
+
+      /** Cross-Lens — 렌즈가 2개 이상일 때만(§18) */
+      const crossLensCalls = lensReports.length >= 2 ? 1 : 0;
+      const crossContext =
+        crossLensCalls > 0
+          ? buildCrossLensContext({
+              reports: lensReports,
+              aiThemes: {},
+              declared: answers.declared,
+              events: answers.target.events,
+              tense,
+              deterministic: report.lensBundle.crossLens,
+              targetExists: soloModeOfTarget(answers.target) !== 'no_target',
+            })
+          : null;
+
+      /**
+       * 한 호출의 입력 크기. **payload 문자열 길이**로 잰다.
+       *
+       * ⚠️ 토큰 추정은 한국어 기준 대략 `chars / 1.6`이다(BPE에서 한글 한 글자가
+       * 평균 1.5~1.7 토큰에 대응). 정확한 값이 아니라 **자릿수**를 보기 위한 것이고,
+       * 이 값으로 비용을 확정하지 않는다.
+       */
+      const sizeOf = (payload: unknown) => {
+        const chars = JSON.stringify(payload ?? {}).length;
+        return { inputChars: chars, estTokens: Math.round(chars / 1.6) };
+      };
+
+      const eventCharsOf = (events: { description: string; myReaction: string | null }[]) =>
+        events.reduce(
+          (total, event) => total + event.description.length + (event.myReaction?.length ?? 0),
+          0,
+        );
+
+      /**
+       * §5-1 — Provider payload에 실린 장면을 **원래 id로 되짚는다.**
+       *
+       * ⚠️ 왜 필요한가: '가장 오래된 2개가 고정으로 간다'는 결함은 **어느 장면이
+       * 갔는지**를 봐야만 보인다. 종류만으로는 ev-s1과 ev-s9를 구분할 수 없다.
+       *
+       * ⚠️ **본문은 나가지 않는다.** payload의 description은 AI 경계에서 120자로
+       * 잘려 있으므로 접두어로 원본을 찾고, 내보내는 것은 **id뿐**이다.
+       */
+      const idsOf = (payload: { description: string }[]) =>
+        payload
+          .map(
+            (item) =>
+              answers.target.events.find((event) =>
+                event.description.startsWith(item.description.slice(0, 20)),
+              )?.id ?? null,
+          )
+          .filter((id): id is string => id !== null);
+
+      return {
+        /** @deprecated 이름이 오해를 샀다 — `totalCalls`를 써라. 회귀 비교용으로만 남긴다 */
+        providerCalls: deepReportCalls,
+        itemsSent: aiContext.insights.length,
+        totalCalls: deepReportCalls + lensContexts.length + crossLensCalls,
+        calls: [
+          {
+            task: 'deep-report',
+            count: deepReportCalls,
+            ...sizeOf(deepReportCalls > 0 ? aiContext : null),
+            eventCount: 0,
+            eventChars: 0,
+            eventTypes: [] as string[],
+            eventIds: [] as string[],
+          },
+          ...lensContexts.map((context, index) => ({
+            task: `lens:${lensReports[index]!.kind}`,
+            count: 1,
+            ...sizeOf(context),
+            eventCount: context.reportedEvents.length,
+            eventChars: eventCharsOf(context.reportedEvents),
+            /**
+             * §5-1 — **어느 장면이 실제로 갔는가.** 본문이 아니라 id·종류만 낸다.
+             * '가장 오래된 2개가 고정으로 가는가'를 값으로 볼 수 있어야 한다.
+             */
+            eventTypes: context.reportedEvents.map((event) => event.type),
+            eventIds: idsOf(context.reportedEvents),
+          })),
+          ...(crossContext
+            ? [
+                {
+                  task: 'cross-lens',
+                  count: 1,
+                  ...sizeOf(crossContext),
+                  eventCount: crossContext.reportedEvents.length,
+                  eventChars: eventCharsOf(crossContext.reportedEvents),
+                  eventTypes: crossContext.reportedEvents.map((event) => event.type),
+                  eventIds: idsOf(crossContext.reportedEvents),
+                },
+              ]
+            : []),
+        ],
+      };
+    })(),
     /** v1.45 PostReview §3 — 화면과 **같은 함수**로 리포트 단위 포즈를 계산한다 */
     /** v1.45 — Chapter가 이 리포트의 렌더 단위다. fixture의 1차 판정 대상 */
     chapters: report.chapters.map((chapter) => ({
@@ -609,9 +769,41 @@ export async function POST(request: Request): Promise<Response> {
         0,
       );
 
+      /*
+        v1.46.4 HARDENING PHASE 1-4 — **저장 스트레스 probe.**
+
+        화면과 같은 경로(`serialize` 상당 + `sanitizeRelationshipEvents`)를 통과시켜
+        "몇 바이트가 되는가 / 복원하면 몇 개가 남는가 / 글자가 사라지는가"를 값으로
+        낸다. 브라우저 quota 자체는 서버에서 잴 수 없으므로 **바이트와 복원 충실도**만
+        본다 — 실제 quota 경계는 브라우저 실측이 담당한다.
+
+        ⚠️ 본문은 나가지 않는다. 나가는 것은 길이와 개수뿐이다.
+      */
+      const serialized = JSON.stringify(answers);
+      const restored = sanitizeRelationshipEvents(
+        JSON.parse(JSON.stringify(events)) as unknown,
+      );
+      const charLoss = events.reduce((total, event, index) => {
+        const back = restored.events[index];
+        if (!back) return total + event.description.length + (event.myReaction?.length ?? 0);
+        return (
+          total +
+          (event.description.length - back.description.length) +
+          ((event.myReaction?.length ?? 0) - (back.myReaction?.length ?? 0))
+        );
+      }, 0);
+
       return {
         stored: events.length,
         histogram: eventTypeHistogram(events),
+        /** 세션 전체 직렬화 바이트 (UTF-8) — 화면의 storageStatus가 보는 값과 같은 기준 */
+        sessionBytes: Buffer.byteLength(serialized, 'utf8'),
+        /** 복원 후 남은 개수. `stored`와 다르면 어딘가에서 버려졌다는 뜻이다 */
+        restoredCount: restored.events.length,
+        /** 복원 과정에서 버려진 항목 수. 정상 입력에서는 0이어야 한다 */
+        restoreDropped: restored.dropped,
+        /** 복원 전후 문자 손실 합계. **0이 아니면 silent truncation이다** */
+        charLoss,
         /** 저장된 자유 입력의 총 길이. **본문이 아니라 길이다** */
         rawChars: events.reduce(
           (total, event) => total + event.description.length + (event.myReaction?.length ?? 0),

@@ -93,7 +93,7 @@ export const PROMPT_VERSIONS = {
    * v6 프롬프트로 만든 응답은 다른 계약의 산물이다. 캐시 키가
    * `task::promptVersion::fingerprint`(v1.42 §40.12)이므로 자동으로 무효화된다.
    */
-  relationship: 'relationship-v7-evidence',
+  relationship: 'relationship-v8-ended-action',
   /** v1.7 — 길이 제한 · 상대 마음 읽기 예시 강화 · uncertainty 필수 조건 명시 */
   /**
    * v1.30 — context가 dimension마다 canonical `ref`를 주고 모델은 그것을 복사한다.
@@ -120,7 +120,7 @@ export const PROMPT_VERSIONS = {
    * '왜 중요한지'로 바뀌었고 입력값 재진술을 금지했다. 버전을 올리지 않으면 v4
    * 프롬프트로 만든 재진술 문장이 캐시에서 그대로 나온다(§8.13).
    */
-  compatibility: 'compatibility-v5-sowhat',
+  compatibility: 'compatibility-v6-ended-action',
   /** v1.7 — 길이 제한 · '~수도 있어' 톤 강제 · 반복 신호 확정 금지 */
   /**
    * v1.43 §45.3 · §46.4 — **v3으로 올렸다.**
@@ -174,7 +174,7 @@ export const PROMPT_VERSIONS = {
    * ⚠️ 출력에 `scanDeepNarrativeWithTense`가 붙는다. v3 캐시를 그대로 쓰면 `ended`
    * 사용자가 **검사받지 않은 현재형 본문**을 유료 리포트에서 계속 받는다.
    */
-  deepReport: 'deep-report-v4-tense',
+  deepReport: 'deep-report-v5-ended-action',
   /**
    * v1.46 AI Lens §6 — **렌즈별 프롬프트 4개.**
    *
@@ -208,10 +208,23 @@ export const PROMPT_VERSIONS = {
    * ⚠️ 버전을 올리는 이유는 캐시다(v1.42 §40.12). 그대로 두면 v2 문체를 받은 세션이
    * 새 문체를 영영 보지 못한다.
    */
-  premiumMbtiLens: 'premium-mbti-v3',
-  premiumSajuLens: 'premium-saju-v3',
-  premiumZodiacLens: 'premium-zodiac-v3',
-  premiumCrossLens: 'premium-cross-lens-v3',
+  /**
+   * ══ v1.46.4 HARDENING PHASE 4 — **전부 한 단계 올렸다** ═══════════════════
+   *
+   * `TENSE_CONTRACT`(여섯 Task가 공유하는 [시제] 블록)에 규칙이 하나 늘었다:
+   * `former`에서 **상대에게 행동하라고 쓰지 않는다.**
+   *
+   * 실측에서 사주 렌즈가 `한쪽이 더 가까이 다가가고 싶을 때 …`를 냈다. 시제는
+   * 맞았고(지금/현재 표현이 없다) 대상이 틀렸다 — 이미 끝난 관계의 상대에게 할 수
+   * 있는 일은 없다. 그래서 프롬프트·스캐너·fixture 3단으로 막는다.
+   *
+   * ⚠️ **버전을 올리지 않으면 이전 계약의 응답이 캐시에서 그대로 나온다.** 모델이
+   * 받는 것이 달라졌으면 이전 응답은 다른 계약의 산물이다 — v1.42가 세운 규칙 그대로다.
+   */
+  premiumMbtiLens: 'premium-mbti-v4',
+  premiumSajuLens: 'premium-saju-v4',
+  premiumZodiacLens: 'premium-zodiac-v4',
+  premiumCrossLens: 'premium-cross-lens-v4',
 } as const;
 
 export const ANALYSIS_VERSION = '1.0';

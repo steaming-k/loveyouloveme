@@ -1,8 +1,7 @@
 import {
-  RELATIONSHIP_EVENT_DESCRIPTION_MAX_LENGTH,
   RELATIONSHIP_EVENT_LABEL,
-  RELATIONSHIP_EVENT_REACTION_MAX_LENGTH,
-  RELATIONSHIP_EVENT_SAFETY_MAX,
+  RELATIONSHIP_EVENT_PARSER_FIELD_SAFETY_MAX,
+  RELATIONSHIP_EVENT_PARSER_SAFETY_MAX,
 } from '@/data/relationshipEvents';
 import type {
   DeepReportedScene,
@@ -106,12 +105,25 @@ import type {
 /* ─────────────────────────────────────────── 정규화 · 세션 복원 */
 
 /**
- * 자유 입력 한 줄을 저장 가능한 형태로. 상한을 넘으면 **자른다**(거부하지 않는다) —
- * 사용자가 방금 쓴 문장을 통째로 버리는 것보다 낫고, 입력 필드에도 같은 `maxLength`가
- * 걸려 있으므로 여기까지 오는 초과분은 붙여넣기·복원 경로뿐이다.
+ * 자유 입력을 저장 가능한 형태로.
+ *
+ * ══ v1.46.4 HARDENING — **자르지 않는다** ═════════════════════════════════
+ *
+ * 예전 구현은 `value.trim().slice(0, maxLength)`였고 주석은 "사용자가 방금 쓴 문장을
+ * 통째로 버리는 것보다 낫다"고 적혀 있었다. 그 판단은 상한이 80자였을 때의 것이다 —
+ * 80자는 넘기기 쉬우니 자르는 편이 나았다.
+ *
+ * 지금은 반대다. 상한이 20,000자(A4 10장)이므로 여기 걸리는 값은 **정상 입력이
+ * 아니다.** 그리고 그런 값을 앞에서 잘라 저장하면 사용자가 쓴 적 없는 문장이 근거로
+ * 인용된다 — 조용한 의미 왜곡이고, `relationshipEventEvidenceText`가 그 문장을
+ * 따옴표에 넣어 그대로 화면에 올린다.
+ *
+ * @returns 정상이면 문자열, **한도를 넘으면 `null`**(= 이 항목을 버린다)
  */
-function normalizeLine(value: unknown, maxLength: number): string {
-  return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
+function normalizeLine(value: unknown, maxLength: number): string | null {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  return trimmed.length > maxLength ? null : trimmed;
 }
 
 function eventTypeOf(value: unknown): RelationshipEventType | null {
@@ -129,35 +141,75 @@ function eventTypeOf(value: unknown): RelationshipEventType | null {
  * 있다 — 목록에서 빠지는 것이다. `other`로 강등하면 사용자가 고르지 않은 종류를
  * 고른 것처럼 만든다.
  *
- * ⚠️ v1.46.4 §5 · §6 — 여기서 적용하는 상한은 **technical guard**(`RELATIONSHIP_EVENT_SAFETY_MAX`)
- * 이지 제품 상한이 아니다. 예전에는 3이었고, 그 값이 곧 "사용자가 알려줄 수 있는 장면의
- * 수"였다. 지금 이 선은 손상되거나 조작된 세션이 브라우저 저장소를 통째로 먹는 것만
- * 막는다 — 사용자가 정상적으로 입력해서 여기에 닿는 일은 사실상 없다.
+ * ══ v1.46.4 HARDENING — **제품 상한이 아니라 parser safety guard다** ══════
+ *
+ * Candidate는 `RELATIONSHIP_EVENT_SAFETY_MAX`(100) 하나로 입력·복원을 함께 막았다.
+ * 이름은 SAFETY였지만 화면에서 도달할 수 있는 숫자였으므로 실질은 제품 상한이었다.
+ *
+ * 여기서 쓰는 값은 `RELATIONSHIP_EVENT_PARSER_*`이고, **정상 UI로는 닿을 수 없다.**
+ * 이 선에 걸리는 데이터는 조작되었거나 손상된 것이다.
+ *
+ * ⚠️ **버린 것을 조용히 넘기지 않는다.** 돌려주는 값에 `dropped`가 있고, 화면이
+ * 그 사실을 사용자에게 말한다. Candidate에서는 101번째가 아무 말 없이 사라졌다.
  */
-export function sanitizeRelationshipEvents(raw: unknown): RelationshipEvent[] {
-  if (!Array.isArray(raw)) return [];
+export interface SanitizedRelationshipEvents {
+  events: RelationshipEvent[];
+  /**
+   * 복원 과정에서 버린 항목 수. **0이 정상이다.**
+   *
+   * ⚠️ 종류가 유효하지 않거나 본문이 빈 항목도 여기 포함된다 — 그것도 사용자가
+   * 알려준 무언가가 사라진 것이기 때문이다(v1.44 BUG-002가 세운 '추정하지 않는다'
+   * 규칙은 그대로다: 복구를 시도하지 않는다. 다만 말은 한다).
+   */
+  dropped: number;
+}
+
+export function sanitizeRelationshipEvents(raw: unknown): SanitizedRelationshipEvents {
+  if (!Array.isArray(raw)) return { events: [], dropped: 0 };
   const events: RelationshipEvent[] = [];
   const seen = new Set<string>();
+  let dropped = 0;
 
   for (const item of raw) {
-    if (events.length >= RELATIONSHIP_EVENT_SAFETY_MAX) break;
-    if (typeof item !== 'object' || item === null) continue;
+    if (events.length >= RELATIONSHIP_EVENT_PARSER_SAFETY_MAX) {
+      /* 남은 것을 전부 버린 것이므로 개수도 전부 센다 — '몇 개가 사라졌는가'가 안내다 */
+      dropped += 1;
+      continue;
+    }
+    if (typeof item !== 'object' || item === null) {
+      dropped += 1;
+      continue;
+    }
 
     const candidate = item as Record<string, unknown>;
     const type = eventTypeOf(candidate.type);
     const description = normalizeLine(
       candidate.description,
-      RELATIONSHIP_EVENT_DESCRIPTION_MAX_LENGTH,
+      RELATIONSHIP_EVENT_PARSER_FIELD_SAFETY_MAX,
     );
     const id = typeof candidate.id === 'string' ? candidate.id.slice(0, 80) : '';
-    if (!type || !description || !id || seen.has(id)) continue;
+    /*
+      ⚠️ `description === null`은 **한도 초과**(항목을 버린다)이고 `''`는 빈 본문이다.
+      둘 다 버리지만 이유가 달라서 값으로 구분해둔다 — 앞의 것은 조작 데이터 신호다.
+    */
+    if (!type || !description || !id || seen.has(id)) {
+      dropped += 1;
+      continue;
+    }
     seen.add(id);
 
-    const myReaction = normalizeLine(candidate.myReaction, RELATIONSHIP_EVENT_REACTION_MAX_LENGTH);
+    const myReaction = normalizeLine(
+      candidate.myReaction,
+      RELATIONSHIP_EVENT_PARSER_FIELD_SAFETY_MAX,
+    );
+    if (myReaction === null) {
+      dropped += 1;
+      continue;
+    }
     events.push(myReaction ? { id, type, description, myReaction } : { id, type, description });
   }
 
-  return events;
+  return { events, dropped };
 }
 
 /* ──────────────────────────────────────────────────── EvidenceRef */

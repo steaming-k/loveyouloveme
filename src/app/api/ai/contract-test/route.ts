@@ -16,6 +16,7 @@ import {
   scanDeepNarrativeWithTense,
   scanHistoryNarrative,
   scanLensNarrative,
+  scanRelationshipTense,
   scanRelationshipNarrative,
   stripRedundantSentences,
 } from '@/services/ai/safety';
@@ -39,6 +40,7 @@ import type {
   MirrorState,
   PhotoObservation,
   PremiumLensKind,
+  RelationshipTense,
 } from '@/types';
 
 /**
@@ -106,6 +108,32 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const { task, raw } = body;
+
+  /**
+   * v1.46.4 HARDENING PHASE 4 — **문장 하나를 스캐너에 직접 통과시키는 probe.**
+   *
+   * ⚠️ 왜 필요한가: `former`의 행동 제안 금지는 **AI 출력에만** 나타나는 결함인데,
+   * Provider 없이는 그 출력을 만들 수 없다. 소스 스캔으로 패턴 존재만 확인하면
+   * "패턴이 실제로 그 문장을 잡는가"는 영영 검증되지 않는다 — 실측에서 새어 나온
+   * 문장이 정확히 그런 종류였다(시제는 맞고 대상이 틀린 문장).
+   *
+   * 그래서 fixture가 **실제 누출 문장**과 **정상 회고 문장**을 함께 넣고 판정을 본다.
+   * 과필터(정상 문장을 막는 것)도 결함이므로 양방향으로 고정한다.
+   */
+  if (task === 'tense-scan-probe') {
+    const texts = Array.isArray(body.raw) ? (body.raw as unknown[]) : [];
+    const probeTense: RelationshipTense = body.tense === 'former' ? 'former' : 'current';
+    return Response.json({
+      ok: true,
+      tense: probeTense,
+      results: texts
+        .filter((text): text is string => typeof text === 'string')
+        .map((text) => {
+          const scan = scanRelationshipTense(text, probeTense);
+          return { text, safe: scan.safe, violations: scan.violations };
+        }),
+    });
+  }
 
   /* ---------------------------- v1.10 사진 1장 관찰 (§3 · §9 · §10) */
   if (task === 'observed-photo-analysis') {

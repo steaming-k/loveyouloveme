@@ -21,6 +21,7 @@
     "test:value": "node tests/run-value-fixtures.mjs",
     "test:event": "node tests/run-event-fixtures.mjs",
     "test:question": "node tests/run-question-fixtures.mjs",
+    "test:ended": "node tests/run-ended-fixtures.mjs",
     "test:ai:e2e": "node tests/run-provider-e2e.mjs"
   },
   "dependencies": {

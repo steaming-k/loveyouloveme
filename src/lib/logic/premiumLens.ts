@@ -1,11 +1,13 @@
 import { MBTI_AXES } from '@/data/mbti';
 import {
   CROSS_LENS_COPY,
+  LENS_CHECKPOINT_FORMER,
   LENS_DISCLAIMER,
   LENS_LABEL,
   LENS_SELF_COPY,
   LENS_THEME_LABEL,
   LENS_THEME_QUESTION,
+  LENS_THEME_QUESTION_FORMER,
   LENS_UNAVAILABLE_REASON,
   MBTI_DECISION_PAIR,
   MBTI_ENERGY_PAIR,
@@ -54,6 +56,7 @@ import {
 import { relationshipEventEvidenceText } from '@/lib/logic/relationshipEvents';
 import { elementRelation, isLunarBlocked, readSajuDay, type DayPillar } from '@/lib/logic/sajuPillars';
 import { getSunSign } from '@/services/astrologyService';
+import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import type {
   BirthProfile,
   DeclaredPreference,
@@ -111,6 +114,17 @@ export interface PremiumLensInput {
   declared: DeclaredPreference;
   events: readonly RelationshipEvent[];
   today: Date;
+  /**
+   * v1.46.4 HARDENING PHASE 4 — **관계 시제.**
+   *
+   * ⚠️ 판정에는 들어가지 않는다. `mode`·`themes`·`basis`·`sections`는 이 값과
+   * 무관하고, 바뀌는 것은 **체크포인트와 Cross-Lens 확인 질문**뿐이다 — 그 둘만이
+   * '상대와 지금 해보는 것'을 말하기 때문이다.
+   *
+   * ⚠️ **필수다.** optional로 두면 호출부가 빼먹고, 그러면 끝난 관계 사용자에게
+   * `신호를 하나 정해봐`가 그대로 나간다 — 이번에 실제로 그랬다.
+   */
+  tense: RelationshipTense;
 }
 
 /* ══════════════════════════════════════════════════ 테마 매핑 (§19) */
@@ -958,6 +972,8 @@ function buildLensTensions(
 export function buildCrossLens(
   reports: readonly PremiumLensReport[],
   declared: DeclaredPreference,
+  /** v1.46.4 HARDENING PHASE 4 — 확인 질문의 주어·시점을 정한다. 판정에는 무관하다 */
+  tense: RelationshipTense,
 ): PremiumCrossLens | null {
   if (reports.length < 2) return null;
 
@@ -1034,7 +1050,15 @@ export function buildCrossLens(
       (판정 가능한 축이 없거나, 값이 양 끝이 아닐 때). 없는 충돌을 지어내지 않는다.
     */
     tensions: buildLensTensions(reports, declared),
-    verificationQuestions: questionThemes.map((theme) => LENS_THEME_QUESTION[theme]),
+    /*
+      ⚠️ **시제를 따른다**(v1.46.4 HARDENING PHASE 4). 기본 문장은 전부 '상대와 지금
+      맞춰보는 말'이라 끝난 관계에서는 할 수 없는 일을 시킨다. 주제는 그대로 두고
+      주어와 시점만 옮긴 `former` 교체분을 쓴다.
+    */
+    verificationQuestions: questionThemes.map(
+      (theme) =>
+        (tense === 'former' ? LENS_THEME_QUESTION_FORMER : LENS_THEME_QUESTION)[theme],
+    ),
     note: repeatedThemes.length > 0 ? CROSS_LENS_COPY.note : CROSS_LENS_COPY.noRepeatNote,
   };
 }
@@ -1063,6 +1087,7 @@ function unavailable(
 export function buildPremiumLensBundle(input: PremiumLensInput): PremiumLensBundle {
   const { selfMbti, targetMbti, selfBirth, targetBirth, hasTarget, declared, events, today } =
     input;
+  const { tense } = input;
 
   /** 상대가 있는데 이 렌즈의 값만 없는 경우와, 상대 자체가 없는 경우를 가른다 */
   const selfReason: PremiumLensSelfReason = hasTarget ? 'target_data_missing' : 'no_target';
@@ -1099,12 +1124,26 @@ export function buildPremiumLensBundle(input: PremiumLensInput): PremiumLensBund
       ? buildZodiacPair(mineSign, theirsSign, cusp)
       : buildZodiacSelf(mineSign, nearCusp(selfBirth.date), declared, selfReason);
 
-  const lenses: PremiumLensEntry[] = [mbti, saju, zodiac];
+  /**
+   * ══ 시제 교체는 **마지막에 한 번** (v1.46.4 HARDENING PHASE 4) ═══════════
+   *
+   * ⚠️ 각 `build*Pair/Self`에 tense를 내려보내지 않는다. 그러면 여섯 함수가 전부
+   * 시제 분기를 갖게 되고, 새 렌즈를 추가하는 사람이 한 곳을 빼먹는다 — 이번 결함이
+   * 정확히 '한 곳이 게이트를 안 지나간' 형태였다.
+   *
+   * 대신 조립이 끝난 뒤 **한 자리에서** 바꾼다. 바꾸는 것은 체크포인트 하나뿐이고,
+   * 판정(mode · themes · basis · sections)은 한 글자도 건드리지 않는다.
+   */
+  const lenses: PremiumLensEntry[] = [mbti, saju, zodiac].map((lens) =>
+    lens.mode !== 'unavailable' && tense === 'former'
+      ? { ...lens, checkpoint: LENS_CHECKPOINT_FORMER[lens.kind] }
+      : lens,
+  );
   const reports = lenses.filter((lens): lens is PremiumLensReport => lens.mode !== 'unavailable');
 
   return {
     lenses,
     availableCount: reports.length,
-    crossLens: buildCrossLens(reports, declared),
+    crossLens: buildCrossLens(reports, declared, tense),
   };
 }

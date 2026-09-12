@@ -301,6 +301,84 @@ console.log('\nQUESTION-FIT-09 · 시험 · 유도 · 상담사 말투 0');
   check('모든 질문이 물음표로 끝난다', notQuestions.length === 0, notQuestions);
 }
 
+/* ── QUESTION-FIT-10 · 상황 질문 문장 품질 (HARDENING PHASE 6) ─────────── */
+console.log('\nQUESTION-FIT-10 · 상황 기반 질문이 실제로 보낼 수 있는 문장인가');
+{
+  const situational = [b, c].flatMap((result) =>
+    premiumQuestions(result).filter((question) => question.register === 'situational'),
+  );
+  check('상황 기반 질문이 있다', situational.length > 0, situational.length);
+
+  /*
+    ⚠️ **상황을 두 번 가리키지 않는다.** 초기 구현은 묻는 절이 `그럴 때 …`로
+    시작해서 이런 문장이 나왔다:
+
+    ```
+    답장 간격이 평소랑 달라지는 날에는 그럴 때 나한테 어떻게 알려주는 게 …
+    ```
+
+    상황 절이 이미 그 때를 가리키는데 묻는 절이 또 가리킨다 — 실제로 보낼 수 없는
+    문장이다. 사람이 읽어야만 보이는 종류라 값으로 고정해둔다.
+  */
+  const doubled = situational.filter((question) => /(때|날|순간)에?는?\s*그럴\s*때/.test(question.text));
+  check('상황을 두 번 가리키는 문장 0건', doubled.length === 0, doubled.map((q) => q.text));
+
+  check(
+    '모든 상황 질문이 상황 절로 시작한다',
+    situational.every((question) => /^(답장|얘기|괜히|오랜만|누가|만나기)/.test(question.text)),
+    situational.map((q) => q.text),
+  );
+  /* 길이 — 실제로 메시지로 보낼 수 있는 길이여야 한다 */
+  check(
+    '상황 질문이 지나치게 길지 않다 (60자 이하)',
+    situational.every((question) => question.text.length <= 60),
+    situational.map((q) => [q.text.length, q.text]),
+  );
+}
+
+/* ── QUESTION-FIT-11 · 상대를 몰라도 질문이 사라지지 않는다 ───────────── */
+console.log('\nQUESTION-FIT-11 · 상대를 전혀 몰라도 Premium 질문이 있다');
+{
+  /**
+   * ⚠️ **실측에서 0개였다.** `premiumService`가 동기화율 4축의 지문을 전부 미리
+   * 막았는데 무료는 상위 2축만 쓴다 — 나머지 두 축의 `light`가 아무도 안 쓰는데도
+   * 막혀 있었고, 상대를 모르면 `direct`도 `situational`도 만들어지지 않아서
+   * 결국 유료 첫 화면에 질문이 하나도 남지 않았다(§32 위반).
+   */
+  const unknown = await run({
+    ...FIXTURE_B,
+    target: {
+      ...FIXTURE_B.target,
+      contact: 'x',
+      conflict: 'x',
+      alone: 'x',
+      affection: 'x',
+      events: [],
+    },
+  });
+  check(
+    '상대를 몰라도 Premium 질문이 1개 이상이다',
+    premiumQuestions(unknown).length >= 1,
+    unknown.report.candidates.map((candidate) => [candidate.axis, candidate.questions.length]),
+  );
+  check(
+    '무료가 실제로 쓴 지문만 막혔다 (4축 전부 선제 차단 아님)',
+    premiumQuestions(unknown).some((question) => question.register === 'light'),
+    premiumQuestions(unknown).map((question) => [question.register, question.fingerprint]),
+  );
+  check(
+    '그래도 무료와 의도가 겹치지 않는다',
+    (() => {
+      const freeFp = new Set(
+        unknown.free.candidates.flatMap((candidate) =>
+          candidate.questions.map((question) => question.fingerprint),
+        ),
+      );
+      return !premiumQuestions(unknown).some((question) => freeFp.has(question.fingerprint));
+    })(),
+  );
+}
+
 /* ── §32 · Premium에서 질문이 돈값의 일부인가 ─────────────────────────── */
 console.log('\n§32 · Premium 첫 화면 Insight 중 최소 1개에 바로 쓸 질문이 있다');
 {

@@ -109,11 +109,11 @@ const SELF_CLAUSE: Record<MirrorAxisKey, Partial<Record<SelfLevel, string>>> = {
  */
 const EVENT_SITUATION: Partial<Record<RelationshipEventType, string>> = {
   contact_change: '답장 간격이 평소랑 달라지는 날에는',
-  conflict: '얘기가 서로 엇갈렸던 날 같은 경우에는',
+  conflict: '얘기가 서로 엇갈렸던 날에는',
   distance: '괜히 거리감이 느껴지는 날에는',
-  closer: '오랜만에 얘기가 잘 통했던 날처럼',
-  care_received: '누가 챙겨준다고 느껴지는 순간이 있잖아,',
-  affection_felt: '괜히 기분 좋았던 순간이 있잖아,',
+  closer: '오랜만에 얘기가 잘 통한 날에는',
+  care_received: '누가 챙겨준다고 느껴지는 순간에',
+  affection_felt: '괜히 기분 좋았던 순간에',
   meeting: '만나기로 하고 일정을 맞출 때',
 };
 
@@ -131,27 +131,27 @@ const ASK: Record<MirrorAxisKey, Record<QuestionRegister, string>> = {
   contact: {
     light: '너는 연락 간격이 어느 쪽일 때 편해?',
     direct: '연락이 뜸해질 때 미리 한마디 있는 게 편해, 아니면 그냥 두는 게 편해?',
-    situational: '그럴 때 나한테 어떻게 알려주는 게 너한테 제일 덜 번거로워?',
+    situational: '나한테 어떻게 알려주는 게 너한테 제일 덜 번거로워?',
   },
   alone: {
     light: '너는 혼자 보내는 시간이 어느 정도일 때 편해?',
     direct: '각자 쉬고 싶은 날에 서로 어떻게 알려주면 제일 편할까?',
-    situational: '그럴 때 너는 혼자 두는 게 나아, 아니면 먼저 말 걸어주는 게 나아?',
+    situational: '내가 먼저 말 걸어주는 게 나아, 아니면 좀 두는 게 나아?',
   },
   conflict: {
     light: '너는 마음에 걸리는 게 생기면 보통 어떻게 푸는 편이야?',
     direct: '서로 예민해졌을 때, 바로 얘기하는 게 편해 아니면 좀 있다가가 편해?',
-    situational: '그럴 때 내가 어떤 식으로 말해주면 네가 덜 답답할 것 같아?',
+    situational: '내가 어떤 식으로 말해주면 네가 덜 답답할 것 같아?',
   },
   affection: {
     light: '너는 표현을 말로 들을 때랑 행동으로 느낄 때 중에 뭐가 더 와닿아?',
     direct: '표현이 줄어드는 시기에 네가 편한 방식은 어느 쪽이야?',
-    situational: '그럴 때 어떤 게 너한테 제일 크게 남아?',
+    situational: '어떤 게 너한테 제일 크게 남아?',
   },
   hobby: {
     light: '너는 같이 하는 것 중에 뭐가 제일 좋았어?',
     direct: '같이 하는 시간이랑 각자 시간이 어느 정도로 섞이면 좋을 것 같아?',
-    situational: '그럴 때 우리 다음엔 뭘 같이 해보면 좋을까?',
+    situational: '다음엔 뭘 같이 해보면 좋을까?',
   },
 };
 
@@ -277,6 +277,16 @@ export function buildUserFitQuestions(context: UserFitQuestionContext): UserFitQ
       조립했는데, 그러면 `direct`와 뒷문장이 글자 그대로 같아서 한 화면에 같은 질문이
       두 번 나간다 — §31이 막는 paraphrase 중복의 교과서적 형태다. 세 register가
       서로 다른 것을 묻는다는 사실이 `INTENT` 표에 값으로 적혀 있는 이유이기도 하다.
+
+      ⚠️ **묻는 절이 상황을 다시 가리키지 않는다**(HARDENING PHASE 6). 처음에는
+      `그럴 때 …`로 시작했고, 조립 결과가 이렇게 나왔다:
+
+      ```
+      답장 간격이 평소랑 달라지는 날에는 그럴 때 나한테 어떻게 알려주는 게 …
+                                    ^^^^^ 앞 절이 이미 그 때를 가리킨다
+      ```
+
+      실제로 보낼 수 없는 문장이다. 상황은 앞 절이 정하고, 묻는 절은 **묻기만** 한다.
     */
     push('situational', `${situation} ${ASK[axis].situational}`);
   }

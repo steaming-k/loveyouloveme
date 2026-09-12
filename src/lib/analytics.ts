@@ -283,6 +283,16 @@ export const ANALYTICS_EVENTS = [
   'solo_action_view',
   'compatibility_analysis_result_view',
   'relationship_mirror_analysis_entry',
+  /**
+   * v1.46.4 HARDENING PHASE 3 — unavailable 카드의 **해결 CTA를 눌렀다.**
+   *
+   * ⚠️ property는 `feature`(PremiumFeatureId)와 `fix`(목적지 종류)뿐이다. 둘 다
+   * categorical이고 사용자 답변은 들어가지 않는다(§54).
+   *
+   * ⚠️ `premium_entry_click`과 **다른 이벤트다.** 그건 '살 의향'이고 이건 '막혀서
+   * 채우러 간다'이다 — 하나로 묶으면 Premium Intent Rate의 분자가 오염된다(§53).
+   */
+  'premium_unavailable_fix_click',
   // v1.12 §9~§11 AI latency/failure metrics — 새 이벤트를 추가하지 않는다. v1.6부터 있던
   // `ai_analysis_request`/`ai_analysis_success`/`ai_analysis_failure`(아래, aiClient.ts)가
   // 이미 task·duration_ms·mode·evidence_count(result_items)·failure reason을 전부 갖고

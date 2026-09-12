@@ -1185,9 +1185,20 @@ console.log('\nTEMP-AI-06 — 게이트가 AI 계약을 건드리지 않는다 (
   );
 
   const versions = await readFile(join(ROOT, 'src', 'services', 'ai', 'promptVersions.ts'), 'utf8');
+  /**
+   * ⚠️ **v1.46.4 HARDENING PHASE 4에서 기대값이 바뀌었다(검사의 뜻은 그대로다).**
+   *
+   * 이 검사가 고정하는 것은 "Trust Boundary 작업이 AI 계약을 건드리지 않았다"이다.
+   * PHASE 4는 여섯 Task가 공유하는 `TENSE_CONTRACT`에 `former` 행동 제안 금지를
+   * 추가했고, `relationship`도 그 블록을 쓴다 — 모델이 받는 것이 실제로 달라졌다.
+   *
+   * 버전을 올리지 않으면 이전 계약으로 만든 응답이 캐시에서 나오므로, 안전 수정이
+   * 배포돼도 캐시된 세션에는 적용되지 않는다. 그래서 느슨하게 만들지 않고
+   * **바뀐 값으로 다시 고정한다.**
+   */
   check(
-    'promptVersion 상수가 v1.43 값 그대로다',
-    versions.includes('relationship-v7-evidence'),
+    'relationship promptVersion이 고정돼 있다',
+    versions.includes('relationship-v8-ended-action'),
   );
 }
 
@@ -1389,11 +1400,12 @@ console.log('\nTEMP-AI-AXIS-06 — R-11 Core aiHeadline 게이트는 그대로 �
       await readFile(join(ROOT, 'src', 'components', 'mirror', 'MirrorComparisonRow.tsx'), 'utf8'),
     ).includes('{insight.note}'),
   );
+  /* ⚠️ 위와 같은 이유로 기대값만 바뀌었다(v1.46.4 HARDENING PHASE 4) */
   check(
-    'AI 요청·프롬프트 버전은 그대로다',
+    'AI 요청은 그대로이고 프롬프트 버전이 고정돼 있다',
     page.includes('const narrative = useRelationshipNarrative();') &&
       (await readFile(join(ROOT, 'src', 'services', 'ai', 'promptVersions.ts'), 'utf8')).includes(
-        'relationship-v7-evidence',
+        'relationship-v8-ended-action',
       ),
   );
 }

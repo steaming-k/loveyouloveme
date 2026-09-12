@@ -13,12 +13,7 @@ import {
 
 import { MAX_PAST_FACTORS } from '@/data/labels';
 import { PHOTO_MAX_COUNT } from '@/data/samplePhotos';
-import {
-  RELATIONSHIP_EVENT_DESCRIPTION_MAX_LENGTH,
-  RELATIONSHIP_EVENT_REACTION_MAX_LENGTH,
-  RELATIONSHIP_EVENT_SAFETY_MAX,
-  SESSION_STORAGE_SOFT_LIMIT_BYTES,
-} from '@/data/relationshipEvents';
+import { SESSION_STORAGE_NEAR_LIMIT_BYTES } from '@/data/relationshipEvents';
 import { TARGET_INTEREST_MAX, TARGET_CUSTOM_INTEREST_MAX_LENGTH } from '@/data/targetPreferences';
 import { clearSessionDedup, trackEvent } from '@/lib/analytics';
 import { createEmptyBirthProfile } from '@/lib/logic/birth';
@@ -68,6 +63,21 @@ import type {
 import { createEmptyAnswers, createEmptyTargetProfile, createSampleAnswers } from './defaultAnswers';
 
 const STORAGE_KEY = 'lym.session.v1';
+
+/**
+ * 직렬화 결과의 **UTF-8 바이트 수** (v1.46.4 HARDENING PHASE 1-2)
+ *
+ * ⚠️ `string.length`를 쓰지 않는다. 그건 UTF-16 코드 유닛 수이고, 이 서비스의 저장
+ * 내용은 거의 전부 한글이다 — 한글은 UTF-8에서 글자당 3바이트라 `length`로 재면
+ * 실제 사용량을 **3배 과소평가**한다. Candidate가 그 값으로 임계를 잡고 있었다.
+ *
+ * ⚠️ `TextEncoder`가 없는 환경(아주 오래된 브라우저)에서는 보수적으로 3배로 잡는다 —
+ * 없는 API 때문에 경고를 영영 못 띄우는 것보다 낫다.
+ */
+function serializedByteLength(payload: string): number {
+  if (typeof TextEncoder === 'undefined') return payload.length * 3;
+  return new TextEncoder().encode(payload).length;
+}
 
 /**
  * v1.46.4 §6 — 저장소 상태. **`ok`가 기본이고, 화면은 `ok`에서 아무 말도 하지 않는다.**
@@ -145,6 +155,13 @@ interface SessionContextValue {
    * 지금은 **저장이 안 되고 있다는 사실 자체를 사용자가 알아야 한다.**
    */
   storageStatus: SessionStorageStatus;
+  /**
+   * v1.46.4 HARDENING PHASE 1-1 — 세션 복원에서 **버려진 사건 수.**
+   *
+   * ⚠️ 0이 정상이고, 0이 아니면 손상되거나 조작된 저장 데이터라는 뜻이다. 화면은
+   * 이 값이 0보다 클 때만 말한다 — 평소에 '복원 실패 없음'을 알릴 이유는 없다.
+   */
+  droppedEventCount: number;
 
   /**
    * v1.46 §8 · v1.46.4 §5 — 관계 사건 추가. 본문이 비었거나 **기술 상한**
@@ -217,10 +234,24 @@ function serialize(answers: SessionAnswers): string {
   return JSON.stringify({ ...answers, photos });
 }
 
-function deserialize(raw: string): SessionAnswers | null {
+/**
+ * 복원 결과. **버린 개수를 함께 돌려준다** (v1.46.4 HARDENING PHASE 1-1)
+ *
+ * ⚠️ 예전에는 `SessionAnswers | null`이었고, 복원 파서가 버린 사건은 아무 데도
+ * 기록되지 않았다 — 사용자가 알려준 장면이 새로고침 한 번에 말없이 사라질 수 있었다.
+ * 버리는 것 자체는 손상 데이터 방어라 필요하지만, **말하지 않는 것**은 결함이다.
+ */
+interface DeserializedSession {
+  answers: SessionAnswers;
+  /** 복원 과정에서 버려진 사건 수. 0이 정상이다 */
+  droppedEvents: number;
+}
+
+function deserialize(raw: string): DeserializedSession | null {
   try {
     const parsed = JSON.parse(raw) as Partial<SessionAnswers>;
     const base = createEmptyAnswers();
+    const restoredEvents = sanitizeRelationshipEvents(parsed.target?.events);
 
     // 업로드한 사진의 objectUrl은 애초에 저장하지 않는다(serialize 참고). 새로고침 후에는
     // 다시 보여줄 방법이 없으므로, 존재하지 않는 사진을 유효한 것처럼 개수에 넣지 않기 위해
@@ -252,7 +283,7 @@ function deserialize(raw: string): SessionAnswers | null {
           })
         : null);
 
-    return {
+    const answers: SessionAnswers = {
       ...base,
       ...parsed,
       observedAnalysis,
@@ -317,7 +348,7 @@ function deserialize(raw: string): SessionAnswers | null {
          * ⚠️ 모양만 보지 않고 값도 본다 — 종류가 유효하지 않거나 본문이 빈 항목은
          * 목록에서 빠진다(v1.44 BUG-002).
          */
-        events: sanitizeRelationshipEvents(parsed.target?.events),
+        events: restoredEvents.events,
       },
       birthProfile: { ...base.birthProfile, ...parsed.birthProfile },
       legacyZodiac,
@@ -332,6 +363,8 @@ function deserialize(raw: string): SessionAnswers | null {
       // v1.11 이전 세션에는 없다 — 없는 걸 있다고 만들지 않고 그대로 undefined로 둔다.
       currentAnalysisMeta: parsed.currentAnalysisMeta,
     };
+
+    return { answers, droppedEvents: restoredEvents.dropped };
   } catch {
     return null;
   }
@@ -341,6 +374,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [answers, setAnswers] = useState<SessionAnswers>(createEmptyAnswers);
   const [hydrated, setHydrated] = useState(false);
   const [storageStatus, setStorageStatus] = useState<SessionStorageStatus>('ok');
+  /** PHASE 1-1 — 복원에서 버려진 사건 수. 0이면 화면은 아무 말도 하지 않는다 */
+  const [droppedEventCount, setDroppedEventCount] = useState(0);
   /** 해제해야 할 object URL 목록 */
   const objectUrls = useRef<string[]>([]);
 
@@ -348,7 +383,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const restored = deserialize(raw);
-      if (restored) setAnswers(restored);
+      if (restored) {
+        setAnswers(restored.answers);
+        /*
+          ⚠️ 복원에서 버린 것이 있으면 **그 사실을 남긴다**(PHASE 1-1). 화면은 이 값을
+          읽어 "저장된 장면 중 N개를 불러오지 못했어"라고 말한다. 값을 복구하려
+          시도하지는 않는다 — 손상된 데이터를 추정으로 되살리는 것이 더 나쁘다.
+        */
+        if (restored.droppedEvents > 0) setDroppedEventCount(restored.droppedEvents);
+      }
     }
     setHydrated(true);
   }, []);
@@ -392,17 +435,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const payload = serialize(answers);
     try {
       window.localStorage.setItem(STORAGE_KEY, payload);
-      /*
-        직렬화 길이는 UTF-16 코드 유닛 수다. 한글이 많은 세션에서는 실제 바이트가 이보다
-        크지만(UTF-8 기준 3배), soft limit은 정확한 바이트가 아니라 **정리를 권할 시점**을
-        정하는 값이므로 과소평가하지 않도록 그대로 비교한다.
-      */
-      setStorageStatus(payload.length > SESSION_STORAGE_SOFT_LIMIT_BYTES ? 'near' : 'ok');
+      setStorageStatus(serializedByteLength(payload) > SESSION_STORAGE_NEAR_LIMIT_BYTES ? 'near' : 'ok');
     } catch {
       /*
-        여기 오는 이유는 사실상 하나다 — QuotaExceededError. 예외 종류를 분기하지 않는
-        이유는 사용자가 할 수 있는 일이 같기 때문이다(오래된 장면을 지우거나 새로
-        시작한다). 종류를 나누면 화면에 설명할 수 없는 상태가 하나 더 생긴다.
+        ══ 여기서 **아무것도 지우지 않는다** (v1.46.4 HARDENING PHASE 1-2) ═══════
+
+        QuotaExceededError가 나면 `setItem`은 실패하고 **기존 저장분은 그대로 남는다.**
+        그리고 방금 입력한 내용은 React state(`answers`)에 살아 있어서 이 세션 동안은
+        화면에서 사라지지 않는다. 사용자가 잃는 것은 '새로고침 이후'뿐이다.
+
+        ⚠️ **자동으로 오래된 사건을 지워서 자리를 만들지 않는다.** 그건 서비스가
+        사용자 기록을 임의로 버리는 일이고, 이번 hardening이 없애기로 한 데이터
+        유실의 가장 나쁜 형태다(자동이라 사용자가 알아차릴 수도 없다). 무엇을 지울지는
+        사용자가 정한다 — 화면은 상태만 알린다.
+
+        ⚠️ 예외 종류를 분기하지 않는 이유: 사용자가 할 수 있는 일이 같다. 종류를
+        나누면 화면에 설명할 수 없는 상태가 하나 더 생긴다.
       */
       setStorageStatus('full');
     }
@@ -736,22 +784,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
    */
   const addRelationshipEvent = useCallback(
     (type: RelationshipEventType, description: string, myReaction?: string) => {
-      const trimmed = description.trim().slice(0, RELATIONSHIP_EVENT_DESCRIPTION_MAX_LENGTH);
-      if (!trimmed) return false;
-      const reaction = (myReaction ?? '').trim().slice(0, RELATIONSHIP_EVENT_REACTION_MAX_LENGTH);
+      /*
+        ⚠️ **자르지 않는다**(v1.46.4 HARDENING PHASE 1-1). `trim()`만 한다 — 앞뒤 공백
+        제거는 사용자가 쓴 내용을 바꾸지 않지만, `slice`는 바꾼다.
 
-      let added = true;
+        ⚠️ **개수로 막지 않는다.** Candidate에는 `events.length >= 100`이 있었고,
+        그건 이름만 SAFETY인 제품 상한이었다. 저장 한계는 개수가 아니라 바이트로
+        판단하고(`storageStatus`), 그마저도 **입력을 막지 않고 알리기만** 한다.
+      */
+      const trimmed = description.trim();
+      if (!trimmed) return false;
+      const reaction = (myReaction ?? '').trim();
+
+      const added = true;
       let nextCount = 0;
       setAnswers((prev) => {
-        /*
-          v1.46.4 §5 — 여기서 막는 것은 **제품 상한이 아니라 기술 상한**이다. 사용자가
-          정상적인 사용으로 이 선에 닿는 일은 없다(100개). 닿았다면 그건 저장소를
-          지켜야 하는 상황이고, 화면은 `full` 안내와 같은 자리에서 그 사실을 말한다.
-        */
-        if (prev.target.events.length >= RELATIONSHIP_EVENT_SAFETY_MAX) {
-          added = false;
-          return prev;
-        }
         const event: RelationshipEvent = {
           id: `evt-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e4).toString(36)}`,
           type,
@@ -786,16 +833,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (index < 0) return prev;
         const current = prev.target.events[index]!;
 
+        /* ⚠️ 추가와 같은 규칙 — `trim()`만 하고 자르지 않는다 */
         const description =
-          patch.description === undefined
-            ? current.description
-            : patch.description.trim().slice(0, RELATIONSHIP_EVENT_DESCRIPTION_MAX_LENGTH);
+          patch.description === undefined ? current.description : patch.description.trim();
         if (!description) return prev;
 
         const reaction =
           patch.myReaction === undefined
             ? current.myReaction
-            : patch.myReaction.trim().slice(0, RELATIONSHIP_EVENT_REACTION_MAX_LENGTH) || undefined;
+            : patch.myReaction.trim() || undefined;
 
         const next: RelationshipEvent = {
           id: current.id,
@@ -1074,6 +1120,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       answers,
       hydrated,
       storageStatus,
+      droppedEventCount,
       setStatus,
       addUploadedPhotos,
       removePhoto,
@@ -1122,6 +1169,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       answers,
       hydrated,
       storageStatus,
+      droppedEventCount,
       setStatus,
       addUploadedPhotos,
       removePhoto,

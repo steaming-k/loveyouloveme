@@ -2710,6 +2710,46 @@ export interface PremiumFeature {
   status: PremiumFeatureStatus;
   /** unavailable일 때 이유를 사용자에게 그대로 보여준다 */
   unavailableReason?: string;
+  /**
+   * v1.46.4 HARDENING PHASE 3 — **그래서 무엇을 하면 되는가.**
+   *
+   * ⚠️ 이유만 있고 길이 없으면 그 카드는 dead-end다. 사용자는 "관계 경험이나 상대
+   * 정보를 더 채우면 볼 수 있어"를 읽고 **어디서 채우는지 직접 찾아야** 했다.
+   * v1.46.3이 관계 렌즈에서 같은 문제를 `PremiumLensUnavailable.fix`로 풀었고,
+   * 여기서는 그 패턴을 **재사용한다**(새 abstraction을 만들지 않는다).
+   *
+   * ⚠️ **해결할 수 없는 상태에서는 `undefined`다.** 사주 엔진 미연결·기록 2개
+   * 필요처럼 지금 화면에서 풀 수 없는 상태에 CTA를 붙이면 그건 갈 수 없는 길을
+   * 알려주는 것이고(P0-A가 닫은 결함과 같은 형태), 없는 해결책을 약속하는 것이다.
+   */
+  fix?: PremiumFeatureFix;
+}
+
+/**
+ * unavailable을 **실제로 풀 수 있는 다음 행동** (v1.46.4 HARDENING PHASE 3)
+ *
+ * ⚠️ 이유 문구를 읽어 목적지를 추측하지 않는다 — v1.46.3 FIX-06이 세운 규칙 그대로다.
+ * 문구를 고칠 때마다 이동이 조용히 깨지기 때문이다.
+ *
+ * ⚠️ **이 유니온에 없는 상태는 CTA를 만들지 않는다.** 늘릴 때는 그 목적지가 정말로
+ * 그 상태를 푸는지 먼저 확인해야 한다(PREMIUM-FIX-03).
+ */
+export type PremiumFeatureFixKind =
+  /** 상대 4축을 더 채운다 — `/target` */
+  | 'target'
+  /** 이전 관계 경험을 답한다 — `/profile/past/intro` */
+  | 'experience'
+  /** 내 MBTI를 입력한다 — `/profile/declared/4` */
+  | 'mbti'
+  /** 생년월일을 입력한다 — `/lens/birth` */
+  | 'birth'
+  /** 사진 관찰을 확인한다 — `/profile/photos` */
+  | 'photos';
+
+export interface PremiumFeatureFix {
+  kind: PremiumFeatureFixKind;
+  /** 버튼 문구. `data/premium.ts`의 표에서 온다 */
+  label: string;
 }
 
 export interface PremiumAvailability {

@@ -1223,7 +1223,7 @@ console.log('\nAI-LENS-01 ~ AI-LENS-20 — 렌즈별 AI 해석 (v1.46 AI Lens)')
   );
   check(
     'AI-LENS-18 네 Task가 서로 다른 promptVersion을 갖는다 (캐시 네임스페이스 분리)',
-    ['premium-mbti-v3', 'premium-saju-v3', 'premium-zodiac-v3', 'premium-cross-lens-v3'].every(
+    ['premium-mbti-v4', 'premium-saju-v4', 'premium-zodiac-v4', 'premium-cross-lens-v4'].every(
       (version) => versions.includes(`'${version}'`),
     ),
   );
@@ -1232,25 +1232,39 @@ console.log('\nAI-LENS-01 ~ AI-LENS-20 — 렌즈별 AI 해석 (v1.46 AI Lens)')
     client.includes('${task}::${promptVersionOf(task)}::${fingerprint}'),
   );
 
-  /* ── AI-LENS-19 · deep-report-v4-tense 불변 ───────────────────────────── */
+  /* ── AI-LENS-19 · deep-report promptVersion 고정 ──────────────────────── */
+  /**
+   * ⚠️ **v1.46.4 HARDENING PHASE 4에서 기대값이 바뀌었다(검사의 뜻은 그대로다).**
+   *
+   * 이 검사는 원래 "렌즈 작업이 Core Task를 건드리지 않았다"를 고정한다. 이번에는
+   * **의도적으로 건드렸다**: 여섯 Task가 공유하는 `TENSE_CONTRACT`에 `former`에서
+   * 상대에게 행동을 권하지 말라는 규칙을 추가했다(실측 누출 — 사주 렌즈의
+   * `한쪽이 더 가까이 다가가고 싶을 때 …`).
+   *
+   * 버전을 올리지 않으면 **이전 계약으로 만든 응답이 캐시에서 그대로 나온다.** 즉
+   * 안전 수정이 배포돼도 캐시된 세션에는 적용되지 않는다.
+   *
+   * 그래서 검사를 느슨하게 만들지 않고 **바뀐 값으로 다시 고정한다.**
+   */
   check(
-    'AI-LENS-19 deep-report promptVersion이 그대로다',
-    versions.includes("deepReport: 'deep-report-v4-tense'"),
+    'AI-LENS-19 deep-report promptVersion이 고정돼 있다',
+    versions.includes("deepReport: 'deep-report-v5-ended-action'"),
   );
   check(
     'AI-LENS-19 기존 네 Task의 promptVersion이 전부 그대로다',
     /*
-      v1.46.4 §3 — `compatibility`만 v4 → v5로 올렸다. 이 검사의 뜻은 '렌즈 작업이 다른
-      Task를 건드리지 않았다'인데, v1.46.4는 **의도적으로** compatibility 프롬프트의
-      역할을 바꿨다(입력 재진술 금지 · explanation을 WHY로). 버전을 올리지 않으면 v4로
-      만든 재진술 문장이 캐시에서 그대로 나온다.
+      v1.46.4 §3 — `compatibility`를 v4 → v5로 올렸다(입력 재진술 금지).
 
-      그래서 목록을 느슨하게 만들지 않고 **바뀐 값으로 다시 고정**한다 — 나머지 셋은
-      여전히 그대로여야 한다.
+      v1.46.4 HARDENING PHASE 4 — `relationship`·`compatibility`를 **한 번 더** 올렸다.
+      둘 다 `TENSE_CONTRACT`를 포함하므로 `former` 행동 제안 금지 규칙이 프롬프트에
+      들어갔고, 모델이 받는 것이 달라졌으면 이전 응답은 다른 계약의 산물이다.
+
+      `history`·`observed`는 `TENSE_CONTRACT`를 쓰지 않아 **그대로다** — 이 검사가
+      여전히 '건드리지 않은 것은 건드리지 않았다'를 고정한다.
     */
     [
-      'relationship-v7-evidence',
-      'compatibility-v5-sowhat',
+      'relationship-v8-ended-action',
+      'compatibility-v6-ended-action',
       'history-v3-axis',
       'observed-v2-photo',
     ].every((version) => versions.includes(`'${version}'`)),

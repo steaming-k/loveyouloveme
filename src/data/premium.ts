@@ -387,3 +387,22 @@ export const PREMIUM_HOOK_COPY = {
     cta: '과거 관찰과 이어서 보기',
   },
 } as const;
+
+/**
+ * unavailable 카드의 CTA 문구 (v1.46.4 HARDENING PHASE 3)
+ *
+ * ⚠️ `LENS_FIX_CTA`(`data/premiumLens.ts`)와 **같은 형태**다. 두 표를 하나로 합치지
+ * 않은 이유는 목적지 집합이 다르기 때문이다 — 렌즈는 생년월일·MBTI 둘뿐이고, 여기는
+ * 상대 정보·관계 경험·사진까지 포함한다. 합치면 렌즈 카드에 '상대 정보 채우기'가
+ * 나올 수 있는 타입이 된다.
+ *
+ * ⚠️ 문구가 **무엇을 하는지**를 말한다. '더 채우기' 같은 말은 어디로 가는지 알려주지
+ * 않아서 누르기 전에 판단할 수 없다.
+ */
+export const PREMIUM_FIX_CTA = {
+  target: '상대에 대해 아는 것 채우기',
+  experience: '이전 관계 경험 알려주기',
+  mbti: 'MBTI 입력하기',
+  birth: '생년월일 입력하기',
+  photos: '사진 관찰 확인하기',
+} as const;

@@ -6,12 +6,9 @@ import { ChoiceChip } from '@/components/common/ChoiceChip';
 import { Tag } from '@/components/common/primitives';
 import { Lovy } from '@/components/lovy/Lovy';
 import {
-  RELATIONSHIP_EVENT_DESCRIPTION_MAX_LENGTH,
   RELATIONSHIP_EVENT_LABEL,
   RELATIONSHIP_EVENT_OPTIONS,
   RELATIONSHIP_EVENT_PLACEHOLDER,
-  RELATIONSHIP_EVENT_REACTION_MAX_LENGTH,
-  RELATIONSHIP_EVENT_SAFETY_MAX,
   RELATIONSHIP_EVENT_VISIBLE_DEFAULT,
 } from '@/data/relationshipEvents';
 import { cn } from '@/lib/cn';
@@ -46,6 +43,7 @@ export function RelationshipEventSection() {
     updateRelationshipEvent,
     removeRelationshipEvent,
     storageStatus,
+    droppedEventCount,
   } = useSession();
   const events = answers.target.events;
 
@@ -73,14 +71,6 @@ export function RelationshipEventSection() {
    */
   const [showAll, setShowAll] = useState(false);
 
-  /**
-   * v1.46.4 §5 — 고치는 중에는 상한이 걸리지 않는다(개수가 늘지 않는다).
-   *
-   * ⚠️ 이 값이 true가 되는 것은 **기술 상한에 닿았을 때뿐이다.** 사용자가 정상적인
-   * 사용으로 여기 오는 일은 없다 — 그래서 이 자리의 문구도 '3개까지만 받을게'가 아니라
-   * 저장소가 한계라는 사실 그대로다.
-   */
-  const full = events.length >= RELATIONSHIP_EVENT_SAFETY_MAX && editingId === null;
   const canSubmit = draftType !== null && description.trim().length > 0;
 
   /**
@@ -148,6 +138,138 @@ export function RelationshipEventSection() {
 
       {open ? (
         <div className="flex flex-col gap-3 pt-1">
+          {/*
+            ══ 입력 폼이 목록보다 **위에** 있다 (v1.46.4 HARDENING PHASE 2) ═══════
+
+            Candidate 배치는 `목록 → 러비 메모 → 폼`이었다. 장면이 0~3개일 때는
+            자연스럽지만, 393×852에서 10개가 되면 **입력 폼이 화면 두 개 아래로
+            밀린다.** 장면을 더 적으러 이 섹션을 연 사용자가 자기가 이미 적은 것을
+            한참 스크롤한 뒤에야 쓸 칸을 만나는 구조다.
+
+            지금은 '적는 자리'가 언제나 맨 위에 있고 목록이 그 아래에 쌓인다. 목록을
+            줄인 것이 아니라 순서를 바꾼 것뿐이다.
+          */}
+          {draftType === null ? (
+            /* 종류 먼저 고른다 — 무엇을 적어야 하는지가 라벨에서 드러나게 한다(§7) */
+            <div className="flex flex-col gap-2">
+              <p className="text-[11.5px] font-semibold text-[#555]">어떤 장면이었어?</p>
+              <div
+                className="flex flex-wrap gap-2"
+                role="group"
+                aria-label="기억나는 장면의 종류"
+              >
+                {RELATIONSHIP_EVENT_OPTIONS.map((option) => (
+                  <ChoiceChip
+                    key={option.value}
+                    label={option.label}
+                    selected={false}
+                    onToggle={() => setDraftType(option.value)}
+                  />
+                ))}
+              </div>
+              {/*
+                UT-1 P1-B §5 — **종류는 선택 입력이다.**
+
+                지금까지 종류를 고르지 않으면 본문 칸 자체가 열리지 않았다. 그래서
+                '분류하기는 애매한데 기억나는 장면'을 가진 사용자는 아무것도 적지
+                못했다 — 선택 입력이라고 말해놓고 통과 조건으로 쓰고 있었다.
+
+                ⚠️ **분류를 우리가 대신 하지 않는다.** 이 길로 들어오면 종류는
+                `other`(기타)로 저장되고, 그 값도 **사용자가 고른 것**이다(이 버튼을
+                눌렀다는 사실이 선택이다). 본문을 읽고 종류를 추론하는 코드는
+                만들지 않는다 — 그게 §5의 attribution 규칙이다.
+              */}
+              <button
+                type="button"
+                onClick={() => setDraftType('other')}
+                className="flex min-h-11 items-center text-[11.5px] text-ink-muted press-scale"
+              >
+                고르기 애매하면 그냥 적어도 돼 →
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10.5px] font-semibold tracking-[0.04em] text-mint-ink">
+                  {RELATIONSHIP_EVENT_LABEL[draftType]}
+                </span>
+                <button
+                  type="button"
+                  onClick={resetDraft}
+                  className="min-h-11 text-[11.5px] text-ink-muted press-scale"
+                >
+                  {editingId === null ? '종류 다시 고르기' : '고치기 취소'}
+                </button>
+              </div>
+
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11.5px] font-semibold text-[#555]">
+                  무슨 일이 있었어?
+                </span>
+                {/*
+                  v1.46.4 §5 · §39 — **한 줄 input이 아니라 textarea다.**
+
+                  예전 80자 input은 "한 줄로 기억되는 길이"라는 제품 판단이었는데, 실제로
+                  사람들이 적고 싶어한 것은 장면이었다. 한 줄 칸은 그 자체가 '짧게 적어라'는
+                  지시이고, 80자에서 잘리면 근거로 되짚을 때 의미가 왜곡된다(§10).
+
+                  ⚠️ **남은 글자 수를 보여주지 않는다.** 카운터는 곧 상한 안내이고,
+                  그러면 technical guard가 다시 UX cap이 된다.
+
+                  ⚠️ **`maxLength`도 없다**(v1.46.4 HARDENING PHASE 1-1). Candidate는
+                  500자를 걸어뒀는데, 그건 이름이 무엇이든 **사용자가 더 못 쓰게 만드는
+                  제품 상한**이었다. 지금 남은 상한은 복원 파서의 손상 데이터 방어
+                  하나뿐이고(20,000자) 그 값은 이 화면이 알지도 못한다.
+                */}
+                <textarea
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
+                  rows={3}
+                  placeholder={RELATIONSHIP_EVENT_PLACEHOLDER[draftType]}
+                  className="min-h-[76px] resize-y rounded-row border border-line bg-surface px-3.5 py-2.5 text-caption leading-relaxed outline-none transition-[border-color] t-fast placeholder:text-ink-faint focus:border-brand"
+                />
+              </label>
+
+              {reactionOpen ? (
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-[11.5px] font-semibold text-[#555]">
+                    그때 나는 어떻게 반응했어? · 선택
+                  </span>
+                  <textarea
+                    value={reaction}
+                    onChange={(event) => setReaction(event.target.value)}
+                    rows={2}
+                    placeholder="예) 아무 말 안 하고 넘겼어"
+                    className="min-h-[56px] resize-y rounded-row border border-line bg-surface px-3.5 py-2.5 text-caption leading-relaxed outline-none transition-[border-color] t-fast placeholder:text-ink-faint focus:border-brand"
+                  />
+                </label>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setReactionOpen(true)}
+                  className="flex min-h-11 items-center text-[11.5px] text-ink-muted press-scale"
+                >
+                  + 그때 내 반응도 적을래 (선택)
+                </button>
+              )}
+
+              <button
+                type="button"
+                disabled={!canSubmit}
+                onClick={submit}
+                className={cn(
+                  // 색 전환도 `press-scale`이 함께 담당한다(globals.css 주석 참고)
+                  'flex min-h-11 items-center justify-center rounded-row border text-caption font-medium press-scale',
+                  canSubmit
+                    ? 'border-brand bg-brand-tint text-brand-pressed'
+                    : 'border-line bg-surface text-ink-faint',
+                )}
+              >
+                {editingId === null ? '이 장면 추가하기' : '이 장면 고치기'}
+              </button>
+            </div>
+          )}
+
           {/*
             이미 알려준 장면. **사용자가 쓴 문장을 그대로 보여준다** — 요약하거나
             다듬지 않는다. 화면에서 문장이 달라지면 리포트에 실릴 문장과 어긋난다.
@@ -240,151 +362,23 @@ export function RelationshipEventSection() {
             </div>
           ) : null}
 
-          {full ? (
-            /*
-              v1.46.4 §6 — 여기 오는 이유는 제품이 정한 상한이 아니라 **이 브라우저에
-              담을 수 있는 양**이다. 그래서 문장도 '여기까지만 받을게'가 아니라
-              '이 기기에 더 담기 어렵다'다 — 사용자가 실제로 할 수 있는 일(지우기)을
-              같이 말한다.
-            */
-            <p className="text-[11px] keep-all leading-relaxed text-ink-faint">
-              이 브라우저에 담아둘 수 있는 양에 거의 다 왔어. 지금까지 적은 장면은 그대로
-              있고, 새로 적으려면 오래된 장면을 하나 지워줘.
-            </p>
-          ) : draftType === null ? (
-            /* 종류 먼저 고른다 — 무엇을 적어야 하는지가 라벨에서 드러나게 한다(§7) */
-            <div className="flex flex-col gap-2">
-              <p className="text-[11.5px] font-semibold text-[#555]">어떤 장면이었어?</p>
-              <div
-                className="flex flex-wrap gap-2"
-                role="group"
-                aria-label="기억나는 장면의 종류"
-              >
-                {RELATIONSHIP_EVENT_OPTIONS.map((option) => (
-                  <ChoiceChip
-                    key={option.value}
-                    label={option.label}
-                    selected={false}
-                    onToggle={() => setDraftType(option.value)}
-                  />
-                ))}
-              </div>
-              {/*
-                UT-1 P1-B §5 — **종류는 선택 입력이다.**
-
-                지금까지 종류를 고르지 않으면 본문 칸 자체가 열리지 않았다. 그래서
-                '분류하기는 애매한데 기억나는 장면'을 가진 사용자는 아무것도 적지
-                못했다 — 선택 입력이라고 말해놓고 통과 조건으로 쓰고 있었다.
-
-                ⚠️ **분류를 우리가 대신 하지 않는다.** 이 길로 들어오면 종류는
-                `other`(기타)로 저장되고, 그 값도 **사용자가 고른 것**이다(이 버튼을
-                눌렀다는 사실이 선택이다). 본문을 읽고 종류를 추론하는 코드는
-                만들지 않는다 — 그게 §5의 attribution 규칙이다.
-              */}
-              <button
-                type="button"
-                onClick={() => setDraftType('other')}
-                className="flex min-h-11 items-center text-[11.5px] text-ink-muted press-scale"
-              >
-                고르기 애매하면 그냥 적어도 돼 →
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[10.5px] font-semibold tracking-[0.04em] text-mint-ink">
-                  {RELATIONSHIP_EVENT_LABEL[draftType]}
-                </span>
-                <button
-                  type="button"
-                  onClick={resetDraft}
-                  className="min-h-11 text-[11.5px] text-ink-muted press-scale"
-                >
-                  {editingId === null ? '종류 다시 고르기' : '고치기 취소'}
-                </button>
-              </div>
-
-              <label className="flex flex-col gap-1.5">
-                <span className="text-[11.5px] font-semibold text-[#555]">
-                  무슨 일이 있었어?
-                </span>
-                {/*
-                  v1.46.4 §5 · §39 — **한 줄 input이 아니라 textarea다.**
-
-                  예전 80자 input은 "한 줄로 기억되는 길이"라는 제품 판단이었는데, 실제로
-                  사람들이 적고 싶어한 것은 장면이었다. 한 줄 칸은 그 자체가 '짧게 적어라'는
-                  지시이고, 80자에서 잘리면 근거로 되짚을 때 의미가 왜곡된다(§10).
-
-                  ⚠️ **남은 글자 수를 보여주지 않는다.** 카운터는 곧 상한 안내이고,
-                  그러면 technical guard가 다시 UX cap이 된다(§6).
-
-                  ⚠️ `maxLength`는 그대로 둔다 — 비정상적으로 큰 단일 입력만 막는
-                  기술 guard다(500자).
-                */}
-                <textarea
-                  value={description}
-                  onChange={(event) =>
-                    setDescription(
-                      event.target.value.slice(0, RELATIONSHIP_EVENT_DESCRIPTION_MAX_LENGTH),
-                    )
-                  }
-                  maxLength={RELATIONSHIP_EVENT_DESCRIPTION_MAX_LENGTH}
-                  rows={3}
-                  placeholder={RELATIONSHIP_EVENT_PLACEHOLDER[draftType]}
-                  className="min-h-[76px] resize-y rounded-row border border-line bg-surface px-3.5 py-2.5 text-caption leading-relaxed outline-none transition-[border-color] t-fast placeholder:text-ink-faint focus:border-brand"
-                />
-              </label>
-
-              {reactionOpen ? (
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-[11.5px] font-semibold text-[#555]">
-                    그때 나는 어떻게 반응했어? · 선택
-                  </span>
-                  <textarea
-                    value={reaction}
-                    onChange={(event) =>
-                      setReaction(
-                        event.target.value.slice(0, RELATIONSHIP_EVENT_REACTION_MAX_LENGTH),
-                      )
-                    }
-                    maxLength={RELATIONSHIP_EVENT_REACTION_MAX_LENGTH}
-                    rows={2}
-                    placeholder="예) 아무 말 안 하고 넘겼어"
-                    className="min-h-[56px] resize-y rounded-row border border-line bg-surface px-3.5 py-2.5 text-caption leading-relaxed outline-none transition-[border-color] t-fast placeholder:text-ink-faint focus:border-brand"
-                  />
-                </label>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setReactionOpen(true)}
-                  className="flex min-h-11 items-center text-[11.5px] text-ink-muted press-scale"
-                >
-                  + 그때 내 반응도 적을래 (선택)
-                </button>
-              )}
-
-              <button
-                type="button"
-                disabled={!canSubmit}
-                onClick={submit}
-                className={cn(
-                  // 색 전환도 `press-scale`이 함께 담당한다(globals.css 주석 참고)
-                  'flex min-h-11 items-center justify-center rounded-row border text-caption font-medium press-scale',
-                  canSubmit
-                    ? 'border-brand bg-brand-tint text-brand-pressed'
-                    : 'border-line bg-surface text-ink-faint',
-                )}
-              >
-                {editingId === null ? '이 장면 추가하기' : '이 장면 고치기'}
-              </button>
-            </div>
-          )}
-
           {/*
             v1.46.4 §6 — **저장이 실제로 위태로울 때만** 말한다. `ok`에서는 이 자리에
             아무것도 없다. 예전에는 저장 실패를 통째로 삼켰기 때문에 사용자가 방금 적은
             장면이 사라져도 알 방법이 없었다.
           */}
+          {/*
+            PHASE 1-1 — 복원에서 버려진 장면이 있으면 **말한다.** Candidate에서는
+            조용히 사라졌다. 되살리려 시도하지 않는다 — 손상된 값을 추정으로 복구하는
+            것이 더 나쁘다(v1.44 BUG-002가 세운 규칙).
+          */}
+          {droppedEventCount > 0 ? (
+            <p className="rounded-row bg-[#FDECEC] px-3 py-2.5 text-[11.5px] keep-all leading-relaxed text-[#9B2C2C]">
+              저장돼 있던 장면 {droppedEventCount}개를 불러오지 못했어. 내용이 손상돼서
+              그대로 보여줄 수 없었어 — 기억나는 장면이면 다시 적어줘.
+            </p>
+          ) : null}
+
           {storageStatus === 'full' ? (
             <p className="rounded-row bg-[#FDECEC] px-3 py-2.5 text-[11.5px] keep-all leading-relaxed text-[#9B2C2C]">
               이 브라우저에 더 저장하지 못했어. 방금 적은 내용이 새로고침 뒤에는 없을 수

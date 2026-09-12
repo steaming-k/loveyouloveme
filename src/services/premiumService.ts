@@ -1,6 +1,6 @@
 import { MIRROR_AXES } from '@/data/axes';
 import { withObjectParticle } from '@/lib/korean';
-import { PREMIUM_FEATURES } from '@/data/premium';
+import { PREMIUM_FEATURES, PREMIUM_FIX_CTA } from '@/data/premium';
 import { HISTORY_STATE_LABEL } from '@/data/copy';
 import { PREMIUM_FAKE_DOOR, SAJU_ENGINE_READY } from '@/lib/env';
 import { buildPremiumLensBundle } from '@/lib/logic/premiumLens';
@@ -10,11 +10,12 @@ import { buildSelfLevels } from '@/lib/logic/firstContact';
  * 무엇을 먼저 어떤 문장으로 말할지만 정한다(`logic/insightCandidates.ts` 상단 참고).
  */
 import {
+  buildFreeCandidates,
   buildInsightCandidates,
   paywallTeaseText,
   selectPaywallTease,
 } from '@/lib/logic/insightCandidates';
-import { freeQuestionFingerprint } from '@/lib/logic/userFitQuestions';
+import { orderMirrorInsightsForDisplay } from '@/lib/resultPriority';
 import { buildExecutiveSoWhat } from '@/lib/premiumSoWhat';
 import { soloModeOfTarget } from '@/lib/logic/soloMode';
 import { buildReportedScenes } from '@/lib/logic/relationshipEvents';
@@ -54,6 +55,7 @@ import type {
   PremiumDetailReport,
   PremiumDetailSection,
   PremiumFeature,
+  PremiumFeatureFixKind,
   PremiumFeatureId,
   RelationshipDeepReport,
   RelationshipDeepReportOverview,
@@ -172,34 +174,61 @@ export function premiumFeatureState(
     status: PREMIUM_FAKE_DOOR ? 'fake-door' : 'unavailable',
   };
 
-  const unavailable = (reason: string): PremiumFeature => ({
+  /**
+   * v1.46.4 HARDENING PHASE 3 — `fix`는 **선택이 아니라 판단**이다.
+   *
+   * 두 번째 인자를 생략한 호출은 "이 상태는 지금 화면에서 풀 수 없다"는 뜻이고,
+   * 그때 화면에는 CTA가 없다. 풀 수 없는 상태에 버튼을 붙이는 것이 dead-end보다
+   * 나쁘다 — 눌렀는데 아무것도 달라지지 않으면 그건 거짓말이다(PREMIUM-FIX-03).
+   */
+  const unavailable = (reason: string, fix?: PremiumFeatureFixKind): PremiumFeature => ({
     ...base,
     status: 'unavailable',
     price: null,
     unavailableReason: reason,
+    ...(fix ? { fix: { kind: fix, label: PREMIUM_FIX_CTA[fix] } } : {}),
   });
 
+  /*
+    ⚠️ **CTA가 없는 두 상태.** 둘 다 '지금 사용자가 할 수 있는 일'이 없다.
+
+    사주는 계산 엔진이 아직 연결되지 않았고(사용자가 무엇을 입력해도 달라지지 않는다),
+    기록 비교는 **다음 관찰을 저장한 뒤에야** 가능하다 — 지금 화면에서 누를 수 있는
+    버튼으로는 풀리지 않는다. 여기에 버튼을 붙이면 fake CTA다(PREMIUM-FIX-03).
+  */
   if (id === 'saju_detail' && !SAJU_ENGINE_READY) {
     return unavailable('사주 명식 계산 엔진이 아직 연결되지 않았어. 상세도 함께 준비 중이야.');
-  }
-  if (id === 'mirror_detail' && context.mirrorAvailable === false) {
-    return unavailable('관계 경험 기록이 있어야 Mirror 상세를 볼 수 있어.');
   }
   if (id === 'history_detail' && context.historyComparable === false) {
     return unavailable('비교할 관찰 기록이 2개 이상이어야 변화 상세를 볼 수 있어.');
   }
+
+  /* 아래는 전부 **지금 갈 수 있는 입력 화면**이 있는 상태다 */
+  if (id === 'mirror_detail' && context.mirrorAvailable === false) {
+    return unavailable('관계 경험 기록이 있어야 Mirror 상세를 볼 수 있어.', 'experience');
+  }
   if (id === 'mbti_detail' && context.mbtiAvailable === false) {
-    return unavailable('두 사람 MBTI가 모두 있어야 상세를 볼 수 있어.');
+    return unavailable('두 사람 MBTI가 모두 있어야 상세를 볼 수 있어.', 'mbti');
   }
   if (id === 'astrology_detail' && context.astrologyAvailable === false) {
-    return unavailable('두 사람 출생정보가 모두 있어야 상세를 볼 수 있어.');
+    return unavailable('두 사람 출생정보가 모두 있어야 상세를 볼 수 있어.', 'birth');
   }
   if (id === 'relationship_deep_report' && context.deepReportAvailable === false) {
-    // ⚠️ 갈 수 없는 길을 알려주지 않는다 — 상대가 없는 사용자에게 '상대 정보'를 요구하지 않는다.
+    /*
+      ⚠️ 갈 수 없는 길을 알려주지 않는다(UT-1 P0-A) — 상대가 없는 사용자에게
+      '상대 정보'를 요구하지 않는다. 그 판단이 `solo` 하나로 갈린다.
+
+      ⚠️ **'기억나는 장면 추가하기'를 CTA로 쓰지 않는다.** 자연스러워 보이지만
+      사건은 리포트를 열지 못한다 — `buildRelationshipDeepReport`가 `available`을
+      Chapter로만 판정하고, 사건은 어떤 Chapter도 만들지 않는다(v1.46 §12 불변식,
+      `run-premium-fixtures`의 EVT-10이 값으로 고정한다). 눌러도 상태가 그대로인
+      버튼이므로 fake CTA다.
+    */
     return unavailable(
       context.solo
         ? '아직 서로 연결해서 볼 수 있는 신호가 부족해. MBTI를 입력하거나 사진 관찰을 확인해두면 네가 답한 기준과 이어서 볼 수 있어.'
         : '아직 서로 연결해서 볼 수 있는 신호가 부족해. 관계 경험이나 상대 정보를 더 채우면 볼 수 있어.',
+      context.solo ? 'mbti' : 'target',
     );
   }
 
@@ -819,15 +848,43 @@ export function buildRelationshipDeepReport(input: {
    * 빼먹으면 유료 첫 화면이 무료에서 방금 본 질문을 다시 판다. 무료 질문은 축 단위로
    * '상대의 평소'를 묻는 것들이므로 그 의도만 옮긴다.
    */
+  const declaredLevels = buildSelfLevels(resolverContext.answers.declared);
+
+  /**
+   * ══ 무료가 **실제로 쓴** 질문만 피한다 (v1.46.4 HARDENING PHASE 6) ════════
+   *
+   * ⚠️ Candidate는 동기화율 4축의 지문을 **전부** 미리 막았다. 그런데 무료가 실제로
+   * 쓰는 것은 Mirror 표시 순서 상위 2축뿐이다 — 나머지 두 축의 `habit` 질문은
+   * 아무도 쓰지 않았는데 유료에서도 막혀 있었다.
+   *
+   * 실측에서 그게 드러났다: 상대를 전혀 모르는 세션(4축 전부 `'x'`)에서 `direct`는
+   * 상대를 알아야 만들어지고 `situational`은 장면이 있어야 만들어지므로, 남은
+   * `light`마저 막히자 **Premium 질문이 0개**가 됐다 — §32가 요구한 '첫 화면 Insight
+   * 중 최소 하나에 바로 쓸 질문'이 사라진 것이다.
+   *
+   * 이제 무료 Candidate를 **같은 함수로 실제로 만들어** 그 지문만 막는다. 두 화면이
+   * 같은 생성기를 쓰므로 '무료가 뭘 썼는지'를 추측할 필요가 없다.
+   */
+  const freeCandidates = buildFreeCandidates({
+    mirrorInsights: orderMirrorInsightsForDisplay(mirror.insights),
+    target,
+    declaredLevels,
+    tense: lifecycle.tense,
+    allowsOutwardQuestions,
+    usedFingerprints: new Set<string>(),
+  });
+
   const candidates = buildInsightCandidates({
     chapters,
     insights,
     target,
-    declaredLevels: buildSelfLevels(resolverContext.answers.declared),
+    declaredLevels,
     tense: lifecycle.tense,
     allowsOutwardQuestions,
     usedFingerprints: new Set(
-      compatibility.dimensions.map((dimension) => freeQuestionFingerprint(dimension.key)),
+      freeCandidates.flatMap((candidate) =>
+        candidate.questions.map((question) => question.fingerprint),
+      ),
     ),
   });
 
@@ -911,6 +968,14 @@ export function buildRelationshipDeepReport(input: {
       declared: resolverContext.answers.declared,
       events: target.events,
       today,
+      /**
+       * v1.46.4 HARDENING PHASE 4 — **렌즈도 시제를 받는다.**
+       *
+       * 그전까지 렌즈는 시제를 몰랐고, 그래서 끝난 관계 사용자에게 체크포인트가
+       * `혼자 있고 싶은 날 그걸 어떻게 알릴지 신호를 하나 정해봐`라고 말했다.
+       * AI 출력이 아니라 **결정론 카피**라 어떤 안전 스캐너도 지나지 않던 자리다.
+       */
+      tense: lifecycle.tense,
     }),
     limitations: deepReportLimitations({ historyReport, compatibility }),
     chapters,

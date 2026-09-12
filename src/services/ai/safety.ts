@@ -241,6 +241,92 @@ const FORMER_TENSE_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
 ];
 
 /**
+ * ══ `former`에서 금지되는 **행동 제안** (v1.46.4 HARDENING PHASE 4) ═══════
+ *
+ * ⚠️ **시제 위반과 다른 종류의 위반이다.** 위 `FORMER_TENSE_PATTERNS`는 "끝난 관계를
+ * 진행 중이라고 부르는가"를 본다. 이 목록은 "끝난 관계에서 **상대에게 무엇을 하라고
+ * 하는가**"를 본다 — 시제는 멀쩡한데 대상이 틀린 문장이 있다.
+ *
+ * 실측에서 새어 나온 문장이 정확히 그 형태였다(사주 렌즈 AI):
+ *
+ * ```
+ * 한쪽이 더 가까이 다가가고 싶을 때 …
+ * ```
+ *
+ * `지금 관계`도 `현재 상대`도 `앞으로 둘이`도 없다. 그래서 `scanRelationshipTense`를
+ * 통과했고, 질문 필드가 아니라 **본문**이라 `applyOutwardQuestionGate`도 닿지 않았다.
+ * 두 게이트 사이에 정확히 이 모양의 구멍이 있었다.
+ *
+ * ⚠️ **회고 표현은 막지 않는다.** `돌아보면` · `그때는` · `다음 관계에서`는 전부
+ * 허용이다(v1.40.1이 `ended`에게 명시적으로 허용한 것이다). 그래서 동사만 보지 않고
+ * **권유·의도 어미와 함께** 잡는다 — `다가갔었다`(회고)는 통과하고
+ * `다가가고 싶을 때`(의도)·`다가가 봐`(권유)는 걸린다.
+ *
+ * ⚠️ 이 목록은 `scanRelationshipTense` 안에 둔다. 그래야 Deep Report · 렌즈 ·
+ * Cross-Lens · Compatibility가 **호출부를 고치지 않고** 함께 보호된다 — 게이트를
+ * Task마다 따로 붙이면 한 곳이 빠지고, 그게 v1.43이 배운 실패 형태다.
+ */
+const FORMER_OUTWARD_ACTION_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
+  {
+    label: 'former_approach',
+    pattern: /(다가가|다가서|가까워지)(고\s*싶|려면|려고|\s*봐|\s*보면|\s*보자|\s*볼)/,
+  },
+  {
+    label: 'former_contact_action',
+    pattern: /연락(해\s*봐|해보자|해보면|을?\s*해\s*보)|먼저\s*연락/,
+  },
+  {
+    /** 상대가 있어야 성립하는 동사 — 묻고·말하고·표현하고·제안하는 대상은 사람이다 */
+    label: 'former_ask_action',
+    pattern: /(물어|얘기해|이야기해|말해|표현해|제안해)\s*(봐|보자|보면|볼까|보는\s*게)/,
+  },
+  {
+    label: 'former_future_meeting',
+    pattern: /다음\s*만남|다시\s*만나(면|서|볼|자)|또\s*만나(면|자)/,
+  },
+  { label: 'former_close_distance', pattern: /거리를\s*좁히|사이를\s*좁히/ },
+];
+
+/**
+ * ══ 혼자서도 할 수 있는 동사는 **상대를 가리킬 때만** 막는다 ══════════════
+ *
+ * ⚠️ 이 구분이 없으면 **과필터가 된다.** 처음 구현은 `확인해`·`맞춰`를 위 목록에
+ * 함께 넣었는데, 그러자 끝난 관계에 정상적으로 나가는 회고 문장이 무더기로 걸렸다:
+ *
+ * ```
+ * 무엇이 달랐는지 확인해봐.                        ← 주어가 나다
+ * 갈등에서 내 순서가 어느 쪽이었는지 확인해봐.        ← 주어가 나다
+ * 다음 기록에서 같은 축을 한 번 더 확인해봐.         ← 주어가 나다
+ * ```
+ *
+ * 한국어는 주어를 생략하므로 동사만으로는 대상을 알 수 없다. 그래서 **문장에 상대를
+ * 가리키는 말이 있을 때만** 위반으로 본다 — `상대에게 확인해봐`는 막히고
+ * `무엇이 달랐는지 확인해봐`는 통과한다.
+ *
+ * ⚠️ **조사까지 본다.** 처음에는 `상대`라는 낱말만 찾았는데, 그러자 이런 회고 문장이
+ * 걸렸다:
+ *
+ * ```
+ * 그 어긋남을 '상대의 문제'로만 남기지 말고, 다음에는 어떤 신호를 더 일찍 확인할지 정리해봐.
+ * ```
+ *
+ * 여기서 `상대`는 **소유격**(상대'의')이고 행위의 대상이 아니다. 대상을 가리키는 것은
+ * `에게`·`한테`·`와/과/랑` 같은 조사이고, 그게 붙었을 때만 '상대에게 시키는 말'이 된다.
+ *
+ * ⚠️ 반대 방향의 실패(놓치는 것)보다 이쪽(과필터)이 더 흔하고 더 조용하다. 과필터는
+ * 문장이 그냥 사라지므로 아무도 알아차리지 못하고, ended 사용자에게 남는 말이
+ * 줄어든다 — v1.42가 `current`에 과거형 금지를 넣지 않기로 한 것과 같은 판단이다.
+ */
+const OUTWARD_TARGET_MARKER = /상대(에게|한테|와|과|랑)|서로|둘이서?|너희|그\s*사람(에게|한테|과|와|랑)/;
+
+const FORMER_AMBIGUOUS_ACTION_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
+  {
+    label: 'former_verify_with_partner',
+    pattern: /(확인해|맞춰|정해)\s*(봐|보자|보면|볼까|보는\s*게)/,
+  },
+];
+
+/**
  * 관계 시제 위반 검사. (v1.42 · §40.13)
  *
  * ⚠️ **`tense === 'current'`에서는 아무것도 막지 않는다.** 이건 게으름이 아니라 판단이다.
@@ -260,10 +346,25 @@ const FORMER_TENSE_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
 export function scanRelationshipTense(text: string, tense: RelationshipTense): SafetyScanResult {
   if (tense !== 'former') return { safe: true, violations: [] };
 
-  const violations = FORMER_TENSE_PATTERNS.filter(({ pattern }) => pattern.test(text)).map(
-    ({ label }) => label,
-  );
-  return { safe: violations.length === 0, violations };
+  /*
+    ⚠️ 두 목록을 **함께** 돌린다(v1.46.4 HARDENING PHASE 4). 시제 위반과 행동 제안은
+    서로 다른 결함이지만 둘 다 `former`에서만 위반이고, 한 함수가 보호하면 호출부가
+    늘어나도 빠지는 곳이 생기지 않는다.
+  */
+  const violations = [...FORMER_TENSE_PATTERNS, ...FORMER_OUTWARD_ACTION_PATTERNS]
+    .filter(({ pattern }) => pattern.test(text))
+    .map(({ label }) => label);
+
+  /* 대상이 상대일 때만 위반이다 — 위 `OUTWARD_TARGET_MARKER` 주석 참고 */
+  if (OUTWARD_TARGET_MARKER.test(text)) {
+    violations.push(
+      ...FORMER_AMBIGUOUS_ACTION_PATTERNS.filter(({ pattern }) => pattern.test(text)).map(
+        ({ label }) => label,
+      ),
+    );
+  }
+
+  return { safe: violations.length === 0, violations: [...new Set(violations)] };
 }
 
 /**

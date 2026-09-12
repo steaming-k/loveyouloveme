@@ -36,6 +36,7 @@ import {
   createChecker,
   findForbidden,
   run,
+  stressEvents,
 } from './fixtures-v1464.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -459,6 +460,197 @@ console.log('\nVALUE-15 · Paywall이 약속한 것이 실제로 유료에 있�
     'Sparse에서도 gate와 available이 일치한다',
     sparse.gate.eligible === sparse.gate.reportAvailable,
     sparse.gate,
+  );
+}
+
+/* ── PREMIUM-FIX-01 ~ 04 · unavailable dead-end (HARDENING PHASE 3) ───── */
+console.log('\nPREMIUM-FIX · 막힌 카드에서 갈 곳이 있는가');
+{
+  /**
+   * ⚠️ 이 블록이 보는 것은 문구가 아니라 **상태표**다. 카드가 이유만 말하고 끝나면
+   * 사용자는 읽고 나서 할 수 있는 일이 없다 — P0-A가 '갈 수 없는 길'을 닫았다면
+   * 여기서는 '아무 길도 없는 것'을 닫는다.
+   */
+  const noTarget = await run(FIXTURE_SPARSE);
+  const partial = await run({
+    ...FIXTURE_B,
+    target: {
+      relation: 'crush',
+      contact: 'l',
+      conflict: 'x',
+      alone: 'x',
+      affection: 'x',
+      preferences: { interests: [] },
+      events: [],
+    },
+    mbti: null,
+    birthProfile: {},
+  });
+
+  /**
+   * **지금 화면에서 풀 수 없는 상태.** 여기에는 CTA가 없어야 한다(PREMIUM-FIX-03).
+   *
+   * - 사주: 계산 엔진 미연결 — 사용자가 무엇을 입력해도 달라지지 않는다
+   * - 기록 비교: 다음 관찰을 저장한 뒤에야 가능 — 누를 수 있는 버튼이 없다
+   */
+  const UNFIXABLE = new Set(['saju_detail', 'history_detail']);
+
+  /** `fix.kind` → 실제 경로. 화면의 `PREMIUM_FIX_ROUTE`와 같은 값이어야 한다 */
+  const FIX_ROUTE = {
+    target: '/target',
+    experience: '/profile/past/intro',
+    mbti: '/profile/declared/4',
+    birth: '/lens/birth',
+    photos: '/profile/photos',
+  };
+
+  for (const [name, result] of [
+    ['high-data', a],
+    ['no_target', noTarget],
+    ['partial target', partial],
+  ]) {
+    const unavailable = result.premiumStates.filter((state) => state.status === 'unavailable');
+
+    /* PREMIUM-FIX-01 — dead-end 0 */
+    const deadEnds = unavailable.filter(
+      (state) => !state.fix && !UNFIXABLE.has(state.id),
+    );
+    check(`${name} — 해결 가능한데 CTA가 없는 카드 0개`, deadEnds.length === 0, deadEnds);
+
+    /* PREMIUM-FIX-02 — CTA route 실제 유효 */
+    const badRoutes = unavailable.filter(
+      (state) => state.fix && !FIX_ROUTE[state.fix.kind],
+    );
+    check(`${name} — 모든 CTA가 실제 경로를 가리킨다`, badRoutes.length === 0, badRoutes);
+
+    /* PREMIUM-FIX-03 — 해결 불가능한 상태에 fake CTA 0 */
+    const fakeCtas = unavailable.filter((state) => state.fix && UNFIXABLE.has(state.id));
+    check(`${name} — 풀 수 없는 상태에 CTA가 붙지 않았다`, fakeCtas.length === 0, fakeCtas);
+
+    /* 이유는 여전히 항상 있다 — CTA가 이유를 대체하지 않는다 */
+    check(
+      `${name} — 모든 unavailable 카드에 이유가 있다`,
+      unavailable.every((state) => (state.unavailableReason ?? '').length > 0),
+      unavailable,
+    );
+  }
+
+  /*
+    §3 — 상태마다 **다른** 길을 준다. 전부 같은 곳으로 보내면 그건 상태를 읽지 않은
+    것이고, 사용자는 이미 채운 화면으로 다시 끌려간다.
+  */
+  check(
+    '상대가 없는 사용자에게 상대 정보를 요구하지 않는다',
+    noTarget.premiumEntry.mentionsTargetInfo === false,
+    noTarget.premiumEntry,
+  );
+  check(
+    '상대가 없는 사용자의 리포트 CTA가 상대 화면으로 가지 않는다',
+    noTarget.premiumEntry.fix?.kind !== 'target',
+    noTarget.premiumEntry.fix,
+  );
+
+  /*
+    ⚠️ **'기억나는 장면 추가하기'는 CTA가 아니다.** 사건은 리포트를 열지 못하므로
+    (EVT-10 불변식) 눌러도 상태가 그대로다. 자연스러워 보이는 만큼 다시 들어오기
+    쉬운 fake CTA라 값으로 막아둔다.
+  */
+  const allFixes = [...a.premiumStates, ...noTarget.premiumStates, ...partial.premiumStates]
+    .map((state) => state.fix?.label ?? '')
+    .filter(Boolean);
+  check(
+    '장면 추가를 해결책으로 약속하지 않는다',
+    !allFixes.some((label) => label.includes('장면')),
+    allFixes,
+  );
+}
+
+/* ── OVER-01 ~ 03 · Event 과잉해석 (HARDENING PHASE 8) ────────────────── */
+console.log('\nOVER · 장면이 많다고 사람의 성질로 말하지 않는가');
+{
+  const many = await run({
+    ...FIXTURE_B,
+    target: { ...FIXTURE_B.target, events: stressEvents(20) },
+  });
+
+  const conclusions = many.report.candidates.flatMap((candidate) => [
+    candidate.headline,
+    candidate.soWhat,
+    candidate.whyItMatters,
+  ]);
+
+  /**
+   * ⚠️ **이번 관계 안의 장면 반복 ≠ 시계열 개인 패턴.**
+   *
+   * History는 관찰 3건이 쌓여야 '반복'이라고 부른다. 한 번의 분석 안에서 같은 종류
+   * 장면이 여러 개 있다고 그 문턱을 우회하면, 사용자가 오늘 다섯 줄 적은 것으로
+   * '너는 원래 이런 사람'이라는 말을 듣게 된다.
+   */
+  const TRAIT_CLAIMS = [
+    '너는 원래',
+    '너한테는 원래',
+    '항상',
+    '늘 이런',
+    '관계에서 늘',
+    '반복되는 패턴',
+    '너의 패턴',
+    '너는 언제나',
+  ];
+  const traitHits = findForbidden(conclusions, TRAIT_CLAIMS);
+  check('OVER-01 · 사람의 성질로 말하는 표현 0건', traitHits.length === 0, traitHits);
+
+  /* 반복을 말하긴 해야 한다 — 말하지 않으면 장면을 많이 준 가치가 없다 */
+  const repetition = conclusions.filter((text) => text.includes('반복'));
+  check('OVER-02 · 반복을 말하는 문장이 있다', repetition.length > 0, repetition);
+  check(
+    'OVER-02 · 반복 문장이 **이번 분석 안**으로 범위를 묶는다',
+    repetition.every((text) => text.includes('이번에 알려준')),
+    repetition,
+  );
+  check(
+    'OVER-03 · History 3관찰 문턱을 우회하지 않는다 (시계열 어휘 0)',
+    findForbidden(conclusions, ['예전부터', '계속 그래', '변하지 않는']).length === 0,
+    conclusions,
+  );
+  /* 사건이 많아도 판정은 그대로다 — 과잉해석의 가장 큰 경로는 판정 변경이다 */
+  check(
+    'OVER-03 · 사건 20건에서도 Mirror 판정이 사건 0건과 같다',
+    JSON.stringify(many.mirrorStates) === JSON.stringify(a.mirrorStates),
+    { many: many.mirrorStates, none: a.mirrorStates },
+  );
+}
+
+/* ── FALLBACK-01 · personalized vs fallback 비율 (HARDENING PHASE 10) ─── */
+console.log('\nFALLBACK · 정상 경로에서 고정문이 주인공이 되지 않는가');
+{
+  /**
+   * ⚠️ §48의 뜻은 "고정문을 없앤다"가 아니라 **"정상 경로의 주인공이 아니다"**이다.
+   * AI 실패·조립 불가에서는 고정문이 결과를 지킨다. 그래서 비율을 본다.
+   */
+  for (const [name, result] of [
+    ['A(사건 0)', a],
+    ['B(사건 5)', b],
+    ['C(사건 조합 다름)', c],
+  ]) {
+    const composed = result.report.candidates.filter((candidate) => candidate.composed).length;
+    const total = result.report.candidates.length;
+    console.log(`      ${name} — premium ${composed}/${total} composed`);
+    check(
+      `${name} — 유료 Candidate 과반이 조립문이다`,
+      total > 0 && composed / total > 0.5,
+      { composed, total },
+    );
+    check(
+      `${name} — 무료 Insight가 전부 조립문이다`,
+      result.free.candidates.every((candidate) => candidate.composed),
+      result.free.candidates.map((candidate) => [candidate.axis, candidate.composed]),
+    );
+  }
+  /* AI가 죽어도 조립문이다 — fallback은 AI가 아니라 **조립 불가**일 때만이다 */
+  check(
+    'AI 실패 경로에서도 조립문 비율이 같다 (AI는 조립의 입력이 아니다)',
+    noAi.report.candidates.filter((candidate) => candidate.composed).length ===
+      b.report.candidates.filter((candidate) => candidate.composed).length,
   );
 }
 
