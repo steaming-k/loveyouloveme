@@ -59,16 +59,75 @@ export const RELATIONSHIP_EVENT_PLACEHOLDER: Record<RelationshipEventType, strin
 };
 
 /**
- * 최대 개수 (§9).
+ * ══ v1.46.4 §5 · §6 — **사용자-facing 상한을 없앴다** ═══════════════════════
  *
- * 3개인 이유는 분량이 아니라 **성격**이다: 입력 피로를 막고, 가장 기억나는 장면에
- * 집중하게 하고, 관계 일지/CRM으로 확장되는 문을 닫아둔다. 상한을 늘리는 변경은
- * 그 세 이유를 먼저 뒤집어야 한다.
+ * v1.46은 `RELATIONSHIP_EVENT_MAX = 3`이었고 그 이유를 세 줄로 적어뒀다: 입력 피로,
+ * 집중, 관계 일지/CRM 확장 차단. 그 셋 중 **두 개는 상한이 아니라 UI가 푸는 문제**다.
+ *
+ * ```
+ * 입력 피로   → 접기/펼치기와 '선택 입력' 카피가 푼다. 3개로 막는 것은 피로가 아니라
+ *               쓰고 싶은 사람을 막는 것이다
+ * 집중        → 결과가 모든 장면을 나열하지 않으면 된다. 실제로 이번 버전의
+ *               `eventRelevance`는 Insight마다 상위 2~4개만 고른다
+ * 일지/CRM    → 이건 여전히 유효하다. 그래서 **날짜·장소·상대 이름은 계속 받지 않는다**
+ *               (§8). 막아야 하는 것은 개수가 아니라 필드였다
+ * ```
+ *
+ * 그래서 상한의 **성격**이 바뀌었다:
+ *
+ * ```
+ * 예전   UX hard cap      "3개까지만 받을게"          ← 제품이 정한 숫자
+ * 지금   technical guard  브라우저 저장소를 지키는 선  ← 사용자가 만날 일이 거의 없는 숫자
+ * ```
+ *
+ * ⚠️ **이 숫자를 화면에 미리 알리지 않는다**(§6). `N개까지만`이라고 먼저 말하는 순간
+ * 그건 다시 UX cap이 된다. 임계에 실제로 닿았을 때만 말한다.
  */
-export const RELATIONSHIP_EVENT_MAX = 3;
 
-/** 무슨 일이 있었어? — 한 줄로 기억되는 길이까지만 */
-export const RELATIONSHIP_EVENT_DESCRIPTION_MAX_LENGTH = 80;
+/**
+ * 저장 개수의 **기술적** 상한.
+ *
+ * 100인 근거는 실측이다. 이 서비스의 세션은 `lym.session.v1` 키 하나에 통째로
+ * 직렬화된다(`state/SessionProvider.ts` · `serialize`). 고데이터 세션(기록 3건 ·
+ * 사진 관찰 · deep answers 포함)의 직렬화 길이가 30~60KB 수준이고, 사건 하나는
+ * 아래 길이 상한을 꽉 채워도 JSON에서 ~1.8KB다. 100개 = 약 180KB이고, 가장 보수적인
+ * localStorage 할당량(5MB)의 4% 미만이다.
+ *
+ * ⚠️ **이 값이 quota 보호의 전부가 아니다.** 실제 보호는 저장 시점의
+ * `QuotaExceededError`를 삼키지 않는 것이다(§6 마지막 줄) — `SessionProvider`의
+ * `storageStatus`를 보라. 이 상수는 '한 세션이 비정상적으로 커지는 것'만 막는다.
+ */
+export const RELATIONSHIP_EVENT_SAFETY_MAX = 100;
 
-/** 그때 나는 어떻게 반응했어? — 선택 입력 */
-export const RELATIONSHIP_EVENT_REACTION_MAX_LENGTH = 60;
+/**
+ * 저장소가 실제로 빠듯해지기 시작하는 선. 이 길이를 넘으면 화면이 **처음으로**
+ * 사용자에게 말한다(그전에는 아무 말도 하지 않는다).
+ *
+ * 1.5MB는 5MB 할당량의 30%다. 남은 70%는 사진 관찰·기록이 더 쌓일 자리다.
+ */
+export const SESSION_STORAGE_SOFT_LIMIT_BYTES = 1_500_000;
+
+/**
+ * 무슨 일이 있었어? — **기술 guard일 뿐이다.**
+ *
+ * 80자였던 예전 값은 "한 줄로 기억되는 길이"라는 제품 판단이었다. 그런데 실제 UT에서
+ * 사람들이 적고 싶어 한 것은 한 줄이 아니라 **장면**이었고("연락이 줄어서 마음이 식은
+ * 줄 알았는데 알고 보니 시험기간이었어"는 80자를 넘는다), 80자에서 잘리면 근거로
+ * 되짚을 때 의미가 왜곡된다(§10 마지막 줄).
+ *
+ * 500자는 '비정상적으로 큰 단일 입력'의 선이지 권장 길이가 아니다. 화면은 이 숫자를
+ * 카운터로 보여주지 않는다 — 남은 글자를 세게 하면 그게 곧 UX cap이다.
+ */
+export const RELATIONSHIP_EVENT_DESCRIPTION_MAX_LENGTH = 500;
+
+/** 그때 나는 어떻게 반응했어? — 선택 입력. 같은 성격의 technical guard다 */
+export const RELATIONSHIP_EVENT_REACTION_MAX_LENGTH = 300;
+
+/**
+ * 한 화면에 한꺼번에 펼쳐 그리는 사건 수 (§40).
+ *
+ * 393×852에서 사건 20개를 전부 펼치면 스크롤이 그 섹션 하나로 가득 찬다. 목록은
+ * **최근 것부터** 이만큼만 펼치고 나머지는 '더 보기'로 접는다 — 저장은 전부 하되
+ * 화면 피로는 만들지 않는다.
+ */
+export const RELATIONSHIP_EVENT_VISIBLE_DEFAULT = 5;

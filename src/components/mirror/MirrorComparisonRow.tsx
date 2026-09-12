@@ -1,7 +1,11 @@
+'use client';
+
 import { Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { cn } from '@/lib/cn';
+import { ALREADY_KNOWN_LINE, isAlreadyKnown } from '@/lib/resultPriority';
 import { displayStateOf, valueToPercent } from '@/lib/logic/mirror';
 import {
   hasTemporalComparison,
@@ -103,6 +107,13 @@ export function MirrorComparisonRow({
    */
   const shownState = displayStateOf(insight.state, insight.evidenceScope);
 
+  /**
+   * §13 — 이미 알고 있던 기준은 기본적으로 접는다. 나머지 행은 예전 그대로 전부 펼쳐진다.
+   */
+  const compact = isAlreadyKnown(insight);
+  const [open, setOpen] = useState(false);
+  const detailVisible = !compact || open;
+
   return (
     <li
       className="reveal-up flex flex-col gap-3 rounded-row border border-line bg-surface px-[15px] py-3.5"
@@ -120,6 +131,43 @@ export function MirrorComparisonRow({
         </span>
       </div>
 
+      {/*
+        ══ v1.46.4 §13 — 이미 알고 있던 기준(`MATCH`)은 한 줄로 접는다 ═══════
+
+        실측에서 고데이터 세션의 네 축 중 셋이 MATCH였고, 그 세 행이 각각 눈금 ·
+        근거 문장 · 해석 문장까지 전부 펼쳐진 채 화면 위쪽을 차지했다. 사용자가 처음
+        읽는 세 문단이 전부 '네가 말한 대로였어'였다는 뜻이다(UT-1: 이미 아는 내용).
+
+        ⚠️ **판정을 숨기지 않는다.** 배지(MATCH)와 축 이름은 그대로 보이고, 눈금 ·
+        근거 · 해석은 `자세히` 안에 전부 있다. 순서도 `resultPriority`가 GAP → CHANGE →
+        MATCH로 바꿔서, 새로 알게 되는 것이 먼저 온다.
+      */}
+      {compact ? (
+        <>
+          <p className="text-[12.5px] keep-all leading-relaxed text-ink-sub">
+            {ALREADY_KNOWN_LINE}
+          </p>
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen((prev) => !prev)}
+            className="flex min-h-11 items-center gap-1 self-start text-[11.5px] font-semibold text-brand-pressed"
+          >
+            자세히
+            <span
+              aria-hidden
+              className={cn(
+                'text-[10px] transition-transform duration-200 motion-reduce:transition-none',
+                open && 'rotate-180',
+              )}
+            >
+              ▾
+            </span>
+          </button>
+        </>
+      ) : null}
+
+      {detailVisible ? (
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between text-[10.5px] text-ink-muted">
           <span>말한 나</span>
@@ -133,7 +181,9 @@ export function MirrorComparisonRow({
           />
         </div>
       </div>
+      ) : null}
 
+      {detailVisible ? (
       <div className="flex flex-col gap-1.5 rounded-[10px] bg-sunken px-3 py-2.5">
         {/*
           v1.41 — 근거의 **시점**을 근거 문장 위에 한 조각으로 붙인다.
@@ -162,14 +212,23 @@ export function MirrorComparisonRow({
         </div>
       </div>
 
+      ) : null}
+
+      {/*
+        ⚠️ 스크린리더 문장은 **접힘과 무관하게 항상 있다.** 시각적으로 접은 것은
+        위계이지 정보 차단이 아니고, 보조기술 사용자에게 한 줄 요약만 남기면 그건
+        정보 차단이 된다.
+      */}
       <p className="sr-only">
         {insight.label}: 말한 나 {insight.declared}점. {stateTextOf(insight)}. 근거 시점:{' '}
         {scopeLabelOf(insight.evidenceScope, tense)}.
       </p>
 
-      <p className="text-[12.5px] keep-all leading-relaxed text-[#555]">{insight.note}</p>
+      {detailVisible ? (
+        <p className="text-[12.5px] keep-all leading-relaxed text-[#555]">{insight.note}</p>
+      ) : null}
 
-      {footer}
+      {detailVisible ? footer : null}
     </li>
   );
 }

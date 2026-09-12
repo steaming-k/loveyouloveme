@@ -1951,9 +1951,171 @@ export interface DeepLovyObservation {
  * 이미 계산된 결과를 그대로 조합한다(§17 compatibilityDeepDive, §21 historyDeep이
  * `PremiumDetailReport`를 그대로 재사용하는 이유다).
  */
+/* ────────────────────────────── Executive SO WHAT (v1.46.4 §6) ───────── */
+
+/**
+ * 첫 viewport 3줄의 자리.
+ *
+ * ⚠️ 타입을 `types/index.ts`에 두는 이유: 만드는 쪽(`lib/premiumSoWhat.ts`)과 쓰는 쪽
+ * (`RelationshipDeepReport`)이 서로를 import하면 순환이 된다. 이 파일은 어디에도
+ * 의존하지 않는 유일한 파일이라 두 방향 모두가 안전하게 참조할 수 있다.
+ */
+export type ExecutiveSlot = 'strength' | 'watch' | 'ask';
+
+export interface ExecutiveItem {
+  slot: ExecutiveSlot;
+  label: string;
+  /** 첫 viewport에 그려지는 문장. 사용자 입력값을 그대로 적지 않는다 */
+  text: string;
+  /** 왜 중요한지. `ask`에는 없다 */
+  whyItMatters: string | null;
+}
+
+export interface ExecutiveSoWhat {
+  title: string;
+  /** 최대 3개. 재료가 없으면 그만큼 짧다 */
+  items: ExecutiveItem[];
+}
+
+/* ══════════ Insight Candidate (v1.46.4 · §12 ~ §16 · §25 ~ §32) ══════════ */
+
+/**
+ * ══ 왜 Chapter가 아니라 Candidate인가 ═════════════════════════════════════
+ *
+ * v1.45의 렌더 단위는 `PremiumChapter`였다. Chapter는 **주제**다 — '갈등에서 필요한
+ * 것', '가까워지는 방식과 거리를 두는 방식' 같은 이름이 붙는다. 그래서 화면이
+ * 자연스럽게 `주제 → 근거 → 해석` 순서가 됐고, 사용자는 자기가 입력한 것을 먼저
+ * 읽었다(§0).
+ *
+ * Candidate는 주제가 아니라 **말할 거리 하나**다. "여기서 이런 의미가 보이고, 그게
+ * 지금 중요하고, 이렇게 확인할 수 있다"까지가 한 단위다. 그래서 화면 순서가
+ * `SO WHAT → WHY → VERIFY → (펼치면) 근거`로 뒤집힌다.
+ *
+ * ⚠️ **Candidate는 판정이 아니다**(§13). 동기화율·Mirror state·History·Premium
+ * eligibility를 하나도 바꾸지 않는다. 입력은 전부 **이미 만들어진 값**이고, 이
+ * 계층이 만드는 것은 순서·문장·질문뿐이다. 그래서 `lib/logic/insightCandidates.ts`는
+ * `logic/compatibility.ts`·`logic/mirror.ts`·`logic/history.ts`가 import하지 않는다.
+ */
+
+/**
+ * 이 Candidate가 말하는 것의 방향.
+ *
+ * ⚠️ `MirrorState`·`CrossSourceInsightType`을 그대로 쓰지 않는다. 둘은 **판정**의
+ * 어휘이고 이것은 **표현**의 어휘다. 같은 enum을 공유하면 표현을 늘리려다 판정을
+ * 건드리게 된다(`lib/resultPriority.ts`가 순서를 판정 파일 밖에 둔 것과 같은 이유).
+ */
+export type InsightVerdict = 'MATCH' | 'GAP' | 'CHANGE' | 'CONTRADICTION' | 'UNRESOLVED';
+
+/** 근거가 얼마나 두터운가. 숫자로 위장하지 않고 세 단계로만 말한다 */
+export type InsightConfidence = 'high' | 'medium' | 'limited';
+
+/** §26 — 같은 것을 묻는 세 가지 세기. 개수를 채우려고 셋을 다 만들지 않는다 */
+export type QuestionRegister = 'light' | 'direct' | 'situational';
+
+/**
+ * §25 ~ §32 — 실제로 상대에게 보낼 수 있는 질문 하나.
+ *
+ * ⚠️ **상담사 말투를 만들지 않는다**(§28). 검사는 `tests/run-question-fixtures.mjs`의
+ * QUESTION-FIT-09가 금지 어휘로 한다.
+ */
+export interface UserFitQuestion {
+  id: string;
+  register: QuestionRegister;
+  text: string;
+  /**
+   * §31 — 같은 의미의 질문이 FREE·Mirror·Premium·Lens에서 반복되지 않게 하는 키.
+   *
+   * ⚠️ **id가 아니라 의미로 만든다.** id로만 막으면 `conflict_base`와
+   * `conn_conflict`처럼 id가 다른 같은 질문이 두 번 나간다 — v1.46.3까지 실제로
+   * 그랬다. fingerprint는 `축:의도`이고, paraphrase가 같은 의도를 가리키면 같은 값이 된다.
+   */
+  fingerprint: string;
+  /** 왜 이 질문이 지금 맞는가. 화면의 작은 캡션 한 줄 */
+  basis: string;
+}
+
+/**
+ * 결과 화면 하나에 들어가는 **말할 거리 하나** (§12).
+ *
+ * ⚠️ 필드 순서가 곧 화면 순서다: `headline → soWhat → whyItMatters → questions →
+ * (펼치면) evidenceRefs`. 근거가 구조체의 마지막에 있는 것은 우연이 아니다.
+ */
+export interface InsightCandidate {
+  id: string;
+  /** 어느 Chapter에서 왔는가. 파생 Candidate(Event 전용 등)에서는 null */
+  chapterId: string | null;
+  primaryAxis: MirrorAxisKey | null;
+  verdict: InsightVerdict;
+
+  /* ── 근거 ─────────────────────────────────────────────────────────── */
+  evidenceRefs: EvidenceRef[];
+  /** 서로 다른 **출처 종류** 수. ref 개수가 아니다 */
+  evidenceSourceCount: number;
+  /** §21 — 무료 화면이 보여주지 않는 근거가 하나라도 있는가. Paywall tease의 자격 */
+  hasOutsideFreeEvidence: boolean;
+  hasCrossSourceConnection: boolean;
+  hasContradiction: boolean;
+  hasUnresolvedPoint: boolean;
+  hasUserReportedEvent: boolean;
+  /** §10 — 이 Candidate에 붙일 장면. **전부가 아니라 상위 2~4개**다 */
+  relevantEventIds: string[];
+
+  /* ── 우선순위 ─────────────────────────────────────────────────────── */
+  /** 사용자가 이미 아는 것에서 얼마나 떨어져 있는가(§14). 0~1 */
+  noveltyScore: number;
+  /** 지금 할 수 있는 일이 딸려 나오는가(§14). 0~1 */
+  actionabilityScore: number;
+  confidenceLevel: InsightConfidence;
+
+  /* ── 문장 ─────────────────────────────────────────────────────────── */
+  headline: string;
+  /** §15 — **evidence 조합에서 조립된다.** kind 고정문은 fallback뿐이다(§48) */
+  soWhat: string;
+  whyItMatters: string;
+  /** §26 — 최대 3개. 재료가 없으면 0개다 */
+  questions: UserFitQuestion[];
+  /** 이 Candidate가 말할 수 없는 것. 항상 있다 */
+  limitation: string;
+  /**
+   * §15 — 이 문장이 **조합에서 나왔는가(true), 고정문 fallback인가(false).**
+   *
+   * fixture(VALUE-03)가 "같은 kind인데 evidence가 다르면 SO WHAT이 달라지는가"를
+   * 문자열 비교가 아니라 이 값과 함께 본다 — 둘 다 fallback이면 같은 게 정상이고,
+   * 그 경우까지 FAIL로 세면 AI 실패 경로를 고칠 수 없게 된다.
+   */
+  composed: boolean;
+}
+
 export interface RelationshipDeepReport {
   available: boolean;
   overview: RelationshipDeepReportOverview;
+  /**
+   * v1.46.4 §6 — 첫 viewport의 Executive SO WHAT (`lib/premiumSoWhat.ts`).
+   *
+   * 3줄을 넘지 않고, 각 줄은 '무슨 의미인가 → 왜 중요한가' 순서다. `available: false`
+   * 이거나 재료(맞는 축·Chapter·질문)가 하나도 없으면 null이다 — 첫 화면을 채우려고
+   * 문장을 만들지 않는다.
+   *
+   * ⚠️ 여기에는 **사용자 입력값이 들어가지 않는다.** 답 값(`혼자 있는 시간 4/5` 등)은
+   * 근거 토글 안에만 있는다(§8 · VALUE-01).
+   */
+  executive: ExecutiveSoWhat | null;
+  /**
+   * v1.46.4 §12 — **이 리포트가 말하는 것들.** 우선순위(§14) 순서로 정렬돼 있다.
+   *
+   * ⚠️ `chapters`를 대체하지 않는다. Chapter는 여전히 근거·출처 그룹·AI narrative를
+   * 들고 있는 단위이고(`chapterId`로 이어진다), Candidate는 그 위에서 **무엇을 먼저
+   * 어떤 문장으로 말할지**를 정한다. 둘을 합치면 판정 계층(Chapter 생성)과 표현
+   * 계층(문장 조립)이 한 파일에 섞이고, 그게 v1.46.3까지의 구조였다.
+   *
+   * ⚠️ `available: false`면 빈 배열이다 — 팔지 않는 리포트에 주인공이 있으면 안 된다.
+   */
+  candidates: InsightCandidate[];
+  /**
+   * §21 — Paywall이 실제로 tease할 수 있는 문장. **재료가 없으면 null**이고,
+   * 그때 Paywall은 "하나 더 있어"라고 말하지 않는다(VALUE-15).
+   */
+  paywallTease: string | null;
   /*
    * v1.26 P3-3에서 제거한 필드 5개
    *   relationshipSelf / crossSourceInsights → corePattern · connections · singleSourceNotes
@@ -2323,6 +2485,17 @@ export interface PremiumLensReport {
   /** `self`일 때만 있다. 왜 pair가 아닌지 — 카피와 AI context가 이 값으로 갈린다 */
   selfReason?: PremiumLensSelfReason;
   headline: string;
+  /**
+   * v1.46.4 §10 — **접힌 상태에서 먼저 읽히는 한 줄.**
+   *
+   * `headline`은 유형·원소의 조합을 그대로 말한다(`INFP × ENFP — …로 분류됐어`).
+   * 그건 사용자가 입력한 값의 재진술이라 렌즈의 결론이 아니라 **근거**다. 그래서
+   * 접힌 줄은 이 값이 맡고, `headline`은 펼친 뒤 근거 블록으로 내려간다.
+   *
+   * 없으면(엔진이 아직 이 렌즈의 SO WHAT을 만들지 않으면) 화면은 `overview`를 쓴다 —
+   * 없는 문장을 지어내지 않는다.
+   */
+  soWhat?: string;
   overview: string;
   /** §29 — pair는 4개 이상, self는 4개 이상(자기 3 + 불확실성 1) */
   sections: PremiumLensSectionUnit[];
@@ -2374,6 +2547,15 @@ export interface PremiumCrossLens {
   repeatedThemes: string[];
   /** B. 렌즈마다 다르게 말하는 부분 — 이것도 가치다 */
   differences: string[];
+  /**
+   * C. **렌즈 해석과 네가 직접 답한 내용이 어긋나는 지점** (v1.46.4 §11).
+   *
+   * ⚠️ 어느 쪽이 맞는지 정하지 않는다. 다만 **순서는 정한다** — 네가 직접 답한 것이
+   * 렌즈보다 먼저다. 렌즈는 참고 프레임이고 관계 신호가 아니기 때문이다(§45).
+   * ⚠️ 판단이 분명한 축(1~5 척도에서 양 끝)에서만 만든다. 애매한 값으로 충돌을
+   * 만들면 없는 갈등을 지어내는 것이다.
+   */
+  tensions: string[];
   /** C. 실제 관계에서 확인할 것 2~3개 */
   verificationQuestions: string[];
   /** ⚠️ 필수. '3개 근거'가 아니라는 사실을 말한다 */

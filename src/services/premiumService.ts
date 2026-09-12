@@ -4,6 +4,18 @@ import { PREMIUM_FEATURES } from '@/data/premium';
 import { HISTORY_STATE_LABEL } from '@/data/copy';
 import { PREMIUM_FAKE_DOOR, SAJU_ENGINE_READY } from '@/lib/env';
 import { buildPremiumLensBundle } from '@/lib/logic/premiumLens';
+import { buildSelfLevels } from '@/lib/logic/firstContact';
+/**
+ * v1.46.4 §12 — **표현 계층**. 판정을 만들지 않고, 이미 만들어진 Chapter·Insight 위에서
+ * 무엇을 먼저 어떤 문장으로 말할지만 정한다(`logic/insightCandidates.ts` 상단 참고).
+ */
+import {
+  buildInsightCandidates,
+  paywallTeaseText,
+  selectPaywallTease,
+} from '@/lib/logic/insightCandidates';
+import { freeQuestionFingerprint } from '@/lib/logic/userFitQuestions';
+import { buildExecutiveSoWhat } from '@/lib/premiumSoWhat';
 import { soloModeOfTarget } from '@/lib/logic/soloMode';
 import { buildReportedScenes } from '@/lib/logic/relationshipEvents';
 import type { EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
@@ -76,8 +88,9 @@ import type {
  * 붙이면 두 곳이 조용히 어긋난다.
  */
 const OUTWARD_ADDITION_ITEMS = new Set<string>([
-  '상대 취향과 내 관계 방식을 연결한 다가가는 힌트',
-  '연결을 상대에게 확인해볼 질문',
+  /* v1.46.4 §20 — `data/premium.ts`의 문장을 결과 기준으로 다시 쓰면서 함께 고쳤다 */
+  '이 사람에게는 어떻게 다가가는 게 맞는지',
+  '상대에게 무엇을 확인하면 되는지',
 ]);
 
 export function premiumFeatureState(
@@ -794,6 +807,30 @@ export function buildRelationshipDeepReport(input: {
   const available = builtChapters.some(isContentChapter);
   const chapters = available ? builtChapters : [];
 
+  /**
+   * v1.46.4 §12 ~ §16 — **INSIGHT-FIRST의 주인공.**
+   *
+   * ⚠️ `chapters` 다음에 만든다. Candidate는 Chapter 위에서 문장을 조립하는 계층이므로
+   * 순서가 뒤집히면 안 된다. `available: false`일 때 `chapters`가 빈 배열이므로
+   * Candidate도 자동으로 빈 배열이 된다 — 팔지 않는 리포트에 주인공을 만들지 않기 위해
+   * 따로 분기하지 않아도 되는 구조다.
+   *
+   * ⚠️ §31 — 무료 화면이 이미 쓴 질문 fingerprint를 **먼저 채워 넣는다.** 이 값을
+   * 빼먹으면 유료 첫 화면이 무료에서 방금 본 질문을 다시 판다. 무료 질문은 축 단위로
+   * '상대의 평소'를 묻는 것들이므로 그 의도만 옮긴다.
+   */
+  const candidates = buildInsightCandidates({
+    chapters,
+    insights,
+    target,
+    declaredLevels: buildSelfLevels(resolverContext.answers.declared),
+    tense: lifecycle.tense,
+    allowsOutwardQuestions,
+    usedFingerprints: new Set(
+      compatibility.dimensions.map((dimension) => freeQuestionFingerprint(dimension.key)),
+    ),
+  });
+
   return {
     available,
     overview: overviewFor({
@@ -802,6 +839,30 @@ export function buildRelationshipDeepReport(input: {
       chapters,
       tense: lifecycle.tense,
     }),
+    /**
+     * v1.46.4 §6 — 첫 viewport의 Executive SO WHAT.
+     *
+     * ⚠️ **새 판정이 아니다.** 이미 고른 `chapters`의 순서, 이미 계산된
+     * `compatibility.goodSignals`, 이미 만든 `connectionQuestions`를 그대로 읽어
+     * 배치만 바꾼다(`lib/premiumSoWhat.ts`).
+     *
+     * ⚠️ `available: false`면 null이다 — 연결이 없는 리포트의 첫 화면에 결론 3줄이
+     * 떠 있으면, 없는 것을 판 것이 된다(§14.1과 같은 원칙).
+     */
+    executive: available
+      ? buildExecutiveSoWhat({
+          chapters,
+          compatibility,
+          questions: connectionQuestions.map((item) => item.question.text),
+          tense: lifecycle.tense,
+        })
+      : null,
+    candidates,
+    /**
+     * §21 — 가짜 mystery 금지. `selectPaywallTease`는 **무료 화면 밖 근거를 실제로 가진**
+     * Candidate만 돌려주고, 없으면 null이다. 그때 Paywall은 가치 카피만 쓴다.
+     */
+    paywallTease: paywallTeaseText(selectPaywallTease(candidates), target.events?.length ?? 0),
     corePattern,
     connections,
     singleSourceNotes,

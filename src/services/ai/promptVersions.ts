@@ -115,7 +115,12 @@ export const PROMPT_VERSIONS = {
    * 그대로 나가던 `conversationQuestion`이 들어 있다 — 서버 게이트는 새 응답에만
    * 적용되고 캐시 히트에는 응답이 없다(v1.42 §8.13).
    */
-  compatibility: 'compatibility-v4-tense',
+  /**
+   * v1.46.4 §3 — **v5로 올렸다.** `explanation`의 역할이 '왜 이렇게 보이는지'에서
+   * '왜 중요한지'로 바뀌었고 입력값 재진술을 금지했다. 버전을 올리지 않으면 v4
+   * 프롬프트로 만든 재진술 문장이 캐시에서 그대로 나온다(§8.13).
+   */
+  compatibility: 'compatibility-v5-sowhat',
   /** v1.7 — 길이 제한 · '~수도 있어' 톤 강제 · 반복 신호 확정 금지 */
   /**
    * v1.43 §45.3 · §46.4 — **v3으로 올렸다.**

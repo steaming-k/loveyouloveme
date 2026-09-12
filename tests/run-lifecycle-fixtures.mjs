@@ -171,7 +171,12 @@ const DATING_FORBIDDEN = ['새로운 사람', '호감을 높', '고백', '다음
 const ENDED_OUTWARD_PHRASES = ['서로 원하는', '각자 어떤', '같이 해보', '함께 해보', '상대에게 물어'];
 
 /** Paywall `additions`에서 상대를 향한 약속을 가리키는 문구 (`OUTWARD_ADDITION_ITEMS`와 짝) */
-const OUTWARD_ADDITION_MARKERS = ['다가가는 힌트', '상대에게 확인해볼 질문'];
+/*
+  v1.46.4 §20 — Paywall 문구를 결과 기준으로 다시 쓰면서 마커도 같이 바꿨다.
+  `data/premium.ts`의 문장과 `premiumService.OUTWARD_ADDITION_ITEMS`, 그리고 이 목록
+  **세 곳이 항상 같이 움직인다.**
+*/
+const OUTWARD_ADDITION_MARKERS = ['어떻게 다가가는 게 맞는지', '상대에게 무엇을 확인하면'];
 
 const LONG_TERM_FORBIDDEN = ['가사', '재정', '생활비', '육아', '양육', '주거', '성생활'];
 
@@ -414,7 +419,7 @@ async function main() {
       check(`${status} 노출 문자열에 '새로운 사람'·'고백'·'다음 관계' 0건`, hits.length === 0, hits);
       check(
         `${status} Premium 목록은 상대를 향한 약속을 유지한다 (관계가 진행 중이므로 지울 이유가 없다)`,
-        byStatus[status].context.premiumAdditions.some((item) => item.includes('다가가는 힌트')),
+        byStatus[status].context.premiumAdditions.some((item) => item.includes('다가가는 게 맞는지')),
         byStatus[status].context.premiumAdditions,
       );
       check(

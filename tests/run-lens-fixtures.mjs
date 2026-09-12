@@ -1123,10 +1123,24 @@ console.log('\nAI-LENS-01 ~ AI-LENS-20 — 렌즈별 AI 해석 (v1.46 AI Lens)')
     prompts.includes('네가 연락이 줄었다고 느낀 장면을 알려줬어') &&
       prompts.includes('상대가 일부러 연락을 줄였어'),
   );
+  /**
+   * v1.46.4 §10 — **상한을 거는 방식이 바뀌었다(상한 자체는 그대로다).**
+   *
+   * 예전에는 `events.filter(종류).slice(0, LENS_EVENT_LIMIT)`였다. 사건이 최대 3개일
+   * 때는 그게 '3개 중 2개'였는데, 상한이 사라진 지금 그건 **가장 오래된 2개**라는
+   * 뜻이다 — 사용자가 방금 알려준 장면이 영영 AI에 닿지 않는다.
+   *
+   * 그래서 자르는 자리는 그대로 두고 **고르는 기준**만 관련성으로 바꿨다. 이 검사도
+   * `slice` 문자열이 아니라 그 불변식(종류 필터 + `LENS_EVENT_LIMIT` 상한)을 본다.
+   *
+   * ⚠️ 런타임 검사는 `tests/run-event-fixtures.mjs`의 EVENT-LIMIT-10이 한다 —
+   * 사건이 5건에서 20건이 되어도 전송 건수가 늘지 않는지를 **값으로** 본다.
+   */
   check(
     'AI-LENS-12 사건이 렌즈별 종류 필터와 건수 상한을 거친다',
     /const LENS_EVENT_TYPES: Record</.test(builders) &&
-      /\.slice\(0, LENS_EVENT_LIMIT\)/.test(builders),
+      /const LENS_EVENT_LIMIT = \d+/.test(builders) &&
+      /selectRelevantEvents\(\s*candidates,[\s\S]{0,200}LENS_EVENT_LIMIT,/.test(builders),
   );
 
   /* ── AI-LENS-12b · 내부 enum이 모델에게 나가지 않는다 (브라우저 실측 회귀) ── */
@@ -1225,9 +1239,18 @@ console.log('\nAI-LENS-01 ~ AI-LENS-20 — 렌즈별 AI 해석 (v1.46 AI Lens)')
   );
   check(
     'AI-LENS-19 기존 네 Task의 promptVersion이 전부 그대로다',
+    /*
+      v1.46.4 §3 — `compatibility`만 v4 → v5로 올렸다. 이 검사의 뜻은 '렌즈 작업이 다른
+      Task를 건드리지 않았다'인데, v1.46.4는 **의도적으로** compatibility 프롬프트의
+      역할을 바꿨다(입력 재진술 금지 · explanation을 WHY로). 버전을 올리지 않으면 v4로
+      만든 재진술 문장이 캐시에서 그대로 나온다.
+
+      그래서 목록을 느슨하게 만들지 않고 **바뀐 값으로 다시 고정**한다 — 나머지 셋은
+      여전히 그대로여야 한다.
+    */
     [
       'relationship-v7-evidence',
-      'compatibility-v4-tense',
+      'compatibility-v5-sowhat',
       'history-v3-axis',
       'observed-v2-photo',
     ].every((version) => versions.includes(`'${version}'`)),

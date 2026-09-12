@@ -231,15 +231,23 @@ export interface LovySurprise {
 function signalLineOf(dimension: CompatibilityDimension | undefined): string | null {
   if (!dimension || dimension.alignment === null) return null;
 
-  const answers = `나: ${dimension.minePhrase} · 상대: ${dimension.theirsPhrase}`;
+  /*
+    v1.46.4 §3 — **괄호 안의 답 값을 뺐다.**
 
+    v1.46.3까지 이 줄은 `연락 방식에서는 두 사람의 답이 서로 다르게 나왔어.
+    (나: 연락 중요도 5/5 · 상대: 뜸한 편)`이었다. 첫 viewport에서 사용자가 읽는 첫
+    근거 문장이 **자기가 방금 입력한 값 두 개**였다는 뜻이다.
+
+    같은 값은 바로 아래 신호 카드의 `왜 이렇게 봤어?` 안에 그대로 있다 — 지운 게
+    아니라 근거 자리로 옮긴 것이다(§8).
+  */
   if (dimension.tone === 'watch') {
-    return `${dimension.label}에서는 두 사람의 답이 서로 다르게 나왔어. (${answers})`;
+    return `${dimension.label}에서는 두 사람의 답이 서로 다르게 나왔어.`;
   }
   if (dimension.tone === 'good') {
-    return `${dimension.label}에 대해서는 둘이 비슷하게 답했어. (${answers})`;
+    return `${dimension.label}에 대해서는 둘이 비슷하게 답했어.`;
   }
-  return `${dimension.label}은 아주 다르지도, 아주 비슷하지도 않게 나왔어. (${answers})`;
+  return `${dimension.label}은 아주 다르지도, 아주 비슷하지도 않게 나왔어.`;
 }
 
 export function selectFirstSurprise(result: CompatibilityResult): LovySurprise | null {

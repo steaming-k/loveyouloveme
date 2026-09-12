@@ -10,6 +10,7 @@ import {
   PAST_FACTOR_LABEL,
 } from '@/data/labels';
 import { resolveEvidenceRef, type EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
+import { selectRelevantEvents } from '@/lib/logic/eventRelevance';
 import { limitationFor } from '@/services/premiumConnections';
 import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import { sanitizeFreeText } from './safety';
@@ -598,17 +599,50 @@ const LENS_EVENT_TYPES: Record<PremiumLensKind, readonly RelationshipEventType[]
   zodiac: ['affection_felt', 'care_received', 'distance'],
 };
 
-/** 렌즈 하나에 넘기는 사건 상한. 사건은 최대 3개지만(§8) 프롬프트에는 2개까지만 */
+/**
+ * 렌즈 하나에 넘기는 사건 상한.
+ *
+ * ══ v1.46.4 §10 — **이 상수의 의미가 바뀌었다** ═══════════════════════════
+ *
+ * v1.46에서는 저장된 사건이 최대 3개였으므로 `2`는 '3개 중 2개'였다. 상한이 사라진
+ * 지금 이 값은 **Provider input이 사용자 입력량에 비례해 커지지 않게 막는 예산**이다:
+ *
+ * ```
+ * 사건 3개  → 렌즈당 최대 2건
+ * 사건 20개 → 렌즈당 최대 2건   ← 같다. 이게 이 상수가 하는 일이다
+ * ```
+ *
+ * ⚠️ 그래서 **어떤 2건인가**가 새로 중요해졌다. 예전에는 앞에서 2개를 잘랐는데, 사건이
+ * 20개면 그건 '가장 오래된 2개'라는 뜻이다 — 사용자가 방금 알려준 장면이 영영 AI에
+ * 닿지 않는다. 지금은 `selectRelevantEvents`가 관련성으로 고른다(§9).
+ */
 const LENS_EVENT_LIMIT = 2;
 
 function eventsForLens(
   kind: PremiumLensKind,
   events: readonly RelationshipEvent[],
+  tense: RelationshipTense,
 ): PremiumLensContext['reportedEvents'] {
   const allowed = LENS_EVENT_TYPES[kind];
-  return events
-    .filter((event) => allowed.includes(event.type))
-    .slice(0, LENS_EVENT_LIMIT)
+  const candidates = events.filter((event) => allowed.includes(event.type));
+
+  /*
+    §9 — 이 렌즈의 주제와 겹치는 것들 중에서 **관련성 순**으로 고른다.
+
+    ⚠️ 축을 null로 두는 이유: 렌즈는 Mirror 축의 판정이 아니다(§45 — 렌즈는 Core
+    판정에 들어가지 않는다). 여기서 쓰는 신호는 종류 적합성·시제·최신성뿐이고,
+    그건 `EventRelevanceQuery`가 axis 없이도 계산하는 값들이다.
+  */
+  const ranked = selectRelevantEvents(
+    candidates,
+    { axis: null, direction: 'unknown', tense, unresolved: false },
+    LENS_EVENT_LIMIT,
+  );
+  const order = new Map(ranked.map((item, index) => [item.eventId, index]));
+
+  return candidates
+    .filter((event) => order.has(event.id))
+    .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
     .map((event) => ({
       type: RELATIONSHIP_EVENT_LABEL[event.type],
       // 자유 입력은 반드시 한 번 더 자르고 정규화해서 내보낸다(§34 · sanitizeFreeText)
@@ -638,7 +672,7 @@ export function buildPremiumLensContext(input: {
     themes: report.themes.map((theme) => LENS_THEME_LABEL[theme]),
     alreadySaid: report.sections.map((section) => section.title),
     declared: declaredForContext(declared),
-    reportedEvents: eventsForLens(report.kind, events),
+    reportedEvents: eventsForLens(report.kind, events, tense),
   };
 }
 
@@ -700,7 +734,7 @@ export function buildCrossLensContext(input: {
   const seen = new Set<string>();
   const reportedEvents: PremiumLensContext['reportedEvents'] = [];
   for (const report of reports) {
-    for (const event of eventsForLens(report.kind, events)) {
+    for (const event of eventsForLens(report.kind, events, tense)) {
       if (seen.has(event.description)) continue;
       seen.add(event.description);
       reportedEvents.push(event);

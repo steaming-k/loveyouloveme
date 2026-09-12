@@ -18,6 +18,9 @@
     "test:premium": "node tests/run-premium-fixtures.mjs",
     "test:lens": "node tests/run-lens-fixtures.mjs",
     "test:nav": "node tests/run-nav-fixtures.mjs",
+    "test:value": "node tests/run-value-fixtures.mjs",
+    "test:event": "node tests/run-event-fixtures.mjs",
+    "test:question": "node tests/run-question-fixtures.mjs",
     "test:ai:e2e": "node tests/run-provider-e2e.mjs"
   },
   "dependencies": {

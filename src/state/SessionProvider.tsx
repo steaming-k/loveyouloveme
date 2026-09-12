@@ -15,8 +15,9 @@ import { MAX_PAST_FACTORS } from '@/data/labels';
 import { PHOTO_MAX_COUNT } from '@/data/samplePhotos';
 import {
   RELATIONSHIP_EVENT_DESCRIPTION_MAX_LENGTH,
-  RELATIONSHIP_EVENT_MAX,
   RELATIONSHIP_EVENT_REACTION_MAX_LENGTH,
+  RELATIONSHIP_EVENT_SAFETY_MAX,
+  SESSION_STORAGE_SOFT_LIMIT_BYTES,
 } from '@/data/relationshipEvents';
 import { TARGET_INTEREST_MAX, TARGET_CUSTOM_INTEREST_MAX_LENGTH } from '@/data/targetPreferences';
 import { clearSessionDedup, trackEvent } from '@/lib/analytics';
@@ -67,6 +68,15 @@ import type {
 import { createEmptyAnswers, createEmptyTargetProfile, createSampleAnswers } from './defaultAnswers';
 
 const STORAGE_KEY = 'lym.session.v1';
+
+/**
+ * v1.46.4 §6 — 저장소 상태. **`ok`가 기본이고, 화면은 `ok`에서 아무 말도 하지 않는다.**
+ *
+ * `near`/`full`을 나눈 이유: 두 상태에서 사용자가 할 수 있는 일이 다르다. `near`는
+ * 아직 저장되고 있으므로 안내만 하면 되고, `full`은 **방금 쓴 것이 사라졌다**는 뜻이라
+ * 즉시 말해야 한다. 하나로 합치면 전자에서 겁을 주거나 후자를 놓친다.
+ */
+export type SessionStorageStatus = 'ok' | 'near' | 'full';
 
 type CompletionKey = keyof SessionAnswers['completed'];
 
@@ -121,7 +131,27 @@ interface SessionContextValue {
   removeTargetInterest: (id: string) => void;
 
   /**
-   * v1.46 §8 — 관계 사건 추가. 본문이 비었거나 최대 개수(3)를 넘으면 false.
+   * v1.46.4 §5 — **세션 저장의 현재 상태.** 화면이 이 값을 읽어서, 그리고 이 값이
+   * 실제로 나빠졌을 때만 사용자에게 말한다.
+   *
+   * ```
+   * ok       평소. 화면은 아무 말도 하지 않는다
+   * near     직렬화 길이가 soft limit을 넘었다. '슬슬 정리해도 좋아' 수준의 안내
+   * full     방금 저장이 QuotaExceededError로 실패했다. **조용히 넘기지 않는다**(§6)
+   * ```
+   *
+   * ⚠️ 예전에는 저장 실패를 `catch {}`로 통째로 삼켰다. 사건이 3개였을 때는 그 선택이
+   * 안전했지만(세션이 커질 이유가 없었다), 사용자가 장면을 얼마든지 남길 수 있게 된
+   * 지금은 **저장이 안 되고 있다는 사실 자체를 사용자가 알아야 한다.**
+   */
+  storageStatus: SessionStorageStatus;
+
+  /**
+   * v1.46 §8 · v1.46.4 §5 — 관계 사건 추가. 본문이 비었거나 **기술 상한**
+   * (`RELATIONSHIP_EVENT_SAFETY_MAX`)에 닿으면 false.
+   *
+   * ⚠️ 예전에는 제품 상한 3이었다. 그 숫자가 사라진 이유는 `data/relationshipEvents.ts`에
+   * 적혀 있다 — 요약하면 막아야 했던 것은 개수가 아니라 필드(날짜·장소·이름)였다.
    *
    * ⚠️ 상대에 종속된 값이라 `resetTargetContext()`가 함께 비운다(§14).
    */
@@ -310,6 +340,7 @@ function deserialize(raw: string): SessionAnswers | null {
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [answers, setAnswers] = useState<SessionAnswers>(createEmptyAnswers);
   const [hydrated, setHydrated] = useState(false);
+  const [storageStatus, setStorageStatus] = useState<SessionStorageStatus>('ok');
   /** 해제해야 할 object URL 목록 */
   const objectUrls = useRef<string[]>([]);
 
@@ -343,12 +374,37 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     });
   }, [hydrated]);
 
+  /**
+   * v1.46.4 §6 — **저장 실패를 조용히 삼키지 않는다.**
+   *
+   * ⚠️ 그래도 흐름은 막지 않는다. 두 규칙이 동시에 성립해야 한다:
+   *
+   * ```
+   * 막지 않는다   throw하지 않고, 화면 전환을 멈추지 않는다 (v1.x부터의 규칙)
+   * 말한다        상태를 남겨서 화면이 사용자에게 알릴 수 있게 한다 (이번에 추가)
+   * ```
+   *
+   * ⚠️ **길이 측정에 원문을 쓰지 않는다** — 여기서 세는 것은 직렬화된 세션 전체
+   * 길이뿐이고, 사건 본문이 이 함수 밖으로 나가지 않는다.
+   */
   useEffect(() => {
     if (!hydrated) return;
+    const payload = serialize(answers);
     try {
-      window.localStorage.setItem(STORAGE_KEY, serialize(answers));
+      window.localStorage.setItem(STORAGE_KEY, payload);
+      /*
+        직렬화 길이는 UTF-16 코드 유닛 수다. 한글이 많은 세션에서는 실제 바이트가 이보다
+        크지만(UTF-8 기준 3배), soft limit은 정확한 바이트가 아니라 **정리를 권할 시점**을
+        정하는 값이므로 과소평가하지 않도록 그대로 비교한다.
+      */
+      setStorageStatus(payload.length > SESSION_STORAGE_SOFT_LIMIT_BYTES ? 'near' : 'ok');
     } catch {
-      // 저장 실패가 흐름을 막지 않는다.
+      /*
+        여기 오는 이유는 사실상 하나다 — QuotaExceededError. 예외 종류를 분기하지 않는
+        이유는 사용자가 할 수 있는 일이 같기 때문이다(오래된 장면을 지우거나 새로
+        시작한다). 종류를 나누면 화면에 설명할 수 없는 상태가 하나 더 생긴다.
+      */
+      setStorageStatus('full');
     }
   }, [answers, hydrated]);
 
@@ -687,7 +743,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       let added = true;
       let nextCount = 0;
       setAnswers((prev) => {
-        if (prev.target.events.length >= RELATIONSHIP_EVENT_MAX) {
+        /*
+          v1.46.4 §5 — 여기서 막는 것은 **제품 상한이 아니라 기술 상한**이다. 사용자가
+          정상적인 사용으로 이 선에 닿는 일은 없다(100개). 닿았다면 그건 저장소를
+          지켜야 하는 상황이고, 화면은 `full` 안내와 같은 자리에서 그 사실을 말한다.
+        */
+        if (prev.target.events.length >= RELATIONSHIP_EVENT_SAFETY_MAX) {
           added = false;
           return prev;
         }
@@ -1012,6 +1073,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     () => ({
       answers,
       hydrated,
+      storageStatus,
       setStatus,
       addUploadedPhotos,
       removePhoto,
@@ -1059,6 +1121,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [
       answers,
       hydrated,
+      storageStatus,
       setStatus,
       addUploadedPhotos,
       removePhoto,

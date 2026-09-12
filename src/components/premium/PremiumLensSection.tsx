@@ -228,9 +228,18 @@ function LensCard({
               {MODE_BADGE[lens.mode]}
             </span>
           </span>
-          {/* headline은 접힌 상태에서도 보인다 — 무엇이 들어 있는지 숨기지 않는다 */}
+          {/*
+            v1.46.4 §10 — **접힌 줄은 SO WHAT이다.**
+
+            v1.46.3까지 이 자리는 `INFP × ENFP — 정보를 받아들이는 방식 · …는 같은
+            쪽이고, 에너지를 회복하는 방식은 다른 쪽으로 분류됐어.`였다. 사용자가
+            입력한 두 유형을 다시 읽어준 것이고, 관계에서 그게 무슨 뜻인지는 펼쳐야
+            나왔다. 지금은 뜻이 먼저 오고 분류는 근거 블록(`왜 이렇게 봤어?`)에 있다.
+
+            ⚠️ `soWhat`이 없는 렌즈는 `overview`를 쓴다 — 화면이 문장을 지어내지 않는다.
+          */}
           <span className="text-[12px] keep-all leading-relaxed text-ink-sub">
-            {lens.headline}
+            {lens.soWhat ?? lens.overview}
           </span>
         </span>
         <span
@@ -277,8 +286,13 @@ function LensCard({
           */}
           <LensAiBlock state={ai} />
 
-          {/* §30 — '왜 이렇게 봤어?'. raw debug JSON이 아니라 사람이 읽는 라벨과 값이다 */}
-          <BasisBlock rows={lens.basis} />
+          {/*
+            §30 — '왜 이렇게 봤어?'. raw debug JSON이 아니라 사람이 읽는 라벨과 값이다.
+
+            v1.46.4 §10 — 접힌 줄에서 내려온 **분류 문장**이 이 근거의 첫 행이다.
+            지운 게 아니라 자리를 옮겼다(§8).
+          */}
+          <BasisBlock rows={[{ label: '렌즈 분류', value: lens.headline }, ...lens.basis]} />
 
           {/* §5 06 — 러비의 체크포인트 */}
           <div className="flex flex-col gap-1 rounded-card bg-mint-tint px-3.5 py-3">
@@ -434,6 +448,16 @@ function CrossLensCard({
           ) : null}
           {cross.differences.length > 0 ? (
             <CrossBlock label={CROSS_LENS_COPY.differenceLabel} items={cross.differences} />
+          ) : null}
+          {/*
+            v1.46.4 §11 C — 렌즈와 **사용자의 직접 답변**이 어긋나는 자리.
+
+            ⚠️ 위 두 블록(A 반복 · B 렌즈 간 차이)은 렌즈끼리의 비교다. 이 블록만
+            렌즈 **바깥**의 근거(네가 직접 답한 값)와 맞대본다 — Cross-Lens가 렌즈
+            요약으로 끝나지 않게 하는 자리다. 만들 수 없으면 없다.
+          */}
+          {cross.tensions.length > 0 ? (
+            <CrossBlock label={CROSS_LENS_COPY.tensionLabel} items={cross.tensions} />
           ) : null}
           {/*
             §19 C — Cross-Lens의 최종 가치. 그래서 **가장 아래, 가장 강하게** 둔다.

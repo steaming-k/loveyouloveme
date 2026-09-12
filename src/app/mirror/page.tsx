@@ -32,12 +32,17 @@ import { buildHistoryEntry } from '@/lib/logic/history';
 import { scopeCaptionOf } from '@/lib/logic/relationshipEvidence';
 import {
   jobAllowsOutwardAction,
+  jobAllowsOutwardQuestions,
   jobInvitesCurrentEvidence,
   relationshipTenseOf,
   resolveRelationshipContext,
 } from '@/lib/logic/relationshipStage';
 import { STAGE_JOB_COPY } from '@/data/stageCopy';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
+import { orderMirrorInsightsForDisplay } from '@/lib/resultPriority';
+import { FreeInsightSection } from '@/components/mirror/FreeInsightSection';
+import { buildFreeCandidates, openQuestionFor } from '@/lib/logic/insightCandidates';
+import { buildSelfLevels } from '@/lib/logic/firstContact';
 import { isRevisit, revisitSource } from '@/lib/resultView';
 import { RESULT_ANCHORS, ROUTES } from '@/lib/routes';
 import { canUseAiAxisNarrative, canUseAiHeadline } from '@/lib/logic/mirror';
@@ -116,6 +121,33 @@ function MirrorView() {
     fixture가 검사할 수 없고, 실제로 `ended`에서 `지금 N · 이전 M`이 새어 나갔다(J7).
   */
   const scopeCaption = scopeCaptionOf({ summary: scope, tense, fallback: jobCopy.mirrorUse });
+
+  /**
+   * v1.46.4 §18 ~ §21 — 무료의 **첫 Insight.**
+   *
+   * ⚠️ **판정을 새로 하지 않는다.** 입력은 이미 계산된 Mirror 행(표시 순서대로)과
+   * 이미 답한 값들뿐이고, 이 훅이 만드는 것은 문장과 질문이다.
+   *
+   * ⚠️ `usedFingerprints`가 비어 있는 이유: 무료가 **먼저** 질문을 만들고 유료가 그
+   * 지문을 피한다(`premiumService`가 무료 축 질문의 지문을 미리 넣는다). 순서가
+   * 반대면 유료가 먼저 좋은 질문을 가져가고 무료에는 남은 것이 간다.
+   */
+  const orderedInsights = useMemo(
+    () => orderMirrorInsightsForDisplay(mirror.insights),
+    [mirror.insights],
+  );
+  const freeCandidates = useMemo(
+    () =>
+      buildFreeCandidates({
+        mirrorInsights: orderedInsights,
+        target: answers.target,
+        declaredLevels: buildSelfLevels(answers.declared),
+        tense,
+        allowsOutwardQuestions: jobAllowsOutwardQuestions(job),
+        usedFingerprints: new Set<string>(),
+      }),
+    [orderedInsights, answers.target, answers.declared, tense, job],
+  );
 
   const [editOpen, setEditOpen] = useState(false);
   const [draft, setDraft] = useState(answers.coreCorrection);
@@ -437,10 +469,29 @@ function MirrorView() {
             </div>
           ) : null}
 
+          {/*
+            v1.46.4 §18 — **결론이 비교보다 먼저다.**
+
+            비교 행(내가 말한 것 · 관계에서 보인 것)은 사용자가 입력한 값을 나란히
+            놓은 것이라 관찰이지 의미가 아니다. 그 순서를 그대로 두면 무료 화면의
+            첫 문장도 여전히 '내가 쓴 걸 다시 읽는 것'이 된다.
+
+            ⚠️ 비교 행을 **지우지 않는다.** 내리는 것이지 없애는 것이 아니다 —
+            근거를 보고 싶은 사용자가 볼 곳이 있어야 한다(§36과 같은 판단).
+          */}
+          <FreeInsightSection
+            candidates={freeCandidates}
+            openQuestion={openQuestionFor(freeCandidates[0])}
+          />
+
           <section className="flex flex-col gap-2.5">
             <MirrorLegend />
             <ul className="flex flex-col gap-2.5">
-              {mirror.insights.map((insight, index) => (
+              {/*
+                §14 — **판정이 아니라 순서만** 바꾼다(`lib/resultPriority.ts`).
+                GAP → CHANGE → MATCH. 같은 등급 안에서는 엔진이 준 순서 그대로다.
+              */}
+              {orderedInsights.map((insight, index) => (
                 <MirrorComparisonRow
                   key={insight.key}
                   insight={insight}

@@ -754,6 +754,27 @@ function PremiumView() {
             이미 개인화돼 있다(`ruleSummary`는 판정된 축 라벨을 담는다). 문장을 중간에서
             자르지 않고 완결된 채로 보여주고, 잠긴 것은 아래 목차로 정직하게 알린다.
           */}
+          {/*
+            ══ v1.46.4 §21 — **가짜 mystery 금지** ═══════════════════════════════
+
+            "결제하면 더 있어"는 언제나 쓸 수 있는 문장이라 아무것도 말하지 않는다.
+            이 줄은 **실제로 무료 화면 밖 근거를 가진 Candidate가 있을 때만** 나온다
+            — 없으면 `report.paywallTease`가 null이고 이 블록이 통째로 사라진다.
+
+            ⚠️ 문장을 여기서 만들지 않는다. `paywallTeaseText()`가 무엇을 tease할
+            자격이 있는지 판정하고 문장까지 만든다(`logic/insightCandidates.ts`).
+            화면이 문구를 쓰면 '근거 없이도 그럴듯한 한 줄'이 생기고, 그게 §21이
+            막으려는 것이다. VALUE-15가 이 연결을 값으로 검사한다.
+          */}
+          {isDeepReport && deep.report.paywallTease ? (
+            <section className="flex flex-col gap-2">
+              <SectionLabel>여기서 한 발 더</SectionLabel>
+              <p className="rounded-card border border-line bg-surface p-4 text-[13px] font-medium keep-all leading-relaxed">
+                {deep.report.paywallTease}
+              </p>
+            </section>
+          ) : null}
+
           {isDeepReport && previewSummaries.length > 0 && (
             <section className="flex flex-col gap-2">
               <SectionLabel>{DEEP_REPORT_COPY.previewLabel}</SectionLabel>

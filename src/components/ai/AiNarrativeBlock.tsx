@@ -51,13 +51,22 @@ export function AiNarrativeBlock({
         <p className="text-[13.5px] font-semibold keep-all leading-relaxed">{headline}</p>
       ) : null}
 
-      <p className="text-caption keep-all leading-relaxed text-[#555]">{explanation}</p>
+      {/*
+        v1.46.4 §3 — **scenario가 explanation보다 먼저다.**
 
+        scenario는 '실제 관계에서 언제 드러나는가'(SO WHAT)이고 explanation은 '왜
+        중요한가'(WHY)다. v1.46.3까지는 WHY가 먼저였는데, 그 자리의 문장이 실측에서
+        입력값 재진술이라 **첫 줄부터 아는 내용**이었다. 프롬프트도 같이 고쳤지만
+        (`compatibility-v5-sowhat`), 순서를 그대로 두면 AI가 실패하거나 문장이 약할 때
+        다시 같은 화면이 된다 — 순서는 모델 출력과 무관하게 지켜져야 한다.
+      */}
       {scenario ? (
         <p className="rounded-chip bg-surface px-3 py-2.5 text-caption keep-all leading-relaxed text-[#555]">
           {scenario}
         </p>
       ) : null}
+
+      <p className="text-caption keep-all leading-relaxed text-[#555]">{explanation}</p>
 
       {/* 불확실성을 접어 숨기지 않는다 — 근거보다 먼저 보이는 위치에 둔다(§13) */}
       {uncertainty ? (

@@ -44,6 +44,7 @@ import {
   lovyMidNoteAfter,
 } from '@/lib/premiumLovy';
 import { buildRelationshipDeepReport, premiumFeatureState } from '@/services/premiumService';
+import { chapterSoWhatOf } from '@/lib/premiumSoWhat';
 import { createEmptyAnswers, createEmptyTargetProfile } from '@/state/defaultAnswers';
 import type {
   CurrentRelationshipEvidence,
@@ -631,6 +632,34 @@ export async function POST(request: Request): Promise<Response> {
         deepReport.overview.headline,
         deepReport.overview.subcopy,
         ...deepReport.overview.topSummaries,
+        /**
+         * ⚠️ v1.46.4 §6 · §7 — **새로 생긴 문장 계층을 스캔 표면에 넣는다.**
+         *
+         * 첫 viewport 3줄(`executive`)과 Chapter의 SO WHAT / WHY는 이번에 추가된
+         * 자리다. 여기 넣지 않으면 `ended` 금지 어휘 검사가 **리포트에서 가장 먼저
+         * 읽히는 문장들을 보지 않는다** — v1.41이 `limitation`을 빠뜨려 겪은 것과
+         * 똑같은 실패다. 새 자리를 만들면 스캔도 같이 넓힌다.
+         */
+        ...(deepReport.executive
+          ? [
+              deepReport.executive.title,
+              ...deepReport.executive.items.flatMap((item) => [
+                item.label,
+                item.text,
+                /*
+                  ⚠️ `?? ''`로 채우지 않는다. `ask` 슬롯에는 '왜 중요해'가 없는데 빈
+                  문자열을 넣으면 **화면에 없는 블록을 스캔 표면에 만든 것**이 되고,
+                  A15(모든 렌더 문자열이 비어 있지 않다)가 바로 잡아낸다 — 실제로
+                  잡혔다. 없는 문장은 배열에서 빠진다.
+                */
+                ...(item.whyItMatters ? [item.whyItMatters] : []),
+              ]),
+            ]
+          : []),
+        ...deepReport.chapters.flatMap((chapter) => {
+          const soWhat = chapterSoWhatOf(chapter, { tense: lifecycle.tense });
+          return soWhat ? [soWhat.soWhat, soWhat.whyItMatters] : [];
+        }),
         ...deepReport.actions.map((action) => action.text),
         ...deepReport.connectionQuestions.flatMap((item) => [
           item.question.tag,

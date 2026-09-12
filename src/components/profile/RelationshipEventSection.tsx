@@ -8,10 +8,11 @@ import { Lovy } from '@/components/lovy/Lovy';
 import {
   RELATIONSHIP_EVENT_DESCRIPTION_MAX_LENGTH,
   RELATIONSHIP_EVENT_LABEL,
-  RELATIONSHIP_EVENT_MAX,
   RELATIONSHIP_EVENT_OPTIONS,
   RELATIONSHIP_EVENT_PLACEHOLDER,
   RELATIONSHIP_EVENT_REACTION_MAX_LENGTH,
+  RELATIONSHIP_EVENT_SAFETY_MAX,
+  RELATIONSHIP_EVENT_VISIBLE_DEFAULT,
 } from '@/data/relationshipEvents';
 import { cn } from '@/lib/cn';
 import { useSession } from '@/state/SessionProvider';
@@ -39,8 +40,13 @@ import type { RelationshipEventType } from '@/types';
  * 관계 일지 입력 폼이 되고, 그건 이 제품이 만들지 않기로 한 것이다.
  */
 export function RelationshipEventSection() {
-  const { answers, addRelationshipEvent, updateRelationshipEvent, removeRelationshipEvent } =
-    useSession();
+  const {
+    answers,
+    addRelationshipEvent,
+    updateRelationshipEvent,
+    removeRelationshipEvent,
+    storageStatus,
+  } = useSession();
   const events = answers.target.events;
 
   const [open, setOpen] = useState(false);
@@ -57,10 +63,33 @@ export function RelationshipEventSection() {
    * 가리키게 된다. 오타 하나를 고쳤다는 이유로 근거의 정체성이 바뀌면 안 된다.
    */
   const [editingId, setEditingId] = useState<string | null>(null);
+  /**
+   * v1.46.4 §40 — 목록을 **전부 펼쳐두지 않는다.** 393×852에서 장면 20개를 한꺼번에
+   * 그리면 이 섹션 하나가 화면을 삼킨다. 기본은 최근 것부터
+   * `RELATIONSHIP_EVENT_VISIBLE_DEFAULT`개이고, 나머지는 사용자가 직접 펼친다.
+   *
+   * ⚠️ **저장은 전부 되어 있다.** 접는 것은 표현이지 보관이 아니다 — 접힌 장면도
+   * 리포트의 근거 후보이고, 삭제하지 않는 한 사라지지 않는다.
+   */
+  const [showAll, setShowAll] = useState(false);
 
-  /** 고치는 중에는 상한이 걸리지 않는다 — 개수가 늘지 않기 때문이다 */
-  const full = events.length >= RELATIONSHIP_EVENT_MAX && editingId === null;
+  /**
+   * v1.46.4 §5 — 고치는 중에는 상한이 걸리지 않는다(개수가 늘지 않는다).
+   *
+   * ⚠️ 이 값이 true가 되는 것은 **기술 상한에 닿았을 때뿐이다.** 사용자가 정상적인
+   * 사용으로 여기 오는 일은 없다 — 그래서 이 자리의 문구도 '3개까지만 받을게'가 아니라
+   * 저장소가 한계라는 사실 그대로다.
+   */
+  const full = events.length >= RELATIONSHIP_EVENT_SAFETY_MAX && editingId === null;
   const canSubmit = draftType !== null && description.trim().length > 0;
+
+  /**
+   * 최근 장면이 위로 온다. **저장 순서를 바꾸지 않는다** — `events`는 그대로 두고
+   * 화면용 복사본만 뒤집는다(근거 id·순서를 표현이 흔들면 안 된다).
+   */
+  const ordered = [...events].reverse();
+  const visible = showAll ? ordered : ordered.slice(0, RELATIONSHIP_EVENT_VISIBLE_DEFAULT);
+  const hiddenCount = ordered.length - visible.length;
 
   const resetDraft = () => {
     setDraftType(null);
@@ -103,8 +132,13 @@ export function RelationshipEventSection() {
             기억나는 장면 · 선택
           </span>
           <span className="text-caption font-medium">기억나는 장면이 있었어?</span>
+          {/*
+            v1.46.4 §5 — **개수를 미리 말하지 않는다.** 예전 카피는 상한(3개)을
+            암시했고, 그래서 두 번째 장면을 적을 때부터 '이제 하나 남았네'가 됐다.
+            지금은 반대로 말한다 — 여러 개여도 된다는 사실이 먼저다.
+          */}
           <span className="text-[11.5px] keep-all text-ink-faint">
-            갈등이나 호감 신호처럼 관계를 이해하는 데 중요한 일이 있었다면 알려줘.
+            갈등이나 호감 신호처럼 기억에 남은 일이 있다면 알려줘. 여러 개 적어도 돼.
           </span>
         </span>
         <Tag tone={events.length > 0 ? 'brand' : 'neutral'}>
@@ -120,7 +154,7 @@ export function RelationshipEventSection() {
           */}
           {events.length > 0 ? (
             <ul className="flex flex-col gap-2">
-              {events.map((event) => (
+              {visible.map((event) => (
                 <li
                   key={event.id}
                   className={cn(
@@ -169,6 +203,30 @@ export function RelationshipEventSection() {
           ) : null}
 
           {/*
+            §40 — 나머지를 펼치는 길. **접혀 있다는 사실과 개수를 함께 말한다** —
+            "더 보기"만 있으면 몇 개가 더 있는지 모르고, 그러면 사용자가 자기가
+            알려준 것이 다 있는지 확인할 수 없다.
+          */}
+          {hiddenCount > 0 ? (
+            <button
+              type="button"
+              onClick={() => setShowAll(true)}
+              className="flex min-h-11 items-center text-[11.5px] text-ink-muted press-scale"
+            >
+              이전에 적은 장면 {hiddenCount}개 더 보기 ↓
+            </button>
+          ) : null}
+          {showAll && ordered.length > RELATIONSHIP_EVENT_VISIBLE_DEFAULT ? (
+            <button
+              type="button"
+              onClick={() => setShowAll(false)}
+              className="flex min-h-11 items-center text-[11.5px] text-ink-muted press-scale"
+            >
+              최근 {RELATIONSHIP_EVENT_VISIBLE_DEFAULT}개만 보기 ↑
+            </button>
+          ) : null}
+
+          {/*
             §12 우선순위 3 — 러비 체크포인트. **행동을 지시하지 않는다.**
             사건을 하나라도 받았을 때만, 러비가 무엇을 받았는지만 말한다.
           */}
@@ -183,9 +241,15 @@ export function RelationshipEventSection() {
           ) : null}
 
           {full ? (
-            <p className="text-[11px] text-ink-faint">
-              가장 기억나는 장면 {RELATIONSHIP_EVENT_MAX}개까지만 받을게. 지우면 다시
-              적을 수 있어.
+            /*
+              v1.46.4 §6 — 여기 오는 이유는 제품이 정한 상한이 아니라 **이 브라우저에
+              담을 수 있는 양**이다. 그래서 문장도 '여기까지만 받을게'가 아니라
+              '이 기기에 더 담기 어렵다'다 — 사용자가 실제로 할 수 있는 일(지우기)을
+              같이 말한다.
+            */
+            <p className="text-[11px] keep-all leading-relaxed text-ink-faint">
+              이 브라우저에 담아둘 수 있는 양에 거의 다 왔어. 지금까지 적은 장면은 그대로
+              있고, 새로 적으려면 오래된 장면을 하나 지워줘.
             </p>
           ) : draftType === null ? (
             /* 종류 먼저 고른다 — 무엇을 적어야 하는지가 라벨에서 드러나게 한다(§7) */
@@ -244,8 +308,20 @@ export function RelationshipEventSection() {
                 <span className="text-[11.5px] font-semibold text-[#555]">
                   무슨 일이 있었어?
                 </span>
-                <input
-                  type="text"
+                {/*
+                  v1.46.4 §5 · §39 — **한 줄 input이 아니라 textarea다.**
+
+                  예전 80자 input은 "한 줄로 기억되는 길이"라는 제품 판단이었는데, 실제로
+                  사람들이 적고 싶어한 것은 장면이었다. 한 줄 칸은 그 자체가 '짧게 적어라'는
+                  지시이고, 80자에서 잘리면 근거로 되짚을 때 의미가 왜곡된다(§10).
+
+                  ⚠️ **남은 글자 수를 보여주지 않는다.** 카운터는 곧 상한 안내이고,
+                  그러면 technical guard가 다시 UX cap이 된다(§6).
+
+                  ⚠️ `maxLength`는 그대로 둔다 — 비정상적으로 큰 단일 입력만 막는
+                  기술 guard다(500자).
+                */}
+                <textarea
                   value={description}
                   onChange={(event) =>
                     setDescription(
@@ -253,8 +329,9 @@ export function RelationshipEventSection() {
                     )
                   }
                   maxLength={RELATIONSHIP_EVENT_DESCRIPTION_MAX_LENGTH}
+                  rows={3}
                   placeholder={RELATIONSHIP_EVENT_PLACEHOLDER[draftType]}
-                  className="min-h-11 rounded-row border border-line bg-surface px-3.5 text-caption outline-none transition-[border-color] t-fast placeholder:text-ink-faint focus:border-brand"
+                  className="min-h-[76px] resize-y rounded-row border border-line bg-surface px-3.5 py-2.5 text-caption leading-relaxed outline-none transition-[border-color] t-fast placeholder:text-ink-faint focus:border-brand"
                 />
               </label>
 
@@ -263,8 +340,7 @@ export function RelationshipEventSection() {
                   <span className="text-[11.5px] font-semibold text-[#555]">
                     그때 나는 어떻게 반응했어? · 선택
                   </span>
-                  <input
-                    type="text"
+                  <textarea
                     value={reaction}
                     onChange={(event) =>
                       setReaction(
@@ -272,8 +348,9 @@ export function RelationshipEventSection() {
                       )
                     }
                     maxLength={RELATIONSHIP_EVENT_REACTION_MAX_LENGTH}
+                    rows={2}
                     placeholder="예) 아무 말 안 하고 넘겼어"
-                    className="min-h-11 rounded-row border border-line bg-surface px-3.5 text-caption outline-none transition-[border-color] t-fast placeholder:text-ink-faint focus:border-brand"
+                    className="min-h-[56px] resize-y rounded-row border border-line bg-surface px-3.5 py-2.5 text-caption leading-relaxed outline-none transition-[border-color] t-fast placeholder:text-ink-faint focus:border-brand"
                   />
                 </label>
               ) : (
@@ -302,6 +379,22 @@ export function RelationshipEventSection() {
               </button>
             </div>
           )}
+
+          {/*
+            v1.46.4 §6 — **저장이 실제로 위태로울 때만** 말한다. `ok`에서는 이 자리에
+            아무것도 없다. 예전에는 저장 실패를 통째로 삼켰기 때문에 사용자가 방금 적은
+            장면이 사라져도 알 방법이 없었다.
+          */}
+          {storageStatus === 'full' ? (
+            <p className="rounded-row bg-[#FDECEC] px-3 py-2.5 text-[11.5px] keep-all leading-relaxed text-[#9B2C2C]">
+              이 브라우저에 더 저장하지 못했어. 방금 적은 내용이 새로고침 뒤에는 없을 수
+              있어 — 오래된 장면을 몇 개 지우면 다시 저장돼.
+            </p>
+          ) : storageStatus === 'near' ? (
+            <p className="rounded-row bg-sunken px-3 py-2.5 text-[11.5px] keep-all leading-relaxed text-ink-sub">
+              저장해둔 게 꽤 쌓였어. 지금은 문제없지만, 더 이상 안 보는 장면은 지워도 돼.
+            </p>
+          ) : null}
 
           <p className="text-[11px] keep-all leading-relaxed text-ink-faint">
             안 적어도 괜찮아. 적어준 장면은 동기화율 점수에는 들어가지 않고, 리포트에서

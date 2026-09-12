@@ -204,6 +204,36 @@ function mbtiHeadline(mine: MbtiType, theirs: MbtiType): string {
   );
 }
 
+/**
+ * §10 — MBTI 렌즈의 SO WHAT 한 줄.
+ *
+ * ⚠️ **유형쌍 해석표가 아니다.** 읽는 것은 `differing`(어느 축이 갈렸는가) 하나뿐이고,
+ * 그 축에서 실제로 어긋날 수 있는 **장면**을 말한다. 같은 축이면 같은 문장이 나온다.
+ *
+ * ⚠️ 관계의 좋고 나쁨을 판정하지 않는다. 전부 `~수 있어` 조건문이다.
+ */
+const MBTI_SO_WHAT: Record<AxisKey, string> = {
+  energy:
+    '에너지를 되찾는 방식이 갈려서, 같이 보내는 시간과 각자 보내는 시간의 적정선이 서로 다르게 느껴질 수 있어.',
+  information:
+    '무엇을 먼저 보는지가 갈려서, 같은 상황을 두고 한쪽은 사실을, 다른 쪽은 분위기를 먼저 말할 수 있어.',
+  decision:
+    '결정할 때 먼저 보는 기준이 갈려서, 한쪽은 해결을 다른 쪽은 공감을 먼저 원할 수 있어.',
+  lifestyle:
+    '계획을 대하는 방식이 갈려서, 약속을 미리 정하고 싶은 쪽과 그때 정하고 싶은 쪽으로 나뉠 수 있어.',
+};
+
+function mbtiSoWhat(differing: readonly AxisKey[]): string {
+  if (differing.length === 0) {
+    return '네 축이 전부 같은 쪽이라, 서로 설명하지 않아도 통한다고 느끼기 쉬워. 대신 둘 다 놓치는 자리는 같이 안 보일 수 있어.';
+  }
+  /*
+    갈린 축이 여러 개여도 **한 문장만** 쓴다. 네 줄을 늘어놓으면 접힌 줄이 다시
+    목록이 되고, 그건 이 개편이 없애려던 화면이다.
+  */
+  return MBTI_SO_WHAT[differing[0]!];
+}
+
 function buildMbtiPair(
   mine: MbtiType,
   theirs: MbtiType,
@@ -266,6 +296,7 @@ function buildMbtiPair(
     label: LENS_LABEL.mbti,
     mode: 'pair',
     headline: mbtiHeadline(mine, theirs),
+    soWhat: mbtiSoWhat(differing),
     overview:
       '이 렌즈가 보는 건 두 사람이 정보를 받아들이고 결정을 내리고 일상을 정리하는 방식이야. 누가 맞는지가 아니라, 같은 상황을 어디서부터 다르게 보기 시작하는지를 봐.',
     sections,
@@ -842,7 +873,92 @@ const CUSP_STARTS: readonly [number, number][] = [
  * ⚠️ **'3개 근거가 일치했다'로 만들지 않는다**(§20). `note`가 데이터에 필수로
  * 들어가고, 반복 테마 문장도 '몇 개 렌즈에서 나왔다'까지만 말한다.
  */
-export function buildCrossLens(reports: readonly PremiumLensReport[]): PremiumCrossLens | null {
+/**
+ * §11 C — 렌즈가 두드러진다고 본 테마와, 사용자가 **직접 답한 값**이 어긋나는 자리.
+ *
+ * ⚠️ 1~5 척도 축만 본다(`contact` · `alone`). `conflict`·`affection`은 선택지라
+ * '양 끝'이 없어서 어긋남을 값으로 판정할 수 없다 — 판정할 수 없는 것을 판정하지 않는다.
+ *
+ * ⚠️ 임계값은 양 끝(≤2 · ≥4)뿐이다. 3점은 어느 쪽도 아니므로 아무것도 만들지 않는다.
+ */
+const THEME_DECLARED_AXIS: Partial<Record<PremiumLensTheme, 'contact' | 'alone'>> = {
+  alone_time: 'alone',
+  closeness: 'contact',
+};
+
+/**
+ * ⚠️ **조사를 문장에 박아 넣지 않는다.**
+ *
+ * 첫 구현은 `'${lensHigh}'와` · `${declaredHigh}는 것이`처럼 조사와 종결어미를 문장
+ * 틀에 넣었고, 브라우저 실측에서 그대로 깨졌다:
+ *
+ * ```
+ * '혼자 보내는 시간'와, 네가 직접 혼자 있는 시간이 중요하다고 답했어는 것이 같은 방향이야
+ * ```
+ *
+ * 그래서 값은 **조사가 붙지 않는 형태**로만 둔다: `lensHigh`는 뒤에 항상 `쪽`이
+ * 붙고(`쪽이`·`쪽과`는 받침이 고정이라 안전하다), `declared*`는 종결어미 없는
+ * 절이라 뒤에 `고 답했어`가 붙는다. v1.46이 `withTopicParticle`을 도입한 이유와
+ * 같은 문제이고, 여기서는 조사가 필요 없는 형태를 고르는 쪽으로 푼다.
+ */
+const THEME_TENSION_COPY: Record<
+  'alone' | 'contact',
+  { lensHigh: string; declaredLow: string; declaredHigh: string }
+> = {
+  alone: {
+    lensHigh: '혼자 보내는 시간',
+    declaredLow: '혼자 있는 시간은 크게 중요하지 않다',
+    declaredHigh: '혼자 있는 시간이 중요하다',
+  },
+  contact: {
+    lensHigh: '자주 이어지는 연락',
+    declaredLow: '연락 빈도는 크게 중요하지 않다',
+    declaredHigh: '연락이 중요하다',
+  },
+};
+
+function buildLensTensions(
+  reports: readonly PremiumLensReport[],
+  declared: DeclaredPreference,
+): string[] {
+  const lines: string[] = [];
+  const seen = new Set<string>();
+
+  for (const report of reports) {
+    for (const theme of report.themes) {
+      const axis = THEME_DECLARED_AXIS[theme];
+      if (!axis || seen.has(axis)) continue;
+
+      const value = declared[axis];
+      if (typeof value !== 'number') continue;
+      /* 3점은 어느 쪽도 아니다 — 없는 어긋남을 만들지 않는다 */
+      if (value === 3) continue;
+
+      const copy = THEME_TENSION_COPY[axis];
+      const lensName = report.label.replace(' 관계 렌즈', '');
+      seen.add(axis);
+
+      if (value <= 2) {
+        lines.push(
+          `${lensName} 렌즈에서는 '${copy.lensHigh}' 쪽이 두드러지게 읽혔는데, 너는 ${copy.declaredLow}고 답했어. ` +
+            '렌즈보다 네가 직접 답한 쪽이 먼저야 — 이런 자리는 렌즈를 참고로만 두면 돼.',
+        );
+      } else {
+        lines.push(
+          `${lensName} 렌즈에서 읽힌 '${copy.lensHigh}' 쪽과, 네가 직접 ${copy.declaredHigh}고 답한 것이 같은 방향이야. ` +
+            '다만 같은 방향으로 보였다고 해서 렌즈가 그걸 증명한 건 아니야.',
+        );
+      }
+      if (lines.length >= 2) return lines;
+    }
+  }
+  return lines;
+}
+
+export function buildCrossLens(
+  reports: readonly PremiumLensReport[],
+  declared: DeclaredPreference,
+): PremiumCrossLens | null {
   if (reports.length < 2) return null;
 
   const byTheme = new Map<PremiumLensTheme, PremiumLensReport[]>();
@@ -913,6 +1029,11 @@ export function buildCrossLens(reports: readonly PremiumLensReport[]): PremiumCr
     lensCount: reports.length,
     repeatedThemes,
     differences,
+    /*
+      §11 C — 렌즈 해석과 사용자의 직접 답변이 어긋나는 자리. 만들 수 없으면 빈 배열이다
+      (판정 가능한 축이 없거나, 값이 양 끝이 아닐 때). 없는 충돌을 지어내지 않는다.
+    */
+    tensions: buildLensTensions(reports, declared),
     verificationQuestions: questionThemes.map((theme) => LENS_THEME_QUESTION[theme]),
     note: repeatedThemes.length > 0 ? CROSS_LENS_COPY.note : CROSS_LENS_COPY.noRepeatNote,
   };
@@ -984,6 +1105,6 @@ export function buildPremiumLensBundle(input: PremiumLensInput): PremiumLensBund
   return {
     lenses,
     availableCount: reports.length,
-    crossLens: buildCrossLens(reports),
+    crossLens: buildCrossLens(reports, declared),
   };
 }

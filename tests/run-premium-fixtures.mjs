@@ -1975,7 +1975,21 @@ console.log('\nEVT-01 ~ EVT-14 — 관계 사건 (User-reported Relationship Eve
     threeBlock?.scenes.map((scene) => scene.myReaction),
   );
 
-  /* ── EVT-04 · 상한 초과 ───────────────────────────────────────────────── */
+  /* ── EVT-04 · 4개 이상 ────────────────────────────────────────────────── */
+  /**
+   * ⚠️ **v1.46.4 §5에서 이 검사의 기대값이 뒤집혔다.**
+   *
+   * v1.46에서는 `상한(3)을 넘겨도 3개만 리포트에 들어간다`였다. 그 상한은 제품이
+   * 정한 숫자였고(`RELATIONSHIP_EVENT_MAX = 3`), v1.46.4가 그 숫자를 없앴다 —
+   * 막아야 했던 것은 개수가 아니라 필드(날짜·장소·이름)였기 때문이다.
+   *
+   * 그래서 지금 고정하는 것은 반대 사실이다: **사용자가 알려준 장면이 조용히
+   * 사라지지 않는다.** 화면 피로는 상한이 아니라 접기/펼치기가 담당하고
+   * (`RELATIONSHIP_EVENT_VISIBLE_DEFAULT`), AI 예산은 관련성 선별이 담당한다(§10).
+   *
+   * ⚠️ 이 검사를 지우지 않고 기대값만 바꾼 이유: 지우면 "예전에 3개로 잘렸다"는
+   * 사실과 그것이 왜 바뀌었는지가 저장소에서 사라진다.
+   */
   const over = await run(
     withEvents([
       EVENT_1,
@@ -1985,8 +1999,8 @@ console.log('\nEVT-01 ~ EVT-14 — 관계 사건 (User-reported Relationship Eve
     ]),
   );
   check(
-    'EVT-04 · 상한(3)을 넘겨도 3개만 리포트에 들어간다',
-    over.report.reportedScenes?.scenes.length === 3,
+    'EVT-04 · 4개를 넘겨도 전부 리포트에 들어간다 (v1.46.4 §5 — 개수 상한 제거)',
+    over.report.reportedScenes?.scenes.length === 4,
     over.report.reportedScenes?.scenes.length,
   );
 
@@ -2178,10 +2192,22 @@ console.log('\nEVT-01 ~ EVT-14 — 관계 사건 (User-reported Relationship Eve
     /const LENS_EVENT_TYPES: Record</.test(providerSrc) &&
       /allowed\.includes\(event\.type\)/.test(providerSrc),
   );
+  /**
+   * ⚠️ **v1.46.4 §10 — 상한을 거는 방식이 바뀌었다(상한 자체는 그대로다).**
+   *
+   * 예전 구현은 `filter(종류).slice(0, LENS_EVENT_LIMIT)`였다. 사건이 최대 3개일
+   * 때는 그게 '3개 중 2개'였는데, 상한이 사라진 뒤로 그건 **가장 오래된 2개**를
+   * 뜻한다 — 방금 알려준 장면이 AI에 영영 닿지 않는다. 그래서 자르는 자리는 그대로
+   * 두고 고르는 기준만 관련성으로 바꿨다(`selectRelevantEvents`).
+   *
+   * 이 검사는 문자열이 아니라 **불변식**을 본다: 상한 상수가 있고, 그 상수가 선별
+   * 함수에 그대로 예산으로 넘어간다. 런타임 검증은 `run-event-fixtures.mjs`의
+   * EVENT-LIMIT-10이 값으로 한다(5건 → 20건에서 전송 건수가 늘지 않는다).
+   */
   check(
     'EVT-14 · 렌즈 builder가 건수 상한을 건다',
     /const LENS_EVENT_LIMIT = \d+;/.test(providerSrc) &&
-      /\.slice\(0, LENS_EVENT_LIMIT\)/.test(providerSrc),
+      /selectRelevantEvents\([\s\S]{0,240}LENS_EVENT_LIMIT,/.test(providerSrc),
   );
   check(
     'EVT-14 · 렌즈 builder가 자유 입력을 한 번 더 자른다 (sanitizeFreeText)',

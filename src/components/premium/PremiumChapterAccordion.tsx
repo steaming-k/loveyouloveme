@@ -7,6 +7,13 @@ import { Lovy } from '@/components/lovy/Lovy';
 import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
 import {
+  EVIDENCE_TOGGLE_LABEL,
+  SO_WHAT_LABEL,
+  VERIFY_LABEL,
+  WHY_LABEL,
+  chapterSoWhatOf,
+} from '@/lib/premiumSoWhat';
+import {
   LOVY_CLOSING_BODY_POSE,
   LOVY_MID_NOTE,
   LOVY_MID_NOTE_POSE,
@@ -55,8 +62,11 @@ import type { PremiumChapter, RelationshipTense } from '@/types';
  * (높이 애니메이션을 쓰지 않고 조건부 렌더만 한다).
  */
 
-/** §12.1 — 대표로 펼쳐 보여줄 근거 수. 나머지는 접는다 */
-const VISIBLE_EVIDENCE = 3;
+/*
+  v1.46.4에서 제거: `VISIBLE_EVIDENCE`
+    근거 블록 전체가 기본 닫힘이 되면서 '대표 3개만 먼저'라는 단계가 사라졌다.
+    열면 전부 보인다 — 두 단계로 접으면 검증하려는 사람이 두 번 눌러야 한다(§8).
+*/
 
 export function PremiumChapterAccordion({
   chapters,
@@ -207,12 +217,24 @@ function ChapterRow({
   onToggle: () => void;
   funnelAnalysisId?: string | null;
 }) {
-  const [evidenceExpanded, setEvidenceExpanded] = useState(false);
-  const visible = evidenceExpanded ? chapter.evidence : chapter.evidence.slice(0, VISIBLE_EVIDENCE);
-  const hidden = chapter.evidence.length - visible.length;
+  /**
+   * v1.46.4 §7 — 근거 토글의 기본값은 **닫힘**이다.
+   *
+   * v1.46.3에서는 근거가 본문 맨 위에 펼쳐진 채였고(`VISIBLE_EVIDENCE = 3`), 대표 3개
+   * 다음의 나머지만 '더 보기'로 접혀 있었다. 지금은 블록 전체가 접히고, 열면 전부
+   * 보인다 — 근거 안에서 또 한 번 접는 단계를 만들면 검증하려는 사람이 두 번 눌러야
+   * 한다(§8: 근거는 검증용이지 읽기 과제가 아니다).
+   */
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
   const panelId = `${chapter.id}-panel`;
   const reason = lovyConnectionReasonOf(chapter);
   const checkpoint = lovyCheckpointOf(chapter, { tense, allowsOutwardAction });
+  /** §7 ① ② — 없으면(파생 Chapter) 기존 규칙 문장이 본문이 된다 */
+  const soWhat = chapterSoWhatOf(chapter, { tense });
+  const summaryParagraphs = chapter.deterministicSummary.split('\n\n');
+  const narrativeParagraphs = chapter.narrativeText
+    ? chapter.narrativeText.split('\n\n')
+    : [];
 
   return (
     <div className="border-t border-line-soft first:border-t-0">
@@ -297,94 +319,77 @@ function ChapterRow({
           `absolute inset-0` 오버레이는 없다(근거 목록·문장·러비 한마디뿐).
         */
         <div id={panelId} className="body-enter flex flex-col gap-3 pb-5">
-          {/* §12.1 — 근거는 대표 2~3개만. Evidence Transparency가 Premium의 핵심이다 */}
-          {chapter.evidence.length > 0 ? (
-            <div className="flex flex-col gap-2 rounded-[10px] bg-sunken px-3.5 py-3">
-              <p className="text-[10px] font-semibold tracking-[0.06em] text-ink-faint">
-                연결한 근거
-              </p>
-              <ul className="flex flex-col gap-1.5">
-                {visible.map((item) => (
-                  <li key={item.key} className="flex flex-col gap-0.5">
-                    <span className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
-                      {item.sourceLabel}
-                    </span>
-                    {/* 저장된 label/summary 기반 — 자유서술 원문을 그대로 노출하지 않는다 */}
-                    <span className="text-[12px] keep-all leading-relaxed text-ink">
-                      {item.text}
-                    </span>
-                  </li>
+          {/*
+            ══ v1.46.4 §7 — 본문 순서를 뒤집었다 ══════════════════════════════
+
+            v1.46.3까지: `근거(펼쳐짐) → 연결한 이유 → 규칙 요약 → 강조 → 확인해볼 것`
+            지금:        `① SO WHAT → ② WHY IT MATTERS → ③ 확인해볼 것 → ④ 근거(접힘)`
+
+            바뀐 것은 **순서와 기본 펼침 상태뿐**이다. 근거도 규칙 문장도 하나도
+            지우지 않았다 — 전부 ④ 안에 그대로 있다(§8: 근거를 없애는 게 아니라
+            검증하고 싶을 때 펼치는 것으로 옮긴다).
+
+            ⚠️ 파생 Chapter(`next_check`·`closing`)에는 `soWhat`이 없다. 그 둘은 앞
+            Chapter에서 나온 것이라 자기 결론을 가질 수 없어서, 기존처럼 규칙 문장을
+            그대로 본문에 둔다.
+          */}
+          {soWhat ? (
+            <>
+              {/* ① SO WHAT — 이 Chapter에서 가장 큰 글자 */}
+              <div className="flex flex-col gap-1">
+                <p className="text-[10px] font-semibold tracking-[0.06em] text-mint-ink">
+                  {SO_WHAT_LABEL}
+                </p>
+                <p className="text-[13.5px] font-semibold keep-all leading-relaxed">
+                  {soWhat.soWhat}
+                </p>
+              </div>
+
+              {/*
+                ② WHY IT MATTERS — 결정론 문장이 먼저 있고, AI 문장은 그 **아래**에
+                덧붙는다. AI가 실패해도 이 자리가 비지 않는다(§11.3 · VALUE-11).
+              */}
+              <div className="flex flex-col gap-1">
+                <p className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
+                  {WHY_LABEL}
+                </p>
+                <p className="text-[12.5px] keep-all leading-relaxed text-ink-sub">
+                  {soWhat.whyItMatters}
+                </p>
+                {narrativeParagraphs.map((paragraph, index) => (
+                  <p
+                    key={`ai-${index}`}
+                    className="text-[12.5px] keep-all leading-relaxed text-ink-sub"
+                  >
+                    {paragraph}
+                  </p>
                 ))}
-              </ul>
-              {hidden > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEvidenceExpanded(true);
-                    /**
-                     * §18 — **새 이벤트를 만들지 않는다.** 근거 펼치기는 v1.26부터
-                     * `deep_insight_evidence_expand`가 담당하고 있어서 그대로 쓴다.
-                     * ⚠️ property는 개수·축·id뿐이다 — 근거 원문은 보내지 않는다(§48).
-                     */
-                    trackEvent('deep_insight_evidence_expand', {
-                      ...(funnelAnalysisId ? { funnel_analysis_id: funnelAnalysisId } : {}),
-                      insight: chapter.insightIds[0] ?? chapter.id,
-                      axis: chapter.kind,
-                      evidence_count: chapter.evidence.length,
-                      source_count: chapter.sourceGroups.length,
-                    });
-                  }}
-                  aria-expanded={evidenceExpanded}
-                  className="flex min-h-11 items-center self-start text-[11.5px] font-semibold text-brand-pressed"
-                >
-                  근거 {hidden}개 더 보기
-                </button>
-              ) : null}
-            </div>
-          ) : null}
-
-          {/*
-            §17 러비가 연결해본 이유 — **새 분석이 아니다.** 이 조합이 왜 나란히 놓을 수
-            있는 조합인지(구조적 이유)만 말한다. `kind`로만 결정되므로 사용자의 답에 따라
-            달라지지 않고, 파생 Chapter에서는 null이라 이 블록이 아예 없다.
-          */}
-          {reason ? (
-            <div className="flex flex-col gap-1">
-              <p className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
-                러비가 연결해본 이유
-              </p>
-              <p className="text-[12px] keep-all leading-relaxed text-ink-sub">{reason}</p>
-            </div>
-          ) : null}
-
-          {/*
-            본문. AI 문장이 있으면 그 위에 규칙 문장을 남긴다 — **AI가 규칙을 대체하지
-            않는다.** AI가 실패하면 규칙 문장만으로 이 자리가 완결된다(§11.3).
-          */}
-          {chapter.deterministicSummary.split('\n\n').map((paragraph, index) => (
-            <p key={`rule-${index}`} className="text-[13px] keep-all leading-relaxed">
-              {paragraph}
-            </p>
-          ))}
-
-          {chapter.narrativeText
-            ? chapter.narrativeText.split('\n\n').map((paragraph, index) => (
+              </div>
+            </>
+          ) : (
+            /* 파생 Chapter — 기존 그대로. 규칙 문장이 본문이고 AI 문장이 뒤따른다. */
+            <>
+              {summaryParagraphs.map((paragraph, index) => (
+                <p key={`rule-${index}`} className="text-[13px] keep-all leading-relaxed">
+                  {paragraph}
+                </p>
+              ))}
+              {narrativeParagraphs.map((paragraph, index) => (
                 <p
                   key={`ai-${index}`}
                   className="text-[12.5px] keep-all leading-relaxed text-ink-sub"
                 >
                   {paragraph}
                 </p>
-              ))
-            : null}
+              ))}
+            </>
+          )}
 
           {/*
             §23 — Closing만 캐릭터를 크게 놓는다. 이 리포트에서 러비가 '기억한다'는
             역할을 맡는 유일한 자리다.
 
-            ⚠️ header(44px)와 **다른 포즈**다(§25 '같은 이미지 재출력 금지'). 그리고
-            이 블록은 강조 문장 **위**에 온다 — 캐릭터가 결론처럼 읽히지 않게, 아래에
-            오는 강조 문장이 마지막 말이 되도록 둔다(§26).
+            ⚠️ header(44px)와 **다른 포즈**다(§25 '같은 이미지 재출력 금지').
           */}
           {chapter.kind === 'closing' ? (
             <div className="flex flex-col items-center gap-1 pt-1">
@@ -396,20 +401,127 @@ function ChapterRow({
           ) : null}
 
           {/*
-            §12.3 highlight — 각 Chapter의 핵심 문장 하나.
-            ⚠️ Benchmark의 '강조' **패턴**만 참고한다. 연한 accent 배경 + 좌측 rule이고
-            gradient·glow·gold를 쓰지 않는다(§13 Visual Direction).
+            파생 Chapter의 강조 문장. SO WHAT이 있는 Chapter에서는 이 문장이 ④ 근거
+            토글 안으로 들어간다 — `그래서 무슨 의미야`와 같은 말을 두 번 하지 않는다.
           */}
-          <p className="border-l-2 border-brand-soft bg-brand-tint px-3.5 py-2.5 text-[13px] font-medium keep-all leading-relaxed text-brand-ink">
-            {chapter.deterministicTakeaway}
-          </p>
+          {soWhat ? null : (
+            <p className="border-l-2 border-brand-soft bg-brand-tint px-3.5 py-2.5 text-[13px] font-medium keep-all leading-relaxed text-brand-ink">
+              {chapter.deterministicTakeaway}
+            </p>
+          )}
 
-          {chapter.question ? (
-            <div className="flex flex-col gap-1">
-              <p className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
-                확인해볼 것
+          {/*
+            ③ WHAT TO VERIFY — 확인해볼 질문과 체크포인트를 **한 블록으로 묶는다.**
+            v1.46.3에서는 둘 사이에 `한계` 문장이 끼어 있어서 행동 제안이 두 군데로
+            갈라져 보였다(실측).
+
+            ⚠️ 처방이 아니다 — 전부 '확인해봐 · 구분해봐 · 정리해봐'이고 새 판단을
+            만들지 않는다(`kind`와 Job 맥락만 읽는다).
+          */}
+          <div className="flex flex-col gap-2 rounded-[10px] border border-line-soft px-3.5 py-3">
+            <p className="text-[10px] font-semibold tracking-[0.06em] text-mint-ink">
+              {chapter.question ? VERIFY_LABEL : LOVY_CHECKPOINT_LABEL}
+            </p>
+            {chapter.question ? (
+              <p className="text-[12.5px] font-medium keep-all leading-relaxed">
+                {chapter.question}
               </p>
-              <p className="text-[12.5px] keep-all leading-relaxed">{chapter.question}</p>
+            ) : null}
+            <p className="text-[12px] keep-all leading-relaxed text-ink-sub">{checkpoint}</p>
+          </div>
+
+          {/*
+            ④ EVIDENCE — **기본 닫힘**(§7). 안에는 이 판정이 어디서 나왔는지가 전부
+            들어 있다: 규칙 문장 · 강조 · 연결한 이유 · 근거 목록.
+
+            ⚠️ 근거를 지운 게 아니다. Premium의 신뢰는 provenance에서 오고, 그건
+            여전히 한 번의 탭으로 전부 보인다(§8).
+            ⚠️ `deep_insight_evidence_expand`를 그대로 쓴다 — 새 이벤트를 만들지
+            않는다(§18). property도 개수·축·id뿐이다(§48).
+          */}
+          {soWhat ? (
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                aria-expanded={evidenceOpen}
+                onClick={() => {
+                  const next = !evidenceOpen;
+                  setEvidenceOpen(next);
+                  if (next) {
+                    trackEvent('deep_insight_evidence_expand', {
+                      ...(funnelAnalysisId ? { funnel_analysis_id: funnelAnalysisId } : {}),
+                      insight: chapter.insightIds[0] ?? chapter.id,
+                      axis: chapter.kind,
+                      evidence_count: chapter.evidence.length,
+                      source_count: chapter.sourceGroups.length,
+                    });
+                  }
+                }}
+                className="flex min-h-11 items-center gap-1 self-start text-[11.5px] font-semibold text-brand-pressed"
+              >
+                {EVIDENCE_TOGGLE_LABEL}
+                <span
+                  aria-hidden
+                  className={cn(
+                    'text-[10px] transition-transform duration-200 motion-reduce:transition-none',
+                    evidenceOpen && 'rotate-180',
+                  )}
+                >
+                  ▾
+                </span>
+              </button>
+
+              {evidenceOpen ? (
+                <div className="flex flex-col gap-3 rounded-[10px] bg-sunken px-3.5 py-3">
+                  {/* 규칙이 실제로 뭐라고 판정했는지 — 사람이 검증할 수 있는 문장 */}
+                  {summaryParagraphs.map((paragraph, index) => (
+                    <p
+                      key={`rule-${index}`}
+                      className="text-[12.5px] keep-all leading-relaxed text-ink"
+                    >
+                      {paragraph}
+                    </p>
+                  ))}
+
+                  <p className="border-l-2 border-brand-soft pl-3 text-[12.5px] font-medium keep-all leading-relaxed text-brand-ink">
+                    {chapter.deterministicTakeaway}
+                  </p>
+
+                  {/*
+                    §17 러비가 연결해본 이유 — **새 분석이 아니다.** 이 조합이 왜 나란히
+                    놓을 수 있는 조합인지(구조적 이유)만 말한다.
+                  */}
+                  {reason ? (
+                    <div className="flex flex-col gap-1">
+                      <p className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
+                        러비가 연결해본 이유
+                      </p>
+                      <p className="text-[12px] keep-all leading-relaxed text-ink-sub">{reason}</p>
+                    </div>
+                  ) : null}
+
+                  {chapter.evidence.length > 0 ? (
+                    <div className="flex flex-col gap-2">
+                      <p className="text-[10px] font-semibold tracking-[0.06em] text-ink-faint">
+                        연결한 근거
+                      </p>
+                      <ul className="flex flex-col gap-1.5">
+                        {chapter.evidence.map((item) => (
+                          <li key={item.key} className="flex flex-col gap-0.5">
+                            <span className="text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
+                              {item.sourceLabel}
+                            </span>
+                            {/* 저장된 label/summary 기반 — 자유서술 원문을 그대로 노출하지 않는다 */}
+                            <span className="text-[12px] keep-all leading-relaxed text-ink">
+                              {item.text}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -417,25 +529,6 @@ function ChapterRow({
           <p className="border-l-2 border-line-strong pl-3 text-[11.5px] keep-all leading-relaxed text-ink-muted">
             {chapter.limitation}
           </p>
-
-          {/*
-            러비의 체크포인트 (PostReview §1) — **다음에 확인할 것까지** 말한다.
-
-            v1.45 첫 구현은 관찰자의 감상이었고, 검토에서 '그래서 뭘 확인하면 되지?'가
-            빠져 있다는 지적을 받았다. 지금은 `확인된 것 → 확인해볼 행동` 순서다.
-
-            ⚠️ 처방이 아니다 — 전부 '확인해봐 · 구분해봐 · 정리해봐'이고 새 판단을
-            만들지 않는다(`kind`와 Job 맥락만 읽는다).
-            ⚠️ 이미지를 다시 붙이지 않는다(§25). header에 이미 이 Chapter의 러비가 있다.
-            ⚠️ 근거보다 **작지 않게** 두되 강조 문장보다는 약하게 둔다 — 행동 제안이
-            근거처럼 읽히면 안 되고, 그렇다고 각주로 묻히면 §1이 요구한 가치가 사라진다.
-          */}
-          <div className="flex flex-col gap-1 rounded-[10px] border border-line-soft px-3.5 py-3">
-            <p className="text-[10px] font-semibold tracking-[0.06em] text-mint-ink">
-              {LOVY_CHECKPOINT_LABEL}
-            </p>
-            <p className="text-[12px] keep-all leading-relaxed text-ink-sub">{checkpoint}</p>
-          </div>
 
           {/*
             근거를 가진 Chapter만 되묻는다. 파생 Chapter(next_check · closing)에는

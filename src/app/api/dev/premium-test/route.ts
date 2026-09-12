@@ -31,6 +31,18 @@ import {
   resolveLovyPoses,
 } from '@/lib/premiumLovy';
 import { buildRelationshipDeepReport, premiumFeatureState } from '@/services/premiumService';
+import { chapterSoWhatOf } from '@/lib/premiumSoWhat';
+import { orderMirrorInsightsForDisplay } from '@/lib/resultPriority';
+import {
+  buildFreeCandidates,
+  eventIdsForAi,
+  eventTypeHistogram,
+  openQuestionFor,
+} from '@/lib/logic/insightCandidates';
+import { buildSelfLevels } from '@/lib/logic/firstContact';
+import { buildCrossLensContext, buildPremiumLensContext } from '@/services/ai/contextBuilders';
+import { buildConversationQuestions } from '@/lib/logic/conversationQuestions';
+import { selectFirstSurprise } from '@/data/lovyNotes';
 import { resolvePrice } from '@/lib/premiumVariant';
 import { jobAllowsOutwardAction } from '@/lib/logic/relationshipStage';
 import { toValidatedObservations } from '@/services/aiService';
@@ -248,6 +260,22 @@ export async function POST(request: Request): Promise<Response> {
 
   const resolvedPoses = resolveLovyPoses(report.chapters);
 
+  /**
+   * v1.46.4 §19 — 무료 Insight. **화면과 같은 함수**를 같은 순서(표시 순서)로 부른다.
+   *
+   * ⚠️ `usedFingerprints`는 비어 있다 — 무료가 **먼저** 질문을 만들고, 유료가 그
+   * fingerprint를 피한다(`premiumService`가 무료 축 질문의 지문을 미리 넣는다).
+   * 순서가 반대면 유료가 먼저 좋은 질문을 가져가고 무료가 남은 것을 받는다.
+   */
+  const freeCandidates = buildFreeCandidates({
+    mirrorInsights: orderMirrorInsightsForDisplay(mirror.insights),
+    target: answers.target,
+    declaredLevels: buildSelfLevels(answers.declared),
+    tense,
+    allowsOutwardQuestions: lifecycle.allowsOutwardQuestions,
+    usedFingerprints: new Set<string>(),
+  });
+
   return Response.json({
     ok: true,
     job,
@@ -382,6 +410,11 @@ export async function POST(request: Request): Promise<Response> {
         tense,
         allowsOutwardAction: lifecycle.allowsOutwardAction,
       }),
+      /**
+       * v1.46.4 §7 — 화면이 ①②에 그리는 문장. **화면과 같은 함수**를 부른다.
+       * 파생 Chapter에서는 null이고, 그때 화면은 기존 규칙 문장을 본문으로 쓴다.
+       */
+      soWhat: chapterSoWhatOf(chapter, { tense }),
       lovyConnectionReason: lovyConnectionReasonOf(chapter),
     })),
     /**
@@ -441,10 +474,179 @@ export async function POST(request: Request): Promise<Response> {
        * ⚠️ **가공하지 않고 그대로 낸다.** 라우트가 요약하면 fixture가 보는 것과
        * 화면이 그리는 것이 갈라진다 — v1.41 §39.9가 정확히 그 자리에서 시제를 놓쳤다.
        */
+      /**
+       * v1.46.4 §6 · VALUE-01/02 — 첫 viewport 3줄. 라우트가 다시 만들지 않고
+       * 리포트가 이미 들고 있는 값을 그대로 낸다.
+       */
+      executive: report.executive,
+      /**
+       * v1.46.4 §12 ~ §16 — **이번 개편의 1차 판정 대상.** 라우트가 가공하지 않고
+       * 리포트가 들고 있는 값을 그대로 낸다(화면과 fixture가 같은 것을 본다).
+       */
+      candidates: report.candidates.map((candidate) => ({
+        id: candidate.id,
+        chapterId: candidate.chapterId,
+        axis: candidate.primaryAxis,
+        verdict: candidate.verdict,
+        evidenceSourceCount: candidate.evidenceSourceCount,
+        evidenceSources: [...new Set(candidate.evidenceRefs.map((ref) => ref.source))],
+        hasOutsideFreeEvidence: candidate.hasOutsideFreeEvidence,
+        hasCrossSourceConnection: candidate.hasCrossSourceConnection,
+        hasContradiction: candidate.hasContradiction,
+        hasUnresolvedPoint: candidate.hasUnresolvedPoint,
+        hasUserReportedEvent: candidate.hasUserReportedEvent,
+        relevantEventIds: candidate.relevantEventIds,
+        noveltyScore: Number(candidate.noveltyScore.toFixed(3)),
+        actionabilityScore: Number(candidate.actionabilityScore.toFixed(3)),
+        confidenceLevel: candidate.confidenceLevel,
+        headline: candidate.headline,
+        soWhat: candidate.soWhat,
+        whyItMatters: candidate.whyItMatters,
+        questions: candidate.questions.map((question) => ({
+          id: question.id,
+          register: question.register,
+          text: question.text,
+          fingerprint: question.fingerprint,
+          basis: question.basis,
+        })),
+        limitation: candidate.limitation,
+        composed: candidate.composed,
+      })),
+      /** §21 — 재료가 없으면 null이다. VALUE-15가 이 값과 근거 유무를 함께 본다 */
+      paywallTease: report.paywallTease,
       lensBundle: report.lensBundle,
       lovyObservation: report.lovyObservation,
       limitations: report.limitations,
     },
-    free: { mirrorUnits: freeUnits, axisTotal: MIRROR_AXES.length },
+    free: {
+      mirrorUnits: freeUnits,
+      axisTotal: MIRROR_AXES.length,
+      /**
+       * v1.46.4 VALUE-01/09 — 무료 화면이 실제로 그리는 값들.
+       *
+       * `phrases`는 **사용자 입력값**이다(재진술 검사의 기준표). `scenes`는 그 값에서
+       * 규칙이 만든 SO WHAT 문장이다. 둘을 나눠 내야 "첫 화면에 입력값이 있는가"를
+       * 문자열 대조로 판정할 수 있다.
+       */
+      phrases: compatibility.dimensions.flatMap((dimension) => [
+        dimension.minePhrase,
+        dimension.theirsPhrase,
+      ]),
+      scenes: compatibility.dimensions.map((dimension) => ({
+        axis: dimension.key,
+        tone: dimension.tone,
+        scene: dimension.scene,
+      })),
+      /** 무료 화면의 확인 질문 (VALUE-10) */
+      questions: buildConversationQuestions(compatibility, {
+        job,
+        declared: answers.declared,
+        target: answers.target,
+        currentSignals: answers.currentRelationship,
+      }).map((question) => question.text),
+      /** YOUR SIGNAL 한 줄 — 여기에 입력값이 다시 들어가면 안 된다 */
+      surpriseSignal: selectFirstSurprise(compatibility)?.signal ?? null,
+      /**
+       * v1.46.4 §18 ~ §21 — **무료가 만드는 Insight.** Premium Chapter 엔진을 부르지
+       * 않고 Mirror 행에서 같은 조립기로 만든다(`buildFreeCandidates` 상단 참고).
+       */
+      candidates: freeCandidates.map((candidate) => ({
+        id: candidate.id,
+        axis: candidate.primaryAxis,
+        verdict: candidate.verdict,
+        soWhat: candidate.soWhat,
+        whyItMatters: candidate.whyItMatters,
+        hasUserReportedEvent: candidate.hasUserReportedEvent,
+        hasOutsideFreeEvidence: candidate.hasOutsideFreeEvidence,
+        composed: candidate.composed,
+        questions: candidate.questions.map((question) => ({
+          register: question.register,
+          text: question.text,
+          fingerprint: question.fingerprint,
+        })),
+      })),
+      /** §19 — 마지막 한 줄. 주어가 '나'라서 `ended`에서도 안전하다 */
+      openQuestion: openQuestionFor(freeCandidates[0]),
+    },
+    /**
+     * v1.46.4 §41 · §52 — **사건 감사.** 저장은 전부, AI로 나가는 것은 일부라는
+     * 구조를 값으로 볼 수 있어야 한다(EVENT-LIMIT-10 · EVENT-LIMIT-11).
+     *
+     * ⚠️ **본문(`description`·`myReaction`)은 여기서 절대 내보내지 않는다.** 이
+     * 라우트의 응답은 fixture 로그로 남고, 자유 입력이 로그에 남는 순간
+     * `lib/logic/relationshipEvents.ts`가 세운 경계가 깨진다. 나가는 것은 개수와
+     * 종류(categorical)와 **길이 합계**뿐이다.
+     */
+    events: (() => {
+      const events = answers.target.events;
+      const lensContexts = report.lensBundle.lenses
+        .filter((entry) => entry.mode !== 'unavailable')
+        .map((entry) =>
+          buildPremiumLensContext({
+            report: entry,
+            declared: answers.declared,
+            events,
+            tense,
+            targetExists: soloModeOfTarget(answers.target) !== 'no_target',
+          }),
+        );
+      const crossLens =
+        lensContexts.length >= 2
+          ? buildCrossLensContext({
+              reports: report.lensBundle.lenses.filter((entry) => entry.mode !== 'unavailable'),
+              aiThemes: {},
+              declared: answers.declared,
+              events,
+              tense,
+              deterministic: report.lensBundle.crossLens,
+              targetExists: soloModeOfTarget(answers.target) !== 'no_target',
+            })
+          : null;
+
+      /** 실제로 Provider payload에 실리는 사건 건수 — 호출별 합계 */
+      const sentToLenses = lensContexts.reduce(
+        (total, context) => total + context.reportedEvents.length,
+        0,
+      );
+
+      return {
+        stored: events.length,
+        histogram: eventTypeHistogram(events),
+        /** 저장된 자유 입력의 총 길이. **본문이 아니라 길이다** */
+        rawChars: events.reduce(
+          (total, event) => total + event.description.length + (event.myReaction?.length ?? 0),
+          0,
+        ),
+        /** §10 — Candidate가 고른 shortlist(중복 제거) */
+        shortlisted: eventIdsForAi(report.candidates).length,
+        /** 실제로 AI에 나가는 건수 */
+        sentToLenses,
+        sentToCrossLens: crossLens?.reportedEvents.length ?? 0,
+        /**
+         * ⚠️ Deep Report Core Task는 **여전히 사건을 받지 않는다**(0).
+         * 이유는 `lib/logic/relationshipEvents.ts`의 (A)/(B) 분석 그대로다 — 이번
+         * 버전에서도 그 경계를 넘지 않았다.
+         */
+        sentToDeepReport: 0,
+        /** §52 — 렌즈 호출 하나가 싣는 사건 문자열 길이(대략적 토큰 추정의 근거) */
+        lensEventChars: lensContexts.reduce(
+          (total, context) =>
+            total +
+            context.reportedEvents.reduce(
+              (sum, event) => sum + event.description.length + (event.myReaction?.length ?? 0),
+              0,
+            ),
+          0,
+        ),
+      };
+    })(),
+    /**
+     * v1.46.4 §14 · VALUE-07/08 — Mirror 행의 **표시 순서**. 판정이 아니라 순서다.
+     * 화면(`/mirror`)과 같은 함수를 부른다.
+     */
+    mirrorDisplayOrder: orderMirrorInsightsForDisplay(mirror.insights).map((insight) => [
+      insight.key,
+      insight.state,
+    ]),
   });
 }

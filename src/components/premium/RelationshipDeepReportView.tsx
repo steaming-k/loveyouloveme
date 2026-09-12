@@ -6,6 +6,7 @@ import { Button } from '@/components/common/Button';
 import { NoticeBox, SectionLabel } from '@/components/common/primitives';
 import { AiNarrativeNotice, AiSourceLabel } from '@/components/ai/AiModeNotice';
 import { DeepReportValueCheck } from '@/components/premium/DeepReportValueCheck';
+import { PremiumCandidateSection } from '@/components/premium/PremiumCandidateSection';
 import { PremiumChapterAccordion } from '@/components/premium/PremiumChapterAccordion';
 import { PremiumLensSection } from '@/components/premium/PremiumLensSection';
 import type { PremiumLensAi } from '@/hooks/usePremiumLensAi';
@@ -15,7 +16,6 @@ import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
 import { UT_MODE } from '@/lib/env';
 import { hasCompletedDeepReport, markDeepReportCompleted } from '@/lib/deepReportUtStore';
-import { isContentChapter } from '@/lib/logic/premiumChapters';
 import { LOVY_REPORT_POSE, LOVY_SIZE } from '@/lib/premiumLovy';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import type { AiFailureReason, AiMode, AiNarrativeStatus, RelationshipDeepReport } from '@/types';
@@ -147,22 +147,6 @@ export function RelationshipDeepReportView({
   const hasRenderedAiNarrative = report.chapters.some((chapter) =>
     Boolean(chapter.narrativeText),
   );
-
-  /**
-   * §6.2 Report Summary — Accordion 전에 한 화면 안에서 보여줄 가장 중요한 연결 1~3개.
-   *
-   * ⚠️ **새로 생성하지 않는다.** 이미 선정된 Chapter 중 근거를 가진 앞쪽 3개의
-   * preview다 — 제목·근거 종류 수·강조 문장 전부 그 Chapter의 값 그대로다.
-   * (파생 Chapter는 제외한다: `next_check`·`closing`은 아래 Chapter의 요약이 아니라
-   * 아래 Chapter에서 나온 것이라, 요약에 올리면 순서가 거꾸로 읽힌다.)
-   */
-  /**
-   * ⚠️ v1.45 PostReview — `insightIds.length > 0`이 아니라 `isContentChapter`를 쓴다.
-   * Self-only Chapter는 Insight가 아니라 declared 답변에서 왔기 때문에 `insightIds`가
-   * 비어 있는데, 예전 판정은 그걸 '파생 Chapter'로 오해해서 **Self-only 리포트에는
-   * 요약 섹션이 통째로 사라졌다**(브라우저 실측에서 확인).
-   */
-  const summaryChapters = report.chapters.filter(isContentChapter).slice(0, 3);
 
   const viewSent = useRef(false);
   const [utOpen, setUtOpen] = useState(false);
@@ -315,28 +299,164 @@ export function RelationshipDeepReportView({
         ⚠️ 캐릭터는 `flex-none` 84px이고 텍스트가 남은 폭을 전부 쓴다. 393px에서
         제목이 캐릭터보다 시각적으로 우선이어야 한다(§12 · §26).
       */}
-      <section className="flex flex-col gap-2">
-        {/*
-          ⚠️ 캐릭터와 나란히 놓는 것은 **제목까지**다. 처음에는 소개 문단까지 같은 행에
-          넣었는데, 375px에서 본문이 282px 폭 5줄로 눌렸다 — 캐릭터가 텍스트 위계를
-          방해하지 않아야 한다는 §12 조건을 글자 폭에서 어긴 상태였다.
-        */}
-        <div className="flex items-center gap-3">
-          <Lovy
-            pose={LOVY_REPORT_POSE}
-            size={LOVY_SIZE.reportHeader}
-            decorative
-            priority
-            float
-          />
-          <div className="flex min-w-0 flex-col gap-1">
-            {/* 고정 문구 — 이 리포트가 무료와 다른 점을 한 줄로 말한다(새 판정 아님) */}
-            <p className="text-[11px] font-semibold keep-all leading-snug text-mint-ink">
-              이번엔 한 조각씩 보는 게 아니라, 서로 연결해봤어.
-            </p>
-            <h2 className="text-section keep-all font-semibold">{report.overview.headline}</h2>
+      {/*
+        ══ v1.46.4 §6 — 첫 viewport는 **Executive SO WHAT**이다 ═══════════════
+
+        v1.46.3까지 이 자리의 첫 문장은 `러비가 이번 관찰에서 연결한 이야기 8개`
+        (= 규모)였고, 그 아래 요약 3줄도 전부 `자료 4종을 나란히 놓고 본 결과야`처럼
+        **어떻게 봤는지**를 말했다. 실측에서 첫 화면에 '그래서 이 관계에서 무엇이
+        중요한가'가 한 줄도 없었다 — 1,900원의 값이 첫 화면에서 보이지 않는다는
+        사후 검토 지적이 정확히 이 자리다.
+
+        지금 순서: **SO WHAT 3줄 → 규모 → 근거(Chapter)**.
+
+        ⚠️ 여기서 문장을 만들지 않는다. `report.executive`는 `premiumService`가
+        `lib/premiumSoWhat.ts`로 만든 값이고 화면은 배치만 한다.
+        ⚠️ 재료가 없으면 이 블록이 통째로 없다 — 3줄을 채우려고 빈칸을 만들지 않는다.
+      */}
+      {/*
+        ══ v1.46.4 §22 — **주인공은 Candidate다** ═════════════════════════════
+
+        v1.46.4 초안은 이 자리에 Executive 3줄(`strength` / `watch` / `ask`)을 뒀다.
+        방향은 맞았지만 그 3줄은 여전히 **kind 고정문**에서 나왔다 — 근거가 8종인
+        사용자와 2종인 사용자가 같은 문장을 받았다(§15 · §48).
+
+        지금 이 자리는 `report.candidates`다. 같은 축·같은 판정이어도 근거 조합과
+        연결된 장면이 다르면 문장이 다르다.
+
+        ⚠️ Executive는 **지우지 않고 아래로 내렸다.** 없앨 이유가 없다 — `strength`
+        (잘 맞는 지점)는 Candidate가 다루지 않는 정보이고, Candidate가 하나도 없는
+        세션에서는 Executive가 첫 자리를 지킨다.
+      */}
+      {report.candidates.length > 0 ? (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-3">
+            <Lovy
+              pose={LOVY_REPORT_POSE}
+              size={LOVY_SIZE.reportHeader}
+              decorative
+              priority
+              float
+            />
+            <div className="flex min-w-0 flex-col gap-1">
+              <p className="text-[11px] font-semibold keep-all leading-snug text-mint-ink">
+                이번엔 한 조각씩 보는 게 아니라, 서로 연결해봤어.
+              </p>
+              <h2 className="text-section keep-all font-semibold">이번 관계에서 먼저 볼 것</h2>
+            </div>
           </div>
+          <PremiumCandidateSection
+            candidates={report.candidates}
+            chapters={report.chapters}
+            scenes={report.reportedScenes?.scenes ?? []}
+            lenses={report.lensBundle.lenses}
+          />
         </div>
+      ) : null}
+
+      {/*
+        ══ Executive는 **Candidate가 없을 때의 자리**다 ═════════════════════
+
+        ⚠️ 처음에는 둘을 나란히 뒀고, 브라우저 실측에서 첫 화면이 이렇게 됐다:
+
+        ```
+        이번엔 한 조각씩 보는 게 아니라, 서로 연결해봤어.
+        이번 관계에서 먼저 볼 것          ← Candidate 헤더
+        이번 관계에서 중요한 것
+        먼저 볼 것부터 정리했어
+        … 카드 3개 …
+        이번엔 한 조각씩 보는 게 아니라, 서로 연결해봤어.   ← 같은 줄이 또
+        이번 관계에서 먼저 볼 것                            ← 같은 제목이 또
+        ```
+
+        같은 도입부가 한 화면에 두 번 있었다. 둘 다 '먼저 볼 것'을 말하니 당연한
+        결과다 — 역할이 겹쳤다.
+
+        Candidate가 이 역할을 더 잘한다(근거 조합에서 조립되고, 질문과 근거 토글을
+        함께 들고 있다). 그래서 Executive는 **재료가 없어 Candidate를 만들지 못한
+        세션의 대체 블록**으로 내렸다. 지우지 않은 이유는 그 세션에서도 첫 화면이
+        비어 있으면 안 되기 때문이다.
+      */}
+      {report.candidates.length === 0 && report.executive ? (
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center gap-3">
+            <Lovy
+              pose={LOVY_REPORT_POSE}
+              size={LOVY_SIZE.reportHeader}
+              decorative
+              priority
+              float
+            />
+            <div className="flex min-w-0 flex-col gap-1">
+              {/* 고정 문구 — 이 리포트가 무료와 다른 점을 한 줄로 말한다(새 판정 아님) */}
+              <p className="text-[11px] font-semibold keep-all leading-snug text-mint-ink">
+                이번엔 한 조각씩 보는 게 아니라, 서로 연결해봤어.
+              </p>
+              <h2 className="text-section keep-all font-semibold">{report.executive.title}</h2>
+            </div>
+          </div>
+
+          <ol className="flex flex-col gap-2">
+            {report.executive.items.map((item, index) => (
+              <li
+                key={item.slot}
+                className="flex flex-col gap-1.5 rounded-card border border-line bg-surface px-4 py-3.5"
+              >
+                <div className="flex items-baseline gap-2">
+                  <span className="flex-none text-[11px] font-semibold tnum text-ink-faint">
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
+                  <p className="min-w-0 text-[10.5px] font-semibold tracking-[0.04em] text-mint-ink">
+                    {item.label}
+                  </p>
+                </div>
+                {/* ① SO WHAT — 이 화면에서 가장 큰 글자다. 근거보다 먼저 온다 */}
+                <p className="text-[13.5px] font-semibold keep-all leading-relaxed">{item.text}</p>
+                {/* ② WHY IT MATTERS — 없으면(ask) 이 줄이 없다 */}
+                {item.whyItMatters ? (
+                  <p className="text-[12.5px] keep-all leading-relaxed text-ink-sub">
+                    {item.whyItMatters}
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
+
+      {/*
+        01 Overview — **규모는 SO WHAT 다음이다.**
+
+        ⚠️ 숫자는 그대로 `report.overview.headline`(실제 Chapter 수)이다. 여기서 새로
+        세지 않는다 — v1.45가 고친 '헤더 숫자와 화면 개수 불일치'를 되살리지 않는다.
+        ⚠️ Executive가 없을 때(= 재료 부족)는 이 블록이 러비와 함께 첫 자리에 선다.
+      */}
+      <section className="flex flex-col gap-2">
+        {report.executive ? (
+          /*
+            ⚠️ Executive가 있으면 **헤드라인을 다시 적지 않는다.** 화면 맨 위
+            `ReportHeader`가 이미 `이야기 8개를 연결한 관찰 기록`으로 같은 규모를
+            말하고 있어서, 여기 한 번 더 적으면 한 화면에 같은 숫자가 세 번 나온다
+            (실측). 규모의 근거인 subcopy(어떤 자료를 이었는지)만 남긴다.
+          */
+          null
+        ) : (
+          <div className="flex items-center gap-3">
+            <Lovy
+              pose={LOVY_REPORT_POSE}
+              size={LOVY_SIZE.reportHeader}
+              decorative
+              priority
+              float
+            />
+            <div className="flex min-w-0 flex-col gap-1">
+              <p className="text-[11px] font-semibold keep-all leading-snug text-mint-ink">
+                이번엔 한 조각씩 보는 게 아니라, 서로 연결해봤어.
+              </p>
+              <h2 className="text-section keep-all font-semibold">{report.overview.headline}</h2>
+            </div>
+          </div>
+        )}
         <p className="text-[12.5px] keep-all leading-relaxed text-ink-sub">
           {report.overview.subcopy}
         </p>
@@ -385,43 +505,25 @@ export function RelationshipDeepReportView({
       ) : null}
 
       {/*
-        02 REPORT SUMMARY (§6.2) — Accordion을 펼치기 전에 한 화면에서 보이는 요약.
+        ══ v1.46.4 §17 — 02 REPORT SUMMARY를 **제거했다** ════════════════════
 
-        ⚠️ **여기서 새 내용을 만들지 않는다.** 이미 선정된 Chapter Top 1~3의 preview이고
-        제목·근거 종류 수·강조 문장 전부 그 Chapter의 값 그대로다. 요약이 아래 본문과
-        다른 말을 하면 리포트가 두 벌이 된다.
+        v1.45의 이 자리는 `이번 리포트에서 가장 중요한 연결` 3줄이었고, 내용은 앞쪽
+        Chapter 3개의 `deterministicTakeaway`를 그대로 옮긴 preview였다. 고데이터
+        실측에서 그 3줄은 이런 문장이었다:
+
+        ```
+        네가 말한 기준과 관계에서 나타난 연락은 서로 다른 방향을 가리켰어
+          — 자료 4종을 나란히 놓고 본 결과야.
+        따로 물어본 두 기준인데 서로 다른 방향을 가리켰어 …(자료 5종).
+        ```
+
+        즉 **무엇을 알게 됐는지가 아니라 몇 종을 어떻게 봤는지**였고, 바로 아래
+        Accordion을 펼치면 같은 문장이 한 번 더 나왔다(중복). 그 역할은 이제 위의
+        Executive SO WHAT이 가져갔고, '리포트에 무엇이 들어 있는지'는 Accordion
+        헤더(`01/8 · 연락 · 자료 4종`)가 접힌 상태에서 이미 보여준다.
+
+        ⚠️ 정보를 줄인 게 아니라 **같은 말을 두 번 하지 않게 한 것**이다.
       */}
-      {summaryChapters.length > 0 ? (
-        <section className="flex flex-col gap-2.5">
-          <SectionLabel>이번 리포트에서 가장 중요한 연결</SectionLabel>
-          <ul className="flex flex-col gap-2">
-            {summaryChapters.map((chapter) => (
-              <li
-                key={chapter.id}
-                className="flex flex-col gap-1.5 rounded-card border border-line bg-surface px-4 py-3.5"
-              >
-                <div className="flex items-baseline gap-2">
-                  <span className="flex-none text-[11px] font-semibold tnum text-ink-faint">
-                    {String(chapter.index).padStart(2, '0')}
-                  </span>
-                  <p className="min-w-0 text-[13.5px] font-semibold keep-all leading-snug">
-                    {chapter.title}
-                  </p>
-                </div>
-                {/* 무엇을 이었는지 — 근거 종류 수는 실제 값이다(가짜 숫자를 만들지 않는다) */}
-                <p className="text-[10.5px] font-semibold tracking-[0.04em] text-mint-ink">
-                  {chapter.eyebrow}
-                  {chapter.sourceGroups.length > 0 ? ` · 자료 ${chapter.sourceGroups.length}종` : ''}
-                </p>
-                <p className="text-[12.5px] keep-all leading-relaxed text-ink-sub">
-                  {chapter.deterministicTakeaway}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
       {/*
         02.5 네가 알려준 장면 (v1.46 §12) — **관계 맥락.**
 

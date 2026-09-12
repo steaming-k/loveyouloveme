@@ -1,8 +1,8 @@
 import {
   RELATIONSHIP_EVENT_DESCRIPTION_MAX_LENGTH,
   RELATIONSHIP_EVENT_LABEL,
-  RELATIONSHIP_EVENT_MAX,
   RELATIONSHIP_EVENT_REACTION_MAX_LENGTH,
+  RELATIONSHIP_EVENT_SAFETY_MAX,
 } from '@/data/relationshipEvents';
 import type {
   DeepReportedScene,
@@ -129,8 +129,10 @@ function eventTypeOf(value: unknown): RelationshipEventType | null {
  * 있다 — 목록에서 빠지는 것이다. `other`로 강등하면 사용자가 고르지 않은 종류를
  * 고른 것처럼 만든다.
  *
- * ⚠️ 상한(`RELATIONSHIP_EVENT_MAX`)도 여기서 적용한다. 손상된 세션이 4개를 들고 와도
- * 화면·리포트는 3개만 본다.
+ * ⚠️ v1.46.4 §5 · §6 — 여기서 적용하는 상한은 **technical guard**(`RELATIONSHIP_EVENT_SAFETY_MAX`)
+ * 이지 제품 상한이 아니다. 예전에는 3이었고, 그 값이 곧 "사용자가 알려줄 수 있는 장면의
+ * 수"였다. 지금 이 선은 손상되거나 조작된 세션이 브라우저 저장소를 통째로 먹는 것만
+ * 막는다 — 사용자가 정상적으로 입력해서 여기에 닿는 일은 사실상 없다.
  */
 export function sanitizeRelationshipEvents(raw: unknown): RelationshipEvent[] {
   if (!Array.isArray(raw)) return [];
@@ -138,7 +140,7 @@ export function sanitizeRelationshipEvents(raw: unknown): RelationshipEvent[] {
   const seen = new Set<string>();
 
   for (const item of raw) {
-    if (events.length >= RELATIONSHIP_EVENT_MAX) break;
+    if (events.length >= RELATIONSHIP_EVENT_SAFETY_MAX) break;
     if (typeof item !== 'object' || item === null) continue;
 
     const candidate = item as Record<string, unknown>;
@@ -257,9 +259,14 @@ export function buildReportedScenes(
    * ⚠️ 종류도 검사한다. 구버전/손상된 값이면 `INTERPRETATION[type]`이 `undefined`가
    * 되어 해석 문장이 통째로 사라진 카드가 남는다 — 경계 없는 인용만 보이는 상태다.
    */
+  /**
+   * ⚠️ v1.46.4 §5 — **개수로 자르지 않는다.** 예전에는 여기서 3개를 넘기면 잘랐고,
+   * 그러면 사용자가 알려준 장면이 리포트에서 조용히 사라졌다. 지금은 전부 만들고,
+   * **한 화면에 몇 개를 펼칠지는 화면이 정한다**(§40 · `RELATIONSHIP_EVENT_VISIBLE_DEFAULT`).
+   * 자르는 곳과 보여주는 곳이 같으면 '저장은 됐는데 안 보인다'를 구분할 수 없다.
+   */
   const scenes: DeepReportedScene[] = [];
   for (const event of events) {
-    if (scenes.length >= RELATIONSHIP_EVENT_MAX) break;
     const fact = typeof event.description === 'string' ? event.description.trim() : '';
     const interpretation = INTERPRETATION[event.type];
     if (!fact || !interpretation) continue;
