@@ -17,6 +17,7 @@ import type {
   PremiumLensKind,
   PhotoObservation,
   RelationshipNarrative,
+  SemanticInsightNarrative,
   TargetAxisKey,
 } from '@/types';
 
@@ -146,6 +147,16 @@ export const NARRATIVE_LIMITS = {
   deepInterpretation: 260,
   deepSituation: 220,
   deepQuestion: 140,
+  /**
+   * v1.46.4 §13 — 유료 첫 화면 카드의 세 칸.
+   *
+   * ⚠️ 연결 목록(`deepInterpretation` 260자)보다 **짧다.** 첫 화면은 세 카드가 한
+   * viewport에 들어가야 하는 자리고(§37), 긴 문장은 그 자리에서 읽히지 않는다.
+   * 길이를 줄이는 것이 정보를 줄이는 것이 아니다 — 근거는 토글 안에 그대로 있다.
+   */
+  semanticSoWhat: 120,
+  semanticWhy: 120,
+  semanticVerify: 90,
 } as const;
 
 /* ------------------------------------------------------ EvidenceRef */
@@ -519,7 +530,26 @@ export function parseHistoryResponse(
 export function parseDeepReportResponse(
   raw: unknown,
   allowedInsightIds: readonly string[],
-): { insightId: string; headline: string; interpretation: string; situation?: string; uncertainty?: string; conversationQuestion?: string; evidenceRefs: EvidenceRef[] }[] {
+  /**
+   * v1.46.4 §9 — Insight별로 **실제로 보낸** 장면 id. 여기 없는 id를 인용하면
+   * `usedEventIds`에서 지워진다.
+   *
+   * ⚠️ 기본값 `{}`이면 모든 장면 인용이 거부된다 — 장면을 안 보낸 호출에서 모델이
+   * 장면 id를 들고 오는 것은 정의상 지어낸 것이다. 이 기본값이 '안전한 쪽'이다.
+   */
+  allowedSceneIds: Readonly<Record<string, readonly string[]>> = {},
+): {
+  insightId: string;
+  headline: string;
+  interpretation: string;
+  situation?: string;
+  uncertainty?: string;
+  conversationQuestion?: string;
+  evidenceRefs: EvidenceRef[];
+  semantic?: SemanticInsightNarrative;
+  /** §9 — 허용집합 밖이라 지운 장면 id. 핸들러가 이 값을 보고 semantic을 버린다 */
+  rejectedEventIds: string[];
+}[] {
   if (!isObject(raw) || !Array.isArray(raw.narratives)) return [];
 
   const allowed = new Set(allowedInsightIds);
@@ -542,8 +572,54 @@ export function parseDeepReportResponse(
     // §13 — 근거도 한계도 없으면 버린다. Cross-source Insight는 특히 근거 2개 이상을 기대한다.
     if (evidenceRefs.length === 0 && !uncertainty) continue;
 
+    /*
+      ══ v1.46.4 §9 — semantic 파싱 ═══════════════════════════════════════════
+
+      ⚠️ **셋 중 둘(soWhat · whyItMatters)이 다 있어야 통과다.** 하나만 있으면 카드가
+      반쪽이고, 그때 화면은 나머지 절반을 조립문으로 채워야 한다 — 한 카드에 두 계층의
+      문장이 섞이는 상태다(`scanSemanticNarrative` 주석과 같은 판단).
+
+      ⚠️ `verification`은 optional이다. 확인할 것이 없는 이야기가 실제로 있고
+      (`ended`에서 특히), 그 자리를 채우려고 문장을 만들면 §46이 금지한 '근거 없는
+      멋진 문장'이 된다.
+    */
+    const rejectedEventIds: string[] = [];
+    const semantic = ((): SemanticInsightNarrative | undefined => {
+      if (!isObject(item.semantic)) return undefined;
+      const soWhat = str(item.semantic.soWhat, 400);
+      const whyItMatters = str(item.semantic.whyItMatters, 400);
+      if (!soWhat || !whyItMatters) return undefined;
+
+      const allowedScenes = new Set(allowedSceneIds[insightId] ?? []);
+      const usedEventIds: string[] = [];
+      if (Array.isArray(item.semantic.usedEventIds)) {
+        for (const entry of item.semantic.usedEventIds) {
+          const id = str(entry, 80);
+          if (!id) continue;
+          /* §9 — 부분집합 위반은 **지우고 기록한다.** 판정은 핸들러가 한다 */
+          if (!allowedScenes.has(id)) {
+            rejectedEventIds.push(id);
+            continue;
+          }
+          if (!usedEventIds.includes(id)) usedEventIds.push(id);
+        }
+      }
+
+      const verification = str(item.semantic.verification, 300);
+      return {
+        soWhat: clampNarrativeText(soWhat, NARRATIVE_LIMITS.semanticSoWhat),
+        whyItMatters: clampNarrativeText(whyItMatters, NARRATIVE_LIMITS.semanticWhy),
+        ...(verification
+          ? { verification: clampNarrativeText(verification, NARRATIVE_LIMITS.semanticVerify) }
+          : {}),
+        usedEventIds,
+      };
+    })();
+
     seen.add(insightId);
     result.push({
+      ...(semantic ? { semantic } : {}),
+      rejectedEventIds,
       insightId,
       headline: clampNarrativeText(headline, NARRATIVE_LIMITS.deepHeadline),
       interpretation: clampNarrativeText(interpretation, NARRATIVE_LIMITS.deepInterpretation),

@@ -18,11 +18,13 @@ import {
   allowedRelationshipRefsByAxis,
 } from '@/lib/logic/allowedEvidence';
 import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
+import { semanticEventSignature } from '@/lib/logic/semanticEventContext';
 import { buildHomeHighlights, buildRelationshipProfile } from '@/lib/logic/profile';
 import { callAiTask } from '@/services/ai/aiClient';
 import {
   buildCompatibilityContext,
   buildCrossLensContext,
+  allowedSceneIdsOf,
   buildDeepReportContext,
   buildHistoryContext,
   buildPremiumLensContext,
@@ -378,8 +380,17 @@ export function requestDeepReportNarrative(
   fingerprint: string,
   /** v1.41 §39.13 — 모델이 받는 경계 문장의 시점. 화면과 같은 문자열을 준다 */
   tense: RelationshipTense,
+  /**
+   * v1.46.4 §4 — 사용자가 알려준 장면. **생략하면 v1.46.4 HARDENING과 같은 동작**이다
+   * (Core Task가 자유서술을 받지 않는 상태).
+   *
+   * ⚠️ 제품 경로(`hooks/useAiNarrative.ts`)는 항상 넘긴다. 기본값이 '안 보낸다'인
+   * 이유는 privacy 경계를 넓히는 것이 **명시적 선택**이어야 하기 때문이다 — 새 호출부가
+   * 빼먹었을 때 자유서술이 조용히 나가는 쪽으로 기울면 안 된다.
+   */
+  events: readonly RelationshipEvent[] = [],
 ): Promise<{ ok: true; data: DeepNarrativeBundle } | { ok: false; reason: AiFailureReason }> {
-  const context = buildDeepReportContext(insights, resolverContext, tense);
+  const context = buildDeepReportContext(insights, resolverContext, tense, events);
 
   if (context.insights.length === 0) {
     return Promise.resolve({
@@ -407,6 +418,20 @@ export function requestDeepReportNarrative(
     })),
     /** v1.43 §47.5 — 서버의 시제 스캐너가 읽는다. context 안에도 같은 값이 있다 */
     tense,
+    /**
+     * v1.46.4 §9 — **payload에서 직접 읽는다.** 선별을 다시 돌려 만들면 '보낸 것'과
+     * '허용집합'이 갈라질 수 있다(`refsWithinAllowed`가 같은 자리에서 배운 규칙).
+     */
+    allowedSceneIds: allowedSceneIdsOf(context),
+    /** §36 — 서버가 대조할 원문 사본. 프롬프트에는 들어가지 않는다 */
+    sceneTextsByInsight: Object.fromEntries(
+      context.insights.map((item) => [
+        item.id,
+        (item.relatedScenes ?? []).flatMap((scene) =>
+          [scene.fact, scene.myReaction].filter((text): text is string => Boolean(text)),
+        ),
+      ]),
+    ),
   });
 }
 
@@ -513,10 +538,30 @@ function lensDeterministicText(report: PremiumLensReport): string {
 
 /**
  * §19 — 지문에 넣는 사건 서명. **자유 입력 원문을 넣지 않는다.**
- * 종류와 길이만으로 "사건이 바뀌었다"를 감지한다.
+ *
+ * ══ v1.46.4 §43 — **길이 비교를 내용 해시로 바꿨다** ═══════════════════════
+ *
+ * 예전 구현은 `${event.type}:${event.description.length}`였다. 원문을 남기지 않는다는
+ * 목적은 맞았지만 **같은 길이로 고친 수정을 감지하지 못했다**:
+ *
+ * ```
+ * 전  갈등 후 답이 없어서 힘들었다   (19자)
+ * 후  갈등 후 답이 없어도 괜찮았다   (19자)  ← 의미가 반대인데 지문이 같다
+ * ```
+ *
+ * 그리고 `myReaction`은 서명에 아예 없었다 — 반응만 고치면 렌즈 AI가 이전 문장을
+ * 캐시에서 그대로 돌려준다. 사용자가 기록을 고쳤는데 결과가 안 바뀌는 상태다.
+ *
+ * ⚠️ **원문은 여전히 남지 않는다.** `semanticEventSignature`와 같은 함수를 쓰고, 그
+ * 함수는 문자 해시만 돌려준다(§29 · §44 Privacy). 두 Task가 같은 서명 술어를 쓰는
+ * 것이 중요하다 — 두 벌이면 한쪽만 고쳐지고, 그러면 '어느 Task는 수정을 감지하고
+ * 어느 Task는 못 하는' 상태가 된다.
+ *
+ * ⚠️ 이 변경으로 **기존 렌즈 캐시는 한 번 무효화된다.** 사건이 있는 세션만 해당하고,
+ * 다음 호출에서 새로 만들어진다 — 잘못된 문장을 계속 보여주는 것보다 낫다.
  */
 export function lensEventSignature(events: readonly RelationshipEvent[]): string[] {
-  return events.map((event) => `${event.type}:${event.description.length}`);
+  return semanticEventSignature(events);
 }
 
 export function requestPremiumLensNarrative(input: {

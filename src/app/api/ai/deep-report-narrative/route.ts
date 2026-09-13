@@ -30,7 +30,8 @@ export async function POST(request: Request): Promise<Response> {
     return failureResponse('INVALID_OUTPUT', requestId, 400);
   }
 
-  const { inputFingerprint, context, insights, tense } = body as Record<string, unknown>;
+  const { inputFingerprint, context, insights, tense, allowedSceneIds, sceneTextsByInsight } =
+    body as Record<string, unknown>;
 
   if (typeof inputFingerprint !== 'string' || !Array.isArray(insights)) {
     return failureResponse('INVALID_OUTPUT', requestId, 400);
@@ -48,11 +49,36 @@ export async function POST(request: Request): Promise<Response> {
     return failureResponse('INVALID_OUTPUT', requestId, 400);
   }
 
+  /**
+   * v1.46.4 §9 · §36 — **semantic 게이트의 두 입력.**
+   *
+   * ⚠️ 이 두 줄이 없으면 게이트가 `{}`을 받고 **모든 장면 인용을 거부한다.** 구현
+   * 직후 실측에서 그 상태였다 — 핸들러·파서·프롬프트는 다 됐는데 라우트가 값을
+   * 흘려보내지 않아서, 실제 Provider 경로에서는 semantic이 한 건도 남지 않았다.
+   * `contract-test`는 통과했으므로 fixture만으로는 보이지 않는 종류의 결함이고,
+   * §31이 실제 Provider QA를 필수로 요구한 이유가 이것이다.
+   *
+   * ⚠️ **구조 검증만 하고 내용은 믿지 않는다.** 이 값은 클라이언트가 보낸 것이지만
+   * 여기서 하는 일은 '모델이 인용할 수 있는 범위'를 **좁히는** 것뿐이다 — 넓히는
+   * 방향으로는 쓰이지 않으므로(허용집합 밖은 무조건 거부) 신뢰 경계를 넘지 않는다.
+   */
+  const sceneIdsOf = (value: unknown): Record<string, string[]> => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    const out: Record<string, string[]> = {};
+    for (const [key, list] of Object.entries(value as Record<string, unknown>)) {
+      if (!Array.isArray(list)) continue;
+      out[key] = list.filter((item): item is string => typeof item === 'string');
+    }
+    return out;
+  };
+
   const result = await runDeepReportTask({
     inputFingerprint,
     context,
     tense,
     insights: insights as never,
+    allowedSceneIds: sceneIdsOf(allowedSceneIds),
+    sceneTextsByInsight: sceneIdsOf(sceneTextsByInsight),
   });
 
   const durationMs = Date.now() - startedAt;

@@ -16,6 +16,11 @@ import type { EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
 import { aiModeOf } from '@/lib/aiMeta';
 import { buildCrossSourceInsights } from '@/lib/logic/crossSourceInsights';
 import {
+  buildSemanticEventContexts,
+  semanticEventSignature,
+  semanticSelectionSignature,
+} from '@/lib/logic/semanticEventContext';
+import {
   jobAllowsOutwardQuestions,
   relationshipTenseOf,
   resolveRelationshipContext,
@@ -522,6 +527,43 @@ export function useDeepReportNarrative(
    */
   const deepTense = relationshipTenseOf(resolveRelationshipContext(answers).job);
 
+  /**
+   * v1.46.4 §43 — 사건 본문·장면 배분이 **지문에 들어간다.**
+   *
+   * ⚠️ `answers.target.events`가 아니라 두 서명을 memo 입력으로 쓴다. 배열 identity로
+   * 걸면 세션이 저장될 때마다(새 배열) 지문이 다시 계산되고, 값이 같아도 재호출
+   * 여부를 판단하는 자리에 불필요한 흔들림이 생긴다.
+   *
+   * ⚠️ 선택 서명은 **전송 목록과 같은 함수**로 만든다 — `buildDeepReportContext`가
+   * 실제로 배분하는 것과 다른 규칙으로 지문을 만들면, 전송이 바뀌었는데 지문은
+   * 그대로인 조합이 생긴다.
+   */
+  /*
+    ⚠️ `?? []`를 memo로 감싼다. 그냥 두면 `events`가 매 렌더 새 배열이 될 수 있고
+    (`target.events`가 undefined인 세션), 그러면 아래 두 memo가 매번 다시 돌아
+    지문이 흔들린다 — eslint `react-hooks/exhaustive-deps`가 정확히 그것을 경고했다.
+    이 저장소의 baseline은 warning 0이다.
+  */
+  const events = useMemo(() => answers.target.events ?? [], [answers.target.events]);
+  const eventSignature = useMemo(() => semanticEventSignature(events), [events]);
+  const selectionSignature = useMemo(
+    () =>
+      semanticSelectionSignature(
+        buildSemanticEventContexts({
+          insights: insights
+            .filter((insight) => insight.eligibleForNarrative)
+            .map((insight) => ({
+              id: insight.id,
+              type: insight.type,
+              axis: insight.axis ?? null,
+            })),
+          events,
+          tense: deepTense,
+        }),
+      ),
+    [insights, events, deepTense],
+  );
+
   const fingerprint = useMemo(
     () =>
       deepReportFingerprint({
@@ -531,11 +573,23 @@ export function useDeepReportNarrative(
         target: answers.target,
         validated,
         deepAnswers: answers.deepAnswers,
+        eventSignature,
+        selectionSignature,
       }),
-    [deepTense, insights, answers.declared, answers.target, validated, answers.deepAnswers],
+    [
+      deepTense,
+      insights,
+      answers.declared,
+      answers.target,
+      validated,
+      answers.deepAnswers,
+      eventSignature,
+      selectionSignature,
+    ],
   );
 
-  const run = () => requestDeepReportNarrative(insights, resolverContext, fingerprint, deepTense);
+  const run = () =>
+    requestDeepReportNarrative(insights, resolverContext, fingerprint, deepTense, events);
 
   return useNarrativeTask<DeepNarrativeBundle>({
     task: 'deep-report-narrative',

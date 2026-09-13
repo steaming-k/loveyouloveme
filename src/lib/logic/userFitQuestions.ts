@@ -127,7 +127,15 @@ const EVENT_SITUATION: Partial<Record<RelationshipEventType, string>> = {
  * 세기로만 나누면 같은 질문에 어미만 바뀐 두 문장이 생긴다 — §31이 막는 paraphrase
  * 중복이 바로 그 형태다.
  */
-const ASK: Record<MirrorAxisKey, Record<QuestionRegister, string>> = {
+/**
+ * ⚠️ v1.46.4 — `semantic`은 **이 표에 없다.** 표에서 나오는 질문이 아니기 때문이다
+ * (`INTENT.semantic` 주석 참고). `Exclude`로 빼두면 새 register를 표에 넣어야 한다고
+ * tsc가 잘못 요구하지 않고, 반대로 표에서 나오는 세 register를 빠뜨리면 여전히 막는다.
+ */
+const ASK: Record<
+  MirrorAxisKey,
+  Record<Exclude<QuestionRegister, 'semantic'>, string>
+> = {
   contact: {
     light: '너는 연락 간격이 어느 쪽일 때 편해?',
     direct: '연락이 뜸해질 때 미리 한마디 있는 게 편해, 아니면 그냥 두는 게 편해?',
@@ -188,6 +196,15 @@ const INTENT: Record<QuestionRegister, string> = {
   direct: 'rule',
   /** 특정 장면에서 내가 어떻게 하면 되는지를 묻는다 — 행동이 필요하다 */
   situational: 'moment',
+  /**
+   * v1.46.4 §25 — **아직 확인되지 않은 것을 묻는다.** 의도가 셋과 다르다.
+   *
+   * 앞의 셋은 축이 정해지면 무엇을 물을지도 정해진다(표에서 나온다). 이건 반대다 —
+   * 이 사용자의 장면에서 **무엇이 아직 확인되지 않았는가**가 질문을 정하므로, 같은
+   * 축에서도 사용자마다 다른 것을 묻는다. 그래서 `light`/`direct`와 같은 자리를
+   * 다투지 않고 함께 나갈 수 있다.
+   */
+  semantic: 'unverified',
 };
 
 function fingerprintOf(axis: MirrorAxisKey, register: QuestionRegister): string {
@@ -215,6 +232,21 @@ export interface UserFitQuestionContext {
   allowsOutwardQuestions: boolean;
   /** §31 — 이미 사용자에게 보여준 fingerprint. 여기 있는 것은 만들지 않는다 */
   usedFingerprints: ReadonlySet<string>;
+  /**
+   * v1.46.4 §23 ~ §26 — **Deep Report AI가 쓴 확인 질문.** 없으면 undefined다.
+   *
+   * ⚠️ 이 값은 이미 서버 안전 게이트를 통과했다(`scanSemanticNarrative`). 여기서
+   * 다시 안전 검사를 하지 않고, 이 파일이 하는 검사는 **질문으로 쓸 수 있는
+   * 문장인가**(§26)뿐이다 — 안전과 형식은 다른 판정이다.
+   */
+  semanticAsk?: string;
+  /**
+   * §26 — 이 질문이 **사용자가 이미 아는 것을 묻지 않는지** 대조할 원문.
+   *
+   * ⚠️ 장면 원문이다. 모델이 장면을 질문으로 되돌려 놓는 실패
+   * (`바빠서 연락이 없는 건 괜찮았는데` → `연락이 없으면 괜찮아?`)를 막는다.
+   */
+  sceneTexts?: readonly string[];
 }
 
 /**
@@ -250,6 +282,24 @@ export function buildUserFitQuestions(context: UserFitQuestionContext): UserFitQ
     if (questions.some((item) => item.fingerprint === fingerprint)) return;
     questions.push({ id: `q_${axis}_${register}`, register, text, fingerprint, basis });
   };
+
+  /*
+    ══ ⓪ v1.46.4 §25 — **아직 확인되지 않은 것이 먼저다** ════════════════════
+
+    §25의 우선순위는 `semantic unresolved point > event-linked issue > GAP > generic`
+    이다. 표에서 나온 질문(①②③)은 축이 정해지면 내용도 정해지므로, 이 사용자의
+    맥락에서 나온 질문이 있으면 그것이 먼저 와야 한다.
+
+    ⚠️ **순서만 바꾼다. 표를 지우지 않는다.** AI가 없으면 ①②③이 그대로 남고, 그때
+    질문이 0개가 되는 세션은 없다(QUESTION-07 — AI 없이도 질문이 만들어진다).
+
+    ⚠️ 검사를 통과하지 못하면 **조용히 빠진다.** 고쳐 쓰지 않는다 — 모델이 쓴 문장을
+    코드가 다듬으면 그 문장이 어느 계층의 것인지 알 수 없게 되고, §26의 검사 기준이
+    '고치기 전'인지 '고친 뒤'인지도 흐려진다.
+  */
+  if (context.semanticAsk && isSendableQuestion(context.semanticAsk, context.sceneTexts ?? [])) {
+    push('semantic', context.semanticAsk);
+  }
 
   /*
     ① 가볍게 — 내 기준 절을 붙이면 "나는 이런데 너는?"이 되어 상대가 답하기 쉬워진다.
@@ -292,4 +342,83 @@ export function buildUserFitQuestions(context: UserFitQuestionContext): UserFitQ
   }
 
   return questions.slice(0, 3);
+}
+
+/* ══════════════════════════════ §26 — 질문 검증 (AI 문장 전용) ══════════════ */
+
+/**
+ * §26 — AI가 쓴 문장을 **질문으로 쓸 수 있는가.**
+ *
+ * ══ 무엇을 검사하고 무엇을 검사하지 않는가 ════════════════════════════════
+ *
+ * ```
+ * 검사한다    상대에게 실제로 보낼 수 있는 말인가 (형식)
+ * 검사한다    답을 유도하지 않는가 · 상대 마음을 전제하지 않는가
+ * 검사한다    사용자가 쓴 장면을 그대로 되돌려 놓지 않았는가
+ * 검사하지 않는다  위험한 주장 — 서버 `scanSemanticNarrative`가 이미 걸렀다
+ * ```
+ *
+ * 두 계층을 나누는 이유는 **실패 모드가 다르기 때문**이다. 안전 위반은 '말하면 안 되는
+ * 것'이고, 여기서 걸리는 것은 '말해도 되지만 질문이 아닌 것'이다 — 후자는 화면에서
+ * 질문 칸이 설명 문장으로 채워지는 형태로 나타난다(따옴표 안에 설명이 들어간다).
+ */
+export function isSendableQuestion(text: string, sceneTexts: readonly string[]): boolean {
+  const trimmed = text.trim();
+
+  /* ① 질문이어야 한다. 물음표가 없으면 그건 설명이다 */
+  if (!trimmed.endsWith('?')) return false;
+  /* ② 길면 실제로 보내지 않는다(§28 — 친구가 메시지로 보낼 수 있는 수준) */
+  if (trimmed.length > 90) return false;
+
+  /*
+    ③ 심리검사 말투 — §28의 금지 조각. `buildUserFitQuestions`의 조립 결과에는 이
+    자리가 없지만, AI 문장에는 들어올 수 있다.
+  */
+  if (/인가요|습니까|하십니까|어떠신가요|말씀해|기술하|서술하/.test(trimmed)) return false;
+
+  /*
+    ④ 주어가 **상대**인 질문을 만들지 않는다(§26 · §29).
+
+    ```
+    ❌ 상대는 왜 그랬을까?          상대 마음을 추정하게 만든다
+    ❌ 상대가 어떻게 생각하는지 물어봐  질문이 아니라 지시다
+    ```
+
+    ⚠️ '너는'은 허용이다 — 그게 상대에게 직접 묻는 말이다. 금지되는 것은 3인칭으로
+    상대를 **대상화**하는 문장이다.
+  */
+  if (/상대(는|가|방은|방이|의)/.test(trimmed)) return false;
+
+  /*
+    ⑤ 답을 유도하지 않는다(§26). `~한 게 맞지?` · `~지 않아?` 계열.
+
+    ⚠️ `~아니면`은 허용이다. 두 선택지를 나란히 주는 것은 유도가 아니라 선택지 제시고,
+    이 파일의 `direct` 질문들이 전부 그 형태다.
+  */
+  if (/맞지\?|맞잖아|그렇지\?|않아\?|아니야\?/.test(trimmed)) return false;
+
+  /*
+    ⑥ 죄책감 유도 — §29의 금지 목록. 주어가 '나'인데 상대의 부채를 말하는 형태다.
+  */
+  if (/기다렸는데|서운했는데|나만|참았는데/.test(trimmed)) return false;
+
+  /*
+    ⑦ §26 마지막 줄 — **장면 원문을 그대로 노출하지 않는다.**
+
+    ⚠️ 사용자가 서비스에 한 말과 상대에게 하는 말은 다른 발화다(§24). 장면 문장을
+    질문에 끼워 넣으면, 사용자가 5분 전에 적은 사적인 기록이 상대에게 보내는
+    메시지가 된다.
+
+    ⚠️ 판정은 **긴 부분 문자열**로 한다. 어휘가 겹치는 것은 정상이다(장면이 '연락'
+    이야기면 질문에도 '연락'이 나온다) — 막아야 하는 것은 문장 조각을 옮겨온 것이다.
+  */
+  const compact = trimmed.replace(/[^0-9A-Za-z가-힣]/g, '');
+  for (const scene of sceneTexts) {
+    const sceneCompact = scene.replace(/[^0-9A-Za-z가-힣]/g, '');
+    for (let i = 0; i + 12 <= sceneCompact.length; i += 1) {
+      if (compact.includes(sceneCompact.slice(i, i + 12))) return false;
+    }
+  }
+
+  return true;
 }

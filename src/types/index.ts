@@ -1644,6 +1644,50 @@ export interface DeepNarrative {
   uncertainty?: string;
   conversationQuestion?: string;
   evidenceRefs: EvidenceRef[];
+  /**
+   * v1.46.4 SEMANTIC — **이 Insight를 주인공 카드로 쓸 때의 세 문장.**
+   *
+   * ⚠️ 위 `headline`/`interpretation`과 **다른 자리에 그려진다.** 그 둘은 리포트
+   * 아래쪽 연결 목록(`connections`)의 문장이고, 이쪽은 첫 화면 Candidate의
+   * SO WHAT / WHY / VERIFY다. 한 호출이 두 자리의 문장을 함께 만든다(§7 — Provider
+   * 호출 수는 5회를 넘지 않는다).
+   *
+   * ⚠️ 없으면 Candidate는 결정론 조립문을 쓴다(§18). 그래서 전부 optional이고,
+   * 화면에는 셋 중 `semantic.soWhat`이 있을 때만 이 계층이 쓰인다.
+   */
+  semantic?: SemanticInsightNarrative;
+}
+
+/**
+ * v1.46.4 §8 — Deep Report AI가 **사용자가 적은 장면의 의미까지 읽고** 만든 narrative.
+ *
+ * ══ 왜 candidateId가 아니라 insightId인가 (§8과의 의도된 차이) ═══════════════
+ *
+ * §8은 `candidateId`를 제안했다. 그런데 Candidate는 **AI 호출 뒤에** 만들어진다:
+ *
+ * ```
+ * insights ──▶ AI 호출(deep-report) ──▶ narratives ──▶ chapters ──▶ candidates
+ *                                                       (buildRelationshipDeepReport)
+ * ```
+ *
+ * 호출 시점에 candidateId는 존재하지 않으므로, 그 id를 계약에 쓰면 모델에게 아직
+ * 없는 식별자를 요구하는 것이 된다. 그래서 계약의 키는 이미 있는 `insightId`이고,
+ * Candidate는 자기 Chapter가 품은 Insight의 narrative를 집어 온다
+ * (`lib/logic/insightCandidates.ts` · `semanticFor`). 검증 규칙(§9)은 그대로다 —
+ * **Candidate 쪽에서** refs·eventIds의 부분집합 여부를 다시 확인한다.
+ */
+export interface SemanticInsightNarrative {
+  /** §11 — 관계에서 무엇을 중요하게 봐야 하는지. **분석 메타 언어 금지**(§12) */
+  soWhat: string;
+  /** §13 — 실제 어떤 상황에서 차이가 드러날 수 있는지 */
+  whyItMatters: string;
+  /** §13 — 확인할 질문/행동. 없을 수 있다 */
+  verification?: string;
+  /**
+   * §9 — 이 문장이 실제로 근거로 쓴 장면 id. **반드시 전달된 shortlist의 부분집합**이고,
+   * Candidate 쪽에서 한 번 더 그 Candidate의 장면 목록으로 좁힌다.
+   */
+  usedEventIds: string[];
 }
 
 export interface DeepNarrativeBundle {
@@ -1824,6 +1868,40 @@ export interface DeepReportedScenes {
   /** 이 블록이 말할 수 없는 것. **항상 존재한다** */
   limitation: string;
   scenes: DeepReportedScene[];
+}
+
+/**
+ * v1.46.4 §4 — **Provider에 실어 보내는 장면 하나.**
+ *
+ * ══ 이 타입이 있는 이유 ═══════════════════════════════════════════════════
+ *
+ * `RelationshipEvent`(세션 원본)를 그대로 보내지 않는다. 원본은 상한이 20,000자이고
+ * 개수 제한이 없다 — 그대로 보내면 사용자 입력량에 비례해 Provider input이 선형으로
+ * 커진다(§5). 이 타입은 그 사이에 놓인 **경계**다:
+ *
+ * ```
+ * 선별   deterministic shortlist. AI에게 '골라줘'부터 시키지 않는다(§5)
+ * 절단   description 120자 · myReaction 80자 (sanitizeFreeText)
+ * 귀속   source가 항상 'user_reported_event' — 누가 한 말인지 잃지 않는다(§6)
+ * ```
+ *
+ * ⚠️ **AI가 여기에 새 분류를 붙여 저장하지 않는다**(§4 마지막 줄). `type`은 사용자가
+ * 고른 값 그대로이고, 모델 출력에 종류를 다시 쓰게 하는 필드는 없다.
+ */
+export interface SelectedEventContext {
+  eventId: string;
+  /** 사람이 읽는 라벨. enum 코드를 보내지 않는다(`contextBuilders`의 LENS_THEME_LABEL과 같은 이유) */
+  typeLabel: string;
+  /** 사용자가 직접 적은 장면. 120자에서 자른다 */
+  description: string;
+  /** 사용자가 직접 적은 자기 반응. 80자에서 자른다. 안 적었으면 null */
+  myReaction: string | null;
+  /** 이 장면이 어느 축의 이야기와 붙었는가. 축 없는 이야기에서는 null */
+  linkedAxis: MirrorAxisKey | null;
+  /** 왜 골랐는지(`eventRelevance`의 reasons). **화면에 노출하지 않는다** — QA·fixture용 */
+  relevanceReasons: string[];
+  /** §4 — 이 문장이 누구의 말인지. 값이 하나뿐인 것이 계약이다 */
+  source: 'user_reported_event';
 }
 
 /**
@@ -2009,8 +2087,15 @@ export type InsightVerdict = 'MATCH' | 'GAP' | 'CHANGE' | 'CONTRADICTION' | 'UNR
 /** 근거가 얼마나 두터운가. 숫자로 위장하지 않고 세 단계로만 말한다 */
 export type InsightConfidence = 'high' | 'medium' | 'limited';
 
-/** §26 — 같은 것을 묻는 세 가지 세기. 개수를 채우려고 셋을 다 만들지 않는다 */
-export type QuestionRegister = 'light' | 'direct' | 'situational';
+/**
+ * §26 — 같은 것을 묻는 세기. 개수를 채우려고 전부 만들지 않는다.
+ *
+ * ⚠️ v1.46.4 SEMANTIC — `semantic`이 늘었다. **세기가 아니라 출처가 다른 register다**:
+ * 앞의 셋은 축 × 방향 표에서 조립되고, `semantic`은 사용자가 적은 장면의 의미에서
+ * 나온다(§25 우선순위 1). 그래서 `INTENT` 표에서도 다른 의도(`unverified`)를 갖고,
+ * 같은 축에서 `light`/`direct`와 함께 나갈 수 있다.
+ */
+export type QuestionRegister = 'light' | 'direct' | 'situational' | 'semantic';
 
 /**
  * §25 ~ §32 — 실제로 상대에게 보낼 수 있는 질문 하나.
@@ -2059,6 +2144,15 @@ export interface InsightCandidate {
   hasUserReportedEvent: boolean;
   /** §10 — 이 Candidate에 붙일 장면. **전부가 아니라 상위 2~4개**다 */
   relevantEventIds: string[];
+  /**
+   * v1.46.4 §9 — AI가 **실제로 근거로 삼은** 장면 id. `relevantEventIds`의 부분집합이다.
+   *
+   * ⚠️ 두 배열을 나눠 두는 이유: `relevantEventIds`는 '이 이야기와 관련 있다고 코드가
+   * 고른 것'이고, 이쪽은 '모델이 그 중에서 실제로 의미를 이은 것'이다. 근거 토글은
+   * 앞의 것을 보여주고(관련 있는 장면은 다 보여준다), §28 반복 예산은 뒤의 것으로
+   * 센다 — 같은 장면이 세 카드의 SO WHAT에 반복해 인용되는 것만 막으면 되기 때문이다.
+   */
+  semanticEventIds: string[];
 
   /* ── 우선순위 ─────────────────────────────────────────────────────── */
   /** 사용자가 이미 아는 것에서 얼마나 떨어져 있는가(§14). 0~1 */
@@ -2076,6 +2170,35 @@ export interface InsightCandidate {
   questions: UserFitQuestion[];
   /** 이 Candidate가 말할 수 없는 것. 항상 있다 */
   limitation: string;
+  /**
+   * v1.46.4 §19 — **이 SO WHAT이 어디서 왔는가.**
+   *
+   * ```
+   * semantic_ai              Deep Report AI가 장면의 의미까지 읽고 쓴 문장
+   * deterministic_composed   축×판정 뼈대 + 근거·장면 조합절 (AI 실패·거부 시)
+   * static_fallback          kind 고정문 (축이 없는 Chapter · 조립 재료 없음)
+   * ```
+   *
+   * ⚠️ 화면에 노출하지 않는다. §19가 요구하는 **fallback 사용률 계측**의 값이고,
+   * high-data 정상 경로에서 `static_fallback`이 0인지를 fixture가 이 값으로 센다.
+   */
+  soWhatSource: 'semantic_ai' | 'deterministic_composed' | 'static_fallback';
+  /**
+   * v1.46.4 §12 — **근거가 몇 갈래에서 왔는가.** 근거 토글 안에만 그린다.
+   *
+   * ⚠️ v1.46.4 HARDENING까지 이 문장은 `soWhat`의 두 번째 절이었다. 첫 화면에서
+   * 분석기가 한 일을 말하는 자리라 옮겼다(§12 · §37) — **지운 것이 아니다.** 근거
+   * 두께는 신뢰의 근거이므로 사라지면 안 되고, 토글은 §12가 그 어휘를 허용한 자리다.
+   *
+   * 근거가 한 갈래뿐이면 빈 문자열이다 — 한 갈래는 '조합'이 아니다.
+   */
+  evidenceNote: string;
+  /**
+   * v1.46.4 §13 — VERIFY 칸의 **행동 한 줄.** 질문(`questions`)과 다른 것이다:
+   * 질문은 상대에게 보내는 말이고, 이건 사용자가 혼자 확인할 수 있는 것까지 포함한다.
+   * 그래서 `ended`에서도 존재할 수 있다. 재료가 없으면 null이다.
+   */
+  verification: string | null;
   /**
    * §15 — 이 문장이 **조합에서 나왔는가(true), 고정문 fallback인가(false).**
    *

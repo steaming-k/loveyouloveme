@@ -248,6 +248,85 @@ export const FIXTURE_SPARSE = {
 
 /* ── 금지 어휘 ──────────────────────────────────────────────────────────── */
 
+/* ── §15 · SEM A/B/C/D — 같은 contact GAP · 사건 **의미만** 다르다 ───────── */
+
+/**
+ * §15 — 이 네 fixture가 이번 Pass의 **핵심 판정 대상**이다.
+ *
+ * ══ 기존 B/C와 무엇이 다른가 ═══════════════════════════════════════════════
+ *
+ * `EVENTS_B`/`EVENTS_C`는 **종류 조합**이 다르다(연락·갈등 계열 vs 호감·가까워짐
+ * 계열). 그래서 결과가 달라져도 그건 "종류 기반 개인화가 동작한다"는 뜻이고,
+ * v1.46.4 HARDENING에서 이미 통과했던 검사다.
+ *
+ * 아래 네 개는 **종류가 전부 같다**(`contact_change` 2건). 다른 것은 사용자가 적은
+ * 문장의 의미뿐이다:
+ *
+ * ```
+ * A  사건 없음
+ * B  갑자기 줄었을 때 마음이 식은 줄 알았다 · 이유를 몰라 불안했다
+ * C  평소 적은 건 괜찮았다 · 약속 직전에 끊긴 게 특히 불편했다
+ * D  바쁠 때 줄어드는 건 이해했다 · 갈등 후 답이 없던 게 힘들었다
+ * ```
+ *
+ * ⚠️ **Mirror 판정 입력은 네 개가 완전히 같다**(`FULL_BASE` · `TARGET_BASE`). 결과가
+ * 달라진다면 그 원인은 사건의 의미밖에 없고, 같다면 §17의 FAIL 기준에 걸린다.
+ *
+ * ⚠️ 본문에 상대의 의도를 넣지 않았다(§2-1). 전부 **사용자가 관찰한 것과 자기
+ * 반응**까지다 — 'B: 마음이 식은 줄 알았다'는 사용자의 추측을 사용자가 기록한
+ * 것이고, 그건 상대의 마음이 아니라 사용자의 반응이다.
+ */
+export const EVENTS_SEM_B = [
+  {
+    id: 'ev-sb1',
+    type: 'contact_change',
+    description: '연락이 갑자기 줄었을 때 마음이 식은 줄 알았어',
+    myReaction: '이유를 몰라서 며칠 동안 계속 불안했어',
+  },
+  {
+    id: 'ev-sb2',
+    type: 'contact_change',
+    description: '평소랑 다르게 답이 짧아진 날이 있었어',
+    myReaction: '무슨 일인지 묻지도 못하고 혼자 생각만 했어',
+  },
+];
+
+export const EVENTS_SEM_C = [
+  {
+    id: 'ev-sc1',
+    type: 'contact_change',
+    description: '평소에 연락이 적은 건 서로 편해서 괜찮았어',
+    myReaction: '그건 신경 안 쓰고 지냈어',
+  },
+  {
+    id: 'ev-sc2',
+    type: 'contact_change',
+    description: '만나기로 한 날 직전에 연락이 끊겼을 때는 유독 불편했어',
+    myReaction: '기다리는 동안 아무것도 못 했어',
+  },
+];
+
+export const EVENTS_SEM_D = [
+  {
+    id: 'ev-sd1',
+    type: 'contact_change',
+    description: '일이 바쁠 때 연락이 줄어드는 건 이해가 됐어',
+    myReaction: '그럴 때는 먼저 기다려줬어',
+  },
+  {
+    id: 'ev-sd2',
+    type: 'contact_change',
+    description: '얘기가 엇갈린 다음에 아무 답이 없던 날이 힘들었어',
+    myReaction: '대화가 멈춘 게 제일 답답했어',
+  },
+];
+
+/** A — 사건 0. 나머지 셋의 기준선 */
+export const SEM_A = { ...FULL_BASE, target: { ...TARGET_BASE, events: [] } };
+export const SEM_B = { ...FULL_BASE, target: { ...TARGET_BASE, events: EVENTS_SEM_B } };
+export const SEM_C = { ...FULL_BASE, target: { ...TARGET_BASE, events: EVENTS_SEM_C } };
+export const SEM_D = { ...FULL_BASE, target: { ...TARGET_BASE, events: EVENTS_SEM_D } };
+
 /** 상대의 마음·의도를 추정하는 표현 (VALUE-13 · QUESTION-FIT-08) */
 export const PARTNER_INTENT = [
   '상대는 분명',

@@ -2328,7 +2328,13 @@ async function main() {
     );
     check(
       'TC6 — 그 지문 memo deps에 deepTense가 있다',
-      /\[deepTense, insights,/.test(hook),
+      /*
+        ⚠️ v1.46.4 SEMANTIC — deps 배열이 **여러 줄로 바뀌었다.** §43이 사건 본문·장면
+        배분 서명 두 개를 더해서 prettier가 줄을 나눴다. 검사의 뜻(`deepTense`가 지문
+        memo의 의존성인가)은 그대로이므로 공백에 관용적인 형태로 고친다 — 한 줄
+        형식을 고정하는 것은 이 검사의 목적이 아니었다.
+      */
+      /\[\s*deepTense,\s*insights,/.test(hook),
       'deep-report 지문 memo deps에 deepTense가 없다',
     );
     /** AI가 받지 않는 값은 캐시 키도 아니다(v1.42 §40.5 · v1.43 §47.6) */

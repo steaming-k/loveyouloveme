@@ -29,6 +29,8 @@ import {
   scanCrossLensNarrative,
   scanLensNarrative,
   scanDeepNarrativeWithTense,
+  dropTemplateRepeats,
+  scanSemanticNarrative,
   scanHistoryNarrative,
   scanPhotoObservation,
   scanRelationshipNarrative,
@@ -859,6 +861,25 @@ export interface DeepReportRequest {
    * 값은 요청 최상위에서 따로 받는다 — `context: unknown`의 계약 그대로다(v1.42 §40.13).
    */
   tense: RelationshipTense;
+  /**
+   * v1.46.4 §9 — Insight별로 **실제로 payload에 실은 장면 id.**
+   *
+   * ⚠️ `context`에서 다시 뽑지 않고 최상위로 받는다(v1.42 §40.13의 계약 그대로 —
+   * `context: unknown`이므로 핸들러가 그 안을 들여다보지 않는다). 값은
+   * `contextBuilders.allowedSceneIdsOf`가 만든다.
+   *
+   * ⚠️ 생략하면 모든 장면 인용이 거부된다. 장면을 보내지 않은 호출에서 모델이 장면
+   * id를 들고 오는 것은 지어낸 것이므로, 그쪽이 안전한 기본값이다.
+   */
+  allowedSceneIds?: Readonly<Record<string, readonly string[]>>;
+  /**
+   * v1.46.4 §36 — Insight별로 보낸 장면의 **원문.** 되풀이 검사의 기준이다.
+   *
+   * ⚠️ 프롬프트에는 들어가지 않는다 — 모델은 이미 `context`에서 같은 문장을 받았다.
+   * 여기 있는 것은 **서버가 대조할 사본**이고, 렌즈 Task가 `deterministicText`를
+   * 같은 이유로 최상위에서 받는 것과 같은 구조다(§31).
+   */
+  sceneTextsByInsight?: Readonly<Record<string, readonly string[]>>;
 }
 
 export async function runDeepReportTask(
@@ -899,7 +920,7 @@ export async function runDeepReportTask(
       userPayload: wrapUserData({ context: request.context }),
     });
 
-    const parsed = parseDeepReportResponse(raw, allowedIds);
+    const parsed = parseDeepReportResponse(raw, allowedIds, request.allowedSceneIds ?? {});
 
     /**
      * Quality Gate (E) — 원래 Insight에 없던 evidenceRef를 들고 오면 그 항목 전체를 버린다.
@@ -976,6 +997,75 @@ export async function runDeepReportTask(
      * ⚠️ Production에서는 남기지 않는다. 그리고 **문장 원문은 절대 로그에 넣지 않는다** —
      * 개수와 위반 라벨만이다(§34 Privacy).
      */
+    /**
+     * ══ Quality Gate (G) — **semantic 계층** (v1.46.4 §9 · §10 · §35 · §36) ════
+     *
+     * ⚠️ (E)(B)(C)(F)를 통과한 narrative의 **semantic만 따로** 버릴 수 있다. 두 필드
+     * 묶음이 화면의 **다른 자리**에 그려지기 때문이다:
+     *
+     * ```
+     * headline · interpretation   리포트 아래쪽 연결 목록
+     * semantic.*                  유료 첫 화면 주인공 카드
+     * ```
+     *
+     * 첫 화면 쪽이 더 엄격하다(메타 언어 금지 · 입력 되풀이 금지). 그래서 연결 목록에
+     * 쓸 만한 문장이 첫 화면에는 못 나가는 경우가 정상적으로 생기고, 그때 narrative
+     * 전체를 버리면 **아래쪽 카드까지 빈다** — 더 엄격한 기준 하나가 덜 엄격한 자리의
+     * 내용을 지우는 것이고, §9가 요구한 것은 그게 아니다.
+     *
+     * semantic이 버려지면 그 Candidate는 결정론 조립문을 쓴다(§18) — 첫 화면이 비는
+     * 자리는 없다.
+     */
+    const semanticViolations: string[] = [];
+    let semanticRejected = 0;
+    const withSemantic = novel.map((item) => {
+      if (!item.semantic) return item;
+
+      /* §9 — 허용집합 밖의 장면 id를 들고 왔으면 그것만으로 버린다 */
+      if (item.rejectedEventIds.length > 0) {
+        semanticViolations.push('semantic_event_id_outside_allowed');
+        semanticRejected += 1;
+        return { ...item, semantic: undefined };
+      }
+
+      const scan = scanSemanticNarrative(
+        item.semantic,
+        request.tense,
+        request.sceneTextsByInsight?.[item.insightId] ?? [],
+      );
+      if (!scan.safe) {
+        semanticViolations.push(...scan.violations);
+        semanticRejected += 1;
+        return { ...item, semantic: undefined };
+      }
+      return item;
+    });
+
+    /*
+      §17 — **카드들이 같은 틀로 수렴했는지**는 항목 하나만 봐서는 알 수 없다.
+
+      실측에서 semantic 7건이 주제 이름만 갈아 끼운 같은 문장이었다. 각 문장은
+      개별 검사를 통과했고(금지어가 없었다), 문제는 **문장들 사이의 거리**였다.
+      그래서 항목 단위 게이트 뒤에 한 번 더 돌린다 —
+      `limitStockPhraseRepeats`(렌즈 §8)가 같은 자리에서 배운 구조 그대로다.
+
+      ⚠️ 버려진 카드는 결정론 조립문을 쓴다. 실측 기준으로 그 문장이 더 낫다(§18).
+    */
+    const templateCheck = dropTemplateRepeats(
+      withSemantic.filter((item) => item.semantic),
+      (item) => `${item.semantic!.soWhat} ${item.semantic!.whyItMatters}`,
+    );
+    const keptSemanticIds = new Set(templateCheck.kept.map((item) => item.insightId));
+    const deduped = withSemantic.map((item) =>
+      item.semantic && !keptSemanticIds.has(item.insightId)
+        ? { ...item, semantic: undefined }
+        : item,
+    );
+    if (templateCheck.dropped > 0) {
+      semanticViolations.push('semantic_template_repeat');
+      semanticRejected += templateCheck.dropped;
+    }
+
     logAiFilter({
       task: 'deep-report-narrative',
       /** v1.43 — `tense`가 로그에 들어온다. 그 전에는 이 Task의 시제를 관측할 수 없었다 */
@@ -989,11 +1079,21 @@ export async function runDeepReportTask(
       refChecked: refChecked.length,
       rejectedRefSources: rejectedRefs,
       safe: scan.items.length,
-      violations: scan.violations,
-      extra: { novel: novel.length },
+      violations: [...scan.violations, ...semanticViolations],
+      extra: {
+        novel: novel.length,
+        /**
+         * §19 — **fallback 사용률의 원천 값.** 모델이 semantic을 몇 개 만들었고
+         * 게이트가 몇 개를 버렸는지 구분해서 남긴다. 하나로 합치면 "프롬프트가
+         * 문제인가 게이트가 과했는가"를 구분할 수 없다(v1.27이 배운 것 그대로).
+         */
+        semanticParsed: novel.filter((item) => item.semantic).length,
+        semanticRejected,
+        semanticKept: deduped.filter((item) => item.semantic).length,
+      },
     });
 
-    const narratives: DeepNarrative[] = novel.map((item) => ({
+    const narratives: DeepNarrative[] = deduped.map((item) => ({
       insightId: item.insightId,
       headline: item.headline,
       interpretation: item.interpretation,
@@ -1001,6 +1101,7 @@ export async function runDeepReportTask(
       uncertainty: item.uncertainty,
       conversationQuestion: item.conversationQuestion,
       evidenceRefs: item.evidenceRefs,
+      ...(item.semantic ? { semantic: item.semantic } : {}),
     }));
 
     return {

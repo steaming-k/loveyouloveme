@@ -9,6 +9,7 @@ import type { SelfLevel } from '@/data/firstContact';
 import { chapterSoWhatOf } from '@/lib/premiumSoWhat';
 import type {
   CrossSourceInsight,
+  DeepNarrative,
   EvidenceRef,
   InsightCandidate,
   InsightConfidence,
@@ -254,6 +255,28 @@ function directionOf(verdict: InsightVerdict): 'divergent' | 'convergent' | 'unk
  * `lib/korean.ts`를 거쳐야 한다 — v1.46 PremiumLens가 `화과 금이`로 같은 실패를
  * 겪고 `withCompanionParticle`을 만든 자리와 정확히 같은 종류다.
  */
+/**
+ * ══ v1.46.4 SEMANTIC — **이 문장이 SO WHAT에서 근거 토글로 옮겨졌다** (§12 · §35) ══
+ *
+ * 이 절은 v1.46.4 HARDENING까지 `soWhat`의 두 번째 문장이었다. 정확한 문장이지만
+ * **자리가 틀렸다**:
+ *
+ * ```
+ * 연락에서는 네가 말한 기준보다 실제로 더 크게 반응한 자리가 있어.
+ * 네가 말한 기준과 지금 관계에 대해 답한 것이 같은 자리를 가리켜.   ← 분석기가 한 일
+ * ```
+ *
+ * 두 번째 줄이 말하는 것은 관계가 아니라 **계산**이다. ₩1,900을 낸 직후 첫 화면에서
+ * 사용자가 알아야 하는 것은 '무엇이 겹쳤는가'가 아니라 '그래서 무엇을 봐야 하는가'다
+ * (§12 · §37 — 첫 viewport 기술어 0 · 자료 개수 설명 0).
+ *
+ * ⚠️ **지우지 않고 옮겼다.** 근거가 몇 갈래에서 왔는지는 신뢰의 근거이므로 사라지면
+ * 안 된다 — `InsightCandidate.evidenceNote`가 되어 근거 토글 안에 그대로 있다
+ * (§12 마지막 줄이 허용한 자리이고, §36이 근거를 지우지 않고 접은 것과 같은 판단).
+ *
+ * ⚠️ **조사를 하드코딩하지 않는다.** 브라우저 실측에서 `것가`가 나왔다(`lib/korean.ts`
+ * 를 거치지 않았을 때). 자리를 옮겨도 그 규칙은 그대로다.
+ */
 function sourceClause(
   sources: readonly EvidenceRef['source'][],
   tense: RelationshipTense,
@@ -261,13 +284,13 @@ function sourceClause(
   const phrases = sources.map((source) => sourcePhraseOf(source, tense)).filter(Boolean);
   if (phrases.length < 2) return '';
   if (phrases.length === 2) {
-    return ` ${withCompanionParticle(phrases[0]!)} ${withSubjectParticle(phrases[1]!)} 같은 자리를 가리켜.`;
+    return `${withCompanionParticle(phrases[0]!)} ${withSubjectParticle(phrases[1]!)} 같은 자리를 가리켜.`;
   }
   /*
     3종 이상은 전부 나열하지 않는다. 나열은 '많다'만 말하고 '무엇이 겹쳤는가'는
     흐린다 — 앞의 둘을 이름으로 말하고 나머지는 수로 말한다.
   */
-  return ` ${withCompanionParticle(phrases[0]!)} ${withObjectParticle(phrases[1]!)} 비롯해 ${phrases.length}가지가 같은 자리를 가리켜.`;
+  return `${withCompanionParticle(phrases[0]!)} ${withObjectParticle(phrases[1]!)} 비롯해 ${phrases.length}가지가 같은 자리를 가리켜.`;
 }
 
 /**
@@ -280,6 +303,30 @@ function sourceClause(
  * '이번에 알려준 장면들'로 묶어둔다. History의 시계열 stable pattern(3관찰 규칙)과
  * 이 문장이 섞이면, 한 번의 분석 안에서 본 것을 사람의 성질로 말하게 된다.
  */
+/**
+ * ══ v1.46.4 SEMANTIC — **개수를 말하지 않는다** (§12 · §37) ═══════════════════
+ *
+ * 예전 문장은 장면의 **수**를 셌다:
+ *
+ * ```
+ * 이번에 알려준 연락의 변화 장면 3개에서 같은 지점이 반복됐어.
+ * 네가 알려준 연락의 변화 장면 2개가 같은 자리에 놓여 있어.
+ * ```
+ *
+ * 두 가지가 틀렸다. ① `3개`·`2개`는 §37이 첫 viewport에서 0을 요구한 **자료 개수
+ * 설명**이다. ② `같은 자리에 놓여 있어`는 분석기의 어휘다(§12).
+ *
+ * 그리고 더 근본적으로, 개수는 **개인화가 아니다.** 장면을 5개 적은 사용자와 20개
+ * 적은 사용자의 차이가 숫자 하나라면 많이 적을 이유가 없다(§2-3 · 최종 제품 원칙).
+ * 그 차이는 이제 `semantic.soWhat`이 만든다 — 이 절은 AI가 없을 때의 **뼈대**로만
+ * 남고, 그때는 '반복됐다'는 사실까지만 말한다.
+ *
+ * ⚠️ 여전히 **본문을 인용하지 않는다.** 인용은 근거 토글의 몫이고(§36), AI가 의미를
+ * 말하는 것과 조립기가 원문을 끼워 넣는 것은 다른 일이다.
+ *
+ * ⚠️ §24 — 반복을 말할 때 `너는 원래 이런 패턴이야`라고 하지 않는다. 주어를 '이번에
+ * 알려준 장면들'로 묶어둔다(History의 시계열 stable pattern과 섞이지 않게).
+ */
 function eventClause(
   linked: readonly RelationshipEvent[],
   repeated: ReturnType<typeof repeatedWithinAnalysis>,
@@ -287,15 +334,21 @@ function eventClause(
   if (linked.length === 0) return '';
 
   if (repeated && linked.some((event) => event.type === repeated.type)) {
-    return ` 한 번의 장면이 아니라, 이번에 알려준 ${repeated.label} 장면 ${repeated.count}개에서 같은 지점이 반복됐어.`;
+    /*
+      ⚠️ **'반복'이라는 말 자체는 남긴다**(OVER-02). 빠진 것은 `3개`라는 **수**뿐이다 —
+      §37이 첫 viewport에서 0을 요구한 것은 자료 개수이고, '한 번이 아니었다'는 사실은
+      장면을 여러 개 적은 것의 유일한 결정론 소득이다. 그것까지 지우면 많이 적을 이유가
+      없어진다(§2-3).
+    */
+    return ` 한 번의 장면이 아니라, 이번에 알려준 ${repeated.label} 장면마다 같은 지점이 반복됐어.`;
   }
   if (linked.length >= 2) {
     const labels = [...new Set(linked.map((event) => RELATIONSHIP_EVENT_LABEL[event.type]))];
     return labels.length >= 2
-      ? ` 네가 알려준 ${labels[0]} 장면과 ${labels[1]} 장면이 같은 자리에 놓여 있어.`
-      : ` 네가 알려준 ${labels[0]} 장면 ${linked.length}개가 같은 자리에 놓여 있어.`;
+      ? ` 네가 알려준 ${labels[0]} 장면과 ${labels[1]} 장면에서 걸린 지점이 이어져.`
+      : ` 네가 알려준 ${labels[0]} 장면에서 그 지점이 되풀이됐어.`;
   }
-  return ` 네가 알려준 ${RELATIONSHIP_EVENT_LABEL[linked[0]!.type]} 장면도 같은 자리에 있어.`;
+  return ` 네가 알려준 ${RELATIONSHIP_EVENT_LABEL[linked[0]!.type]} 장면에서도 그 지점이 걸렸어.`;
 }
 
 /**
@@ -394,6 +447,18 @@ export interface InsightCandidateInput {
   usedFingerprints: ReadonlySet<string>;
   /** §10 — Candidate 하나에 붙일 장면 수. FREE와 Premium이 서로 다른 예산을 쓴다 */
   eventsPerCandidate?: number;
+  /**
+   * v1.46.4 §7 ~ §9 — **Deep Report AI가 장면의 의미까지 읽고 만든 문장.**
+   *
+   * ⚠️ 생략하면 v1.46.4 HARDENING과 **완전히 같은 동작**이다(결정론 조립문만 쓴다).
+   * AI 실패·Demo 모드·provider 미설정에서 이 배열이 비고, 그때 첫 화면이 비는 자리는
+   * 없다 — §18이 AXIS_VERDICT를 삭제하지 않고 fallback으로 남긴 이유다.
+   *
+   * ⚠️ **여기 들어오는 값은 이미 서버 게이트를 통과했다**(§9 · §10 · §35 · §36).
+   * 이 파일에서 안전 검사를 다시 하지 않는다 — 두 곳에서 검사하면 한쪽 기준만
+   * 조정되고, 그러면 '어디서 걸렀는지' QA가 구분할 수 없다.
+   */
+  narratives?: readonly DeepNarrative[];
 }
 
 /* ═══════════════════════════════════════════════════════════ 본체 */
@@ -408,11 +473,17 @@ export function buildInsightCandidates(input: InsightCandidateInput): InsightCan
     allowsOutwardQuestions,
     usedFingerprints,
     eventsPerCandidate = 3,
+    narratives = [],
   } = input;
 
   const byId = new Map(insights.map((insight) => [insight.id, insight]));
   const events = target.events ?? [];
   const repeated = repeatedWithinAnalysis(events);
+  const semanticByInsight = new Map(
+    narratives
+      .filter((narrative) => narrative.semantic)
+      .map((narrative) => [narrative.insightId, narrative.semantic!]),
+  );
 
   /*
     ⚠️ fingerprint 집합은 **Candidate를 만들어 가며 자란다.** 처음에는 FREE에서 쓴
@@ -492,13 +563,78 @@ export function buildInsightCandidates(input: InsightCandidateInput): InsightCan
       조립을 정렬 뒤로 옮겼다(아래 `assignQuestions`).
     */
 
-    /* ── 문장: 조립 or fallback (§15 · §48) ──────────────────────── */
+    /*
+      ══ 문장 (§15 · §18 · §19 · §48) ════════════════════════════════════════
+
+      ⚠️ **§18 — AXIS_VERDICT는 이제 첫 문장이 아니다.**
+
+      v1.46.4 HARDENING까지 정상 경로의 SO WHAT은 언제나 이 순서였다:
+
+      ```
+      [축×판정 고정 뼈대] + [근거 조합절] + [장면 연결절]
+      ```
+
+      뼈대가 첫 절이라서, 사용자가 무엇을 적었든 **첫 문장은 5×5 표에서 나왔다.** 같은
+      contact GAP 사용자 넷이 서로 완전히 다른 장면을 적어도 첫 문장이 같고, 여러
+      상대를 분석하면 템플릿 반복감이 생긴다(§3 · §17 FAIL 기준).
+
+      지금은 세 계층이고, 순서가 뒤집혔다:
+
+      ```
+      semantic_ai              사용자가 적은 장면의 의미까지 읽은 문장  ← 정상 경로
+      deterministic_composed   축×판정 뼈대 + 장면 연결절              ← AI 실패·거부
+      static_fallback          kind 고정문                            ← 축이 없는 Chapter
+      ```
+
+      ⚠️ 표를 **지우지 않았다**(§18 첫 줄). AI가 죽어도 결론이 남아야 하고(VALUE-12),
+      sparse 세션에는 그 뼈대가 정확한 문장이다 — 근거가 얇을 때 AI에게 의미를 만들라고
+      요구하는 것이 §46이 금지한 '근거 없는 멋진 문장'의 입구다.
+
+      ⚠️ **semantic이 있어도 `composed`는 뼈대 유무를 그대로 말한다.** 두 값이 다른
+      것을 센다 — `composed`는 '조립 재료가 있었는가'(VALUE-03의 기준), `soWhatSource`는
+      '실제로 어느 계층이 썼는가'(§19 fallback 사용률)다. 하나로 합치면 AI가 성공한
+      세션에서 VALUE-03이 무엇을 검사하는지 알 수 없게 된다.
+    */
     const core = primaryAxis ? AXIS_VERDICT[primaryAxis][verdict] : undefined;
     const composed = Boolean(core);
     const fallback = chapterSoWhatOf(chapter, { tense });
 
-    const soWhat = core
-      ? `${core}${sourceClause(sources, tense)}${eventClause(linkedEvents, repeated)}`
+    /*
+      §8 — 이 Candidate의 semantic은 **판정을 정한 Insight**의 것이다.
+
+      ⚠️ 왜 '아무거나 하나'가 아닌가: Chapter 하나가 Insight 여러 개를 품을 수 있고,
+      Candidate의 축·판정은 그 중 **가장 강한 것**에서 나왔다(위 `verdict`·`primaryAxis`).
+      장면 선별도 그 값으로 했으므로, 다른 Insight의 narrative를 붙이면 문장이 말하는
+      이야기와 화면의 근거·장면이 서로 다른 것을 가리킨다.
+
+      ⚠️ 그래서 순서가 아니라 **일치**로 고른다. 먼저 축·판정이 같은 Insight를 찾고,
+      없으면 붙이지 않는다 — 억지로 채우면 위 문제가 조용히 생긴다.
+    */
+    const governing = linkedInsights.find(
+      (insight) =>
+        (insight.axis ?? null) === primaryAxis && TYPE_TO_VERDICT[insight.type] === verdict,
+    );
+    const semanticRaw = governing ? semanticByInsight.get(governing.id) : undefined;
+
+    /*
+      §9 — **Candidate 쪽에서 부분집합을 한 번 더 확인한다.**
+
+      서버 게이트는 '이 Insight에 보낸 장면'으로 검증했다. Candidate의 장면 목록은
+      그것과 **같은 함수·같은 입력**으로 만들어지므로 보통 일치하지만, 두 계층이
+      독립적으로 계산하는 값이라 일치를 가정하지 않는다 — 어긋나면 화면이 '근거 토글에
+      없는 장면'을 근거로 삼은 문장을 그리게 된다.
+
+      ⚠️ 어긋났을 때 semantic을 **버린다**(문장만 남기지 않는다). 근거와 문장이 다른
+      것을 가리키는 카드는 조립문보다 나쁘다.
+    */
+    const semantic = (() => {
+      if (!semanticRaw) return undefined;
+      const allowed = new Set(linkedEvents.map((event) => event.id));
+      return semanticRaw.usedEventIds.every((id) => allowed.has(id)) ? semanticRaw : undefined;
+    })();
+
+    const composedSoWhat = core
+      ? `${core}${eventClause(linkedEvents, repeated)}`
       : /*
           §48 — 축이 없는 Chapter(self_profile · self_tension 등)에는 조립의 뼈대가
           없다. 그때만 예전 kind 고정문이 남는다. 없으면 Chapter가 이미 들고 있는
@@ -506,7 +642,15 @@ export function buildInsightCandidates(input: InsightCandidateInput): InsightCan
         */
         (fallback?.soWhat ?? chapter.deterministicTakeaway);
 
+    const soWhat = semantic ? semantic.soWhat : composedSoWhat;
+    const soWhatSource: InsightCandidate['soWhatSource'] = semantic
+      ? 'semantic_ai'
+      : core
+        ? 'deterministic_composed'
+        : 'static_fallback';
+
     const whyItMatters =
+      semantic?.whyItMatters ||
       (tense === 'former' ? WHY[verdict].former : WHY[verdict].current) ||
       (fallback?.whyItMatters ?? '');
 
@@ -526,6 +670,7 @@ export function buildInsightCandidates(input: InsightCandidateInput): InsightCan
       hasUnresolvedPoint: verdict === 'UNRESOLVED',
       hasUserReportedEvent: linkedEvents.length > 0,
       relevantEventIds: linkedEvents.map((event) => event.id),
+      semanticEventIds: semantic?.usedEventIds ?? [],
       noveltyScore: noveltyOf(verdict, hasOutsideFreeEvidence, linkedEvents.length > 0),
       /* 질문이 아직 없으므로 잠정값이다 — `assignQuestions`가 확정한다 */
       actionabilityScore: actionabilityOf(0, linkedEvents.length > 0),
@@ -540,6 +685,14 @@ export function buildInsightCandidates(input: InsightCandidateInput): InsightCan
         tense,
       }),
       composed,
+      soWhatSource,
+      /**
+       * §12 마지막 줄 — 근거 조합 문장은 **토글 안에서만** 쓴다. 근거가 한 갈래면
+       * '조합'이 아니므로 빈 문자열이고, 그때 토글에 그 줄이 없다.
+       */
+      evidenceNote: sourceClause(sources, tense),
+      /** §13 — VERIFY 한 줄. AI가 만들지 못했으면 null이고, 그때 질문만 남는다 */
+      verification: semantic?.verification ?? null,
     };
 
     candidates.push(candidate);
@@ -629,6 +782,18 @@ function assignQuestions(
       .map((id) => events.find((event) => event.id === id)?.type)
       .filter((type): type is RelationshipEventType => Boolean(type));
 
+    /*
+      §26 — 질문 검증의 기준표. **이 Candidate에 붙은 장면의 원문**이다.
+
+      ⚠️ 전체 사건 목록이 아니다. 다른 이야기의 장면과 대조하면, 우연히 어휘가 겹친
+      정상 질문이 떨어진다(과필터) — 검사는 '이 카드가 인용할 수 있었던 장면'까지다.
+    */
+    const sceneTexts = candidate.relevantEventIds.flatMap((id) => {
+      const event = events.find((item) => item.id === id);
+      if (!event) return [];
+      return [event.description, event.myReaction].filter((text): text is string => Boolean(text));
+    });
+
     const questions: UserFitQuestion[] = buildUserFitQuestions({
       axis: candidate.primaryAxis,
       verdict: candidate.verdict,
@@ -640,6 +805,15 @@ function assignQuestions(
       tense: context.tense,
       allowsOutwardQuestions: context.allowsOutwardQuestions,
       usedFingerprints: context.used,
+      /**
+       * §23 — AI가 쓴 확인 질문. **`verification` 하나만 넘긴다.**
+       *
+       * ⚠️ `soWhat`·`whyItMatters`를 질문 재료로 쓰지 않는다. 그 둘은 서술문이고,
+       * 서술문을 질문으로 바꾸는 변환을 코드가 하면 그건 조립이 아니라 재작성이다 —
+       * 모델이 질문으로 쓴 문장만 질문 자리에 간다.
+       */
+      ...(candidate.verification ? { semanticAsk: candidate.verification } : {}),
+      sceneTexts,
     });
     for (const question of questions) context.used.add(question.fingerprint);
 
@@ -663,19 +837,41 @@ function targetLevelOf(axis: MirrorAxisKey | null, target: TargetProfile): Targe
   return target[axis] ?? null;
 }
 
+/**
+ * ══ v1.46.4 SEMANTIC — **기술어를 뺐다** (§14) ═══════════════════════════════
+ *
+ * §14가 Bad로 든 세 형태는 전부 판정 어휘를 제목에 올린 것이다:
+ *
+ * ```
+ * ❌ 연락 방식의 GAP
+ * ❌ 동기화율이 갈린 지점
+ * ❌ 확인이 필요한 축
+ * ```
+ *
+ * 예전 구현(`말한 기준보다 크게 반응한 자리`)에는 금지 어휘가 없었지만 **판정을 풀어
+ * 쓴 말**이었다 — 사용자가 읽는 것은 여전히 '이 축이 GAP이다'이고, 여러 상대를
+ * 분석하면 제목 다섯 개가 같은 틀로 반복된다(§3).
+ *
+ * 지금은 **무엇이 걸리는 자리인가**만 말한다. 판정은 제목에서 사라지고, 그 자리가
+ * 관계에서 어떤 의미인지는 아래 SO WHAT이 말한다 — 제목은 '어디 이야기인가'를
+ * 가리키는 표지까지다.
+ *
+ * ⚠️ **제목이 결론을 말하지 않는다.** 결론을 두 번 적으면 SO WHAT이 할 일이 없어지고,
+ * v1.26이 `finalObservation`으로 겪은 중복이 제목 자리에서 재현된다.
+ */
 function headlineOf(axis: MirrorAxisKey, verdict: InsightVerdict): string {
   const label = axisLabel(axis);
   switch (verdict) {
     case 'CONTRADICTION':
-      return `${label} — 반대 방향이 같이 나온 자리`;
+      return `${label} — 두 마음이 같이 있는 자리`;
     case 'GAP':
-      return `${label} — 말한 기준보다 크게 반응한 자리`;
+      return `${label} — 생각보다 크게 걸리는 자리`;
     case 'CHANGE':
-      return `${label} — 두 시점이 다르게 남은 자리`;
+      return `${label} — 기준이 옮겨간 자리`;
     case 'UNRESOLVED':
-      return `${label} — 아직 결론을 낼 수 없는 자리`;
+      return `${label} — 아직 알 수 없는 자리`;
     default:
-      return `${label} — 말한 기준과 같은 방향`;
+      return `${label} — 편해서 그냥 넘어가는 자리`;
   }
 }
 
@@ -795,12 +991,25 @@ export function buildFreeCandidates(input: {
       hasUnresolvedPoint: false,
       hasUserReportedEvent: linkedEvents.length > 0,
       relevantEventIds: linkedEvents.map((event) => event.id),
+      /**
+       * §21 — **무료에는 semantic 계층이 없다.** 언제나 빈 배열이다.
+       *
+       * 무료 Insight는 Mirror 행 하나에서 조립되고 AI 호출이 붙지 않는다(§20 —
+       * 무료에 Premium cross-source synthesis 전체를 주지 않는다). 그래서 이 값이
+       * 채워지는 경로가 구조적으로 없고, 그 사실이 FREE/Premium 깊이 차이의 근거다.
+       */
+      semanticEventIds: [],
       noveltyScore: noveltyOf(verdict, false, linkedEvents.length > 0),
       actionabilityScore: actionabilityOf(questions.length, linkedEvents.length > 0),
       confidenceLevel: confidence,
       headline: headlineOf(row.key, verdict),
+      /*
+        §12 — 무료 **핵심 본문**도 같은 금지 목록을 받는다(§12 첫 줄: "Premium Top 3와
+        FREE 핵심 본문에서 금지"). 그래서 유료와 같은 조립기를 쓰고, 근거 조합절은
+        여기서도 `evidenceNote`로 빠진다.
+      */
       soWhat: core
-        ? `${core}${sourceClause(sources, tense)}${eventClause(linkedEvents, null)}`
+        ? `${core}${eventClause(linkedEvents, null)}`
         : /* 축 표에 없는 판정은 없다(5축 × 5판정이 모두 채워져 있다). 그래도 문장이
              사라지는 자리는 만들지 않는다 — 판정 엔진이 이미 만든 러비 한 줄이 남는다 */
           row.note,
@@ -812,6 +1021,10 @@ export function buildFreeCandidates(input: {
         tense,
       }),
       composed: Boolean(core),
+      /** §19 — 무료는 AI 계층이 없으므로 두 값 중 하나뿐이다 */
+      soWhatSource: core ? 'deterministic_composed' : 'static_fallback',
+      evidenceNote: sourceClause(sources, tense),
+      verification: null,
     };
   });
 }
@@ -872,6 +1085,22 @@ export function paywallTeaseText(
   eventCount: number,
 ): string | null {
   if (!tease) return null;
+  /*
+    ══ v1.46.4 §22 — **실제 semantic gap을 판다** ═══════════════════════════
+
+    §22의 Bad는 `더 자세히 보기`·`더 깊은 분석 보기`다. 아래 세 문장은 그보다 낫지만
+    전부 '자료가 하나 더 있다'는 말이고, 그건 **분량**을 파는 것이다.
+
+    유료가 실제로 더 주는 것이 무엇인지는 이제 값으로 알 수 있다 — `semanticEventIds`가
+    비어 있지 않으면, 그 카드는 사용자가 적은 장면의 **의미**까지 이은 문장을 들고 있다.
+    그때만 이 문장을 쓴다(§22 마지막 줄 — Premium에서 실제 그 연결을 보여줄 때만).
+
+    ⚠️ 결론을 미리 말하지 않는다. `무엇이 다른지`와 `어떤 순간에 커지는지`의 차이까지만
+    말하고, 그 순간이 무엇인지는 유료 화면이 말한다 — tease가 답을 주면 팔 것이 없다.
+  */
+  if (tease.semanticEventIds.length > 0) {
+    return '여기까지는 무엇이 서로 다른지까지야. 네가 알려준 장면을 같이 놓으면, 그 차이가 어떤 순간에 특히 커지는지까지 보여.';
+  }
   if (tease.hasUserReportedEvent && eventCount >= 2) {
     return '여기까지도 차이는 보여. 그런데 네가 알려준 장면들을 같이 놓으면, 이 차이보다 먼저 봐야 할 지점이 하나 더 나와.';
   }

@@ -86,7 +86,7 @@ const SO_WHAT: Partial<Record<PremiumChapterKind, ChapterSoWhat>> = {
   },
   hidden_priority: {
     soWhat:
-      '한 번 힘들었던 지점과, 이 사람에 대해 이미 알고 있다고 답한 내용이 같은 자리를 가리키고 있어.',
+      '한 번 크게 힘들었던 지점이, 이 사람에게서 네가 이미 알아챈 것과 겹쳐 있어.',
     whyItMatters:
       '한 번 크게 겪은 자리는 비슷한 장면이 오면 실제 크기보다 먼저 반응하게 될 수 있어 — 그래서 미리 알아두면 반응과 상황을 분리하기 쉬워져.',
   },
@@ -103,12 +103,12 @@ const SO_WHAT: Partial<Record<PremiumChapterKind, ChapterSoWhat>> = {
   },
   tune_with_target: {
     soWhat:
-      '동기화율 숫자로는 안 보이는데, 실제 생활에서 자주 부딪힐 수 있는 축이 하나 있어.',
+      '점수가 비슷하게 나와도, 실제 생활에서 매번 맞춰야 하는 자리가 하나 남아 있어.',
     whyItMatters:
       '비슷하게 답한 축이라도 기대의 모양이 다르면, 큰 문제가 아니라 사소한 장면에서 매번 조율해야 하는 자리가 돼.',
   },
   past_and_now: {
-    soWhat: '같은 축인데 두 시점의 기록이 서로 다르게 남아 있어.',
+    soWhat: '같은 주제인데 두 시점의 기록이 서로 다르게 남아 있어.',
     whyItMatters:
       '어느 쪽이 진짜 너인지보다, 어떤 상황에서 다르게 나왔는지가 다음 관찰에서 확인할 것이 돼.',
   },
@@ -154,9 +154,9 @@ const SO_WHAT_FORMER: Partial<Record<PremiumChapterKind, ChapterSoWhat>> = {
       '필요했던 게 빠른 해결이었는지 정리할 시간이었는지는, 돌아보고 나서야 구분되는 경우가 많아.',
   },
   tune_with_target: {
-    soWhat: '숫자로는 안 보였는데 실제 생활에서 자주 부딪힐 수 있던 축이 있었어.',
+    soWhat: '숫자로는 안 보였는데 실제 생활에서 자주 맞춰야 했던 자리가 있었어.',
     whyItMatters:
-      '기대의 모양이 달랐던 축은 큰 사건이 아니라 사소한 장면에서 반복됐을 수 있어.',
+      '기대의 모양이 달랐던 자리는 큰 사건이 아니라 사소한 장면에서 반복됐을 수 있어.',
   },
 };
 
@@ -211,11 +211,11 @@ const SO_WHAT_FORMER_SAFE = new Set<PremiumChapterKind>([
 const EXEC_WATCH: Partial<Record<PremiumChapterKind, string>> = {
   declared_vs_shown: '말한 기준보다 실제 반응이 더 컸던 자리가 어디인지.',
   closeness_distance: '가까워지는 방식과 거리를 두는 방식이 서로 어긋나는 지점.',
-  hidden_priority: '한 번 힘들었던 지점이 이번에도 같은 자리를 가리키는지.',
+  hidden_priority: '한 번 힘들었던 지점이 이번에도 다시 걸리는지.',
   conflict_needs: '갈등에서 필요한 게 빠른 해결인지 정리할 시간인지.',
   affection_exchange: '애정 표현에서 갈리는 게 양인지 방식인지.',
-  tune_with_target: '점수로는 안 보이는데 생활에서 자주 부딪힐 수 있는 축.',
-  past_and_now: '같은 축에서 두 시점의 기록이 어떻게 다르게 남았는지.',
+  tune_with_target: '점수로는 안 보이는데 생활에서 매번 맞춰야 하는 자리.',
+  past_and_now: '같은 주제에서 두 시점의 기록이 어떻게 다르게 남았는지.',
   uncertainty: '아직 확인되지 않아 결론을 낼 수 없는 자리.',
   self_profile: '네 기준들이 한 방향으로 모여 있는 자리.',
   self_tension: '동시에 중요하다고 답한 기준 두 개가 서로 당기는 자리.',

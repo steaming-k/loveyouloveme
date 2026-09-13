@@ -1096,9 +1096,20 @@ console.log('\nLOVY-01~12 — 캐릭터 통합 · 러비 한마디 · 중간 메
    * `former` 행동 제안 금지를 추가했으므로 deep-report 프롬프트도 실제로 달라졌다.
    * 버전을 올리지 않으면 안전 수정이 캐시된 세션에 적용되지 않는다.
    */
+  /*
+    ══ v1.46.4 SEMANTIC — **기대값이 다시 바뀌었다** ═══════════════════════════
+
+    이 검사의 뜻은 그대로다: "이 작업이 Core AI 계약을 모르는 채 건드리지 않았다."
+    §7이 deep-report Task에 `relatedScenes`(사용자 장면)와 `semantic` 출력 칸을
+    더했으므로 프롬프트·context·출력 스키마가 모두 달라졌고, 버전을 올리지 않으면
+    v5 캐시 세션이 새 계약의 결과를 영영 보지 못한다.
+
+    ⚠️ 검사를 느슨하게 만들지 않고 **바뀐 값으로 다시 고정한다** — 이 파일이 v1.46.4
+    HARDENING PHASE 4에서 같은 판단을 한 자리와 같다.
+  */
   check(
     'LOVY-11 · deepReport promptVersion이 고정돼 있다',
-    promptVersions.includes("deepReport: 'deep-report-v5-ended-action'"),
+    promptVersions.includes("deepReport: 'deep-report-v6-semantic'"),
   );
   const promptTemplates = await readFile(join(ROOT, 'src/services/ai/promptTemplates.ts'), 'utf8');
   const contextBuilders = await readFile(join(ROOT, 'src/services/ai/contextBuilders.ts'), 'utf8');
@@ -1506,9 +1517,20 @@ console.log('\nPOSTREV-01~18 — Eligibility 불변 · 체크포인트 · Self-o
       !preparingCode.includes('useAiNarrative'),
   );
   const promptVersions = await readFile(join(ROOT, 'src/services/ai/promptVersions.ts'), 'utf8');
+  /*
+    ══ v1.46.4 SEMANTIC — **기대값이 다시 바뀌었다** ═══════════════════════════
+
+    이 검사의 뜻은 그대로다: "이 작업이 Core AI 계약을 모르는 채 건드리지 않았다."
+    §7이 deep-report Task에 `relatedScenes`(사용자 장면)와 `semantic` 출력 칸을
+    더했으므로 프롬프트·context·출력 스키마가 모두 달라졌고, 버전을 올리지 않으면
+    v5 캐시 세션이 새 계약의 결과를 영영 보지 못한다.
+
+    ⚠️ 검사를 느슨하게 만들지 않고 **바뀐 값으로 다시 고정한다** — 이 파일이 v1.46.4
+    HARDENING PHASE 4에서 같은 판단을 한 자리와 같다.
+  */
   check(
     'POSTREV-17 · deepReport promptVersion 불변',
-    promptVersions.includes("deepReport: 'deep-report-v5-ended-action'"),
+    promptVersions.includes("deepReport: 'deep-report-v6-semantic'"),
   );
   const envSource = await readFile(join(ROOT, 'src/lib/env.ts'), 'utf8');
   check(
@@ -1863,9 +1885,20 @@ console.log('\nPROD-UNLOCK-01~10 — Production Deep Report Unlock · payment �
   /* ── PROD-UNLOCK-08 · 09 · Provider · promptVersion 불변 ──────────────── */
   check('PROD-UNLOCK-08 · Provider 호출 1회', full.ai.providerCalls === 1, full.ai);
   const promptVersions = await readFile(join(ROOT, 'src/services/ai/promptVersions.ts'), 'utf8');
+  /*
+    ══ v1.46.4 SEMANTIC — **기대값이 다시 바뀌었다** ═══════════════════════════
+
+    이 검사의 뜻은 그대로다: "이 작업이 Core AI 계약을 모르는 채 건드리지 않았다."
+    §7이 deep-report Task에 `relatedScenes`(사용자 장면)와 `semantic` 출력 칸을
+    더했으므로 프롬프트·context·출력 스키마가 모두 달라졌고, 버전을 올리지 않으면
+    v5 캐시 세션이 새 계약의 결과를 영영 보지 못한다.
+
+    ⚠️ 검사를 느슨하게 만들지 않고 **바뀐 값으로 다시 고정한다** — 이 파일이 v1.46.4
+    HARDENING PHASE 4에서 같은 판단을 한 자리와 같다.
+  */
   check(
     'PROD-UNLOCK-09 · deepReport promptVersion이 고정돼 있다',
-    promptVersions.includes("deepReport: 'deep-report-v5-ended-action'"),
+    promptVersions.includes("deepReport: 'deep-report-v6-semantic'"),
   );
 
   /* ── PROD-UNLOCK-10 · Premium eligibility invariant 유지 ───────────────── */
@@ -2170,12 +2203,21 @@ console.log('\nEVT-01 ~ EVT-14 — 관계 사건 (User-reported Relationship Eve
    * **본문**에는 여전히 사건이 한 글자도 없어야 한다. 전체 파일 검사로 두면 이 규칙이
    * 사라지고, 나중에 누가 `buildDeepReportContext`에 사건을 넣어도 아무도 모른다.
    */
+  /**
+   * ══ v1.46.4 SEMANTIC — **`buildDeepReportContext`가 목록에서 빠졌다** ═══════
+   *
+   * §7이 Core Task 하나(deep-report)에 대해 이 경계를 옮겼다. 나머지 넷은 그대로다 —
+   * 경계를 지운 것이 아니라 한 Task만 옮긴 것이고, 그래서 목록을 비우지 않고 하나만
+   * 뺀다. 이 넷 중 하나에 나중에 누가 사건을 넣으면 여전히 이 검사가 막는다.
+   *
+   * ⚠️ 빠진 Task는 검사에서 사라지지 않는다 — 아래에 **렌즈 Task와 같은 종류의
+   * 제한 검사**가 따로 붙는다(선별 위임 · 상한 · 자유 입력 재절단 · 빈 배열 금지).
+   */
   const coreBuilders = [
     'buildObservedContext',
     'buildRelationshipContext',
     'buildCompatibilityContext',
     'buildHistoryContext',
-    'buildDeepReportContext',
   ];
   for (const name of coreBuilders) {
     const start = providerSrc.indexOf(`export function ${name}(`);
@@ -2189,6 +2231,33 @@ console.log('\nEVT-01 ~ EVT-14 — 관계 사건 (User-reported Relationship Eve
       name,
     );
   }
+  /*
+    ══ v1.46.4 SEMANTIC — Deep Report Task의 제한 (§4 ~ §6 · §9) ═════════════
+
+    사건을 싣는 Task가 된 이상, 렌즈 Task가 받는 것과 **같은 종류의 제한**을 값으로
+    고정한다. 넷 다 코드에 실제로 있어야 한다.
+  */
+  const semanticSrc = stripComments(
+    await readFile(join(ROOT, 'src/lib/logic/semanticEventContext.ts'), 'utf8'),
+  );
+  check(
+    'EVT-14 · Deep Report builder가 선별을 결정론 계층에 위임한다 (AI에게 고르라고 시키지 않는다)',
+    /buildSemanticEventContexts\(\{/.test(providerSrc) &&
+      /selectRelevantEvents\(/.test(semanticSrc),
+  );
+  check(
+    'EVT-14 · Deep Report 장면에 호출당 상한이 있다 (입력량에 비례하지 않는다)',
+    /const PER_INSIGHT_LIMIT = \d+/.test(semanticSrc) && /const TOTAL_LIMIT = \d+/.test(semanticSrc),
+  );
+  check(
+    'EVT-14 · Deep Report 장면의 자유 입력이 경계에서 다시 잘린다',
+    /sanitizeFreeText\(event\.description, 120\)/.test(semanticSrc) &&
+      /sanitizeFreeText\(event\.myReaction, 80\)/.test(semanticSrc),
+  );
+  check(
+    'EVT-14 · 장면이 없으면 relatedScenes 필드 자체가 없다 (빈 배열을 보내지 않는다)',
+    /scenes\.length > 0\s*\?\s*\{/.test(providerSrc),
+  );
   /**
    * 렌즈 Task는 사건을 싣는다. 대신 **세 가지 제한**이 코드에 실제로 있어야 한다 —
    * 종류 필터 · 건수 상한 · 자유 입력 재절단(§19).
@@ -2224,10 +2293,29 @@ console.log('\nEVT-01 ~ EVT-14 — 관계 사건 (User-reported Relationship Eve
   const serviceSrc = stripComments(
     await readFile(join(ROOT, 'src/services/aiService.ts'), 'utf8'),
   );
+  /*
+    ══ v1.46.4 §43 — **길이 비교가 내용 해시로 바뀌었다** ════════════════════
+
+    이 검사의 뜻("지문에 원문이 남지 않는다")은 그대로이고, 구현이 바뀌었다.
+    `type:description.length`는 원문을 남기지 않지만 **같은 길이로 고친 수정을
+    감지하지 못했다** — 사용자가 기록을 고쳤는데 렌즈 AI가 이전 문장을 캐시에서
+    돌려주는 상태다(§43이 금지한 것).
+
+    그래서 기대값을 두 조각으로 나눈다:
+      ① 원문이 지문 문자열에 없다          (privacy — 바뀌지 않은 요구)
+      ② 서명이 내용에 반응한다              (§43 — 새로 추가된 요구)
+  */
   check(
-    'EVT-14 · 렌즈 지문에 사건 원문이 들어가지 않는다 (종류:길이만)',
-    /\$\{event\.type\}:\$\{event\.description\.length\}/.test(serviceSrc) &&
-      !/\$\{event\.description\}/.test(serviceSrc),
+    'EVT-14 · 렌즈 지문에 사건 원문이 들어가지 않는다 (해시만)',
+    !/\$\{event\.description\}/.test(serviceSrc) &&
+      !/\$\{event\.myReaction\}/.test(serviceSrc) &&
+      !/\$\{event\.description\}/.test(semanticSrc),
+  );
+  check(
+    'EVT-14 · 렌즈 지문이 본문 내용에 반응한다 (같은 길이 수정도 감지)',
+    /semanticEventSignature\(events\)/.test(serviceSrc) &&
+      /textHash\(event\.description\)/.test(semanticSrc) &&
+      /textHash\(event\.myReaction\)/.test(semanticSrc),
   );
   const sessionSrc = stripComments(
     await readFile(join(ROOT, 'src/state/SessionProvider.tsx'), 'utf8'),

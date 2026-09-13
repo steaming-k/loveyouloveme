@@ -1246,9 +1246,20 @@ console.log('\nAI-LENS-01 ~ AI-LENS-20 — 렌즈별 AI 해석 (v1.46 AI Lens)')
    *
    * 그래서 검사를 느슨하게 만들지 않고 **바뀐 값으로 다시 고정한다.**
    */
+  /*
+    ══ v1.46.4 SEMANTIC — **기대값이 다시 바뀌었다** ═══════════════════════════
+
+    이 검사의 뜻은 그대로다: "이 작업이 Core AI 계약을 모르는 채 건드리지 않았다."
+    §7이 deep-report Task에 `relatedScenes`(사용자 장면)와 `semantic` 출력 칸을
+    더했으므로 프롬프트·context·출력 스키마가 모두 달라졌고, 버전을 올리지 않으면
+    v5 캐시 세션이 새 계약의 결과를 영영 보지 못한다.
+
+    ⚠️ 검사를 느슨하게 만들지 않고 **바뀐 값으로 다시 고정한다** — 이 파일이 v1.46.4
+    HARDENING PHASE 4에서 같은 판단을 한 자리와 같다.
+  */
   check(
     'AI-LENS-19 deep-report promptVersion이 고정돼 있다',
-    versions.includes("deepReport: 'deep-report-v5-ended-action'"),
+    versions.includes("deepReport: 'deep-report-v6-semantic'"),
   );
   check(
     'AI-LENS-19 기존 네 Task의 promptVersion이 전부 그대로다',

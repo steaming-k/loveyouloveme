@@ -296,8 +296,35 @@ export function deepReportFingerprint(input: {
   target: TargetProfile;
   validated: readonly ValidatedObservation[];
   deepAnswers: readonly DeepAnalysisAnswer[];
+  /**
+   * ══ v1.46.4 §43 · §44 — **사건 본문이 지문에 들어온다** ════════════════════
+   *
+   * v1.46.4 SEMANTIC부터 deep-report Task가 자유서술을 받는다. 그러면 캐시 키에도
+   * 그 값이 있어야 한다 — 없으면 이런 일이 생긴다:
+   *
+   * ```
+   * 사건 본문을 고침 → insights 그대로 · declared 그대로 → 지문 그대로
+   *                  → 캐시 히트 → **고치기 전 본문으로 만든 문장**이 계속 나온다
+   * ```
+   *
+   * §43이 값으로 고정하라고 한 실패 형태가 정확히 이것이다(SEM-04).
+   *
+   * ⚠️ 원문은 들어오지 않는다. `semanticEventSignature`가 이미 문자 해시로 바꿔둔
+   * 문자열이고(§29 Privacy), 그 값이 다시 `digest`를 통과한다.
+   *
+   * ⚠️ **본문 서명과 선택 서명을 둘 다 받는다.** 이유는 두 값이 서로 못 잡는 변화가
+   * 있기 때문이다 — `logic/semanticEventContext.ts`의 두 함수 주석 참고.
+   *
+   * ⚠️ optional이다. 사건을 보내지 않는 호출(계측용 · 구 fixture)에서는 v1.46.4
+   * HARDENING과 **같은 지문**이 나와야 한다 — 그래야 기존 캐시가 그대로 유효하고,
+   * 이 필드를 추가한 것만으로 전 사용자의 캐시가 죽지 않는다.
+   */
+  eventSignature?: readonly string[];
+  selectionSignature?: readonly string[];
 }): string {
   const { tense, insights, declared, target, validated, deepAnswers } = input;
+  const eventSignature = input.eventSignature ?? [];
+  const selectionSignature = input.selectionSignature ?? [];
 
   return `dr_${digest([
     tense,
@@ -313,6 +340,13 @@ export function deepReportFingerprint(input: {
     ...deepAnswers.map(
       (answer) => `${answer.questionId}:${Array.isArray(answer.value) ? answer.value.join(',') : answer.value}`,
     ),
+    /*
+      ⚠️ 빈 배열이면 아무것도 더하지 않는다 — spread가 0개를 펼치므로 사건 없는
+      세션의 지문은 v1.46.4 HARDENING과 **글자 그대로 같다.** 구분자를 넣으면
+      (예: `ev:${...}`) 사건이 없는 전 사용자의 캐시가 이 변경만으로 죽는다.
+    */
+    ...eventSignature,
+    ...selectionSignature,
   ])}`;
 }
 

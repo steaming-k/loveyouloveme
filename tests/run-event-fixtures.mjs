@@ -403,10 +403,29 @@ console.log('\nEVENT-LIMIT-10 · AI 전송이 입력량에 비례하지 않는�
     twenty.events.sentToCrossLens <= 2,
     twenty.events.sentToCrossLens,
   );
+  /*
+    ══ v1.46.4 SEMANTIC — **이 검사가 뒤집혔다** ════════════════════════════
+
+    v1.46.4 HARDENING까지 여기는 `sentToDeepReport === 0`이었다. Core Task가 자유서술을
+    받지 않는 것이 경계였고, 그 이유는 `logic/relationshipEvents.ts`의 (A)/(B) 분석이다.
+
+    §7이 그 결론을 뒤집었다 — 사건의 **의미**가 첫 화면 SO WHAT을 바꾸지 않으면
+    "많이 적을 이유"가 없기 때문이다(§2-3 · 최종 제품 원칙). (B)의 위험(근거 귀속이
+    Task 단위로 되돌아간다)은 `usedEventIds` 부분집합 검증과 semantic 전용 스캐너로
+    닫았다(§9 · §10).
+
+    ⚠️ **경계가 사라진 것이 아니라 옮겨졌다.** 그래서 검사도 '0인가'에서 '상한 안인가'로
+    바뀐다 — 아래 두 줄이 그 상한이고, 사건이 4배가 되어도 같아야 한다.
+  */
   check(
-    'Deep Report Core Task에는 사건이 나가지 않는다 (기존 경계 유지)',
-    twenty.events.sentToDeepReport === 0,
+    'Deep Report Core Task에 나가는 장면이 상한(4건) 안이다',
+    twenty.events.sentToDeepReport > 0 && twenty.events.sentToDeepReport <= 4,
     twenty.events.sentToDeepReport,
+  );
+  check(
+    '사건이 5건에서 20건이 되어도 Deep Report 전송 건수가 늘지 않는다',
+    twenty.events.sentToDeepReport <= b.events.sentToDeepReport,
+    { five: b.events.sentToDeepReport, twenty: twenty.events.sentToDeepReport },
   );
   check(
     'Provider 호출 수가 사건 수에 비례하지 않는다 (§51 — 사건마다 호출 금지)',
@@ -485,10 +504,32 @@ console.log('\nEVENT-AI · Premium 전체 흐름의 Provider 호출 · 컨텍스
     charsOf(flowC) / charsOf(flowB) < 1.1,
     { b: charsOf(flowB), c: charsOf(flowC) },
   );
+  /*
+    ══ v1.46.4 SEMANTIC — **Deep Report 컨텍스트도 장면을 싣는다** ═══════════
+
+    예전 검사는 `flowA.calls[0].inputChars === flowC.calls[0].inputChars`였다. Core
+    Task가 사건을 안 받으니 사건 0건과 20건의 payload가 **글자 수까지 같았다.**
+
+    지금은 다르다. 다만 늘어나는 양이 **입력량과 무관**해야 한다 — 사건 5건과 20건의
+    Deep Report payload가 같아야 하고(같은 상한이 적용되므로), 0건 대비 증가분은
+    장면 4건의 크기까지다.
+  */
+  const deepChars = (flow) => flow.ai.calls[0].inputChars;
+  /*
+    ⚠️ **글자 수가 같기를 요구하지 않는다.** 처음엔 `===`로 썼고 6791 vs 6803으로
+    떨어졌다 — 20건 fixture의 id가 한 자 길고(`ev-s10`), 장면 본문도 다르다. 같아야
+    하는 것은 **건수**이고(위 EVENT-LIMIT-10이 그걸 본다), 여기서 볼 것은 입력량이
+    4배가 되어도 payload가 사실상 자라지 않는다는 것이다.
+  */
   check(
-    'Deep Report 컨텍스트는 사건과 무관하게 동일하다',
-    flowA.ai.calls[0].inputChars === flowC.ai.calls[0].inputChars,
-    { a: flowA.ai.calls[0].inputChars, c: flowC.ai.calls[0].inputChars },
+    'Deep Report 컨텍스트가 사건 5건과 20건에서 사실상 같다 (2% 미만 차이)',
+    Math.abs(deepChars(flowC) - deepChars(flowB)) / deepChars(flowB) < 0.02,
+    { b: deepChars(flowB), c: deepChars(flowC) },
+  );
+  check(
+    'Deep Report 컨텍스트 증가가 사건 0건 대비 1.6배 미만이다',
+    deepChars(flowC) / deepChars(flowA) < 1.6,
+    { a: deepChars(flowA), c: deepChars(flowC), ratio: deepChars(flowC) / deepChars(flowA) },
   );
 
   /*
@@ -508,9 +549,23 @@ console.log('\nEVENT-AI · Premium 전체 흐름의 Provider 호출 · 컨텍스
     sentIds.some((id) => Number(id.replace('ev-s', '')) > 10),
     sentIds,
   );
+  /*
+    ⚠️ 상한이 Task마다 다르다. 렌즈는 호출당 2건이고(`LENS_EVENT_LIMIT`), Deep Report는
+    호출당 4건이다(`semanticEventContext.TOTAL_LIMIT` — Insight당 2 × 전체 4). 하나의
+    숫자로 묶으면 둘 중 하나는 반드시 틀린다.
+  */
   check(
-    '호출 하나에 실리는 장면이 2건을 넘지 않는다',
-    flowC.ai.calls.every((call) => call.eventCount <= 2),
+    '렌즈·Cross-Lens 호출에 실리는 장면이 2건을 넘지 않는다',
+    flowC.ai.calls
+      .filter((call) => call.task !== 'deep-report')
+      .every((call) => call.eventCount <= 2),
+    flowC.ai.calls.map((call) => [call.task, call.eventCount]),
+  );
+  check(
+    'Deep Report 호출에 실리는 장면이 4건을 넘지 않는다',
+    flowC.ai.calls
+      .filter((call) => call.task === 'deep-report')
+      .every((call) => call.eventCount <= 4),
     flowC.ai.calls.map((call) => [call.task, call.eventCount]),
   );
 }

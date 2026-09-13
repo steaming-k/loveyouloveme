@@ -151,6 +151,19 @@ export async function POST(request: Request): Promise<Response> {
   const body = (await request.json().catch(() => null)) as PremiumTestRequest | null;
   if (!body) return Response.json({ ok: false, reason: 'INVALID_INPUT' }, { status: 400 });
 
+  /**
+   * v1.46.4 §31 — **실제 Provider QA가 제품과 같은 payload를 쓰게 한다.**
+   *
+   * ⚠️ 기본값은 **꺼져 있다.** 이 라우트의 응답은 fixture 로그로 남고, `aiContext`에는
+   * 사건 자유서술이 그대로 들어 있다(그게 Provider에 보내는 것이니까) — 기본으로 켜면
+   * 모든 fixture 로그에 본문이 쌓인다(§29). 그래서 `?withAiContext=1`로 **명시적으로**
+   * 요청할 때만 낸다.
+   *
+   * ⚠️ 이 값을 켜고 부르는 곳은 `run-semantic-provider-qa.mjs` 하나다. 그쪽은 본문을
+   * 출력하지 않고 Provider에 그대로 전달하기만 한다.
+   */
+  const withAiContext = new URL(request.url).searchParams.get('withAiContext') === '1';
+
   const answers = buildAnswers(body);
   const entries = Array.isArray(body.entries) ? body.entries : [];
 
@@ -220,7 +233,16 @@ export async function POST(request: Request): Promise<Response> {
   };
 
   /** Quality Gate (A) 통과분 — **Provider에 보내는 payload**다. 호출 수가 아니다 */
-  const aiContext = buildDeepReportContext(insights, resolverContext, tense);
+  /**
+   * v1.46.4 §4 — **사건을 함께 넘긴다.** fixture가 보는 payload와 제품이 보내는
+   * payload가 같아야 §42 예산 보고가 의미를 갖는다.
+   */
+  const aiContext = buildDeepReportContext(
+    insights,
+    resolverContext,
+    tense,
+    answers.target.events,
+  );
 
   const report = buildRelationshipDeepReport({
     insights,
@@ -280,6 +302,11 @@ export async function POST(request: Request): Promise<Response> {
 
   return Response.json({
     ok: true,
+    /**
+     * §31 — `?withAiContext=1`일 때만. 제품이 Provider에 보내는 payload 그대로다
+     * (본문 포함) — 그래서 기본으로는 내지 않는다.
+     */
+    ...(withAiContext ? { aiContext } : {}),
     job,
     tense,
     lifecycle: {
@@ -469,6 +496,33 @@ export async function POST(request: Request): Promise<Response> {
         );
 
       /**
+       * §42 — Deep Report payload에 실제로 실린 장면. **payload에서 직접 읽는다** —
+       * 선별을 다시 돌려 만들면 '보낸 것'이라는 보장이 없다(`allowedSceneIdsOf`와
+       * 같은 규칙).
+       */
+      const deepReportScenes =
+        deepReportCalls > 0 ? aiContext.insights.flatMap((item) => item.relatedScenes ?? []) : [];
+
+      /**
+       * §SEM-01 — payload에 실린 장면 **본문의 지문.**
+       *
+       * ⚠️ 왜 필요한가: "같은 판정 + 다른 사건 본문 → 다른 Provider context"를 값으로
+       * 판정하려면 본문이 달라졌다는 사실을 봐야 한다. `inputChars`로는 부족하다 —
+       * 길이가 같고 뜻이 반대인 수정이 가장 위험한 경우다(§43의 실패 예).
+       *
+       * ⚠️ **원문을 내보내지 않는다.** 나가는 것은 FNV-1a 해시 한 개뿐이다
+       * (§29 · §44 Privacy — fixture 로그에 자유 입력이 남지 않는다).
+       */
+      const digestOf = (value: string) => {
+        let hash = 0x811c9dc5;
+        for (let i = 0; i < value.length; i += 1) {
+          hash ^= value.charCodeAt(i);
+          hash = Math.imul(hash, 0x01000193);
+        }
+        return (hash >>> 0).toString(36);
+      };
+
+      /**
        * §5-1 — Provider payload에 실린 장면을 **원래 id로 되짚는다.**
        *
        * ⚠️ 왜 필요한가: '가장 오래된 2개가 고정으로 간다'는 결함은 **어느 장면이
@@ -493,14 +547,33 @@ export async function POST(request: Request): Promise<Response> {
         itemsSent: aiContext.insights.length,
         totalCalls: deepReportCalls + lensContexts.length + crossLensCalls,
         calls: [
+          /**
+           * ══ v1.46.4 §42 — **Deep Report도 장면을 싣는다** ══════════════════
+           *
+           * v1.46.4 HARDENING까지 이 행의 event 값은 전부 0이었고, 주석은
+           * "Core Task는 여전히 사건을 받지 않는다"였다. SEMANTIC이 그 경계를
+           * 옮겼으므로 값도 실측으로 바뀐다 — 0을 하드코딩해두면 예산이 늘어난
+           * 것을 fixture가 볼 수 없다.
+           */
           {
             task: 'deep-report',
             count: deepReportCalls,
             ...sizeOf(deepReportCalls > 0 ? aiContext : null),
-            eventCount: 0,
-            eventChars: 0,
-            eventTypes: [] as string[],
-            eventIds: [] as string[],
+            eventCount: deepReportScenes.length,
+            eventChars: eventCharsOf(
+              deepReportScenes.map((scene) => ({
+                description: scene.fact,
+                myReaction: scene.myReaction,
+              })),
+            ),
+            eventTypes: deepReportScenes.map((scene) => scene.type),
+            eventIds: deepReportScenes.map((scene) => scene.id),
+            /** §SEM-01 — 실린 본문의 해시. 본문이 아니라 해시다 */
+            eventDigest: digestOf(
+              deepReportScenes
+                .map((scene) => `${scene.id}|${scene.fact}|${scene.myReaction ?? '-'}`)
+                .join('||'),
+            ),
           },
           ...lensContexts.map((context, index) => ({
             task: `lens:${lensReports[index]!.kind}`,
@@ -656,6 +729,14 @@ export async function POST(request: Request): Promise<Response> {
         hasUnresolvedPoint: candidate.hasUnresolvedPoint,
         hasUserReportedEvent: candidate.hasUserReportedEvent,
         relevantEventIds: candidate.relevantEventIds,
+        /** §9 · §19 — AI가 실제로 의미를 이은 장면. semantic이 없으면 빈 배열 */
+        semanticEventIds: candidate.semanticEventIds,
+        /** §19 — fallback 사용률 계측의 값. high-data 정상 경로에서 static 0 */
+        soWhatSource: candidate.soWhatSource,
+        /** §12 — 근거 조합 문장. **첫 화면이 아니라 토글 안** */
+        evidenceNote: candidate.evidenceNote,
+        /** §13 — VERIFY 한 줄. AI가 못 만들면 null */
+        verification: candidate.verification,
         noveltyScore: Number(candidate.noveltyScore.toFixed(3)),
         actionabilityScore: Number(candidate.actionabilityScore.toFixed(3)),
         confidenceLevel: candidate.confidenceLevel,
@@ -716,6 +797,9 @@ export async function POST(request: Request): Promise<Response> {
         verdict: candidate.verdict,
         soWhat: candidate.soWhat,
         whyItMatters: candidate.whyItMatters,
+        /** §19 — 무료에는 AI 계층이 없다. `semantic_ai`가 나오면 그건 결함이다 */
+        soWhatSource: candidate.soWhatSource,
+        evidenceNote: candidate.evidenceNote,
         hasUserReportedEvent: candidate.hasUserReportedEvent,
         hasOutsideFreeEvidence: candidate.hasOutsideFreeEvidence,
         composed: candidate.composed,
@@ -739,6 +823,14 @@ export async function POST(request: Request): Promise<Response> {
      */
     events: (() => {
       const events = answers.target.events;
+      /**
+       * §42 — Deep Report payload에 실린 장면 수. **payload에서 직접 센다** —
+       * `aiContext`는 위에서 제품과 같은 함수로 만든 값이다.
+       */
+      const deepReportSceneCount = aiContext.insights.reduce(
+        (total, item) => total + (item.relatedScenes?.length ?? 0),
+        0,
+      );
       const lensContexts = report.lensBundle.lenses
         .filter((entry) => entry.mode !== 'unavailable')
         .map((entry) =>
@@ -815,11 +907,16 @@ export async function POST(request: Request): Promise<Response> {
         sentToLenses,
         sentToCrossLens: crossLens?.reportedEvents.length ?? 0,
         /**
-         * ⚠️ Deep Report Core Task는 **여전히 사건을 받지 않는다**(0).
-         * 이유는 `lib/logic/relationshipEvents.ts`의 (A)/(B) 분석 그대로다 — 이번
-         * 버전에서도 그 경계를 넘지 않았다.
+         * ══ v1.46.4 SEMANTIC — **경계가 옮겨졌다** ══════════════════════════
+         *
+         * 이 값은 v1.46.4 HARDENING까지 상수 0이었고, 주석은 Core Task가 자유서술을
+         * 받지 않는 이유를 가리켰다(`logic/relationshipEvents.ts`의 (A)/(B) 분석).
+         * §7이 그 결론을 뒤집었다 — (B)의 위험(근거 귀속이 Task 단위로 되돌아간다)은
+         * `usedEventIds` 부분집합 검증 + semantic 전용 스캐너로 닫았다(§9 · §10).
+         *
+         * ⚠️ 상한이 있다. 사건 20개 세션에서도 이 값은 4를 넘지 않는다(§5 · §42).
          */
-        sentToDeepReport: 0,
+        sentToDeepReport: deepReportSceneCount,
         /** §52 — 렌즈 호출 하나가 싣는 사건 문자열 길이(대략적 토큰 추정의 근거) */
         lensEventChars: lensContexts.reduce(
           (total, context) =>

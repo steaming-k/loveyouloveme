@@ -11,6 +11,7 @@ import {
 } from '@/data/labels';
 import { resolveEvidenceRef, type EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
 import { selectRelevantEvents } from '@/lib/logic/eventRelevance';
+import { buildSemanticEventContexts } from '@/lib/logic/semanticEventContext';
 import { limitationFor } from '@/services/premiumConnections';
 import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import { sanitizeFreeText } from './safety';
@@ -446,6 +447,24 @@ export interface DeepReportContext {
      * 경계가 다르면 경계가 아니다.
      */
     limitation: string;
+    /**
+     * v1.46.4 §4 ~ §6 — **사용자가 직접 적은 장면.** 없으면 필드 자체가 없다.
+     *
+     * ⚠️ 이 필드가 v1.46.4에서 Core Task의 privacy 경계를 옮긴다. 그전까지
+     * deep-report는 자유서술을 한 글자도 받지 않았고(`logic/relationshipEvents.ts`
+     * 상단 표), 렌즈 Task 4개만 받았다. 무엇이 달라졌는지는 그 표에 함께 적었다 —
+     * **문서와 코드가 다른 상태로 두지 않는다.**
+     *
+     * ⚠️ **개수가 사용자 입력량에 비례하지 않는다.** 선별·상한은
+     * `logic/semanticEventContext.ts`가 정하고(Insight당 2 · 호출당 4), 이 builder는
+     * 그 결과를 배치만 한다. 사건 20개 세션도 4건을 넘지 않는다(§42).
+     */
+    relatedScenes?: Array<{
+      id: string;
+      type: string;
+      fact: string;
+      myReaction: string | null;
+    }>;
   }>;
 }
 
@@ -471,12 +490,34 @@ export function buildDeepReportContext(
    * (v1.36이 `declaredPhrase` 값을 고친 것과 같은 종류의 변경).
    */
   tense: RelationshipTense,
+  /**
+   * v1.46.4 §4 — 사용자가 알려준 장면. **생략하면 v1.46.4 HARDENING과 같은 동작**
+   * (Core Task가 자유서술을 받지 않는 상태)이다.
+   *
+   * ⚠️ optional로 둔 이유는 호출부가 빼먹어도 되기 때문이 **아니다** — 이 builder를
+   * 부르는 세 곳(aiService · dev route · fixture) 중 계측용 호출이 사건 없는 상태를
+   * 재현해야 하고, 그 상태가 '기본값'이어야 안전하다(사건이 나가는 것은 명시적
+   * 선택이다). 실제 제품 경로(`requestDeepReportNarrative`)는 항상 넘긴다.
+   */
+  events: readonly RelationshipEvent[] = [],
 ): DeepReportContext {
   const built: DeepReportContext['insights'] = [];
 
+  /*
+    ══ 왜 여기서 두 번 도는가 ════════════════════════════════════════════════
+
+    장면 배분(§28 — 한 장면은 한 Insight에만)은 **어느 Insight가 실제로 전송되는지**
+    알아야 정해진다. Quality Gate (A)(근거 2개 미만 탈락)를 통과한 목록이 그것이고,
+    그 목록은 아래 루프가 끝나야 확정된다. 그래서 게이트를 먼저 한 번 돌려 통과
+    목록을 만들고, 그 목록으로 장면을 배분한 뒤 본 루프를 돈다.
+
+    ⚠️ 게이트 판정을 두 벌로 만들지 않는다 — `eligibleOf`가 아래 루프에서도 쓰이는
+    같은 술어다. 두 곳이 달라지면 전송 목록과 장면 배분 목록이 어긋나고, 그러면
+    모델이 받은 장면의 주인 Insight가 payload에 없는 상태가 된다.
+  */
+  const resolvedByInsight = new Map<string, Array<{ ref: EvidenceRef; text: string }>>();
   for (const insight of insights) {
     if (!insight.eligibleForNarrative) continue;
-
     const seen = new Set<string>();
     const evidence: Array<{ ref: EvidenceRef; text: string }> = [];
     for (const ref of insight.evidenceRefs) {
@@ -486,6 +527,25 @@ export function buildDeepReportContext(
       evidence.push({ ref, text: resolved.text });
     }
     if (evidence.length < 2) continue;
+    resolvedByInsight.set(insight.id, evidence);
+  }
+
+  const sent = insights.filter((insight) => resolvedByInsight.has(insight.id));
+  const scenesByInsight = buildSemanticEventContexts({
+    insights: sent.map((insight) => ({
+      id: insight.id,
+      type: insight.type,
+      axis: insight.axis ?? null,
+    })),
+    events,
+    tense,
+  });
+
+  for (const insight of insights) {
+    const evidence = resolvedByInsight.get(insight.id);
+    if (!evidence) continue;
+
+    const scenes = scenesByInsight.get(insight.id) ?? [];
 
     built.push({
       id: insight.id,
@@ -507,10 +567,41 @@ export function buildDeepReportContext(
       limitation: limitationFor(insight.sources, tense),
       evidence,
       strength: insight.strength,
+      /*
+        ⚠️ 빈 배열을 보내지 않는다. `relatedScenes: []`를 받은 모델은 '장면 칸이
+        있는데 비어 있다'를 읽고 그 자리를 설명하려 든다(렌즈 Task에서 `basis`가
+        빈 배열일 때 실측으로 나온 형태다). 없으면 필드가 없는 것이 계약이다.
+      */
+      ...(scenes.length > 0
+        ? {
+            relatedScenes: scenes.map((scene) => ({
+              id: scene.eventId,
+              type: scene.typeLabel,
+              fact: scene.description,
+              myReaction: scene.myReaction,
+            })),
+          }
+        : {}),
     });
   }
 
   return { tense, insights: built };
+}
+
+/**
+ * v1.46.4 §9 — 이 호출에서 **각 Insight에 실어 보낸 장면 id.**
+ *
+ * ⚠️ 핸들러가 `usedEventIds`를 검증할 때 쓰는 허용집합이고, `buildDeepReportContext`가
+ * 만든 payload에서 **직접 읽는다.** 선별을 다시 돌려 만들지 않는 이유는
+ * `refsWithinAllowed`가 같은 자리에서 배운 것과 같다 — 게이트의 입력은 실제로 보낸
+ * 것이어야 하고, 다시 계산한 값은 '보낸 것'이라는 보장이 없다.
+ */
+export function allowedSceneIdsOf(context: DeepReportContext): Record<string, string[]> {
+  const map: Record<string, string[]> = {};
+  for (const insight of context.insights) {
+    map[insight.id] = (insight.relatedScenes ?? []).map((scene) => scene.id);
+  }
+  return map;
 }
 
 /** Mirror 축 라벨 — 화면·프롬프트에서 공통으로 쓴다 */

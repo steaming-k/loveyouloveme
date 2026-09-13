@@ -276,9 +276,33 @@ const FORMER_OUTWARD_ACTION_PATTERNS: readonly { label: string; pattern: RegExp 
     pattern: /연락(해\s*봐|해보자|해보면|을?\s*해\s*보)|먼저\s*연락/,
   },
   {
-    /** 상대가 있어야 성립하는 동사 — 묻고·말하고·표현하고·제안하는 대상은 사람이다 */
+    /**
+     * 상대가 있어야 성립하는 동사 — 묻고·말하고·표현하고·제안하는 대상은 사람이다.
+     *
+     * ══ v1.46.4 SEMANTIC — **권유형 어미를 추가했다** (실측) ══════════════════
+     *
+     * 실제 Provider QA(R5 · ended)에서 이 문장이 통과했다:
+     *
+     * ```
+     * 상대가 연락 방식에 대해 어떻게 생각하는지 물어볼 수 있어.
+     * ```
+     *
+     * 두 겹이 동시에 빗나갔다. ① 어미가 `볼 수 있어`라서 `봐|보자|보면|볼까`에
+     * 걸리지 않았다. ② 주어가 `상대가`(주격)라 `OUTWARD_TARGET_MARKER`(에게·한테·와)
+     * 에도 걸리지 않았다 — 애초에 이 패턴은 marker를 보지 않지만, 그래서 어미만으로
+     * 막아야 했다.
+     *
+     * 왜 새로 나타났나: `semantic.verification`이 **새 출력 자리**이고, 그 칸의 계약이
+     * '확인할 질문/행동'이라 모델이 명령형(`물어봐`)이 아니라 **권유형**(`물어볼 수
+     * 있어`)으로 쓴다. 출력 자리가 늘면 같은 위반이 다른 어미로 다시 온다 — v1.46.1이
+     * 렌즈 Task에서 배운 것과 같은 형태다.
+     *
+     * ⚠️ 이 동사들은 **혼자서는 성립하지 않으므로** marker 없이 막아도 과필터가 아니다
+     * (`확인해`·`맞춰`를 아래 `FORMER_AMBIGUOUS_*`로 따로 둔 이유와 대조된다).
+     */
     label: 'former_ask_action',
-    pattern: /(물어|얘기해|이야기해|말해|표현해|제안해)\s*(봐|보자|보면|볼까|보는\s*게)/,
+    pattern:
+      /(물어|얘기해|이야기해|말해|표현해|제안해|털어놔|나눠)\s*(봐|보자|보면|볼까|보는\s*게|볼\s*수|볼래|보는\s*것도|볼\s*만)/,
   },
   {
     label: 'former_future_meeting',
@@ -322,7 +346,12 @@ const OUTWARD_TARGET_MARKER = /상대(에게|한테|와|과|랑)|서로|둘이�
 const FORMER_AMBIGUOUS_ACTION_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
   {
     label: 'former_verify_with_partner',
-    pattern: /(확인해|맞춰|정해)\s*(봐|보자|보면|볼까|보는\s*게)/,
+    /*
+      ⚠️ v1.46.4 — 권유형 어미를 여기도 추가한다(위 `former_ask_action`과 같은 이유).
+      다만 이 목록은 **marker가 함께 있을 때만** 위반이므로, 주어가 나인 회고 문장
+      (`무엇이 달랐는지 확인해볼 수 있어`)은 그대로 통과한다.
+    */
+    pattern: /(확인해|맞춰|정해)\s*(봐|보자|보면|볼까|보는\s*게|볼\s*수|보는\s*것도)/,
   },
 ];
 
@@ -669,6 +698,327 @@ export function scanDeepNarrativeWithTense(
   const tenseScan = scanRelationshipTense(text, tense);
   const violations = [...base.violations, ...tenseScan.violations];
   return { safe: violations.length === 0, violations };
+}
+
+/* ═══════════════ 분석 메타 언어 (v1.46.4 §12 · §35 · §37) ═══════════════ */
+
+/**
+ * **결제 직후 첫 화면에 나올 자리가 없는 말** (v1.46.4 §12 · §35)
+ *
+ * ══ 왜 금지어 목록을 또 만드는가 ══════════════════════════════════════════
+ *
+ * 기존 스캐너들이 막는 것은 **위험한 주장**이다(인과·예측·진단·상대 마음). 이 목록이
+ * 막는 것은 위험하지 않다 — 전부 사실이고, 근거 토글 안에서는 오히려 정확한 말이다:
+ *
+ * ```
+ * 근거 토글 안   동기화율 비교 · 자료 3종 · 판정 GAP        ← 정확하다. 그대로 둔다
+ * 첫 화면       동기화율에서 갈린 축이야                    ← 분석기가 한 일이다
+ * ```
+ *
+ * 문제는 **자리**다. ₩1,900을 낸 직후 첫 문장이 '무엇이 계산됐는가'면, 사용자는
+ * 결과를 읽는 게 아니라 계산 로그를 읽는다. §37이 첫 viewport에 기술어 0을 요구하는
+ * 이유이고, 그건 어휘 검사로만 값으로 고정할 수 있다.
+ *
+ * ⚠️ **위험도가 아니라 위치로 판정한다.** 그래서 이 함수는 `scanDeepNarrative`에
+ * 합성되지 않는다 — 첫 화면에 그려지는 문장(semantic · 결정론 조립문)에만 적용하고,
+ * 연결 목록의 `interpretation`에는 적용하지 않는다. 거기서는 근거를 가리키는 말이
+ * 자연스럽다.
+ *
+ * ⚠️ 판정 enum(MATCH/GAP/CHANGE)은 **단어 경계로** 잡는다. 한국어 본문에 대문자
+ * 영단어가 나올 자리가 없으므로 오검출 위험이 낮고, 소문자 'gap'까지 잡으면
+ * 'gap' 철자가 든 정상 표현을 잘못 버릴 수 있다.
+ */
+const META_LANGUAGE_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
+  { label: 'meta_score_name', pattern: /동기화율|싱크율|매칭\s*점수/ },
+  {
+    label: 'meta_verdict_code',
+    pattern: /\b(MATCH|GAP|CHANGE|CONTRADICTION|UNRESOLVED|REPEATED_SIGNAL)\b/,
+  },
+  /*
+    ⚠️ '판정'·'축'은 **단어 단위로** 잡는다. '축'은 한국어에서 '축하'·'축적'의 첫
+    글자이기도 해서, 앞뒤에 한글이 붙은 경우를 빼야 한다. 처음 구현은 그냥 /축/이었고
+    fixture에서 '축하해'가 위반으로 잡혔다.
+  */
+  /*
+    ⚠️ '축'은 **앞이 한글이 아닐 때만** 잡는다. 압축·수축·건축처럼 뒤 글자로 쓰인
+    경우를 빼기 위해서다. 그리고 뒤에 붙는 글자로 축하·축적·축구·축소·축제를 뺀다 —
+    처음 구현은 그냥 /축/이었고 fixture에서 '축하해'가 위반으로 잡혔다.
+
+    ⚠️ 조사 목록으로 좁히지 않는다. '같은 축인데'가 통과했기 때문이다 — 조사가 아니라
+    서술격 조사('인데')가 붙은 형태였고, 그 목록은 끝이 없다.
+  */
+  { label: 'meta_axis_word', pattern: /(^|[^가-힣])축(?![하적구소제])/ },
+  { label: 'meta_verdict_word', pattern: /(^|[^가-힣])판정/ },
+  { label: 'meta_evidence_count', pattern: /자료\s*\d+\s*종|근거\s*\d+\s*(개|종)|\d+\s*가지가\s*같은/ },
+  { label: 'meta_same_place', pattern: /같은\s*자리를\s*가리|같은\s*축을\s*가리|나란히\s*놓[아이여]/ },
+  { label: 'meta_internal_noun', pattern: /\b(evidence|source|candidate|insight|narrative)\b/i },
+  { label: 'meta_analysis_frame', pattern: /분석\s*결과(상|에\s*따르면)|데이터상|계산\s*결과/ },
+];
+
+/**
+ * @returns 첫 화면에 그릴 수 없는 어휘가 있는가 (§35)
+ *
+ * ⚠️ 위반 라벨을 함께 돌려준다. dev 로그가 **무엇이 막혔는지** 세지 못하면 프롬프트를
+ * 고칠 근거가 없다 — v1.27이 `scan.violations`를 계산해놓고 버렸다가 배운 자리다.
+ */
+export function scanVisibleMetaLanguage(text: string): SafetyScanResult {
+  const violations = META_LANGUAGE_PATTERNS.filter((item) => item.pattern.test(text)).map(
+    (item) => item.label,
+  );
+  return { safe: violations.length === 0, violations };
+}
+
+/* ═════════════════════════ 입력 되풀이 (v1.46.4 §36) ═════════════════════ */
+
+/**
+ * **사용자가 쓴 문장을 다시 읽게 하는 것** (v1.46.4 §17 · §36)
+ *
+ * ══ 왜 기존 되풀이 검사로 부족한가 ════════════════════════════════════════
+ *
+ * `isRedundantNarrative`의 기준은 **규칙 문장**(ruleSummary)이다. 규칙이 쓴 말을 다시
+ * 쓰는 것을 막는다. 그런데 v1.46.4가 새로 보내는 것은 **사용자가 쓴 말**이고, 그걸
+ * 되풀이하는 실패는 규칙 문장과 아무 관련이 없다:
+ *
+ * ```
+ * 사용자 입력  연락이 갑자기 줄었을 때 마음이 식은 줄 알았다
+ * 모델 출력    연락이 줄었을 때 마음이 식은 줄 알았다고 했지  ← 규칙 문장과 0% 겹친다
+ * ```
+ *
+ * 기존 게이트는 전부 통과시킨다. 그런데 사용자에게는 **자기가 5분 전에 쓴 문장**이
+ * 유료 결과의 첫 문장으로 돌아온 것이다 — §17이 FAIL로 규정한 형태이고, '그냥 GPT에
+ * 물어보면 되는 거 아냐'라는 질문에 가장 크게 힘을 실어주는 출력이다.
+ *
+ * ⚠️ 판정은 `noveltyRatio`를 **재사용**한다. 같은 bigram 술어를 쓰는 것이 중요하다 —
+ * 두 벌을 만들면 한쪽 임계값만 조정되고, 그러면 '어느 되풀이는 막히고 어느 되풀이는
+ * 통과하는' 상태가 된다.
+ *
+ * ⚠️ **임계값은 규칙 문장 기준(0.35)보다 낮다 · NOT VALIDATED.**
+ *
+ * 규칙 문장은 모델에게 '이 범위 안에서 말하라'고 준 것이라 어휘가 겹치는 것이
+ * 정상이다. 사용자 문장은 반대다 — 겹칠 이유가 없고, 겹치면 그만큼 복창이다. 그래서
+ * 더 엄격해야 맞다. 다만 장면이 '연락'처럼 축 어휘를 포함하면 우연한 겹침이 생기므로
+ * 0으로 둘 수는 없다. 0.55는 그 사이의 초기값이고, 실측 로그를 모은 뒤 조정한다.
+ */
+const MIN_SCENE_NOVELTY = 0.55;
+
+/**
+ * @param sceneTexts 이 문장에 함께 보낸 장면들의 원문(description · myReaction)
+ * @returns 사용자 입력을 되풀이했는가 (§36)
+ *
+ * ⚠️ 장면을 **하나씩** 본다. 전부 이어붙인 문자열과 비교하면 bigram 집합이 커져서
+ * 어떤 문장도 '새롭다'로 통과한다 — 되풀이 검사를 켜놓고 아무것도 막지 않는 상태다.
+ */
+/**
+ * **장면을 받은 모델이 넘어가는 한 발** (v1.46.4 §10)
+ *
+ * 기존 `FORBIDDEN_PATTERNS.mind_reading`은 '상대는 …좋아하/서운' 같은 **감정 단정**을
+ * 잡는다. 장면을 받으면 모델은 그보다 부드러운 형태로 넘어간다 — 감정을 단정하지
+ * 않으면서 **상대 입장을 대신 설명**한다:
+ *
+ * ```
+ * ❌ 상대가 바빠서 답이 늦었을 수 있어          원인을 상대에게 돌린다
+ * ❌ 상대도 그때 힘들었을 수 있어               상대의 경험을 추정한다
+ * ❌ 상대 입장에서는 부담이었을 수 있어          상대의 시점으로 말한다
+ * ✅ 답이 늦어지는 날에 네가 무엇을 걱정하는지    사용자 쪽에서 말한다
+ * ```
+ *
+ * 셋 다 헤지(`~수 있어`)가 붙어 있어서 단정 검사를 통과하고, 인과 어휘(`때문에`)가
+ * 없어서 claim boundary도 통과한다. 그런데 **장면에 없는 정보**다 — 사용자는 상대의
+ * 마음을 적지 않았고, 적을 수도 없다.
+ *
+ * ⚠️ 주어가 '상대'인 절만 잡는다. `~수 있어` 자체는 이 서비스의 기본 어미이므로
+ * 그것만으로 막으면 거의 모든 문장이 떨어진다.
+ */
+const SCENE_ATTRIBUTION_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
+  {
+    label: 'scene_other_side',
+    pattern: /상대\s*(의)?\s*(입장|시점|사정|형편)|상대(방)?\s*(에게|한테)(는|도)?\s*(부담|버겁|힘들)/,
+  },
+  {
+    label: 'scene_other_cause',
+    pattern:
+      /상대(는|가|방은|방이)[^.!?\n]{0,20}(바빠서|바쁘|여유가|사정이|일이\s*많|힘들어서|지쳐서|당황)/,
+  },
+  {
+    label: 'scene_other_experience',
+    pattern: /상대(도|는|가)[^.!?\n]{0,16}(그때|같이|함께|마찬가지)[^.!?\n]{0,16}(힘들|불편|서운|어려)/,
+  },
+  /**
+   * ══ v1.46.4 실측 — **상대의 내면을 '사실'로 제시하는 형태** ═══════════════
+   *
+   * 실제 Provider QA(R6)에서 이 문장이 통과했다:
+   *
+   * ```
+   * 상대가 연락에 대해 즉각적으로 마음이 쓰인다는 점이 드러날 수 있어.
+   * ```
+   *
+   * 기존 `mind_reading`은 감정 어휘 목록(좋아하|서운|질투…)으로 잡는데 `마음이 쓰인다`
+   * 는 그 목록에 없었다. 그리고 위험한 것은 어휘가 아니라 **구문**이다 —
+   * `~다는 점이`는 상대의 내면을 **확정된 사실**로 제시한다. 사용자는 상대의 마음을
+   * 적지 않았고, 적을 수도 없다(§10).
+   *
+   * ⚠️ **질문은 막지 않는다.** `상대가 어떻게 느끼는지`는 `는지`가 붙은 의문 구문이고
+   * 그건 확인하자는 말이다 — 이 패턴은 `다는|라는 + 점|것|사실`만 잡으므로 질문
+   * 형태에는 걸리지 않는다. 과필터 쪽 비용이 더 조용하다는 판단은 그대로다.
+   */
+  {
+    label: 'scene_other_as_fact',
+    pattern: /상대(가|는|도|방이|방은)[^.!?\n]{0,30}(다는|라는)\s*(점|것|사실|게)/,
+  },
+  {
+    label: 'scene_other_interior',
+    pattern: /상대(가|는|도|방이|방은)[^.!?\n]{0,20}(마음이\s*쓰|속상|답답해|불안해|허전)/,
+  },
+];
+
+/**
+ * **컨설턴트 말투 · 내용 없는 상투구** (v1.46.4 §33-F · 실측)
+ *
+ * ══ 왜 프롬프트로 부족했나 ════════════════════════════════════════════════
+ *
+ * 실제 Provider QA에서 프롬프트에 금지 목록을 적은 **뒤에도** 이 문장들이 나왔다:
+ *
+ * ```
+ * 연락 관련 신호가 반복되는 것은 주목할 필요가 있어.
+ * 갈등 해결 방식의 변화는 주목할 필요가 있어.
+ * 개인 시간에 대한 반응이 달라지는 것은 주목할 필요가 있어.
+ * → WHY 전부: '그에 대한 대처가 필요할 수 있어.'
+ * → VERIFY 전부: '상대와 …에 대해 이야기해볼 수 있어.'
+ * ```
+ *
+ * 세 카드가 주제 이름만 갈아 끼운 같은 문장이다. §11이 SO WHAT으로 인정하지 않는
+ * 형태(근거 설명·일반론)이고, §17의 FAIL 기준("수준으로 수렴하면 FAIL")에 정확히
+ * 해당한다.
+ *
+ * ⚠️ **결정론 조립문이 이것보다 낫다.** 그래서 이 검사가 버리는 것은 '문장이 없는
+ * 카드'가 아니라 '더 나쁜 문장'이다 — 버리면 조립문이 그 자리를 지킨다(§18).
+ * 위험한 주장이 아니어서 기존 스캐너는 전부 통과시킨다.
+ *
+ * ⚠️ 프롬프트도 함께 고쳤다. 프롬프트는 확률을 낮추고, 이 검사가 막는다 —
+ * `PROMPT_ECHO_PATTERNS`가 같은 구조로 처리된 자리와 같은 판단이다.
+ */
+const SEMANTIC_STOCK_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
+  /*
+    ⚠️ '필요' 자체를 막지 않는다 — '정리할 시간이 필요한 쪽'처럼 내용이 있는 용법이
+    많다. 막는 것은 **무엇을 할지 말하지 않고 필요만 선언하는** 꼴이다.
+  */
+  {
+    label: 'semantic_consultant_need',
+    pattern: /필요가\s*있|필요해\s*보여|필요할\s*수\s*있어|대처가\s*필요/,
+  },
+  { label: 'semantic_consultant_attention', pattern: /주목(할|해야|하면)|유의(할|해야)|살펴볼\s*필요/ },
+  { label: 'semantic_consultant_advice', pattern: /것이\s*좋(을|겠)|하는\s*게\s*좋(을|겠)|권장|바람직/ },
+  /*
+    명사형 개념어 — 관계 의미가 아니라 **주제 이름**이다. '애정 표현의 중요성'은
+    '애정 표현'이라는 주제를 가리키기만 하고, 그 관계에서 무엇을 봐야 하는지는 말하지
+    않는다(§11).
+  */
+  { label: 'semantic_abstract_noun', pattern: /중요성|안정성|필요성|이해가\s*필요|소통이\s*중요/ },
+  /*
+    '이야기해봐' 계열 — §13의 VERIFY는 '확인할 질문/행동'이다. '이야기해볼 수 있어'는
+    무엇을 어떻게 말하는지가 없어서 행동이 아니다(§33-C Actionability 0~1).
+  */
+  {
+    label: 'semantic_vague_action',
+    pattern: /(에\s*대해|에\s*대한\s*생각을?)\s*(다시\s*)?(이야기|얘기|대화)해\s*보?(자|면|는|을|ㄹ)/,
+  },
+  { label: 'semantic_empty_verb', pattern: /확인해볼\s*필요|알아볼\s*필요|점검해/ },
+];
+
+/**
+ * §17 — 여러 카드가 **같은 틀로 수렴**했는가.
+ *
+ * ⚠️ 어휘 금지로는 못 잡는다. 실측에서 문장 셋이 주제 이름만 달랐고, 각 문장을 따로
+ * 보면 금지어가 없을 수도 있다. 판정에 필요한 것은 **문장들 사이의 거리**다.
+ *
+ * ⚠️ `noveltyRatio`를 재사용한다(같은 bigram 술어). 앞 문장 대비 새 bigram 비율이
+ * 낮으면 틀을 갈아 끼운 것이다.
+ *
+ * ⚠️ **앞의 것을 남기고 뒤를 버린다.** 점수로 고르면 같은 입력에서 결과가 흔들리고,
+ * 유료 리포트는 두 번 열었을 때 같아야 한다(`limitStockPhraseRepeats`와 같은 규칙).
+ */
+const MIN_SEMANTIC_CROSS_NOVELTY = 0.45;
+
+export function dropTemplateRepeats<T>(
+  items: readonly T[],
+  textOf: (item: T) => string,
+): { kept: T[]; dropped: number } {
+  const kept: T[] = [];
+  const seen: string[] = [];
+  let dropped = 0;
+
+  for (const item of items) {
+    const text = textOf(item);
+    const isRepeat = seen.some(
+      (previous) => noveltyRatio(text, previous) < MIN_SEMANTIC_CROSS_NOVELTY,
+    );
+    if (isRepeat) {
+      dropped += 1;
+      continue;
+    }
+    seen.push(text);
+    kept.push(item);
+  }
+  return { kept, dropped };
+}
+
+/**
+ * v1.46.4 §9 · §10 — **semantic 세 문장의 통합 검사.**
+ *
+ * ```
+ * ① 기존 Deep Report 검사 + 시제        위험한 주장 · former outward
+ * ② 장면 귀속                          상대 입장을 대신 설명하는 문장
+ * ③ 메타 언어                          첫 화면에 나올 자리가 없는 어휘
+ * ④ 입력 되풀이                        사용자가 쓴 문장을 다시 읽게 하는 것
+ * ```
+ *
+ * ⚠️ **네 검사를 한 함수에 모은 이유.** 호출부가 하나여야 새 화면이 생겼을 때 검사
+ * 하나만 빠지는 일이 없다 — v1.40.1이 `allowsOutwardAction`을 두 호출부 중 한 곳만
+ * 넘겨서 게이트가 화면에 적용되지 않았던 자리와 같은 종류의 위험이다.
+ *
+ * ⚠️ 하나라도 걸리면 semantic **전체를 버린다**(§9 마지막 줄). 부분 통과시키면
+ * soWhat은 살고 whyItMatters만 빠진 카드가 생기고, 그건 조립문과 AI 문장이 한 카드에
+ * 섞인 상태다 — 어느 계층이 무엇을 말했는지 QA가 구분할 수 없게 된다.
+ */
+export function scanSemanticNarrative(
+  input: { soWhat: string; whyItMatters: string; verification?: string },
+  tense: RelationshipTense,
+  sceneTexts: readonly string[],
+): SafetyScanResult {
+  const parts = [input.soWhat, input.whyItMatters, input.verification ?? ''].filter(
+    (part) => part.length > 0,
+  );
+  const joined = parts.join(' ');
+
+  const violations = [...scanDeepNarrativeWithTense(joined, tense).violations];
+  violations.push(
+    ...SCENE_ATTRIBUTION_PATTERNS.filter((item) => item.pattern.test(joined)).map(
+      (item) => item.label,
+    ),
+  );
+  violations.push(...scanVisibleMetaLanguage(joined).violations);
+  violations.push(
+    ...SEMANTIC_STOCK_PATTERNS.filter((item) => item.pattern.test(joined)).map((item) => item.label),
+  );
+  /* 되풀이는 **문장마다** 본다 — 이어붙이면 bigram 집합이 커져 아무것도 안 잡힌다 */
+  if (parts.some((part) => echoesUserScene(part, sceneTexts))) violations.push('scene_recitation');
+
+  return { safe: violations.length === 0, violations };
+}
+
+export function echoesUserScene(text: string, sceneTexts: readonly string[]): boolean {
+  const target = normalizeForCompare(text);
+  if (target.length < 10) return false;
+
+  for (const scene of sceneTexts) {
+    const reference = normalizeForCompare(scene);
+    /* 짧은 장면은 우연히 겹칠 수 있다 — 규칙 문장 쪽과 같은 기준(10자) */
+    if (reference.length < 10) continue;
+    /* 글자 그대로 옮겼으면 비율을 볼 필요가 없다 */
+    if (echoesReferenceSentence(text, scene)) return true;
+    if (noveltyRatio(text, scene) < MIN_SCENE_NOVELTY) return true;
+  }
+  return false;
 }
 
 /**

@@ -886,6 +886,17 @@ export function buildRelationshipDeepReport(input: {
         candidate.questions.map((question) => question.fingerprint),
       ),
     ),
+    /**
+     * v1.46.4 §7 ~ §9 — **AI가 장면의 의미까지 읽은 문장.**
+     *
+     * ⚠️ `narratives`는 이 함수가 이미 받고 있던 값이다(`buildConnections`가 쓴다).
+     * 새 호출이 아니다 — 같은 Deep Report 응답의 다른 필드(`semantic`)를 첫 화면이
+     * 쓰기 시작한 것뿐이고, 그래서 Provider 호출 수는 그대로 5회다(§42).
+     *
+     * ⚠️ 비어 있으면(AI 실패 · Demo · provider 미설정) Candidate는 결정론 조립문을
+     * 쓴다. 그 경로는 v1.46.4 HARDENING과 글자 그대로 같다(§18 · VALUE-12).
+     */
+    narratives,
   });
 
   return {

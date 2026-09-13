@@ -174,7 +174,25 @@ export const PROMPT_VERSIONS = {
    * ⚠️ 출력에 `scanDeepNarrativeWithTense`가 붙는다. v3 캐시를 그대로 쓰면 `ended`
    * 사용자가 **검사받지 않은 현재형 본문**을 유료 리포트에서 계속 받는다.
    */
-  deepReport: 'deep-report-v5-ended-action',
+  /**
+   * ══ v1.46.4 SEMANTIC — **v6으로 올렸다** (§7 · §8 · §43) ═══════════════════
+   *
+   * ```
+   * 추가   context.insights[].relatedScenes   사용자가 적은 장면 (최대 4건/호출)
+   * 추가   프롬프트 [relatedScenes] 블록       §6 사용 계약 · 상대 마음 추론 금지
+   * 추가   프롬프트 [semantic] 블록            §11~§14 첫 화면 문장 계약 · 메타 언어 금지
+   * 추가   출력 narratives[].semantic         soWhat/whyItMatters/verification/usedEventIds
+   * ```
+   *
+   * ⚠️ **버전을 올리지 않으면 두 가지가 동시에 깨진다.** ① v5 캐시에는 `semantic`이
+   * 없으므로 캐시 히트 세션은 첫 화면이 영영 결정론 조립문에 머문다 — 새 계약의
+   * 결과를 한 번도 보지 못한다. ② 모델이 받는 것이 달라졌으므로 v5 응답은 다른
+   * 계약의 산물이다(v1.42 §8.13이 세운 규칙 그대로).
+   *
+   * ⚠️ 지문도 함께 넓혔다. `deepReportFingerprint`에 사건 본문 해시와 장면 배분이
+   * 들어간다 — 그게 없으면 사건 본문을 고쳐도 같은 문장이 캐시에서 나온다(§43).
+   */
+  deepReport: 'deep-report-v6-semantic',
   /**
    * v1.46 AI Lens §6 — **렌즈별 프롬프트 4개.**
    *

@@ -138,8 +138,18 @@ function CandidateCard({
           근거가 한 종류뿐이면 그렇게 말한다. **숨기지 않는다** — 근거 두께를 말하지
           않으면 모든 결론이 같은 무게로 읽힌다(§12 confidenceLevel).
         */}
+        {/*
+          ══ v1.46.4 SEMANTIC — **개수를 말하지 않는다** (§12 · §37) ═══════════
+
+          예전 라벨은 `근거 1종`이었다. 근거 두께를 말해야 한다는 판단은 그대로지만
+          (말하지 않으면 모든 결론이 같은 무게로 읽힌다), **첫 viewport에 자료 개수가
+          보이면 안 된다**(§37 — 자료 개수 설명 0 · §12 — `근거 N개` 금지).
+
+          그래서 같은 사실을 사용자 언어로 말한다. 실제 개수는 근거 토글 안의
+          `evidenceNote`에 그대로 있다 — 정보를 뺀 것이 아니라 자리를 옮긴 것이다.
+        */}
         {candidate.confidenceLevel === 'limited' ? (
-          <Tag tone="neutral">근거 1종</Tag>
+          <Tag tone="neutral">확인 더 필요</Tag>
         ) : null}
       </div>
 
@@ -166,11 +176,37 @@ function CandidateCard({
         있는 질문**이 있어야 한다. 여기서 개수를 채우지 않는다: `questions`가 비면
         (ended·none·상대 모름) 이 블록이 통째로 없다.
       */}
-      {candidate.questions.length > 0 ? (
+      {candidate.questions.length > 0 || candidate.verification ? (
         <div className="flex flex-col gap-1.5">
           <p className="text-[10px] font-semibold tracking-[0.04em] text-ink-faint">
             {VERIFY_LABEL}
           </p>
+          {/*
+            ══ v1.46.4 §13 — **질문이 없어도 VERIFY 칸이 설 수 있다** ═══════════
+
+            질문(`questions`)은 상대에게 보내는 말이라 `ended`·`none`에서는 0개다
+            (§29 — 생성기 자체가 빈 배열을 돌려준다). 그런데 확인할 것이 상대에게
+            묻는 것뿐인 건 아니다:
+
+            ```
+            질문        "연락이 뜸해질 때 미리 한마디 있는 게 편해?"   → 상대에게 보낸다
+            verification "다음에 답이 늦어질 때 네 반응이 어떤지 먼저 봐" → 혼자 확인한다
+            ```
+
+            그래서 `ended` 사용자의 카드에도 VERIFY가 남을 수 있다. §41이 요구한
+            'ended에서 현재 상대에게 질문 0'은 그대로다 — 그건 `questions`의 게이트이고,
+            이 한 줄은 서버 시제 스캐너(`scanSemanticNarrative`)를 통과한 문장이다.
+
+            ⚠️ **질문이 이 문장에서 파생되지 않는다.** `verification`이 질문으로 쓸 수
+            있는 형태면 `buildUserFitQuestions`가 이미 `semantic` register로 올렸고,
+            그때는 아래 목록에 있다. 여기 남는 것은 질문이 아닌 확인 행동이다.
+          */}
+          {candidate.verification &&
+          !candidate.questions.some((question) => question.text === candidate.verification) ? (
+            <p className="rounded-row bg-brand-tint px-3 py-2.5 text-[12.5px] keep-all leading-relaxed text-brand-pressed">
+              {candidate.verification}
+            </p>
+          ) : null}
           <ul className="flex flex-col gap-1.5">
             {candidate.questions.map((question) => (
               <li
@@ -223,6 +259,23 @@ function CandidateCard({
 
         {evidenceOpen ? (
           <div className="flex flex-col gap-2 rounded-row bg-sunken px-3 py-3">
+            {/*
+              ══ v1.46.4 §12 — **근거 조합 문장이 여기로 내려왔다** ═══════════════
+
+              이 한 줄은 v1.46.4 HARDENING까지 `soWhat`의 두 번째 절이었다
+              (`insightCandidates.sourceClause` 주석에 그 문장이 그대로 있다). 분석기가
+              무엇을 겹쳐 봤는지 말하는 문장이라 첫 화면에서 내려왔고, §12가 그 어휘를
+              허용한 자리가 여기다.
+
+              ⚠️ **목록 위에 둔다.** 아래 항목들이 '무엇이 겹쳤는가'의 구체적 내용이고,
+              이 줄이 그 요약이다 — 순서가 뒤집히면 요약이 각주처럼 읽힌다.
+            */}
+            {candidate.evidenceNote ? (
+              <p className="text-[11.5px] keep-all leading-relaxed text-ink-sub">
+                {candidate.evidenceNote}
+              </p>
+            ) : null}
+
             {chapter && chapter.evidence.length > 0 ? (
               <ul className="flex flex-col gap-1.5">
                 {chapter.evidence.map((item) => (
