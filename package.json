@@ -24,9 +24,12 @@
     "test:ended": "node tests/run-ended-fixtures.mjs",
     "test:semantic": "node tests/run-semantic-fixtures.mjs",
     "test:action": "node tests/run-action-fixtures.mjs",
+    "test:persistence": "node tests/run-persistence-fixtures.mjs",
     "test:ai:e2e": "node tests/run-provider-e2e.mjs"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.116.0",
     "framer-motion": "^12.23.12",
     "lucide-react": "^0.469.0",
     "next": "15.5.24",
