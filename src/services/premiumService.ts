@@ -36,7 +36,6 @@ import {
   buildActions,
   buildConnectionQuestions,
   buildConnections,
-  premiumSourceGroupLabel,
   selectCorePattern,
   selectDeepObservation,
 } from '@/services/premiumConnections';
@@ -568,22 +567,23 @@ function overviewFor(input: {
   chapters: readonly PremiumChapter[];
   tense: RelationshipTense;
 }): RelationshipDeepReportOverview {
-  const { insights, narratives, chapters, tense } = input;
+  const { insights, narratives, chapters } = input;
   const top = insights.slice(0, 3);
-
-  const groups = [...new Set(chapters.flatMap((chapter) => chapter.sourceGroups))];
-  const groupLabels = groups.map((group) => premiumSourceGroupLabel(group, tense));
 
   return {
     headline:
       chapters.length > 0
         ? `러비가 이번 관찰에서 연결한 이야기 ${chapters.length}개`
         : '아직 연결해서 볼 수 있는 신호가 부족해',
+    /*
+      v1.46.4 Meta Copy — 예전에는 `동기화율 비교 · 내가 답한 기준 · 지금 관계 · 과거 관찰 ·
+      … 사이에서`로 출처 라벨을 **전부** 나열했다(393px 실측에서 7개). 무엇을 같이 봤는지는
+      이제 리포트 헤더 한 문장(`premiumMetaCopy.reportLookedAtLine`)이 사용자 언어로 말하므로,
+      여기서는 나열을 빼고 '무료와 무엇이 다른가'만 남긴다.
+    */
     subcopy:
       chapters.length > 0
-        ? groupLabels.length > 0
-          ? `${groupLabels.join(' · ')} 사이에서 서로 연결되는 지점을 모았어. 무료에서 본 결과를 더 길게 쓴 게 아니라, 서로 이어서 본 거야.`
-          : '하나씩 볼 때는 안 보이던 지점이야. 무료에서 본 결과를 더 길게 쓴 게 아니라, 서로 이어서 본 거야.'
+        ? '하나씩 볼 때는 안 보이던 지점이야. 무료에서 본 결과를 더 길게 쓴 게 아니라, 서로 이어서 본 거야.'
         : '관계 경험이나 상대 정보가 더 쌓이면 연결해서 볼 수 있는 게 늘어나.',
     /**
      * ⚠️ v1.45 — 이 필드는 **화면에 그려지지 않는다.** v1.26부터 그랬고(실측에서

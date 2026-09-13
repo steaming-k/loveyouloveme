@@ -32,6 +32,7 @@ import {
 } from '@/lib/premiumLovy';
 import { buildRelationshipDeepReport, premiumFeatureState } from '@/services/premiumService';
 import { chapterSoWhatOf } from '@/lib/premiumSoWhat';
+import { chapterSourceLine, reportLookedAtLine } from '@/lib/premiumMetaCopy';
 import { orderMirrorInsightsForDisplay } from '@/lib/resultPriority';
 import {
   buildFreeCandidates,
@@ -326,6 +327,15 @@ export async function POST(request: Request): Promise<Response> {
 
   return Response.json({
     ok: true,
+    /**
+     * v1.46.4 Meta Copy — 리포트 헤더 한 문장. **화면과 같은 함수**를 같은 입력으로 부른다
+     * (META-01 · 05가 이 값을 본다).
+     */
+    headerLine: reportLookedAtLine({
+      groups: report.chapters.flatMap((chapter) => chapter.sourceGroups),
+      hasScenes: (report.reportedScenes?.scenes.length ?? 0) > 0,
+      tense: report.tense,
+    }),
     /**
      * §31 — `?withAiContext=1`일 때만. 제품이 Provider에 보내는 payload 그대로다
      * (본문 포함) — 그래서 기본으로는 내지 않는다.
@@ -669,6 +679,8 @@ export async function POST(request: Request): Promise<Response> {
       insightIds: chapter.insightIds,
       sourceGroups: chapter.sourceGroups,
       sourceGroupCount: chapter.sourceGroups.length,
+      /** v1.46.4 Meta Copy — 접힌 Chapter 헤더에 그려지는 source 라벨(화면과 같은 함수) */
+      sourceLine: chapterSourceLine(chapter.sourceGroups, report.tense),
       evidenceCount: chapter.evidence.length,
       evidence: chapter.evidence.map((item) => ({
         sourceLabel: item.sourceLabel,
@@ -787,8 +799,10 @@ export async function POST(request: Request): Promise<Response> {
         semanticEventIds: candidate.semanticEventIds,
         /** §19 — fallback 사용률 계측의 값. high-data 정상 경로에서 static 0 */
         soWhatSource: candidate.soWhatSource,
-        /** A4 — semantic_ai일 때 모델이 고른 해석 모드 */
-        semanticMode: candidate.semanticMode,
+        /** Operator Pass §8 — semantic_ai일 때 모델이 고른 해석 틀 */
+        insightOperator: candidate.insightOperator,
+        /** Operator Pass §21 — QA의 NEW(좁혀진 조건). 화면에는 그리지 않는다 */
+        narrowedCondition: candidate.narrowedCondition,
         /** §12 — 근거 조합 문장. **첫 화면이 아니라 토글 안** */
         evidenceNote: candidate.evidenceNote,
         /** §13 — VERIFY 한 줄. AI가 못 만들면 null */

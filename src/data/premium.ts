@@ -147,7 +147,7 @@ export const PREMIUM_FEATURES: Record<PremiumFeatureId, PremiumFeatureDefinition
      */
     additions: [
       '이 관계에서 먼저 볼 것 3가지 — 강점 · 확인이 필요한 지점 · 다음에 확인할 질문',
-      '왜 그렇게 보이는지 — 서로 다른 관찰이 같은 축을 가리키는 지점',
+      '왜 그렇게 보이는지 — 따로 답한 내용에서 같은 기준이 보이는 지점',
       '그 판단의 근거와, 그것으로도 말할 수 없는 것',
       '이 사람에게는 어떻게 다가가는 게 맞는지',
       '상대에게 무엇을 확인하면 되는지',
@@ -367,7 +367,7 @@ export const SOLO_PREMIUM_HOOK = {
   variant: 'solo_self_link',
   title: '내 기준끼리는 어떻게 이어질까',
   description:
-    '무료에서는 네 기준을 하나씩 봤어. 여기서는 네가 답한 기준이 다른 자료와 같은 축을 가리키는지 이어서 볼 수 있어.',
+    '무료에서는 네 기준을 하나씩 봤어. 여기서는 네가 답한 기준이 다른 답과 어떻게 이어지는지 볼 수 있어.',
   cta: '이어서 보기',
 } as const;
 export const PREMIUM_HOOK_COPY = {

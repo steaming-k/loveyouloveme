@@ -11,7 +11,13 @@ import {
 } from '@/data/labels';
 import { resolveEvidenceRef, type EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
 import { selectRelevantEvents } from '@/lib/logic/eventRelevance';
-import { allocateCandidateScenes } from '@/lib/logic/semanticEventContext';
+import {
+  eligibleOperatorsFor,
+  evidenceFamilyOf,
+  isUserReportedSource,
+  supportingRefsFor,
+} from '@/lib/logic/insightOperators';
+import { allocateCandidateScenes, hashText } from '@/lib/logic/semanticEventContext';
 import { limitationFor } from '@/services/premiumConnections';
 import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import { sanitizeFreeText } from './safety';
@@ -21,6 +27,7 @@ import type {
   CrossSourceInsight,
   DeclaredPreference,
   EvidenceRef,
+  EvidenceSourceFamily,
   HistoryAxisChange,
   InsightCandidate,
   InsightVerdict,
@@ -523,6 +530,7 @@ export function buildDeepReportContext(
 
   const bundles = buildSemanticCandidateBundles({
     candidates: topCandidates,
+    insights,
     events,
     resolverContext,
     tense,
@@ -562,17 +570,29 @@ const UNRESOLVED_BY_VERDICT: Record<InsightVerdict, Record<RelationshipTense, st
 };
 
 /**
- * A2 · A3 — Top 3 카드마다 **해석 재료 묶음**을 만든다.
+ * A2 · A3 · Operator Pass §5 ~ §10 — Top 3 카드마다 **해석 재료 묶음**을 만든다.
  *
- * ⚠️ 판정·순서·근거를 다시 만들지 않는다. Candidate가 이미 들고 있는 값을 모델이 읽을
- * 수 있는 모양으로 옮기고, 장면만 호출 예산 안에서 나눠 담는다.
+ * ⚠️ 판정·순서를 다시 만들지 않는다. Candidate가 이미 들고 있는 값과 같은 축의 근거를 모델이
+ * 읽을 수 있는 모양으로 옮기고, 장면만 호출 예산 안에서 나눠 담는다.
  *
- * ⚠️ `user_reported_event` 근거는 **사실 목록에 넣지 않는다.** 그 근거를 resolve하면
- * 장면 본문이 되고, 그러면 장면이 예산(호출당 4건) 밖에서 한 번 더 나간다 — 장면은
- * `selectedEvents` 하나로만 나간다.
+ * ══ Operator Pass에서 달라진 것 ══════════════════════════════════════════
+ *
+ * ```
+ * knownSelfStatement  사용자가 이미 아는 자기 설명(말한 기준 문장) — baseline
+ * evidence            카드 근거 + 같은 축 근거 · family 표기 · LENS 제외
+ * eligibleOperators   근거 조합이 허용하는 해석 틀 (결정론)
+ * ```
+ *
+ * 감사에서 #2·#3 카드는 근거가 3~4 family였는데도 일반론이 됐다. 모델이 받은 것이 평평한
+ * 사실 목록이라 '무엇이 baseline이고 무엇을 이어야 하는가'가 없었다 — 이 세 필드가 그것이다.
+ *
+ * ⚠️ `user_reported_event` 근거는 **evidence에 넣지 않는다.** 장면은 `selectedEvents`
+ * 하나로만, 호출 예산(4건) 안에서 나간다.
  */
 export function buildSemanticCandidateBundles(input: {
   candidates: readonly InsightCandidate[];
+  /** 같은 축 근거를 찾는 곳. 판정을 다시 하지 않고 이미 만든 Insight의 ref만 읽는다 */
+  insights: readonly CrossSourceInsight[];
   events: readonly RelationshipEvent[];
   resolverContext: EvidenceResolverContext;
   tense: RelationshipTense;
@@ -586,22 +606,44 @@ export function buildSemanticCandidateBundles(input: {
 
   return top.map((candidate, index): SemanticCandidateBundle => {
     const seen = new Set<string>();
-    const facts: SemanticCandidateBundle['deterministicFacts'] = [];
-    for (const ref of candidate.evidenceRefs) {
+    const evidence: SemanticCandidateBundle['evidence'] = [];
+    for (const ref of supportingRefsFor(candidate, input.insights)) {
       if (ref.source === 'user_reported_event') continue;
       const resolved = resolveEvidenceRef(ref, resolverContext);
       if (!resolved || seen.has(resolved.key)) continue;
       seen.add(resolved.key);
-      facts.push({ ref, label: resolved.sourceLabel, text: resolved.text });
+      const userReported = isUserReportedSource(ref.source);
+      evidence.push({
+        ref,
+        family: evidenceFamilyOf(ref.source),
+        label: resolved.sourceLabel,
+        value: resolved.text,
+        userReported,
+        evidenceKind: userReported ? 'user_report' : 'deterministic',
+      });
     }
 
     const selected = scenes.get(candidate.id) ?? [];
-    const topic = candidate.primaryAxis
-      ? (MIRROR_AXES.find((axis) => axis.key === candidate.primaryAxis)?.label ?? null)
+    const axis = candidate.primaryAxis;
+    const topic = axis ? (MIRROR_AXES.find((item) => item.key === axis)?.label ?? null) : null;
+
+    /*
+      §6 — baseline은 **말한 기준 문장 그대로**다. 새 표를 만들지 않는다 — 근거 토글이 보여주는
+      것과 같은 resolver 문장이라, 사용자가 '내가 이렇게 답했지'라고 알아볼 수 있는 문장이다.
+    */
+    const knownSelfStatement = axis
+      ? (resolveEvidenceRef({ source: 'declared', field: axis } as EvidenceRef, resolverContext)?.text ?? null)
       : null;
 
+    const families = new Set<EvidenceSourceFamily>(evidence.map((item) => item.family));
+    if (selected.length > 0) families.add('EVENT');
+    const eligibleOperators = eligibleOperatorsFor({
+      families,
+      eventCount: selected.length,
+      hasKnownSelf: Boolean(knownSelfStatement),
+    });
+
     const unresolved: string[] = [];
-    const axis = candidate.primaryAxis;
     /* 상대의 평소를 모르면, 두 사람 사이의 조건은 정의상 확인되지 않았다 */
     if (axis && axis !== 'hobby' && topic) {
       const level = target[axis];
@@ -621,7 +663,10 @@ export function buildSemanticCandidateBundles(input: {
       rank: (index + 1) as 1 | 2 | 3,
       topic,
       verdict: candidate.verdict,
-      deterministicFacts: facts,
+      knownSelfStatement,
+      evidence,
+      sourceFamilies: [...families],
+      eligibleOperators,
       selectedEvents: selected.map((scene) => ({
         eventId: scene.eventId,
         type: scene.typeLabel,
@@ -635,20 +680,36 @@ export function buildSemanticCandidateBundles(input: {
 }
 
 /**
- * A5 · §9 — 이 호출에서 **각 카드에 실어 보낸** 근거·장면. 핸들러가 검증에 쓰는 허용집합이다.
+ * A5 · §9 — 이 호출에서 **각 카드에 실어 보낸** 근거·장면·허용 틀. 핸들러가 검증에 쓰는 허용집합이다.
  *
- * ⚠️ payload에서 직접 읽는다. 다시 계산한 값은 '보낸 것'이라는 보장이 없다
- * (`refsWithinAllowed`가 같은 자리에서 배운 규칙).
+ * ⚠️ payload에서 직접 읽는다. 다시 계산한 값은 '보낸 것'이라는 보장이 없다.
  */
 export function deepReportAllowancesOf(context: DeepReportContext): CandidateSemanticAllowance[] {
   return (context.candidates ?? []).map((bundle) => ({
     candidateId: bundle.candidateId,
-    evidenceRefs: bundle.deterministicFacts.map((fact) => fact.ref),
+    evidenceRefs: bundle.evidence.map((item) => item.ref),
     eventIds: bundle.selectedEvents.map((event) => event.eventId),
     sceneTexts: bundle.selectedEvents.flatMap((event) =>
       [event.situation, event.myReaction].filter((text): text is string => Boolean(text)),
     ),
+    eligibleOperators: [...bundle.eligibleOperators],
+    knownSelfStatement: bundle.knownSelfStatement,
   }));
+}
+
+/**
+ * Operator Pass §42 — **카드 번들 구성이 바뀌면 캐시가 갈린다.**
+ *
+ * 근거 구성 · baseline · 허용 틀은 결정론 입력에서 파생되지만, 그 입력 중 일부(지금 관계 답변
+ * 등)는 기존 지문에 직접 들어가지 않는다. 그래서 **모델이 실제로 받는 번들**을 서명한다.
+ * ⚠️ 원문은 들어가지 않는다 — 문자 해시만(§29 Privacy).
+ */
+export function semanticBundleSignature(bundles: readonly SemanticCandidateBundle[]): string[] {
+  return bundles.map(
+    (bundle) =>
+      `${bundle.candidateId}|${bundle.eligibleOperators.join(',')}|${hashText(bundle.knownSelfStatement)}|` +
+      bundle.evidence.map((item) => `${item.family}:${hashText(item.value)}`).join(','),
+  );
 }
 
 /** Mirror 축 라벨 — 화면·프롬프트에서 공통으로 쓴다 */

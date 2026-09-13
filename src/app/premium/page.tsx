@@ -50,6 +50,7 @@ import {
   resolveRelationshipContext,
 } from '@/lib/logic/relationshipStage';
 import { hasPremiumEvidence } from '@/lib/logic/premiumChapters';
+import { reportLookedAtLine } from '@/lib/premiumMetaCopy';
 import { soloModeOf } from '@/lib/logic/soloMode';
 import { useSession } from '@/state/SessionProvider';
 import type { PremiumFeatureId, PremiumSource } from '@/types';
@@ -583,10 +584,16 @@ function PremiumView() {
    * 한다. v1.44에서는 헤더가 8개라고 말하고 화면에는 12개가 있었다(실측).
    */
   const chapterCount = deep.report.chapters.length;
-  /** 이 리포트가 실제로 이은 **서로 다른 자료 종류** 수 — Chapter 수와 다른 정보다 */
-  const sourceGroupCount = new Set(
-    deep.report.chapters.flatMap((chapter) => chapter.sourceGroups),
-  ).size;
+  /**
+   * v1.46.4 Meta Copy — 예전에는 `이은 자료 N종`(서로 다른 자료 종류 **수**)이었다.
+   * 수 대신 **무엇을 같이 봤는지**를 한 문장으로 말한다. 실제 Chapter의 source와
+   * 실제로 그려지는 장면에서만 고른다 — 없는 것을 부르지 않는다.
+   */
+  const lookedAtLine = reportLookedAtLine({
+    groups: deep.report.chapters.flatMap((chapter) => chapter.sourceGroups),
+    hasScenes: (deep.report.reportedScenes?.scenes.length ?? 0) > 0,
+    tense: deep.report.tense,
+  });
 
   return (
     <>
@@ -668,12 +675,10 @@ function PremiumView() {
                  * ⚠️ v1.45 — meta에서 Chapter 수를 **다시 말하지 않는다.** 실측에서 헤더
                  * 스택이 '이야기 8개를 연결한 관찰 기록' → '연결한 이야기 8개' →
                  * '러비가 이번 관찰에서 연결한 이야기 8개'로 같은 숫자를 세 번 반복했다.
-                 * 여기서는 **다른 숫자**(이은 자료 종류 수)를 말한다.
+                 * v1.46.4 Meta Copy — 숫자를 하나 더 두지 않고 `note` 한 문장으로 옮겼다.
                  */
-                meta={[
-                  `이은 자료 ${sourceGroupCount}종`,
-                  `${formatEntryDate(today.toISOString())} 작성`,
-                ]}
+                note={lookedAtLine}
+                meta={[`${formatEntryDate(today.toISOString())} 작성`]}
               />
             }
             aiNarrative={{

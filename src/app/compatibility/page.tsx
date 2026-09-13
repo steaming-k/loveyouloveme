@@ -700,7 +700,7 @@ function CompatibilityView() {
               variant: 'friction_why',
               title: PREMIUM_HOOK_COPY.friction_why.title,
               // v1.26 — 이 축이 다른 관찰과 이어지는지를 약속한다(제거된 상황 섹션 대신).
-              description: `${topFriction.label}에서 보이는 이 차이가, 네가 따로 답했던 관계 경험·과거 관찰과 같은 축을 가리키는지 이어서 볼 수 있어.`,
+              description: `${topFriction.label}에서 보이는 이 차이가, 네가 따로 답했던 관계 경험·예전 기록과 어떻게 이어지는지 볼 수 있어.`,
               cta: PREMIUM_HOOK_COPY.friction_why.cta,
             }}
           />

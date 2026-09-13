@@ -65,6 +65,10 @@ const META = [
 /** A11 — ended에서 현재 상대에게 향하는 행동 */
 const OUTWARD = ['다가가', '연락해봐', '먼저 연락', '다음 만남', '재회', '물어봐', '물어볼 수', '제안해봐', '말해봐'];
 
+/* Final Minimal Fix — 제품 판별기와 **독립인** 사람 기준 검사(같은 함수를 쓰면 같은 구멍을 못 본다) */
+const SELF_QUESTION = /(^|[\s,])(나는|내가|난)\s[^?]*\?$|(떠오르|생각나|기억나)(니|나|지)?\?$|[았었였했렸랬됐]을까\?$|(^|[\s,])왜[^?]*(을까|았지|었지|했지)\?$/;
+const PARTNER_ADDRESS = /(^|[\s,])(너|넌|너는|너도|너한테|너한텐|네가)(?=[\s,?]|$)|줄\s*수\s*있어\?/;
+const WHY_REPORTING = /다고\s*(했|말했|적었|답했|기록했|썼)|라고\s*(했|말했|적었|답했|썼)|(했|적었|말했|답했|썼)잖아|(답한|적은|말한|고른)\s*(기준|장면|내용|답)(이야|이잖아|이지)/;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const sha = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 16);
 const compact = (text) => text.replace(/[^0-9A-Za-z가-힣]/g, '');
@@ -112,6 +116,8 @@ const stats = {
   endedOutwardLeaks: 0,
   endedQuestions: 0,
   verifyNotQuestion: 0,
+  selfQuestionLeaks: 0,
+  whyReportingBack: 0,
   orderChanged: 0,
   modes: {},
   modelsSeen: new Set(),
@@ -221,9 +227,18 @@ for (const scenario of SEMANTIC_QA_SCENARIOS) {
       '',
     );
 
+    let callUsable = 0;
+    let callSelfLeak = 0;
+    let callWhyReport = 0;
     for (const [index, card] of top.entries()) {
+      const bundle = request.context.candidates[index];
+      const produced = semantics.find((item) => item.candidateId === card.id);
       md.push(
-        `#### ${index + 1}. [${card.soWhatSource}${card.semanticMode ? ` · ${card.semanticMode}` : ''}] ${card.headline}`,
+        `#### ${index + 1}. [${card.soWhatSource}${card.insightOperator ? ` · ${card.insightOperator}` : ''}] ${card.headline}`,
+        `- families: ${JSON.stringify(bundle?.sourceFamilies ?? [])} · eligible: ${JSON.stringify(bundle?.eligibleOperators ?? [])}`,
+        `- KNOWN: ${bundle?.knownSelfStatement ?? '(없음)'}`,
+        `- NEW: ${card.narrowedCondition ?? '(없음)'}`,
+        `- connection(내부): ${produced?.connection ?? '(없음)'} · usedRefs: ${JSON.stringify((produced?.usedEvidenceRefs ?? []).map((ref) => ref.source))}`,
         `- SO WHAT: ${card.soWhat}`,
         `- WHY: ${card.whyItMatters}`,
         `- VERIFY: ${card.verification ?? '(없음)'}`,
@@ -232,13 +247,17 @@ for (const scenario of SEMANTIC_QA_SCENARIOS) {
         '',
       );
       if (card.soWhatSource === 'semantic_ai') {
-        stats.modes[card.semanticMode] = (stats.modes[card.semanticMode] ?? 0) + 1;
+        stats.modes[card.insightOperator] = (stats.modes[card.insightOperator] ?? 0) + 1;
         accepted.push({
           scenario: scenario.id,
           attempt,
           rank: index + 1,
           candidateId: card.id,
-          semanticMode: card.semanticMode,
+          operator: card.insightOperator,
+          known: bundle?.knownSelfStatement ?? null,
+          narrowedCondition: card.narrowedCondition,
+          connection: produced?.connection ?? null,
+          sourceFamilies: bundle?.sourceFamilies ?? [],
           soWhat: card.soWhat,
           whyItMatters: card.whyItMatters,
           verification: card.verification,
@@ -251,6 +270,21 @@ for (const scenario of SEMANTIC_QA_SCENARIOS) {
       if (visible.some((text) => META.some((pattern) => pattern.test(text)))) {
         stats.metaLeaks += 1;
         md.push(`- ✗ 메타 언어: ${JSON.stringify(visible.filter((text) => META.some((pattern) => pattern.test(text))))}`, '');
+      }
+      if (tense === 'current') {
+        const asked = [card.verification ?? '', ...card.questions.filter((q) => q.register === 'semantic').map((q) => q.text)].filter(Boolean);
+        const leaked = asked.filter((text) => SELF_QUESTION.test(text.trim()) && !PARTNER_ADDRESS.test(text));
+        if (leaked.length > 0) {
+          callSelfLeak += 1;
+          stats.selfQuestionLeaks += 1;
+          md.push(`- ✗ SELF 질문 노출: ${JSON.stringify(leaked)}`, '');
+        }
+        if (card.soWhatSource === 'semantic_ai' && card.verification && leaked.length === 0) callUsable += 1;
+      }
+      if (card.soWhatSource === 'semantic_ai' && WHY_REPORTING.test(card.whyItMatters)) {
+        callWhyReport += 1;
+        stats.whyReportingBack += 1;
+        md.push(`- ✗ WHY 보고 어미: ${card.whyItMatters}`, '');
       }
       if (card.soWhatSource === 'semantic_ai' && visible.some((text) => recites(text, sceneTexts))) {
         stats.recitationLeaks += 1;
@@ -266,7 +300,11 @@ for (const scenario of SEMANTIC_QA_SCENARIOS) {
         stats.verifyNotQuestion += 1;
       }
     }
-    console.log(`    ${scenario.id}#${attempt} Top3 semantic_ai ${aiCount}/3 · ${latency}ms · accepted ${dev.stages.accepted}/${dev.stages.attempted}`);
+    perScenario[scenario.id].usableVerify = [...(perScenario[scenario.id].usableVerify ?? []), callUsable];
+    perScenario[scenario.id].selfLeak = [...(perScenario[scenario.id].selfLeak ?? []), callSelfLeak];
+    perScenario[scenario.id].whyReport = [...(perScenario[scenario.id].whyReport ?? []), callWhyReport];
+    md.push(`- 호출 요약: usable VERIFY ${callUsable} · SELF 질문 노출 ${callSelfLeak} · WHY 보고 ${callWhyReport}`, '');
+    console.log(`    ${scenario.id}#${attempt} Top3 semantic_ai ${aiCount}/3 · usableVerify ${callUsable} · selfLeak ${callSelfLeak} · whyReport ${callWhyReport} · ${latency}ms · accepted ${dev.stages.accepted}/${dev.stages.attempted}`);
   }
 }
 
@@ -294,6 +332,8 @@ const summary = {
     endedOutward: stats.endedOutwardLeaks,
     endedQuestions: stats.endedQuestions,
     verifyNotQuestion: stats.verifyNotQuestion,
+    selfQuestionLeaks: stats.selfQuestionLeaks,
+    whyReportingBack: stats.whyReportingBack,
   },
   orderChanged: stats.orderChanged,
   modes: stats.modes,

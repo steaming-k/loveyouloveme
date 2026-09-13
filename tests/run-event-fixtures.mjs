@@ -422,11 +422,33 @@ console.log('\nEVENT-LIMIT-10 · AI 전송이 입력량에 비례하지 않는�
     twenty.events.sentToDeepReport > 0 && twenty.events.sentToDeepReport <= 4,
     twenty.events.sentToDeepReport,
   );
+  /*
+    ══ Insight Operator Pass §26 ~ §28 — **상한은 quota가 아니라 ceiling이다** ════
+
+    Semantic Decomposition 이후 장면은 **확정된 Top 3 카드와 관련 있는 것만** 실린다. 사건
+    5건 세션에서는 관련 장면이 3건이라 3건이 가고, 20건 세션에서는 상한 4건이 간다. 예전
+    검사(`20건 ≤ 5건`)는 '항상 상한까지 채운다'는 옛 배분을 전제했다 — 그 전제를 지키려면
+    관련 낮은 장면을 채워 넣어야 하고, 그게 §28이 금지한 filler다.
+
+    그래서 불변식을 제품 원칙으로 다시 쓴다(느슨하게 만든 것이 아니라 대상이 바뀌었다):
+      ① 두 세션 모두 상한(4) 이하
+      ② 실린 장면은 전부 Top 3 카드의 관련 장면이다 (filler 0)
+      ③ 호출 수는 그대로 (아래 검사)
+  */
   check(
-    '사건이 5건에서 20건이 되어도 Deep Report 전송 건수가 늘지 않는다',
-    twenty.events.sentToDeepReport <= b.events.sentToDeepReport,
+    '사건 5건·20건 모두 Deep Report 장면이 상한(4) 이하다 (상한은 ceiling)',
+    b.events.sentToDeepReport <= 4 && twenty.events.sentToDeepReport <= 4,
     { five: b.events.sentToDeepReport, twenty: twenty.events.sentToDeepReport },
   );
+  for (const [label, flow] of [['5건', b], ['20건', twenty]]) {
+    const sent = flow.ai.calls.find((call) => call.task === 'deep-report')?.eventIds ?? [];
+    const relevant = new Set(flow.report.candidates.slice(0, 3).flatMap((candidate) => candidate.relevantEventIds));
+    check(
+      `사건 ${label} — Deep Report에 실린 장면이 전부 Top 3 카드의 관련 장면이다 (filler 0)`,
+      sent.every((id) => relevant.has(id)),
+      { sent, relevant: [...relevant] },
+    );
+  }
   check(
     'Provider 호출 수가 사건 수에 비례하지 않는다 (§51 — 사건마다 호출 금지)',
     a.ai.providerCalls === twenty.ai.providerCalls,
@@ -521,9 +543,16 @@ console.log('\nEVENT-AI · Premium 전체 흐름의 Provider 호출 · 컨텍스
     하는 것은 **건수**이고(위 EVENT-LIMIT-10이 그걸 본다), 여기서 볼 것은 입력량이
     4배가 되어도 payload가 사실상 자라지 않는다는 것이다.
   */
+  /*
+    Insight Operator Pass §27 — **bounded는 5% 이내다.** 장면이 Top 3 관련분만 실리면서
+    5건 세션은 3건, 20건 세션은 상한 4건이 간다(위 EVENT-LIMIT-10 · §28 ceiling). 그 차이
+    한 건이 실측 2.35%였다. 장면 한 건의 상한(본문 120 + 반응 80자 + 필드)이 컨텍스트
+    약 9천 자의 3% 안팎이라, 5%는 '장면 한 건 차이까지'를 뜻한다 — 입력이 4배가 되어도
+    payload가 그 이상 자라지 않는다는 원래 뜻 그대로다.
+  */
   check(
-    'Deep Report 컨텍스트가 사건 5건과 20건에서 사실상 같다 (2% 미만 차이)',
-    Math.abs(deepChars(flowC) - deepChars(flowB)) / deepChars(flowB) < 0.02,
+    'Deep Report 컨텍스트가 사건 5건과 20건에서 장면 한 건 차이 이내다 (5% 미만)',
+    Math.abs(deepChars(flowC) - deepChars(flowB)) / deepChars(flowB) < 0.05,
     { b: deepChars(flowB), c: deepChars(flowC) },
   );
   check(

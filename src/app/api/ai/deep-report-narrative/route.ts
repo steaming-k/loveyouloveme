@@ -8,7 +8,8 @@ import {
   successResponse,
 } from '../_shared';
 import { runDeepReportTask, type DeepReportDiagnostics } from '@/services/ai/handlers';
-import type { CandidateSemanticAllowance, EvidenceRef } from '@/types';
+import { INSIGHT_OPERATORS } from '@/lib/logic/insightOperators';
+import type { CandidateSemanticAllowance, EvidenceRef, InsightOperator } from '@/types';
 
 /**
  * POST /api/ai/deep-report-narrative
@@ -83,6 +84,16 @@ export async function POST(request: Request): Promise<Response> {
             evidenceRefs: Array.isArray(item.evidenceRefs) ? (item.evidenceRefs as EvidenceRef[]) : [],
             eventIds: strings(item.eventIds),
             sceneTexts: strings(item.sceneTexts),
+            /*
+              Operator Pass §10 — 허용 틀. 알려진 틀 이름만 남기고, 없으면 빈 목록이라 모든
+              카드 문장이 거부된다(안전한 기본값). 틀 목록을 넓혀 보내도 게이트가 **실제 인용
+              근거**로 틀을 다시 확인하므로(`operatorSatisfied`) 근거 없는 틀은 통과하지 못한다.
+            */
+            eligibleOperators: strings(item.eligibleOperators).filter((name): name is InsightOperator =>
+              (INSIGHT_OPERATORS as readonly string[]).includes(name),
+            ),
+            knownSelfStatement:
+              typeof item.knownSelfStatement === 'string' ? item.knownSelfStatement : null,
           },
         ];
       })

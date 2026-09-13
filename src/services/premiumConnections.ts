@@ -137,7 +137,16 @@ export function limitationFor(
   const currentAnswers = tense === 'former' ? '그때 이 관계에 대해' : '지금 관계에 대해';
 
   if (has('history')) {
-    return '과거 관찰과 지금이 같은 축을 가리킨다는 것까지야. 과거가 지금의 원인이라고는 말할 수 없어.';
+    /*
+      v1.46.4 Meta Copy — '같은 축을 가리킨다'는 분석기의 말이었다. 사용자가 실제로 남긴
+      것(예전 기록 · 지금 반응)을 직접 부른다. ⚠️ '비슷한 기준이 보여'로 쓰지 않는다 —
+      이 분기는 source 조합으로 고르고 type을 보지 않아서, 기록끼리 **달라진** 연결에도
+      같은 문장이 붙는다. 방향을 말하지 않는 문장이어야 CHANGE에서도 거짓이 아니다.
+    */
+    // ⚠️ 시점 호칭은 시제를 따른다 — 끝난 관계에 `지금 반응`을 붙이지 않는다(PREM-V2-06).
+    return tense === 'former'
+      ? '예전 기록과 그때 반응에서 같은 기준을 같이 본 것까지야. 과거가 지금의 원인이라고는 말할 수 없어.'
+      : '예전 기록과 지금 반응에서 같은 기준을 같이 본 것까지야. 과거가 지금의 원인이라고는 말할 수 없어.';
   }
   /**
    * v1.41 §39.18 — **두 시점을 이은 연결의 경계.** `history` 다음, 나머지보다 앞이다.
@@ -150,7 +159,7 @@ export function limitationFor(
     return '서로 다른 시점에 답한 두 내용을 나란히 놓은 것까지야. 어느 쪽이 진짜 너인지도, 무엇 때문에 달라졌는지도 정하지 않아.';
   }
   if (has('relationship') && has('compatibility')) {
-    return `두 관찰이 같은 축을 가리킨다는 것까지야. 과거 경험이 ${thisRelationship}를 그렇게 만들었다는 뜻은 아니야.`;
+    return `예전 관계 경험과 상대와 비교한 답에서 같은 기준이 보인다는 것까지야. 과거 경험이 ${thisRelationship}를 그렇게 만들었다는 뜻은 아니야.`;
   }
   if (has('current_relationship')) {
     return `${currentAnswers} 네가 답한 내용 기준이야. 상대가 실제로 어떻게 느끼는지는 알 수 없어.`;
@@ -455,12 +464,12 @@ export function buildConnectionQuestions(
 const DEEP_OBSERVATION: Record<CrossSourceInsightType, DeepLovyObservation> = {
   CONTRADICTION: {
     observation:
-      '같은 사람에게서 서로 다른 방향을 가리키는 자료가 동시에 나왔어. 처음엔 둘 중 하나가 틀린 거라고 생각했는데, 관찰해보니 인간은 원하는 것과 반응하는 것이 같지 않아도 그대로 살아가는구나.',
+      '같은 사람에게서 서로 다른 방향의 답이 동시에 나왔어. 처음엔 둘 중 하나가 틀린 거라고 생각했는데, 관찰해보니 인간은 원하는 것과 반응하는 것이 같지 않아도 그대로 살아가는구나.',
     question: '사람이 원하는 건 항상 자기가 말한 그것일까, 아니면 그때 실제로 반응한 쪽일까?',
   },
   GAP: {
     observation:
-      '말한 기준보다 실제 반응이 더 컸던 자리가, 지금 이 관계에서도 같은 축에 놓여 있어. 인간은 자기가 어디에서 크게 반응하는지 미리 알기 어려운 것 같아 — 겪고 나서야 알게 되는 걸까.',
+      '말한 기준보다 실제 반응이 더 컸던 자리가, 지금 이 관계에서도 같은 기준에서 보여. 인간은 자기가 어디에서 크게 반응하는지 미리 알기 어려운 것 같아 — 겪고 나서야 알게 되는 걸까.',
     question: '미리 알 수 없는 걸 상대에게 미리 말해주는 방법은 있을까?',
   },
   CHANGE: {
@@ -480,7 +489,7 @@ const DEEP_OBSERVATION: Record<CrossSourceInsightType, DeepLovyObservation> = {
   },
   UNKNOWN: {
     observation:
-      '아직 이어볼 자료가 부족해. 없는 걸 있다고 말하기보다, 여기서 멈추는 쪽이 정확할 것 같아.',
+      '아직 같이 볼 내용이 부족해. 없는 걸 있다고 말하기보다, 여기서 멈추는 쪽이 정확할 것 같아.',
     question: '아직 모른다고 말하는 것도 하나의 관찰일까?',
   },
 };
@@ -512,7 +521,7 @@ const DEEP_OBSERVATION: Record<CrossSourceInsightType, DeepLovyObservation> = {
 const DEEP_OBSERVATION_FORMER: Partial<Record<CrossSourceInsightType, DeepLovyObservation>> = {
   GAP: {
     observation:
-      '말한 기준보다 실제 반응이 더 컸던 자리가, 그때 이 관계에서도 같은 축에 놓여 있었어. 인간은 자기가 어디에서 크게 반응하는지 미리 알기 어려운 것 같아 — 겪고 나서야 알게 되는 걸까.',
+      '말한 기준보다 실제 반응이 더 컸던 자리가, 그때 이 관계에서도 같은 기준에서 보였어. 인간은 자기가 어디에서 크게 반응하는지 미리 알기 어려운 것 같아 — 겪고 나서야 알게 되는 걸까.',
     // 주어를 나로 되돌린다. 관계가 끝난 사람에게 '상대에게 말해주는 방법'을 묻지 않는다.
     question: '미리 알 수 없는 걸 나는 어떻게 알아차리게 되는 걸까?',
   },

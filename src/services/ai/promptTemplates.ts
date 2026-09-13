@@ -539,33 +539,52 @@ context.candidates는 **제품이 이미 고른** 첫 화면 카드다. 너는 �
 
 카드 하나가 받는 재료 — **이것이 그 카드에서 말할 수 있는 범위 전부다**:
   topic               무엇에 대한 카드인가
-  deterministicFacts  규칙 엔진이 확인한 사실 문장과 그 ref
+  knownSelfStatement  사용자가 **이미 알고 있는** 자기 설명 — 결과가 아니라 출발점이다
+  evidence            근거 목록. family는 그 근거가 어느 종류의 앎인지다
+                        DECLARED_SELF         사용자가 말한 기준
+                        CURRENT_RELATIONSHIP  지금(또는 그) 관계에서 답한 것
+                        TARGET                사용자가 상대에 대해 입력한 것 — 상대의 사실이 아니다
+                        EXPERIENCE            이전 관계 경험
+                        HISTORY               저장된 이전 기록 요약
   selectedEvents      사용자가 직접 적은 장면 (없을 수 있다)
+  eligibleOperators   이 카드에 허용된 해석 틀. **이 목록 밖의 operator는 버려진다**
   unresolvedPoints    규칙 엔진이 '아직 모른다'고 판정한 것
 
 각 항목:
   candidateId        입력받은 candidateId 그대로. 입력에 없는 id를 만들면 버려진다
-  semanticMode       아래 세 값 중 하나. 다른 값을 쓰면 버려진다
-  soWhat             그래서 이 관계에서 내가 **무엇을 구분해서 봐야 하는지** (1~2문장)
-  whyItMatters       그 구분이 실제 **어떤 장면에서** 오해·불편·확인 필요로 이어지는지
+  operator           eligibleOperators 중 정확히 하나
+  connection         어떤 두 근거를 어떻게 이었는지 한 문장. 화면에 나가지 않는다(검증용)
+  narrowedCondition  knownSelfStatement보다 한 단계 좁혀진 조건 한 줄. 좁힐 수 없으면 null
+  soWhat             그래서 이 관계에서 내가 **무엇을 다르게 봐야 하는지** (1~2문장)
+  whyItMatters       그 조건이 실제 **어떤 순간에** 드러나는지
   verification       확인 질문 (tense 규칙은 아래)
-  usedEvidenceRefs   실제로 쓴 deterministicFacts[].ref를 수정 없이 복사
+  usedEvidenceRefs   실제로 쓴 evidence[].ref를 수정 없이 복사
   usedEventIds       실제로 의미를 이은 selectedEvents[].eventId만
 
-══ semanticMode — 먼저 고르고, 그 모드대로 쓴다 ═════════════════════════
+══ operator — 먼저 고르고, 그 틀대로 쓴다 ═══════════════════════════════
 
-  shared_condition       서로 다른 사실·장면이 **같은 조건**을 가리킨다
-                         → soWhat: 그 공통 조건이 무엇인지
-  different_condition    같은 주제인데 **상황에 따라 네 반응 조건이 달라진다**
-                         (평소엔 괜찮은데 특정한 순간에는 크게 걸린다)
-                         → soWhat: 괜찮은 조건과 걸리는 조건을 구분해서
-  unresolved_condition   중요해 보이지만 지금 재료로는 무엇이 핵심인지 **아직 모른다**
-                         → soWhat: unresolvedPoints 중 무엇이 확인돼야 하는지 좁혀서
+  CONDITION_NARROWING   크게 알고 있던 기준을, 실제로 작동하는 **더 좁은 조건**으로 좁힌다
+                        KNOWN '연락이 중요하다고 답했어'
+                        NEW   '연락 횟수보다, 평소와 달라졌는데 이유를 모르는 상태'
+  DECLARED_VS_REACTION  말한 기준과 실제 반응(지금 관계에서 답한 것·경험·장면)이 **다른 지점**
+                        ✅ '잠깐 뒤에 이야기하고 싶다'와 '실제로는 그냥 넘어간다'는 같은 기준이 아닐 수 있어
+  CURRENT_VS_PAST       지금 관계에서 답한 것과, 이전 경험·기록에서 중요했던 것이 **달라진 지점**
+                        ⚠️ 과거 한 번을 '늘 그렇다 / 반복 패턴'으로 말하지 않는다
+  CONTEXT_DEPENDENT     같은 주제에서 **장면에 따라** 반응이 갈리는 지점 (장면 2개 이상)
+  SELF_VS_TARGET        사용자 기준과, 사용자가 상대에 대해 입력한 값 사이의 **확인할 차이**
+                        ⚠️ 상대의 의도·감정을 추정하지 않는다
+  UNRESOLVED_CORE       위 틀을 근거로 안전하게 만들 수 없을 때. 억지 발견보다 우선한다
+                        ✅ 연락 빈도 자체가 걸리는지, 변화에 설명이 없는 게 걸리는지는 아직 구분하기 어려워
 
-⚠️ 장면이 조건의 차이를 실제로 보여줄 때만 different_condition을 고른다. 대비를 억지로
-만들지 않는다.
-⚠️ selectedEvents가 없는 카드는 사실만으로 쓴다. 없는 장면을 말하지 않는다.
-⚠️ 재료가 얇으면 unresolved_condition으로 쓴다. 카드를 빼는 것은 사실이 전혀 없을 때뿐이다.
+⚠️ UNRESOLVED_CORE가 아닌 operator는 **서로 다른 family 두 개 이상**을 실제로 인용해야 한다.
+   그 틀의 핵심 근거를 인용하지 않으면 버려진다 (예: SELF_VS_TARGET인데 TARGET을 안 쓴 경우).
+⚠️ **개인화는 장면을 언급하는 것이 아니다.** 이 사용자의 서로 다른 근거를 이어서
+   knownSelfStatement보다 한 단계 좁은 조건을 찾는 것이다.
+⚠️ selectedEvents가 없는 카드도 evidence끼리 이어 좁힐 수 있다. 장면이 없다고 일반론으로 쓰지 않는다.
+⚠️ soWhat이 knownSelfStatement를 바꿔 말한 것이면 버려진다.
+⚠️ '기준을 먼저 좁혀봐야 해 / 가려봐야 해'처럼 **무엇으로 좁혀지는지 없는 문장은 버려진다.**
+   좁힐 수 없으면 UNRESOLVED_CORE로 '무엇과 무엇이 아직 구분되지 않았는지'를 말한다.
+⚠️ evidence 문장에 쓰인 분석 용어(축·기록 날짜 등)를 soWhat으로 옮기지 않는다.
 
 ══ soWhat — "그래서 뭘 구분해서 봐야 하지?"에 답한다 ═══════════════════
 
@@ -578,6 +597,8 @@ context.candidates는 **제품이 이미 고른** 첫 화면 카드다. 너는 �
   ❌ 연락 관련 신호가 반복됐어           ← 사실을 다시 말했다
   ❌ 연락 방식이 다를 수 있어            ← 누구에게나 붙는다
   ❌ 여러 근거가 같은 방향이야           ← 분석 과정을 설명했다
+  ❌ 지금 기준을 먼저 좁혀봐야 해          ← 무엇으로 좁혀지는지가 없다
+  ❌ 이 부분을 중요하게 봐야 해            ← 무엇을 다르게 볼지가 없다
 
 'A보다 B' 틀을 세 카드에 반복하지 않는다. 틀이 같으면 뒤 카드가 버려진다.
 
@@ -585,6 +606,12 @@ context.candidates는 **제품이 이미 고른** 첫 화면 카드다. 너는 �
 
 soWhat을 다시 말하지 않는다. 그 구분이 **실제 어떤 장면에서** 오해·불편·확인 필요가
 되는지 쓴다. 상대의 마음은 추정하지 않는다.
+
+⚠️ **whyItMatters는 사용자가 적은 장면을 다시 말하는 자리가 아니다.** 장면은 근거일 뿐이다.
+   '~했다고 했어 / ~라고 적었어 / ~했잖아 / 네가 답한 기준이야'처럼 보고하는 문장은 버려진다.
+   soWhat에서 좁힌 조건이 **실제로 어떤 상황에서 중요해지는지**를 설명한다.
+  ❌ 엇갈린 뒤 답이 없던 날엔 답답함이 바로 커졌다고 했어
+  ✅ 평소엔 괜찮아도, 서로 일정이 정해진 순간에 흐름이 끊기면 기다리는 시간의 의미가 달라질 수 있어
 
 ══ verification — tense에 따라 역할이 다르다 ════════════════════════════
 
@@ -601,6 +628,9 @@ tense=current:
     ❌ 서운한 일이 지나간 뒤, 나는 말할 타이밍을 놓친 쪽이 더 걸렸을까?
     ❌ 혼자 있는 시간을 못 챙긴 날에도 괜찮았을까?
     ✅ 서운한 일이 있으면 그날 바로 말하는 게 편해, 아니면 좀 지나고 얘기하는 게 편해?
+  - **verification은 상대가 직접 답하는 질문이다.** 사용자가 스스로 떠올려야 답할 수 있는 질문은
+    tense=current에서 화면에 나가지 않는다
+    ❌ 다시 꺼낸 일이 더 많았는지 떠오르니? / 그때 왜 그랬을까? / 내가 더 답답했을까?
   ✅ 연락이 평소보다 뜸해질 때, 이유를 한마디라도 알려주는 게 너한테도 괜찮아?
   ✅ 약속 전에 연락이 끊기면 나는 좀 초조해지는데, 그럴 땐 짧게라도 알려줄 수 있어?
 
@@ -799,11 +829,14 @@ ${DEEP_REPORT_SEMANTIC_CONTRACT}
   "candidateSemantics": [
     {
       "candidateId": "입력받은 candidates[].candidateId 그대로",
-      "semanticMode": "shared_condition" | "different_condition" | "unresolved_condition",
+      "operator": "eligibleOperators 중 하나",
+      "connection": "<어떤 두 근거를 어떻게 이었는지 · 검증용>",
+      "narrowedCondition": "<knownSelfStatement보다 좁혀진 조건 한 줄> 또는 null",
       "soWhat": "<그래서 이 관계에서 무엇을 구분해서 봐야 하는지>",
-      "whyItMatters": "<그 구분이 실제로 드러나는 장면>",
+      "whyItMatters": "<그 조건이 실제로 드러나는 순간>",
       "verification": "<current: 상대에게 보낼 질문 / former: 회고 질문. 없으면 생략>",
-      "usedEvidenceRefs": [{ "source": "…", "field": "…" }],
+      "usedEvidenceRefs": [{ "source": "declared", "field": "contact" }],
+      "_usedEvidenceRefs_note": "evidence[].ref 객체를 그대로 복사한다. 'declared:contact' 같은 문자열로 줄이면 인용 근거 0개로 처리되어 버려진다",
       "usedEventIds": ["실제로 의미를 이은 selectedEvents[].eventId만"]
     }
   ]

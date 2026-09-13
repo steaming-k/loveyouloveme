@@ -2,8 +2,10 @@ import { AXIS_DEFINITIONS } from '@/data/axes';
 import { MIRROR_AXES } from '@/data/axes';
 import { lensAiUnitsFor } from '@/data/premiumLensAi';
 import { clampNarrativeText, maskInternalCodes } from './safety';
+import { INSIGHT_OPERATORS } from '@/lib/logic/insightOperators';
 import type {
   CandidateSemanticAllowance,
+  InsightOperator,
   AiObservedTrait,
   CompatibilityNarrative,
   Confidence,
@@ -18,7 +20,6 @@ import type {
   PremiumLensKind,
   PhotoObservation,
   RelationshipNarrative,
-  SemanticMode,
   TargetAxisKey,
 } from '@/types';
 
@@ -593,7 +594,8 @@ export function parseDeepReportResponse(
  * candidateId 없는 문장 금지        → 버린다
  * 입력에 없는 카드(모델이 추가)       → 버린다
  * 카드당 최대 1개                   → 두 번째부터 버린다
- * semanticMode는 세 값 중 하나       → 다른 값이면 버린다(A4 — 모드를 발명하지 못한다)
+ * operator는 여섯 틀 중 하나         → 다른 값이면 버린다(Operator Pass §8 — 틀을 발명하지 못한다)
+ * connection(내부 검증용) 없음         → 버린다(§16 — 무엇을 이었는지 말하지 않은 문장)
  * ```
  *
  * ⚠️ 장면 id 허용집합 밖은 **지우고 기록한다.** 버릴지는 게이트(`gateCandidateSemantics`)가
@@ -602,18 +604,15 @@ export function parseDeepReportResponse(
  * ⚠️ `soWhat` · `whyItMatters` 둘 다 있어야 한다. 하나만 있으면 카드가 반쪽이고, 그러면
  * 한 카드에 AI 문장과 조립문이 섞인다.
  */
-const SEMANTIC_MODES: readonly SemanticMode[] = [
-  'shared_condition',
-  'different_condition',
-  'unresolved_condition',
-];
 
 export function parseCandidateSemantics(
   raw: unknown,
   allowances: readonly CandidateSemanticAllowance[],
 ): Array<{
   candidateId: string;
-  semanticMode: SemanticMode;
+  operator: InsightOperator;
+  connection: string;
+  narrowedCondition: string | null;
   soWhat: string;
   whyItMatters: string;
   verification?: string;
@@ -634,8 +633,11 @@ export function parseCandidateSemantics(
     const allowance = allowed.get(candidateId);
     if (!allowance) continue;
 
-    const semanticMode = oneOf(item.semanticMode, SEMANTIC_MODES);
-    if (!semanticMode) continue;
+    const operator = oneOf(item.operator, INSIGHT_OPERATORS);
+    if (!operator) continue;
+    const connection = str(item.connection, 400);
+    if (!connection) continue;
+    const narrowedRaw = str(item.narrowedCondition, 300);
 
     const soWhat = str(item.soWhat, 400);
     const whyItMatters = str(item.whyItMatters, 400);
@@ -660,7 +662,11 @@ export function parseCandidateSemantics(
     seen.add(candidateId);
     result.push({
       candidateId,
-      semanticMode,
+      operator,
+      connection: clampNarrativeText(connection, 200),
+      narrowedCondition: narrowedRaw
+        ? clampNarrativeText(narrowedRaw, NARRATIVE_LIMITS.semanticSoWhat)
+        : null,
       soWhat: clampNarrativeText(soWhat, NARRATIVE_LIMITS.semanticSoWhat),
       whyItMatters: clampNarrativeText(whyItMatters, NARRATIVE_LIMITS.semanticWhy),
       ...(verification

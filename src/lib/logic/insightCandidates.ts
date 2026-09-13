@@ -1,9 +1,4 @@
 import { MIRROR_AXES } from '@/data/axes';
-import {
-  withCompanionParticle,
-  withObjectParticle,
-  withSubjectParticle,
-} from '@/lib/korean';
 import { RELATIONSHIP_EVENT_LABEL } from '@/data/relationshipEvents';
 import type { SelfLevel } from '@/data/firstContact';
 import { chapterSoWhatOf } from '@/lib/premiumSoWhat';
@@ -26,6 +21,7 @@ import type {
   UserFitQuestion,
 } from '@/types';
 import { refsWithinAllowed } from './allowedEvidence';
+import { supportingRefsFor } from './insightOperators';
 import { repeatedWithinAnalysis, selectRelevantEvents } from './eventRelevance';
 import { buildUserFitQuestions } from './userFitQuestions';
 
@@ -149,18 +145,24 @@ const AXIS_VERDICT: Record<MirrorAxisKey, Partial<Record<InsightVerdict, string>
  * 않는다 — 그건 근거 토글 안에 있다(§36 · VALUE-01). "연락 4/5"는 여기 오지 않고
  * "네가 말한 기준"만 온다.
  */
+/*
+  v1.46.4 Meta Copy — 라벨을 **사용자가 실제로 입력한 것의 이름**으로 바꿨다.
+  예전 `동기화율에서 갈린 축` · `MBTI 축 비교` · `저장된 관찰 기록`은 분석기가 무엇을
+  계산했는지를 말했다. 헤더(`premiumMetaCopy`)와 같은 어휘를 쓴다.
+*/
 const SOURCE_PHRASE: Record<EvidenceRef['source'], string> = {
   declared: '네가 말한 기준',
-  relationship: '이전 관계에서 크게 남았던 것',
-  current_relationship: '지금 관계에 대해 답한 것',
-  adaptive: '추가로 답한 축',
-  observed: '사진에서 반복해 보인 것',
-  history: '저장된 관찰 기록',
-  target: '상대에 대해 알려준 것',
-  user_reported_event: '네가 알려준 장면',
+  relationship: '예전 관계 경험',
+  current_relationship: '지금 관계에서의 답변',
+  adaptive: '추가 질문에 답한 것',
+  observed: '사진에서 보인 것',
+  history: '예전 기록',
+  target: '상대에 대해 적은 내용',
+  user_reported_event: '기억나는 장면',
   deep_followup: '심화 질문에 답한 것',
-  compatibility: '동기화율에서 갈린 축',
-  mbti_lens: 'MBTI 축 비교',
+  /* `premiumMetaCopy`와 같은 이유로 target과 같은 이름이다 — 같은 입력을 두 번 부르지 않는다 */
+  compatibility: '상대에 대해 적은 내용',
+  mbti_lens: '성향 렌즈',
 };
 
 /**
@@ -181,7 +183,7 @@ const SOURCE_PHRASE: Record<EvidenceRef['source'], string> = {
  * 시제에서도 과거이고, `네가 말한 기준`은 시점을 말하지 않는다).
  */
 const SOURCE_PHRASE_FORMER: Partial<Record<EvidenceRef['source'], string>> = {
-  current_relationship: '그 관계에 대해 답한 것',
+  current_relationship: '그때 관계에서의 답변',
 };
 
 function sourcePhraseOf(source: EvidenceRef['source'], tense: RelationshipTense): string {
@@ -282,16 +284,15 @@ function sourceClause(
   sources: readonly EvidenceRef['source'][],
   tense: RelationshipTense,
 ): string {
-  const phrases = sources.map((source) => sourcePhraseOf(source, tense)).filter(Boolean);
+  const phrases = [...new Set(sources.map((source) => sourcePhraseOf(source, tense)).filter(Boolean))];
   if (phrases.length < 2) return '';
-  if (phrases.length === 2) {
-    return `${withCompanionParticle(phrases[0]!)} ${withSubjectParticle(phrases[1]!)} 같은 자리를 가리켜.`;
-  }
   /*
-    3종 이상은 전부 나열하지 않는다. 나열은 '많다'만 말하고 '무엇이 겹쳤는가'는
-    흐린다 — 앞의 둘을 이름으로 말하고 나머지는 수로 말한다.
+    v1.46.4 Meta Copy — **개수를 말하지 않고 무엇을 봤는지를 나열한다.** 예전 문장은
+    `…을 비롯해 4가지가 같은 자리를 가리켜`였다 — 수(`4가지`)와 분석기의 어휘(`같은
+    자리를 가리켜`)가 둘 다 들어 있었다. 토글 라벨(`왜 이렇게 봤어?`)이 이미 질문이라,
+    그 아래에는 답(본 것의 이름)만 있으면 된다.
   */
-  return `${withCompanionParticle(phrases[0]!)} ${withObjectParticle(phrases[1]!)} 비롯해 ${phrases.length}가지가 같은 자리를 가리켜.`;
+  return phrases.join(' · ');
 }
 
 /**
@@ -382,7 +383,7 @@ const WHY: Record<InsightVerdict, { current: string; former: string }> = {
   },
   MATCH: {
     current:
-      '비슷한 축은 편한 만큼 확인을 건너뛰기 쉬워서, 어긋나는 순간에 오히려 더 크게 느껴질 수 있어.',
+      '비슷하게 답한 기준은 편한 만큼 확인을 건너뛰기 쉬워서, 어긋나는 순간에 오히려 더 크게 느껴질 수 있어.',
     former: '잘 맞았던 자리는 다음 관계에서 네가 무엇을 편하게 느끼는지의 기준이 돼.',
   },
 };
@@ -401,7 +402,7 @@ function limitationFor(input: {
   if (input.confidence === 'limited') {
     return '근거가 한 종류뿐이라 여기서는 가능성까지만 말할 수 있어.';
   }
-  return '이건 네가 입력한 자료를 이어본 관찰이야. 진단이나 확정이 아니야.';
+  return '이건 네가 적은 내용을 이어본 관찰이야. 진단이나 확정이 아니야.';
 }
 
 /* ═════════════════════════════════════════════════════ 우선순위 (§14) */
@@ -651,7 +652,8 @@ export function buildInsightCandidates(input: InsightCandidateInput): InsightCan
       }),
       composed,
       soWhatSource,
-      semanticMode: null,
+      insightOperator: null,
+      narrowedCondition: null,
       /**
        * §12 마지막 줄 — 근거 조합 문장은 **토글 안에서만** 쓴다. 근거가 한 갈래면
        * '조합'이 아니므로 빈 문자열이고, 그때 토글에 그 줄이 없다.
@@ -688,7 +690,7 @@ export function buildInsightCandidates(input: InsightCandidateInput): InsightCan
     바꾸는 경로도 없다. 질문은 그 뒤다 — `verification`이 질문 재료(semanticAsk)이기
     때문이다(A12).
   */
-  return assignQuestions(applyCandidateSemantics(dedupeByConclusion(ordered), candidateSemantics), {
+  return assignQuestions(applyCandidateSemantics(dedupeByConclusion(ordered), candidateSemantics, insights), {
     target,
     declaredLevels,
     tense,
@@ -723,6 +725,8 @@ export function semanticTopCandidates(
 function applyCandidateSemantics(
   candidates: readonly InsightCandidate[],
   semantics: readonly CandidateSemanticNarrative[],
+  /** Operator Pass §5 — 카드가 인용할 수 있었던 같은 축 근거를 판정하는 곳(번들과 같은 함수) */
+  insights: readonly CrossSourceInsight[],
 ): InsightCandidate[] {
   if (semantics.length === 0) return [...candidates];
 
@@ -735,7 +739,14 @@ function applyCandidateSemantics(
 
     const allowedEvents = new Set(candidate.relevantEventIds);
     if (!semantic.usedEventIds.every((id) => allowedEvents.has(id))) return candidate;
-    if (!refsWithinAllowed(semantic.usedEvidenceRefs, candidate.evidenceRefs)) return candidate;
+    /*
+      Operator Pass §5 — 카드 근거 + **같은 축 근거**까지가 인용 가능한 범위다. 번들을 만든
+      것과 같은 함수(`supportingRefsFor`)로 판정한다 — 두 곳이 다른 규칙이면 서버가 통과시킨
+      문장을 화면이 조용히 버린다.
+    */
+    if (!refsWithinAllowed(semantic.usedEvidenceRefs, supportingRefsFor(candidate, insights))) {
+      return candidate;
+    }
 
     return {
       ...candidate,
@@ -744,7 +755,8 @@ function applyCandidateSemantics(
       verification: semantic.verification ?? null,
       semanticEventIds: [...semantic.usedEventIds],
       soWhatSource: 'semantic_ai',
-      semanticMode: semantic.semanticMode,
+      insightOperator: semantic.operator,
+      narrowedCondition: semantic.narrowedCondition,
     };
   });
 }
@@ -1049,7 +1061,8 @@ export function buildFreeCandidates(input: {
       composed: Boolean(core),
       /** §19 — 무료는 AI 계층이 없으므로 두 값 중 하나뿐이다 */
       soWhatSource: core ? 'deterministic_composed' : 'static_fallback',
-      semanticMode: null,
+      insightOperator: null,
+      narrowedCondition: null,
       evidenceNote: sourceClause(sources, tense),
       verification: null,
     };

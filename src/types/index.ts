@@ -1663,7 +1663,30 @@ export interface DeepNarrative {
  * 카드 셋에 대해서만 `candidateId`로 답한다. Candidate id(`cand_${chapter.id}`)는
  * 결정론 입력만으로 정해지고 AI 출력에 따라 바뀌지 않는다(SEM-DEC-02가 값으로 고정).
  */
-export type SemanticMode = 'shared_condition' | 'different_condition' | 'unresolved_condition';
+/**
+ * Insight Operator Pass §4 — 근거가 **어느 종류의 앎**인가. `lib/logic/insightOperators.ts`가
+ * EvidenceRef.source에서 결정론으로 정한다. LENS는 해석 보조 틀이고 핵심 문장의 근거가 아니다.
+ */
+export type EvidenceSourceFamily =
+  | 'DECLARED_SELF'
+  | 'CURRENT_RELATIONSHIP'
+  | 'TARGET'
+  | 'EXPERIENCE'
+  | 'HISTORY'
+  | 'EVENT'
+  | 'LENS';
+
+/**
+ * Insight Operator Pass §8 — 카드 하나를 해석하는 **틀.** 모델은 결정론이 허용한 목록
+ * (`eligibleOperators`) 안에서 정확히 하나를 고른다. 새 틀을 만들 수 없다.
+ */
+export type InsightOperator =
+  | 'CONDITION_NARROWING'
+  | 'DECLARED_VS_REACTION'
+  | 'CURRENT_VS_PAST'
+  | 'CONTEXT_DEPENDENT'
+  | 'SELF_VS_TARGET'
+  | 'UNRESOLVED_CORE';
 
 /**
  * A2 — 모델에게 보내는 **카드 한 장의 해석 재료.** 여기 없는 것은 말할 수 없다.
@@ -1677,7 +1700,24 @@ export interface SemanticCandidateBundle {
   /** 주제 이름(연락·갈등 …). 판정 어휘가 아니라 **무엇에 대한 카드인가** */
   topic: string | null;
   verdict: InsightVerdict;
-  deterministicFacts: Array<{ ref: EvidenceRef; label: string; text: string }>;
+  /**
+   * §6 — **사용자가 이미 알고 있는 자기 설명.** 결과가 아니라 baseline이다. 모델은 이 문장을
+   * 다시 쓰면 안 되고, 여기서 한 단계 좁힌 조건을 말해야 한다. 말한 기준이 없으면 null.
+   */
+  knownSelfStatement: string | null;
+  /** §5 — 카드가 해석할 수 있는 근거(카드 근거 + 같은 축 근거 · LENS 제외) */
+  evidence: Array<{
+    ref: EvidenceRef;
+    family: EvidenceSourceFamily;
+    label: string;
+    value: string;
+    userReported: boolean;
+    evidenceKind: 'deterministic' | 'user_report' | 'symbolic_lens';
+  }>;
+  /** 실린 근거·장면의 family */
+  sourceFamilies: EvidenceSourceFamily[];
+  /** §10 — 결정론이 허용한 해석 틀. 모델은 이 안에서만 고른다 */
+  eligibleOperators: InsightOperator[];
   selectedEvents: Array<{
     eventId: string;
     type: string;
@@ -1696,12 +1736,21 @@ export interface CandidateSemanticAllowance {
   eventIds: string[];
   /** §36 — 되풀이 검사의 기준이 될 장면 원문(잘린 값) */
   sceneTexts: string[];
+  /** Operator Pass §10 — 결정론이 허용한 틀. 밖의 틀은 거부된다 */
+  eligibleOperators: InsightOperator[];
+  /** Operator Pass §20 — '한 단계 더 좁혀졌는가' 검사의 기준 */
+  knownSelfStatement: string | null;
 }
 
 /** A5 — Top 3 카드 하나에 대한 모델 출력. **candidateId 없는 문장은 없다** */
 export interface CandidateSemanticNarrative {
   candidateId: string;
-  semanticMode: SemanticMode;
+  /** Operator Pass §8 — eligibleOperators 중 정확히 하나 */
+  operator: InsightOperator;
+  /** §16 — 어떤 두 근거를 이었는지. **내부 검증용 · 화면에 노출하지 않는다** */
+  connection: string;
+  /** §17 — 큰 기준 → 더 좁은 조건. 좁힐 수 없으면 null */
+  narrowedCondition: string | null;
   /** A8 — 그래서 이 관계에서 무엇을 구분해서 봐야 하는가. 메타 언어 금지 */
   soWhat: string;
   /** A9 — 그 구분이 실제 어떤 장면에서 오해·불편·확인 필요로 이어지는가 */
@@ -2210,8 +2259,10 @@ export interface InsightCandidate {
    * high-data 정상 경로에서 `static_fallback`이 0인지를 fixture가 이 값으로 센다.
    */
   soWhatSource: 'semantic_ai' | 'deterministic_composed' | 'static_fallback';
-  /** A4 — semantic_ai일 때 모델이 고른 해석 모드. 그 외에는 null */
-  semanticMode: SemanticMode | null;
+  /** Operator Pass §8 — semantic_ai일 때 모델이 고른 해석 틀. 그 외에는 null · 화면 비노출 */
+  insightOperator: InsightOperator | null;
+  /** Operator Pass §17 — 좁혀진 조건. QA의 KNOWN → NEW 비교용 · 화면 비노출 */
+  narrowedCondition: string | null;
   /**
    * v1.46.4 §12 — **근거가 몇 갈래에서 왔는가.** 근거 토글 안에만 그린다.
    *

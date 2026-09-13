@@ -1,8 +1,25 @@
 import { refsWithinAllowed } from '@/lib/logic/allowedEvidence';
+import { operatorSatisfied, usedFamiliesOf } from '@/lib/logic/insightOperators';
 import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
-import { isSendableQuestion } from '@/lib/logic/userFitQuestions';
+import { detectVerificationRole, isSendableQuestion } from '@/lib/logic/userFitQuestions';
 import type { CandidateSemanticAllowance, CandidateSemanticNarrative } from '@/types';
-import { dropTemplateRepeats, scanSemanticNarrative } from './safety';
+import {
+  dropTemplateRepeats,
+  echoesReferenceSentence,
+  noveltyRatio,
+  scanSemanticNarrative,
+} from './safety';
+
+/**
+ * Operator Pass §20 — **SO WHAT이 이미 아는 자기 설명을 다시 말한 것인가.**
+ *
+ * ⚠️ 자동 판정은 글자 수준까지다(되풀이 · 새 bigram 절반 미만). 뜻만 같은 paraphrase는
+ * 사람이 QA에서 KNOWN → NEW를 나란히 읽고 판정한다 — 자동 검사가 그걸 대신한다고 믿지 않는다.
+ */
+const MIN_KNOWN_SELF_NOVELTY = 0.5;
+function restatesKnownSelf(soWhat: string, known: string): boolean {
+  return echoesReferenceSentence(soWhat, known) || noveltyRatio(soWhat, known) < MIN_KNOWN_SELF_NOVELTY;
+}
 
 /**
  * Quality Gate (G) — **Top 3 카드 semantic** (v1.46.4 SEMANTIC DECOMPOSITION · A5 · A11)
@@ -74,11 +91,40 @@ export function gateCandidateSemantics(
       violations.push('semantic_evidence_ref_outside_allowed');
       continue;
     }
+    /*
+      ══ Operator Pass §10 · §12 — **틀이 근거로 지지되는가** ════════════════════
+
+      ① 결정론이 허용하지 않은 틀은 거부한다(모델이 근거 없이 틀을 고르지 못한다).
+      ② UNRESOLVED_CORE가 아니면 **실제로 인용한** 근거가 그 틀을 지지해야 한다 — 두 family 이상,
+         그리고 틀의 핵심 family 포함. 한 출처만으로 '새 발견'을 만든 문장은 여기서 떨어진다.
+      ③ SO WHAT이 baseline(이미 아는 자기 설명)을 다시 말하면 거부한다.
+
+      ⚠️ 셋 다 **새로 추가한 검사**다. 기존 안전·문체 검사는 그대로 아래에서 돈다.
+    */
+    if (!allowance.eligibleOperators.includes(item.operator)) {
+      violations.push('semantic_operator_not_eligible');
+      continue;
+    }
+    if (
+      !operatorSatisfied(item.operator, {
+        families: usedFamiliesOf(item.usedEvidenceRefs, item.usedEventIds),
+        eventCount: item.usedEventIds.length,
+      })
+    ) {
+      violations.push('semantic_operator_unsupported');
+      continue;
+    }
+    if (allowance.knownSelfStatement && restatesKnownSelf(item.soWhat, allowance.knownSelfStatement)) {
+      violations.push('semantic_restates_known_self');
+      continue;
+    }
     grounded += 1;
 
     const narrative: CandidateSemanticNarrative = {
       candidateId: item.candidateId,
-      semanticMode: item.semanticMode,
+      operator: item.operator,
+      connection: item.connection,
+      narrowedCondition: item.narrowedCondition,
       soWhat: item.soWhat,
       whyItMatters: item.whyItMatters,
       ...(item.verification ? { verification: item.verification } : {}),
@@ -100,16 +146,26 @@ export function gateCandidateSemantics(
       ⚠️ former에서는 이 검사를 하지 않는다. 그쪽 VERIFY는 상대에게 보내는 말이 아니라
       회고 질문이고, outward 여부는 아래 시제 스캐너가 본다.
     */
+    /*
+      Final Minimal Fix — **ended의 VERIFY는 사용자 자신이 답하는 회고 질문이다.** 상대가 답하는
+      질문(TARGET)이면 그 한 칸만 뺀다. outward 표현은 아래 시제 스캐너가 따로 본다.
+    */
+    const wrongRole =
+      tense === 'former' &&
+      Boolean(candidate.verification) &&
+      detectVerificationRole(candidate.verification ?? '') === 'TARGET';
     if (
-      tense === 'current' &&
       candidate.verification &&
-      !isSendableQuestion(candidate.verification, allowance.sceneTexts)
+      ((tense === 'current' && !isSendableQuestion(candidate.verification, allowance.sceneTexts)) ||
+        wrongRole)
     ) {
-      violations.push('semantic_verify_not_question');
+      violations.push(wrongRole ? 'semantic_verify_wrong_role' : 'semantic_verify_not_question');
       verificationDropped += 1;
       candidate = {
         candidateId: narrative.candidateId,
-        semanticMode: narrative.semanticMode,
+        operator: narrative.operator,
+        connection: narrative.connection,
+        narrowedCondition: narrative.narrowedCondition,
         soWhat: narrative.soWhat,
         whyItMatters: narrative.whyItMatters,
         usedEvidenceRefs: narrative.usedEvidenceRefs,

@@ -377,40 +377,42 @@ function directionOf(type: CrossSourceInsight['type']): string {
       : type === 'REPEATED_SIGNAL'
         ? '같은 자리에서 되풀이됐어'
         : type === 'UNKNOWN'
-          ? '아직 이어볼 자료가 부족해'
+          ? '아직 같이 볼 내용이 부족해'
           : '서로 다른 방향을 가리켰어';
 }
 
 /**
- * Chapter별 강조 문장 틀. 인자는 (축 라벨 · 방향 절 · 자료 종수)뿐이다.
+ * Chapter별 강조 문장 틀. 인자는 (축 라벨 · 방향 절)뿐이다.
  *
  * ⚠️ 파생 Chapter(`uncertainty`·`next_check`·`closing`)는 여기 없다 — 그 셋은
  * 근거를 가진 연결이 아니라서 강조 문장을 각자 자기 자리에서 직접 만든다.
+ *
+ * v1.46.4 Meta Copy — `자료 N종`·`한 축`을 뺐다. 무엇을 봤는지는 Chapter 헤더의
+ * source 라벨(`premiumMetaCopy`)이 이름으로 말하고, 여기서는 수를 다시 세지 않는다.
  */
-type TakeawayFrame = (subject: string, direction: string, groupCount: number) => string;
+type TakeawayFrame = (subject: string, direction: string) => string;
 
 const TAKEAWAY_FRAME: Partial<Record<PremiumChapterKind, TakeawayFrame>> = {
-  declared_vs_shown: (subject, direction, n) =>
-    `네가 말한 기준과 관계에서 나타난 ${subject}은 ${direction} — 자료 ${n}종을 나란히 놓고 본 결과야.`,
-  closeness_distance: (subject, direction, n) =>
-    `따로 물어본 두 기준인데 ${direction}. ${subject}을 관계에서의 거리라는 한 축으로 볼 수 있는 자리야(자료 ${n}종).`,
-  hidden_priority: (subject, direction, n) =>
-    `${withTopicParticle(subject)} 네가 먼저 꼽은 기준이면서 실제로 힘들었다고 적은 자리이기도 해 — 자료 ${n}종이 ${direction}.`,
-  conflict_needs: (subject, direction, n) =>
-    `갈등에서 갈린 건 누가 맞느냐가 아니라 ${subject}을 다루는 방식이야 — 자료 ${n}종이 ${direction}.`,
-  affection_exchange: (subject, direction, n) =>
-    `표현이 얼마나 잦았는지가 아니라 방식에서 갈리는 자리야 — ${subject}에 대해 자료 ${n}종이 ${direction}.`,
-  tune_with_target: (subject, direction, n) =>
-    `동기화율 점수 하나로는 보이지 않던 지점이야 — ${subject}에 대해 자료 ${n}종이 ${direction}.`,
-  past_and_now: (subject, direction, n) =>
-    `두 시점을 나란히 놓을 수 있어서 비교한 자리야 — ${subject}이 ${direction}(기록 ${n}종).`,
+  declared_vs_shown: (subject, direction) =>
+    `네가 말한 기준과 관계에서 나타난 ${subject}은 ${direction}.`,
+  closeness_distance: (subject, direction) =>
+    `따로 물어본 두 기준인데 ${direction}. ${subject}을 관계에서의 거리라는 하나의 기준으로 볼 수 있는 자리야.`,
+  hidden_priority: (subject, direction) =>
+    `${withTopicParticle(subject)} 네가 먼저 꼽은 기준이면서 실제로 힘들었다고 적은 자리이기도 해 — 네 답이 ${direction}.`,
+  conflict_needs: (subject, direction) =>
+    `갈등에서 갈린 건 누가 맞느냐가 아니라 ${subject}을 다루는 방식이야 — 네 답이 ${direction}.`,
+  affection_exchange: (subject, direction) =>
+    `표현이 얼마나 잦았는지가 아니라 방식에서 갈리는 자리야 — ${subject}에 대한 네 답이 ${direction}.`,
+  tune_with_target: (subject, direction) =>
+    `동기화율 점수 하나로는 보이지 않던 지점이야 — ${subject}에 대한 답이 ${direction}.`,
+  past_and_now: (subject, direction) =>
+    `두 시점을 같이 볼 수 있어서 비교한 자리야 — ${subject}이 ${direction}.`,
 };
 
 function takeawayFor(
   kind: PremiumChapterKind,
   primary: CrossSourceInsight,
   axesLabels: readonly string[],
-  groupCount: number,
 ): string {
   const subject = axesLabels.length > 0 ? axesLabels.join('과 ') : '이번 연결';
   const direction = directionOf(primary.type);
@@ -423,9 +425,9 @@ function takeawayFor(
    * ⚠️ 조사를 하드코딩하지 않는다 — `연락야`·`애정 표현야`가 실측에서 실제로 나왔다.
    */
   if (!frame) {
-    return `이번 연결에서 본 건 ${withCopula(subject)} — 따로 답한 자료 ${groupCount}종이 ${direction}.`;
+    return `이번 연결에서 본 건 ${withCopula(subject)} — 네 답이 ${direction}.`;
   }
-  return frame(subject, direction, groupCount);
+  return frame(subject, direction);
 }
 
 /**
@@ -955,7 +957,7 @@ export function buildPremiumChapters(input: PremiumChapterInput): PremiumChapter
       sourceGroups: groups,
       evidence: evidenceOf(draft.members, connectionById),
       deterministicSummary: summaryFor(draft.members),
-      deterministicTakeaway: takeawayFor(draft.kind, draft.primary, axesLabels, groups.length),
+      deterministicTakeaway: takeawayFor(draft.kind, draft.primary, axesLabels),
       narrativeText: narrativeOf(draft.members, connectionById),
       question: questionAxis ? (questionByAxis[questionAxis] ?? null) : null,
       /** ⚠️ 경계 문장은 AI가 쓰지 않는다 — `buildConnections`가 만든 것을 그대로 쓴다 */
@@ -1179,7 +1181,7 @@ export function buildPremiumChapters(input: PremiumChapterInput): PremiumChapter
        * 기록이 하나도 없는 사용자에게는 아직 겪지 않은 기능을 약속하는 문장이 된다.
        */
       deterministicSummary: [
-        `이번 관찰에서 이어붙인 이야기는 ${titles.length}개야 — ${titles.join(' · ')}. 그중 가장 여러 자료가 모인 자리는 '${widest.title}'이었어.`,
+        `이번 관찰에서 이어붙인 이야기는 ${titles.length}개야 — ${titles.join(' · ')}. 그중 가장 많은 내용이 이어진 자리는 '${widest.title}'이었어.`,
         lovyObservation.observation,
         `아래 한 문장은 정답이 아니야. 이번 관찰에서 가장 강하게 연결된 신호를 그대로 적어둔 거야.${
           historyReport.entryCount > 0
@@ -1224,8 +1226,8 @@ function buildUncertaintyFacts(input: {
   if (undecided > 0) {
     facts.push({
       id: 'unknown_axes',
-      sourceLabel: '판정하지 못한 축',
-      text: `${undecided}개 축은 근거가 없어서 판정하지 않았어. 비워둔 거지 '해당 없음'이 아니야.`,
+      sourceLabel: '아직 비워둔 기준',
+      text: `${undecided}개 기준은 답이 부족해서 비워뒀어. 비워둔 거지 '해당 없음'이 아니야.`,
     });
   }
 
@@ -1241,7 +1243,7 @@ function buildUncertaintyFacts(input: {
     facts.push({
       id: 'low_confidence',
       sourceLabel: '근거의 양',
-      text: '비교한 항목이 적어서 이 축들에 대한 해석의 폭이 좁아.',
+      text: '비교한 항목이 적어서 이 기준들에 대한 해석의 폭이 좁아.',
     });
   }
 
@@ -1261,7 +1263,7 @@ function buildUncertaintyFacts(input: {
     facts.push({
       id: 'one_sided_target',
       sourceLabel: '상대 정보',
-      text: `상대 축 ${compatibility.totalCount}개 중 ${compatibility.comparedCount}개만 비교했어. 상대가 실제로 어떻게 느끼는지는 여기 없어.`,
+      text: `상대에 대해 적을 수 있는 기준 ${compatibility.totalCount}개 중 ${compatibility.comparedCount}개만 비교했어. 상대가 실제로 어떻게 느끼는지는 여기 없어.`,
     });
   }
 
@@ -1291,7 +1293,7 @@ export function buildOmissions(input: {
       historyReport.comparable
         ? {
             id: 'temporal_no_shift',
-            text: '저장된 관찰끼리 비교했는데 방향이 달라진 축이 없었어. 기록이 한 번 더 쌓이면 다시 볼게.',
+            text: '저장된 관찰끼리 비교했는데 방향이 달라진 기준이 없었어. 기록이 한 번 더 쌓이면 다시 볼게.',
           }
         : {
             id: 'temporal',

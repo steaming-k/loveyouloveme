@@ -27,6 +27,10 @@ import {
 } from '@/lib/logic/relationshipStage';
 import { clearAiCacheEntry, getCachedAiResult } from '@/services/ai/aiClient';
 import {
+  buildSemanticCandidateBundles,
+  semanticBundleSignature,
+} from '@/services/ai/contextBuilders';
+import {
   requestCompatibilityNarrative,
   requestDeepReportNarrative,
   requestHistoryNarrative,
@@ -563,8 +567,18 @@ export function useDeepReportNarrative(
       ...semanticSelectionSignature(
         allocateCandidateScenes({ candidates: topCandidates, events }),
       ),
+      /* Operator Pass §42 — 근거 구성 · baseline · 허용 틀이 바뀌면 지문이 갈린다 */
+      ...semanticBundleSignature(
+        buildSemanticCandidateBundles({
+          candidates: topCandidates,
+          insights,
+          events,
+          resolverContext,
+          tense: deepTense,
+        }),
+      ),
     ],
-    [topCandidates, events],
+    [topCandidates, events, insights, resolverContext, deepTense],
   );
 
   const fingerprint = useMemo(

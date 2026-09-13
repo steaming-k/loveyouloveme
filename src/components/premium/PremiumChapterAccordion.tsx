@@ -24,6 +24,7 @@ import {
   lovyMidNoteAfter,
   resolveLovyPoses,
 } from '@/lib/premiumLovy';
+import { chapterSourceLine } from '@/lib/premiumMetaCopy';
 import type { LovyPose } from '@/data/lovy';
 import type { PremiumChapter, RelationshipTense } from '@/types';
 
@@ -283,9 +284,13 @@ function ChapterRow({
             (next_check · closing)에서는 이 자리가 비어야 한다 — 0종이라고 쓰면
             근거가 없는 것처럼 읽히는데 그건 사실이 아니다(앞 Chapter에서 파생됐다).
           */}
+          {/*
+            v1.46.4 Meta Copy — `자료 N종`(개수) 대신 **무엇을 같이 봤는지**를 이름으로
+            말한다. 393px에서 두 줄까지 감싸도록 truncate하지 않는다.
+          */}
           {chapter.sourceGroups.length > 0 ? (
-            <span className="text-[10.5px] font-semibold tnum text-mint-ink">
-              자료 {chapter.sourceGroups.length}종
+            <span className="text-[10.5px] font-semibold keep-all leading-snug text-mint-ink">
+              {chapterSourceLine(chapter.sourceGroups, tense)}
             </span>
           ) : null}
         </span>

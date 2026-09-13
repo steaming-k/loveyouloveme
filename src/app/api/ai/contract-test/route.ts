@@ -528,7 +528,8 @@ export async function POST(request: Request): Promise<Response> {
         verificationDropped: semanticGate.verificationDropped,
         items: semanticGate.kept.map((item) => ({
           candidateId: item.candidateId,
-          semanticMode: item.semanticMode,
+          operator: item.operator,
+          hasNarrowedCondition: Boolean(item.narrowedCondition),
           soWhatLength: item.soWhat.length,
           whyLength: item.whyItMatters.length,
           hasVerification: Boolean(item.verification),

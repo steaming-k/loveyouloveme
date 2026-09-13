@@ -15,9 +15,15 @@ import { cn } from '@/lib/cn';
 export function ReportHeader({
   title,
   meta,
+  note,
   eyebrow = REPORT_COPY.eyebrow,
 }: {
   title: string;
+  /**
+   * v1.46.4 Meta Copy — 제목 아래 한 문장(무엇을 같이 봤는지). meta 칩과 섞으면 `·`로
+   * 이어져 문장이 칩처럼 끊겨 보여서 따로 둔다. 없으면 그리지 않는다.
+   */
+  note?: string | null;
   /** 사용자가 이해할 수 있는 값만. 내부 식별자(analysisId·fingerprint)는 넣지 않는다. */
   meta: readonly string[];
   /**
@@ -33,6 +39,9 @@ export function ReportHeader({
       <h1 className="text-[24px] font-semibold leading-[1.34] tracking-[-0.7px] keep-all">
         {title}
       </h1>
+      {note ? (
+        <p className="text-[12.5px] keep-all leading-relaxed text-ink-sub">{note}</p>
+      ) : null}
       <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11.5px] text-ink-muted tnum">
         {meta.map((item, index) => (
           <span key={item} className="flex items-center gap-1.5">

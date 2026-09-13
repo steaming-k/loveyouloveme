@@ -186,6 +186,14 @@ export function semanticSelectionSignature(
     .map(([insightId, scenes]) => `${insightId}>${scenes.map((scene) => scene.eventId).join(',')}`);
 }
 
+/**
+ * Operator Pass §42 — 카드 번들 서명(`contextBuilders.semanticBundleSignature`)이 같은 해시를 쓴다.
+ * 원문을 서명에 남기지 않는 규칙이 두 곳에서 갈라지지 않게 함수 하나를 공유한다.
+ */
+export function hashText(value: string | null | undefined): string {
+  return textHash(value);
+}
+
 /** FNV-1a 변형. 암호학적 용도가 아니라 '같은 글자인가'만 판단한다 */
 function textHash(value: string | null | undefined): string {
   if (!value) return '-';

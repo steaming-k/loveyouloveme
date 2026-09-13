@@ -351,7 +351,7 @@ console.log('\nENDED-04 · Generation · Sanitization · Fixture 3단');
       그 뜻은 버전이 **v5 이상**이면 성립한다. 다만 느슨하게 쓰지 않고 현재 값으로
       다시 고정한다 — 이 파일이 이 목록을 손으로 관리하는 이유가 그것이다.
     */
-    ['relationship-v8', 'compatibility-v6', 'deep-report-v7', 'premium-mbti-v4',
+    ['relationship-v8', 'compatibility-v6', 'deep-report-v9', 'premium-mbti-v4',
       'premium-saju-v4', 'premium-zodiac-v4', 'premium-cross-lens-v4']
       .every((version) => versions.includes(version)),
   );

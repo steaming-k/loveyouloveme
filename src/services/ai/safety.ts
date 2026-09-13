@@ -97,7 +97,14 @@ const LENS_LEAK_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
   { label: 'mbti_in_core', pattern: /\b[EI][NS][TF][JP]\b|MBTI/i },
   {
     label: 'saju_in_core',
-    pattern: /사주|명식|일주|월주|오행|천간|지지|십성|대운|음력\s*생일/,
+    /*
+      ⚠️ Operator Pass §29 — `지지`를 **단독으로 잡지 않는다.** 실측에서 `서로를 지지하는`
+      같은 일상어가 이 라벨로 걸려 카드 문장이 버려졌다(오탐). 사주 용어 지지(地支)는 거의
+      언제나 천간·오행·합충과 붙어 나오므로 그 문맥이 있을 때만 잡는다. 나머지 사주 어휘는
+      그대로다 — 기준을 낮춘 것이 아니라 한 낱말의 오탐을 고친 것이다.
+    */
+    pattern:
+      /사주|명식|일주|월주|오행|천간|십성|대운|음력\s*생일|地支|천간\s*[·과와,]?\s*지지|지지\s*[·과와,]?\s*천간|지지\s*\(|지지(가|의|는)?\s*(합|충|형|파)/,
   },
   {
     label: 'astrology_in_core',
@@ -923,6 +930,17 @@ const SEMANTIC_STOCK_PATTERNS: readonly { label: string; pattern: RegExp }[] = [
     pattern: /(에\s*대해|에\s*대한\s*생각을?)\s*(다시\s*)?(이야기|얘기|대화)해\s*보?(자|면|는|을|ㄹ)/,
   },
   { label: 'semantic_empty_verb', pattern: /확인해볼\s*필요|알아볼\s*필요|점검해/ },
+  /*
+    Operator Pass §19 — **'좁혀봐야 해'는 좁힌 것이 아니다.** Decomposition QA에서 #2·#3 카드
+    대부분이 `지금 기준을 먼저 좁혀봐야 해`로 끝났다. 무엇으로 좁혀지는지가 없는 선언이다.
+    ⚠️ 새로 추가한 검사다(완화 아님). 조건을 실제로 말한 문장(`…순간에 더 커지는지 구분해서
+    봐야 해`)은 이 패턴에 걸리지 않는다 — 막는 것은 '기준/쪽을 좁혀·가려 봐야 한다'는 꼴뿐이다.
+  */
+  {
+    label: 'semantic_vague_narrowing',
+    pattern:
+      /(기준|쪽)(을|이|부터)?\s*(먼저|다시)?\s*(좁혀|가려)(서)?\s*(봐야|볼\s*필요)|좁혀(서)?\s*봐야\s*해|(이|그)\s*부분을\s*중요하게\s*봐야/,
+  },
 ];
 
 /**
@@ -980,6 +998,29 @@ export function dropTemplateRepeats<T>(
  * soWhat은 살고 whyItMatters만 빠진 카드가 생기고, 그건 조립문과 AI 문장이 한 카드에
  * 섞인 상태다 — 어느 계층이 무엇을 말했는지 QA가 구분할 수 없게 된다.
  */
+/**
+ * v1.46.4 Final Minimal Fix — **WHY가 사용자가 적은 것을 보고하지 않는다.**
+ *
+ * Operator Pass QA에서 WHY가 이렇게 나왔다:
+ *
+ * ```
+ * ❌ 엇갈린 뒤 답이 없던 날엔 답답함이 바로 커졌다고 했어.
+ * ❌ …답답했다고 적었잖아.
+ * ```
+ *
+ * 근거는 맞지만 분석이 아니다 — 사용자가 5분 전에 쓴 것을 '네가 이렇게 적었어'로 되돌려준다.
+ * n-gram 되풀이 검사(`echoesUserScene`)는 표현을 조금 바꾸면 통과하므로, **보고하는 어미**를 따로 잡는다.
+ *
+ * ⚠️ WHY에만 적용한다. 새로 추가한 검사다(완화 아님).
+ * ⚠️ `중요하다고 느끼는 순간`처럼 보고가 아닌 인용절은 막지 않는다 — 막는 것은 말했다·적었다·답했다 계열뿐이다.
+ */
+const REPORTING_BACK_PATTERNS: readonly RegExp[] = [
+  /다고\s*(했|말했|적었|답했|기록했|썼)/,
+  /라고\s*(했|말했|적었|답했|썼)/,
+  /(했|적었|말했|답했|썼)잖아/,
+  /(답한|적은|말한|고른)\s*(기준|장면|내용|답)(이야|이잖아|이지)/,
+];
+
 export function scanSemanticNarrative(
   input: { soWhat: string; whyItMatters: string; verification?: string },
   tense: RelationshipTense,
@@ -1000,6 +1041,9 @@ export function scanSemanticNarrative(
   violations.push(
     ...SEMANTIC_STOCK_PATTERNS.filter((item) => item.pattern.test(joined)).map((item) => item.label),
   );
+  if (REPORTING_BACK_PATTERNS.some((pattern) => pattern.test(input.whyItMatters))) {
+    violations.push('semantic_why_reporting_back');
+  }
   /* 되풀이는 **문장마다** 본다 — 이어붙이면 bigram 집합이 커져 아무것도 안 잡힌다 */
   if (parts.some((part) => echoesUserScene(part, sceneTexts))) violations.push('scene_recitation');
 

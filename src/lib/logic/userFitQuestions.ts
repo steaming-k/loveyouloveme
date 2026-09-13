@@ -173,7 +173,7 @@ const BASIS: Record<InsightVerdict, string> = {
   CONTRADICTION: '서로 다른 방향을 가리키는 근거가 같이 있어서',
   CHANGE: '두 시점의 답이 달라서',
   UNRESOLVED: '아직 확인되지 않은 자리라서',
-  MATCH: '비슷하게 나온 축이라 오히려 확인을 건너뛰기 쉬워서',
+  MATCH: '비슷하게 나온 기준이라 오히려 확인을 건너뛰기 쉬워서',
 };
 
 /* ══════════════════════════════════════════════════════════ fingerprint */
@@ -300,6 +300,24 @@ export function buildUserFitQuestions(context: UserFitQuestionContext): UserFitQ
   if (context.semanticAsk && isSendableQuestion(context.semanticAsk, context.sceneTexts ?? [])) {
     push('semantic', context.semanticAsk);
   }
+  /*
+    Operator Pass §25 — **같은 카드에서 같은 뜻의 질문을 두 번 보여주지 않는다.**
+
+    Decomposition QA 실측에서 AI 확인 질문과 표 질문이 나란히 나왔다:
+
+    ```
+    Q(semantic)  연락이 평소랑 달라질 땐, 짧게라도 상황을 알려주는 게 너한텐 괜찮아?
+    Q(direct)    …연락이 뜸해질 때 미리 한마디 있는 게 편해, 아니면 그냥 두는 게 편해?
+    ```
+
+    `direct`(두 사람의 규칙을 묻는다)와 `situational`(상황이 생겼을 때 어떻게 할지 묻는다)은
+    AI 확인 질문이 묻는 것과 같은 자리다. usable한 semantic 질문이 붙었으면 그 둘을 빼고,
+    가볍게 묻는 `light`만 남긴다.
+
+    ⚠️ 문장 유사도를 계산하지 않는다. 한국어 paraphrase에 문자열 비교는 무력하고, register가
+    '무엇을 묻는 자리인가'를 이미 값으로 들고 있다(`INTENT` 표).
+  */
+  const semanticAsked = questions.some((item) => item.register === 'semantic');
 
   /*
     ① 가볍게 — 내 기준 절을 붙이면 "나는 이런데 너는?"이 되어 상대가 답하기 쉬워진다.
@@ -311,7 +329,7 @@ export function buildUserFitQuestions(context: UserFitQuestionContext): UserFitQ
     ② 조금 더 직접적으로 — **상대를 아는 경우에만.** `'x'`(모름)에서 두 사람의 규칙을
     합의하자고 물으면, 아직 그 단계가 아닌 관계에 규칙 협상을 들이미는 것이 된다.
   */
-  if (targetLevel && targetLevel !== 'x') {
+  if (!semanticAsked && targetLevel && targetLevel !== 'x') {
     push('direct', self ? `${self}, ${ASK[axis].direct}` : ASK[axis].direct);
   }
 
@@ -321,7 +339,7 @@ export function buildUserFitQuestions(context: UserFitQuestionContext): UserFitQ
     실제로 보내지 않는다.
   */
   const situation = eventTypes.map((type) => EVENT_SITUATION[type]).find(Boolean);
-  if (situation) {
+  if (situation && !semanticAsked) {
     /*
       ⚠️ `situational`은 **자기 묻는 절을 따로 가진다.** 처음에는 상황 절 + `direct`로
       조립했는데, 그러면 `direct`와 뒷문장이 글자 그대로 같아서 한 화면에 같은 질문이
@@ -362,6 +380,57 @@ export function buildUserFitQuestions(context: UserFitQuestionContext): UserFitQ
  * 것'이고, 여기서 걸리는 것은 '말해도 되지만 질문이 아닌 것'이다 — 후자는 화면에서
  * 질문 칸이 설명 문장으로 채워지는 형태로 나타난다(따옴표 안에 설명이 들어간다).
  */
+/**
+ * v1.46.4 Final Minimal Fix — **이 질문에 누가 답하는가.**
+ *
+ * ```
+ * TARGET     상대가 답한다     current VERIFY로 쓸 수 있다 · ended에서는 쓰면 안 된다
+ * SELF       사용자 자신이 답한다 ended 회고 질문으로 쓸 수 있다 · current에서는 쓰면 안 된다
+ * AMBIGUOUS  판별할 표지가 없다  current에서는 쓰지 않는다(상대에게 보낼 말이라는 보장이 없다)
+ * ```
+ *
+ * ⚠️ 이전 검사는 '물음표 + 1인칭 주어'만 봤고, Operator Pass QA에서
+ * `…다시 꺼내는 편이었는지, 그냥 끝난 일이 더 많았는지 떠오르니?`가 통과해 상대 질문 칸에
+ * 올라갔다. 문장형이 아니라 **답하는 사람**을 판별해야 하는 문제다.
+ *
+ * 판별 순서 (앞이 이긴다):
+ *   ① 기억·회고 어미(떠오르니? · 생각나? · ~했을까? · 왜 ~을까?) → SELF
+ *   ② 상대를 부르는 토큰(너는 · 너한테 · 네가 …) 또는 상대에게 부탁(알려줄 수 있어?) → TARGET
+ *   ③ 1인칭 주어(나는 · 내가 · 난) → SELF
+ *   ④ 상대 선호를 묻는 어미(편해? · 괜찮아? · 어때? · 편이야? · 달라? …) → TARGET
+ *   ⑤ 나머지 → AMBIGUOUS
+ *
+ * ⚠️ '너'는 **토큰 단위**로만 본다 — `너무`의 `너`는 상대를 부르는 말이 아니다.
+ */
+export type VerificationRole = 'TARGET' | 'SELF' | 'AMBIGUOUS';
+
+/** 받침이 ㅆ인 글자인가 — `했을까 · 걸렸을까 · 됐을까`의 회고 어미를 어간과 무관하게 잡는다 */
+function hasSsangSiotBatchim(char: string | undefined): boolean {
+  if (!char) return false;
+  const code = char.charCodeAt(0) - 0xac00;
+  return code >= 0 && code < 11172 && code % 28 === 20;
+}
+
+export function detectVerificationRole(text: string): VerificationRole {
+  const trimmed = text.trim();
+
+  const recallEnding = /(떠오르|생각나|기억나)(니|나|지|요)?\?$/.test(trimmed);
+  const retroEnding =
+    trimmed.endsWith('을까?') && hasSsangSiotBatchim(trimmed.charAt(trimmed.length - 4));
+  const whyRetro = /(^|[\s,])왜[^?]{0,40}(을까|ㄹ까|았지|었지|했지)\?$/.test(trimmed);
+  if (recallEnding || retroEnding || whyRetro) return 'SELF';
+
+  const partnerToken = /(^|[\s,])(너|넌|너는|너도|너한테|너한텐|너랑|너의|네가|네게)(?=[\s,?.!]|$)/.test(trimmed);
+  const partnerRequest = /(알려|말해|해|정해|기다려|챙겨|맞춰)\s*줄\s*(수\s*있어|래)|줄\s*수\s*있어\?|(물어볼|얘기할|말할)\s*수\s*있어\?/.test(trimmed);
+  if (partnerToken || partnerRequest) return 'TARGET';
+
+  if (/(^|[\s,])(나는|내가|난)\s/.test(trimmed)) return 'SELF';
+
+  if (/(편해|괜찮아|어때|좋아|가능해|편이야|자연스러워|달라)\?/.test(trimmed)) return 'TARGET';
+
+  return 'AMBIGUOUS';
+}
+
 export function isSendableQuestion(text: string, sceneTexts: readonly string[]): boolean {
   const trimmed = text.trim();
 
@@ -407,11 +476,7 @@ export function isSendableQuestion(text: string, sceneTexts: readonly string[]):
     ⚠️ '나는'이 들어간 정상 질문은 막지 않는다 — 내 기준을 먼저 말하고 상대에게 묻는 형태
     (`나는 좀 초조해지는데, 짧게라도 알려줄 수 있어?`)는 상대를 부르는 표지가 있다.
   */
-  const selfSubject = /(^|[\s,])(나는|내가|난)\s/.test(trimmed);
-  const retroEnding = /(았|었|였|했)을까\?$/.test(trimmed);
-  /* '너무'의 '너'는 상대를 부르는 말이 아니다 */
-  const addressesPartner = /(^|[\s,])(너(?!무)|네가|네\s)|알려줄|말해줄|해줄|줄\s*수\s*있/.test(trimmed);
-  if ((selfSubject || retroEnding) && !addressesPartner) return false;
+  if (detectVerificationRole(trimmed) !== 'TARGET') return false;
 
   /*
     ⑤ 답을 유도하지 않는다(§26). `~한 게 맞지?` · `~지 않아?` 계열.
