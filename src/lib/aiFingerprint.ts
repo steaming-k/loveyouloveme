@@ -1,4 +1,5 @@
 import { MIRROR_AXES } from '@/data/axes';
+import { DEEP_REPORT_MODEL_ROUTE } from '@/services/ai/modelRouting';
 import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import type {
   CompatibilityResult,
@@ -321,8 +322,22 @@ export function deepReportFingerprint(input: {
    */
   eventSignature?: readonly string[];
   selectionSignature?: readonly string[];
+  /**
+   * v1.46.4 Model A/B §31 — **semantic을 만든 모델.**
+   *
+   * ⚠️ 이 값이 없으면 deep-report 모델을 바꿔도 지문이 같아서, 이전 모델이 만든 문장이
+   * 캐시에서 그대로 나온다 — 모델 교체를 배포해도 이미 열어본 세션에는 적용되지 않는다.
+   * 캐시 키에는 `promptVersion`만 있고 모델은 없었다(`aiClient.cacheKey`).
+   *
+   * ⚠️ 기본값은 제품 라우팅 표(`DEEP_REPORT_MODEL_ROUTE`)다. 클라이언트는 서버 env를 모르므로
+   * **코드에 적힌 라우팅**을 지문에 넣는다 — winner 채택은 그 상수를 바꾸는 것으로 이뤄지고,
+   * 그 순간 지문이 갈린다. `AI_MODEL_DEEP_REPORT` env로만 바꾼 배포는 캐시가 갈리지 않는다
+   * (그 env는 실험·긴급 전환용이다 · Remaining Risk).
+   */
+  semanticModelId?: string;
 }): string {
   const { tense, insights, declared, target, validated, deepAnswers } = input;
+  const semanticModelId = input.semanticModelId ?? DEEP_REPORT_MODEL_ROUTE;
   const eventSignature = input.eventSignature ?? [];
   const selectionSignature = input.selectionSignature ?? [];
 
@@ -347,6 +362,7 @@ export function deepReportFingerprint(input: {
     */
     ...eventSignature,
     ...selectionSignature,
+    `model:${semanticModelId}`,
   ])}`;
 }
 

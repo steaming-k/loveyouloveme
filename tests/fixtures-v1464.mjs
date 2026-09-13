@@ -327,6 +327,57 @@ export const SEM_B = { ...FULL_BASE, target: { ...TARGET_BASE, events: EVENTS_SE
 export const SEM_C = { ...FULL_BASE, target: { ...TARGET_BASE, events: EVENTS_SEM_C } };
 export const SEM_D = { ...FULL_BASE, target: { ...TARGET_BASE, events: EVENTS_SEM_D } };
 
+/**
+ * v1.46.4 §32 · Model A/B §10 — **Real Provider QA 시나리오 R1 ~ R6.**
+ *
+ * ⚠️ 두 하네스(`run-semantic-provider-qa` · `run-semantic-model-ab`)가 **같은 정의**를
+ * import한다. 원래 앞 하네스 안에 인라인으로 있었는데, A/B가 fixture를 따로 쓰면 모델
+ * 비교가 아니라 fixture 비교가 된다(§10 — 새 fixture로 유리하게 만들지 마라). 그래서
+ * 옮기기만 했고 값은 한 글자도 바꾸지 않았다.
+ *
+ * `repeat`은 앞 하네스의 기본값이다. A/B 하네스는 §11의 반복 횟수를 따로 적용한다.
+ */
+export const SEMANTIC_QA_SCENARIOS = [
+  { id: 'R1', label: 'current / 사건 0 / high-data', body: SEM_A, repeat: 1 },
+  { id: 'R2', label: 'current / 사건 많음 / contact GAP', body: SEM_B, repeat: 2 },
+  { id: 'R3a', label: 'same verdict · 다른 사건 의미 (C)', body: SEM_C, repeat: 2 },
+  { id: 'R3b', label: 'same verdict · 다른 사건 의미 (D)', body: SEM_D, repeat: 1 },
+  {
+    id: 'R4',
+    label: 'current / Target 부분정보',
+    body: {
+      ...SEM_B,
+      target: { ...SEM_B.target, conflict: 'x', alone: 'x', affection: 'x', mbti: null },
+    },
+    repeat: 1,
+  },
+  {
+    id: 'R5',
+    label: 'ended / 사건 많음',
+    body: { ...SEM_B, status: 'ended', target: { ...SEM_B.target, relation: 'ex' } },
+    repeat: 1,
+  },
+  {
+    id: 'R6',
+    label: 'sparse / fallback 경계',
+    body: {
+      ...SEM_B,
+      declared: { contact: 3, conflict: null, alone: null, affection: null, hobby: null },
+      experience: { important: [], hardest: null, selfGap: null, skipped: true },
+      entries: [],
+      target: {
+        ...SEM_B.target,
+        contact: 'x',
+        conflict: 'x',
+        alone: 'x',
+        affection: 'x',
+        events: [EVENTS_SEM_B[0]],
+      },
+    },
+    repeat: 1,
+  },
+];
+
 /** 상대의 마음·의도를 추정하는 표현 (VALUE-13 · QUESTION-FIT-08) */
 export const PARTNER_INTENT = [
   '상대는 분명',

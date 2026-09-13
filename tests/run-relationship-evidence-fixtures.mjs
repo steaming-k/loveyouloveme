@@ -2181,7 +2181,12 @@ async function main() {
     );
     check(
       'TC3 — Deep Report context가 tense를 실어 보낸다',
-      /return \{ tense, insights: built \};/.test(contextBuilders),
+      /*
+        SEMANTIC DECOMPOSITION — 반환문에 Top 3 카드 번들이 조건부로 붙었다
+        (`...(bundles.length > 0 ? { candidates: bundles } : {})`). 검사의 뜻(context가 tense를
+        싣는다)은 그대로이고, 반환문 앞부분이 여전히 `{ tense, insights: built`여야 한다.
+      */
+      /return \{ tense, insights: built(,|\s*\})/.test(contextBuilders),
       'buildDeepReportContext가 tense를 context에 넣지 않는다',
     );
     /** 죽은 필드를 남겨두면 "이 값이 AI에 영향을 준다"는 잘못된 신호가 된다(§47.6) */

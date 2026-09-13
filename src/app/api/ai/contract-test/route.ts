@@ -1,3 +1,4 @@
+import { gateCandidateSemantics } from '@/services/ai/candidateSemanticGate';
 import {
   aggregatePhotoObservations,
   groupDuplicateLikePhotos,
@@ -12,14 +13,12 @@ import {
   isRedundantNarrative,
   limitStockPhraseRepeats,
   scanCompatibilityNarrative,
-  dropTemplateRepeats,
   scanCrossLensNarrative,
   scanDeepNarrativeWithTense,
   scanHistoryNarrative,
   scanLensNarrative,
   scanRelationshipTense,
   scanRelationshipNarrative,
-  scanSemanticNarrative,
   stripRedundantSentences,
 } from '@/services/ai/safety';
 /** v1.43 §46 — 네 Task가 공유하는 근거 귀속 술어 */
@@ -29,6 +28,7 @@ import {
   attachRuleStates,
   parseCompatibilityResponse,
   parseCrossLensResponse,
+  parseCandidateSemantics,
   parseDeepReportResponse,
   parseHistoryResponse,
   parseLensNarrativeResponse,
@@ -37,6 +37,7 @@ import {
   parseRelationshipResponse,
 } from '@/services/ai/schemas';
 import type {
+  CandidateSemanticAllowance,
   EvidenceRef,
   MirrorAxisKey,
   MirrorState,
@@ -73,16 +74,12 @@ interface ContractRequest {
   /** v1.42 §41.11 — Ended Job Safety fixture용. 없으면 `true`(기존 fixture 호환) */
   allowsOutwardQuestions?: unknown;
   /**
-   * v1.46.4 §9 — deep-report semantic fixture용. `{ [insightId]: eventId[] }`.
+   * SEMANTIC DECOMPOSITION A5 — deep-report 카드 semantic fixture용. `CandidateSemanticAllowance[]`.
    *
-   * ⚠️ **없으면 `{}`이고 모든 장면 인용이 거부된다.** 위 `allowedEvidenceRefs`와 기본값
-   * 방향이 반대인 것은 의도적이다 — 그쪽은 v1.42까지의 fixture 30여 개를 그대로
-   * 돌리기 위한 호환 경로이고, 이쪽은 **새 필드**라 호환할 과거가 없다. 그러면
-   * 기본값은 안전한 쪽(거부)이어야 한다.
+   * ⚠️ **없으면 빈 허용집합이고 모든 카드 문장이 거부된다.** 새 필드라 호환할 과거가 없으므로
+   * 기본값은 안전한 쪽(거부)이다 — 실서비스 핸들러와 같은 규칙.
    */
-  allowedSceneIds?: unknown;
-  /** v1.46.4 §36 — 되풀이 검사의 기준이 될 장면 원문. 없으면 검사하지 않는다 */
-  sceneTexts?: unknown;
+  candidates?: unknown;
   /**
    * v1.43 §46 — 근거 귀속 fixture용. `{ [axis|dimensionKey|insightId]: EvidenceRef[] }`.
    *
@@ -459,26 +456,10 @@ export async function POST(request: Request): Promise<Response> {
     const allowedIds = insights.map((item) => item.id);
     const evidenceByInsight = new Map(insights.map((item) => [item.id, item.evidenceRefs]));
 
-    /**
-     * v1.46.4 §9 — Insight별로 **보냈다고 가정할** 장면. fixture가 직접 준다.
-     *
-     * ⚠️ 생략하면 `{}`이고, 그러면 모든 장면 인용이 거부된다 — 장면을 보내지 않은
-     * 호출에서 모델이 장면 id를 들고 오는 것은 지어낸 것이므로 그쪽이 안전한 기본값이다
-     * (실서비스 핸들러와 같은 규칙).
-     */
-    const allowedSceneIds = (
-      body.allowedSceneIds && typeof body.allowedSceneIds === 'object'
-        ? (body.allowedSceneIds as Record<string, string[]>)
-        : {}
-    ) as Record<string, string[]>;
-    /** §36 — 되풀이 검사의 기준이 될 장면 원문. fixture가 넣은 문자열이다 */
-    const sceneTextsByInsight = (
-      body.sceneTexts && typeof body.sceneTexts === 'object'
-        ? (body.sceneTexts as Record<string, string[]>)
-        : {}
-    ) as Record<string, string[]>;
+    /** A5 — 카드별로 **보냈다고 가정할** 근거·장면. fixture가 직접 준다 */
+    const allowances = (Array.isArray(body.candidates) ? body.candidates : []) as CandidateSemanticAllowance[];
 
-    const parsed = parseDeepReportResponse(raw, allowedIds, allowedSceneIds);
+    const parsed = parseDeepReportResponse(raw, allowedIds);
     // §26(E) — 원래 Insight에 없던 evidenceRef를 들고 오면 그 항목 전체를 버린다.
     /** v1.43 §46.1 — 네 Task가 **같은 술어**를 쓴다(`refsWithinAllowed`). 판정은 같다 */
     const refChecked = parsed.filter((item) =>
@@ -518,49 +499,13 @@ export async function POST(request: Request): Promise<Response> {
     );
 
     /*
-      ══ Quality Gate (G) — semantic 계층 (v1.46.4 §9 · §10 · §35 · §36) ═══════
+      ══ Quality Gate (G) — Top 3 카드 semantic (SEMANTIC DECOMPOSITION A5 · A11) ══
 
-      ⚠️ **핸들러와 같은 순서·같은 함수다.** 이 라우트가 핸들러의 사슬을 따라가지
-      않으면 fixture는 사용자가 실제로 보는 것과 다른 결과를 검사한다(이 파일이
-      처음부터 피하려던 실패).
+      ⚠️ **핸들러와 같은 함수 하나다**(`gateCandidateSemantics`). 사슬을 복사해 들고 있지
+      않는다 — 직전 구조에서는 두 벌이었고 주석으로 일치를 약속했다.
     */
-    const semanticViolations: string[] = [];
-    let semanticRejected = 0;
-    const withSemantic = novel.map((item) => {
-      if (!item.semantic) return item;
-      if (item.rejectedEventIds.length > 0) {
-        semanticViolations.push('semantic_event_id_outside_allowed');
-        semanticRejected += 1;
-        return { ...item, semantic: undefined };
-      }
-      const semScan = scanSemanticNarrative(
-        item.semantic,
-        deepTense,
-        sceneTextsByInsight[item.insightId] ?? [],
-      );
-      if (!semScan.safe) {
-        semanticViolations.push(...semScan.violations);
-        semanticRejected += 1;
-        return { ...item, semantic: undefined };
-      }
-      return item;
-    });
-
-    /** §17 — 핸들러와 같은 순서로 틀 반복을 걷어낸다 */
-    const templateCheck = dropTemplateRepeats(
-      withSemantic.filter((item) => item.semantic),
-      (item) => `${item.semantic?.soWhat ?? ''} ${item.semantic?.whyItMatters ?? ''}`,
-    );
-    const keptSemanticIds = new Set(templateCheck.kept.map((item) => item.insightId));
-    const deduped = withSemantic.map((item) =>
-      item.semantic && !keptSemanticIds.has(item.insightId)
-        ? { ...item, semantic: undefined }
-        : item,
-    );
-    if (templateCheck.dropped > 0) {
-      semanticViolations.push('semantic_template_repeat');
-      semanticRejected += templateCheck.dropped;
-    }
+    const parsedSemantics = parseCandidateSemantics(raw, allowances);
+    const semanticGate = gateCandidateSemantics(parsedSemantics, allowances, deepTense);
 
     return Response.json({
       ok: true,
@@ -575,21 +520,22 @@ export async function POST(request: Request): Promise<Response> {
        * 통과한 장면 id는 fixture가 스스로 넣은 값이다(dev 전용 라우트).
        */
       semantic: {
-        parsed: novel.filter((item) => item.semantic).length,
-        kept: deduped.filter((item) => item.semantic).length,
-        rejected: semanticRejected,
-        violations: [...new Set(semanticViolations)],
-        items: deduped
-          .filter((item) => item.semantic)
-          .map((item) => ({
-            insightId: item.insightId,
-            soWhatLength: item.semantic!.soWhat.length,
-            whyLength: item.semantic!.whyItMatters.length,
-            hasVerification: Boolean(item.semantic!.verification),
-            usedEventIds: item.semantic!.usedEventIds,
-          })),
-        /** §9 — 허용집합 밖이라 지운 장면 id. 0이 아니면 그 narrative의 semantic이 버려진다 */
-        rejectedEventIds: novel.flatMap((item) => item.rejectedEventIds),
+        parsed: parsedSemantics.length,
+        kept: semanticGate.kept.length,
+        rejected: parsedSemantics.length - semanticGate.kept.length,
+        violations: [...new Set(semanticGate.violations)],
+        stages: semanticGate.stages,
+        verificationDropped: semanticGate.verificationDropped,
+        items: semanticGate.kept.map((item) => ({
+          candidateId: item.candidateId,
+          semanticMode: item.semanticMode,
+          soWhatLength: item.soWhat.length,
+          whyLength: item.whyItMatters.length,
+          hasVerification: Boolean(item.verification),
+          usedEventIds: item.usedEventIds,
+        })),
+        /** §9 — 허용집합 밖이라 지운 장면 id. 0이 아니면 그 카드 문장이 버려진다 */
+        rejectedEventIds: parsedSemantics.flatMap((item) => item.rejectedEventIds),
       },
       narratives: novel.map((item) => ({
         insightId: item.insightId,

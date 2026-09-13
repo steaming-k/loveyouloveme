@@ -7,7 +7,8 @@ import {
   readJsonBody,
   successResponse,
 } from '../_shared';
-import { runDeepReportTask } from '@/services/ai/handlers';
+import { runDeepReportTask, type DeepReportDiagnostics } from '@/services/ai/handlers';
+import type { CandidateSemanticAllowance, EvidenceRef } from '@/types';
 
 /**
  * POST /api/ai/deep-report-narrative
@@ -30,8 +31,15 @@ export async function POST(request: Request): Promise<Response> {
     return failureResponse('INVALID_OUTPUT', requestId, 400);
   }
 
-  const { inputFingerprint, context, insights, tense, allowedSceneIds, sceneTextsByInsight } =
-    body as Record<string, unknown>;
+  const {
+    inputFingerprint,
+    context,
+    insights,
+    tense,
+    candidates,
+    devModelOverride,
+    devCapture,
+  } = body as Record<string, unknown>;
 
   if (typeof inputFingerprint !== 'string' || !Array.isArray(insights)) {
     return failureResponse('INVALID_OUTPUT', requestId, 400);
@@ -50,35 +58,60 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   /**
-   * v1.46.4 §9 · §36 — **semantic 게이트의 두 입력.**
+   * SEMANTIC DECOMPOSITION A5 — **카드 semantic 게이트의 입력.**
    *
-   * ⚠️ 이 두 줄이 없으면 게이트가 `{}`을 받고 **모든 장면 인용을 거부한다.** 구현
-   * 직후 실측에서 그 상태였다 — 핸들러·파서·프롬프트는 다 됐는데 라우트가 값을
-   * 흘려보내지 않아서, 실제 Provider 경로에서는 semantic이 한 건도 남지 않았다.
-   * `contract-test`는 통과했으므로 fixture만으로는 보이지 않는 종류의 결함이고,
-   * §31이 실제 Provider QA를 필수로 요구한 이유가 이것이다.
+   * ⚠️ 이 값이 흘러오지 않으면 게이트가 빈 허용집합을 받고 **모든 카드 문장을 거부한다.**
+   * v1.46.4 SEMANTIC 구현 직후 실측에서 라우트가 값을 흘려보내지 않아 같은 일이 있었다
+   * (contract-test는 통과했다) — 그래서 이 전달은 실제 Provider QA로 확인한다.
    *
-   * ⚠️ **구조 검증만 하고 내용은 믿지 않는다.** 이 값은 클라이언트가 보낸 것이지만
-   * 여기서 하는 일은 '모델이 인용할 수 있는 범위'를 **좁히는** 것뿐이다 — 넓히는
-   * 방향으로는 쓰이지 않으므로(허용집합 밖은 무조건 거부) 신뢰 경계를 넘지 않는다.
+   * ⚠️ **구조 검증만 하고 내용은 믿지 않는다.** 이 값이 하는 일은 모델이 인용할 수 있는
+   * 범위를 **좁히는** 것뿐이다 — 허용집합 밖은 무조건 거부되므로 신뢰 경계를 넘지 않는다.
+   * ⚠️ 카드는 최대 3장이다(A5). 더 오면 앞의 3장만 쓴다.
    */
-  const sceneIdsOf = (value: unknown): Record<string, string[]> => {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-    const out: Record<string, string[]> = {};
-    for (const [key, list] of Object.entries(value as Record<string, unknown>)) {
-      if (!Array.isArray(list)) continue;
-      out[key] = list.filter((item): item is string => typeof item === 'string');
-    }
-    return out;
+  const allowancesOf = (value: unknown): CandidateSemanticAllowance[] => {
+    if (!Array.isArray(value)) return [];
+    const strings = (list: unknown): string[] =>
+      Array.isArray(list) ? list.filter((item): item is string => typeof item === 'string') : [];
+    return value
+      .flatMap((entry): CandidateSemanticAllowance[] => {
+        if (!entry || typeof entry !== 'object') return [];
+        const item = entry as Record<string, unknown>;
+        if (typeof item.candidateId !== 'string') return [];
+        return [
+          {
+            candidateId: item.candidateId,
+            evidenceRefs: Array.isArray(item.evidenceRefs) ? (item.evidenceRefs as EvidenceRef[]) : [],
+            eventIds: strings(item.eventIds),
+            sceneTexts: strings(item.sceneTexts),
+          },
+        ];
+      })
+      .slice(0, 3);
   };
+
+  /**
+   * v1.46.4 Model A/B §9 — **개발 환경에서만** 읽는 두 필드.
+   *
+   * ⚠️ Production에서는 요청 본문에 무엇이 와도 무시한다. 사용자가 모델을 고르거나
+   * 원 응답을 받아가는 경로를 만들지 않는다(§9 마지막 줄).
+   */
+  const isDev = process.env.NODE_ENV !== 'production';
+  let diagnostics: DeepReportDiagnostics | null = null;
 
   const result = await runDeepReportTask({
     inputFingerprint,
     context,
     tense,
     insights: insights as never,
-    allowedSceneIds: sceneIdsOf(allowedSceneIds),
-    sceneTextsByInsight: sceneIdsOf(sceneTextsByInsight),
+    candidates: allowancesOf(candidates),
+    ...(isDev && typeof devModelOverride === 'string' ? { devModelOverride } : {}),
+    ...(isDev && devCapture === true
+      ? {
+          onDiagnostics: (value: DeepReportDiagnostics) => {
+            diagnostics = value;
+          },
+        }
+      : {}),
   });
 
   const durationMs = Date.now() - startedAt;
@@ -89,5 +122,8 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   logAi({ requestId, task: 'deep-report-narrative', status: 'ok', durationMs });
+  if (diagnostics) {
+    return Response.json({ ok: true, data: result.data, requestId, dev: { ...(diagnostics as DeepReportDiagnostics), durationMs } });
+  }
   return successResponse(result.data, requestId);
 }

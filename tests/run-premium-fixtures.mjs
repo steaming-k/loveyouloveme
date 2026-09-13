@@ -1109,7 +1109,7 @@ console.log('\nLOVY-01~12 — 캐릭터 통합 · 러비 한마디 · 중간 메
   */
   check(
     'LOVY-11 · deepReport promptVersion이 고정돼 있다',
-    promptVersions.includes("deepReport: 'deep-report-v6-semantic'"),
+    promptVersions.includes("deepReport: 'deep-report-v7-candidate-semantic'"),
   );
   const promptTemplates = await readFile(join(ROOT, 'src/services/ai/promptTemplates.ts'), 'utf8');
   const contextBuilders = await readFile(join(ROOT, 'src/services/ai/contextBuilders.ts'), 'utf8');
@@ -1530,7 +1530,7 @@ console.log('\nPOSTREV-01~18 — Eligibility 불변 · 체크포인트 · Self-o
   */
   check(
     'POSTREV-17 · deepReport promptVersion 불변',
-    promptVersions.includes("deepReport: 'deep-report-v6-semantic'"),
+    promptVersions.includes("deepReport: 'deep-report-v7-candidate-semantic'"),
   );
   const envSource = await readFile(join(ROOT, 'src/lib/env.ts'), 'utf8');
   check(
@@ -1898,7 +1898,7 @@ console.log('\nPROD-UNLOCK-01~10 — Production Deep Report Unlock · payment �
   */
   check(
     'PROD-UNLOCK-09 · deepReport promptVersion이 고정돼 있다',
-    promptVersions.includes("deepReport: 'deep-report-v6-semantic'"),
+    promptVersions.includes("deepReport: 'deep-report-v7-candidate-semantic'"),
   );
 
   /* ── PROD-UNLOCK-10 · Premium eligibility invariant 유지 ───────────────── */
@@ -2240,14 +2240,23 @@ console.log('\nEVT-01 ~ EVT-14 — 관계 사건 (User-reported Relationship Eve
   const semanticSrc = stripComments(
     await readFile(join(ROOT, 'src/lib/logic/semanticEventContext.ts'), 'utf8'),
   );
+  /*
+    SEMANTIC DECOMPOSITION — 장면은 이제 Insight가 아니라 **확정된 Top 3 카드**에 실린다.
+    관련성 판정은 여전히 결정론 계층(`selectRelevantEvents`)이 Candidate 엔진 안에서 하고,
+    builder는 그 목록을 카드별로 나눠 담기만 한다. 검사의 뜻(AI에게 고르라고 시키지 않는다)은
+    그대로이고, 위임 경로의 이름만 바뀌었다.
+  */
+  const candidatesSrc = stripComments(
+    await readFile(join(ROOT, 'src/lib/logic/insightCandidates.ts'), 'utf8'),
+  );
   check(
     'EVT-14 · Deep Report builder가 선별을 결정론 계층에 위임한다 (AI에게 고르라고 시키지 않는다)',
-    /buildSemanticEventContexts\(\{/.test(providerSrc) &&
-      /selectRelevantEvents\(/.test(semanticSrc),
+    /allocateCandidateScenes\(\{/.test(providerSrc) &&
+      /selectRelevantEvents\(/.test(candidatesSrc),
   );
   check(
     'EVT-14 · Deep Report 장면에 호출당 상한이 있다 (입력량에 비례하지 않는다)',
-    /const PER_INSIGHT_LIMIT = \d+/.test(semanticSrc) && /const TOTAL_LIMIT = \d+/.test(semanticSrc),
+    /const PER_CANDIDATE_LIMIT = \d+/.test(semanticSrc) && /const TOTAL_LIMIT = \d+/.test(semanticSrc),
   );
   check(
     'EVT-14 · Deep Report 장면의 자유 입력이 경계에서 다시 잘린다',
@@ -2255,8 +2264,8 @@ console.log('\nEVT-01 ~ EVT-14 — 관계 사건 (User-reported Relationship Eve
       /sanitizeFreeText\(event\.myReaction, 80\)/.test(semanticSrc),
   );
   check(
-    'EVT-14 · 장면이 없으면 relatedScenes 필드 자체가 없다 (빈 배열을 보내지 않는다)',
-    /scenes\.length > 0\s*\?\s*\{/.test(providerSrc),
+    'EVT-14 · 해석할 카드가 없으면 candidates 필드 자체가 없다 (빈 배열을 보내지 않는다)',
+    /bundles\.length > 0 \? \{ candidates: bundles \} : \{\}/.test(providerSrc),
   );
   /**
    * 렌즈 Task는 사건을 싣는다. 대신 **세 가지 제한**이 코드에 실제로 있어야 한다 —

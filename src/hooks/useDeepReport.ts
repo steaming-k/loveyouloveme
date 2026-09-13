@@ -22,6 +22,7 @@ import {
 } from '@/lib/logic/relationshipStage';
 import { soloModeOfTarget } from '@/lib/logic/soloMode';
 import { usePremiumLensAi } from '@/hooks/usePremiumLensAi';
+import { semanticTopCandidates } from '@/lib/logic/insightCandidates';
 import { buildRelationshipDeepReport } from '@/services/premiumService';
 import { useSession } from '@/state/SessionProvider';
 
@@ -57,7 +58,49 @@ export function useDeepReport(enabled: boolean) {
 
   const insights = useCrossSourceInsights();
   const resolverContext = useEvidenceContext();
-  const narrative = useDeepReportNarrative(insights, enabled);
+  /**
+   * ══ SEMANTIC DECOMPOSITION A1 — **Top 3는 AI 호출 전에 확정된다** ══════════
+   *
+   * 결정론 리포트(`narratives: []` · `candidateSemantics: []`)를 먼저 만들고, 그 첫 화면
+   * 카드 셋을 AI에게 넘긴다. Candidate 집합·순서는 AI 출력에 따라 바뀌지 않으므로
+   * (SEM-DEC-02), 여기서 고른 셋과 아래 최종 리포트의 셋이 같다.
+   *
+   * ⚠️ 규칙 기반 리포트를 두 번 조립한다. 순수 함수이고 입력이 메모되어 있어, AI 응답이
+   * 도착하기 전까지는 한 번만 돈다.
+   */
+  const lifecycle = useMemo(
+    () => deepReportJobContext(resolveRelationshipContext(answers).job),
+    [answers],
+  );
+  const baseInput = useMemo(
+    () => ({
+      insights,
+      resolverContext,
+      compatibility,
+      historyReport,
+      repeatedSignals: repeated,
+      target: answers.target,
+      mirror,
+      /**
+       * v1.40 §37.9 — Ended Safety는 무료/유료 경계와 무관하다. 화면과 **같은 술어**를 쓴다.
+       * v1.40.1 §38.2 — 술어 하나가 아니라 문맥 객체 하나를 넘긴다.
+       */
+      lifecycle,
+      /** v1.46 PremiumLens — 관계 렌즈의 생년월일 유효성 판정에만 쓴다 */
+      today: new Date(),
+    }),
+    [insights, resolverContext, compatibility, historyReport, repeated, answers.target, mirror, lifecycle],
+  );
+  const baseReport = useMemo(
+    () => buildRelationshipDeepReport({ ...baseInput, narratives: [], candidateSemantics: [] }),
+    [baseInput],
+  );
+  const topCandidates = useMemo(
+    () => semanticTopCandidates(baseReport.candidates),
+    [baseReport],
+  );
+
+  const narrative = useDeepReportNarrative(insights, enabled, topCandidates);
 
   const analysisId = useMemo(
     () => analysisFingerprint(answers.status, answers.declared, answers.experience),
@@ -66,38 +109,14 @@ export function useDeepReport(enabled: boolean) {
 
   const report = useMemo(
     () =>
-      buildRelationshipDeepReport({
-        insights,
-        narratives: narrative.data?.narratives ?? [],
-        resolverContext,
-        compatibility,
-        historyReport,
-        repeatedSignals: repeated,
-        target: answers.target,
-        mirror,
-        /**
-         * v1.40 §37.9 — Ended Safety는 무료/유료 경계와 무관하다. 화면과 **같은 술어**를 쓴다.
-         * v1.40.1 §38.2 — 술어 하나가 아니라 문맥 객체 하나를 넘긴다. 넘길 값이
-         * 늘어날 때마다 호출부를 고치면 또 한 곳이 빠진다 — 그게 v1.40의 결함이었다.
-         */
-        lifecycle: deepReportJobContext(resolveRelationshipContext(answers).job),
-        /**
-         * v1.46 PremiumLens — 관계 렌즈의 생년월일 유효성 판정에만 쓴다.
-         * 일주·태양궁 계산 결과는 날짜 문자열로만 결정되므로 오늘이 바뀜다고
-         * 렌즈 결과가 바뀌지 않는다.
-         */
-        today: new Date(),
-      }),
-    [
-      insights,
-      narrative.data,
-      resolverContext,
-      compatibility,
-      historyReport,
-      repeated,
-      mirror,
-      answers,
-    ],
+      narrative.data
+        ? buildRelationshipDeepReport({
+            ...baseInput,
+            narratives: narrative.data.narratives,
+            candidateSemantics: narrative.data.candidateSemantics ?? [],
+          })
+        : baseReport,
+    [baseInput, baseReport, narrative.data],
   );
 
   /**

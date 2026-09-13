@@ -192,7 +192,7 @@ export const PROMPT_VERSIONS = {
    * ⚠️ 지문도 함께 넓혔다. `deepReportFingerprint`에 사건 본문 해시와 장면 배분이
    * 들어간다 — 그게 없으면 사건 본문을 고쳐도 같은 문장이 캐시에서 나온다(§43).
    */
-  deepReport: 'deep-report-v6-semantic',
+  deepReport: 'deep-report-v7-candidate-semantic',
   /**
    * v1.46 AI Lens §6 — **렌즈별 프롬프트 4개.**
    *

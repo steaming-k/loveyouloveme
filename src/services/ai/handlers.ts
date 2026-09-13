@@ -6,7 +6,14 @@ import {
   buildMeta,
   evidenceCoverageLevel,
 } from './fallback';
-import { AiProviderError, resolveProvider, type AiProvider, type ProviderImage } from './provider';
+import { deepReportModelFor } from './modelRouting';
+import {
+  AiProviderError,
+  resolveProvider,
+  type AiProvider,
+  type AiProviderUsage,
+  type ProviderImage,
+} from './provider';
 import {
   COMPATIBILITY_SYSTEM_PROMPT,
   DEEP_REPORT_SYSTEM_PROMPT,
@@ -29,8 +36,6 @@ import {
   scanCrossLensNarrative,
   scanLensNarrative,
   scanDeepNarrativeWithTense,
-  dropTemplateRepeats,
-  scanSemanticNarrative,
   scanHistoryNarrative,
   scanPhotoObservation,
   scanRelationshipNarrative,
@@ -52,12 +57,14 @@ import {
   attachRuleStates,
   parseCompatibilityResponse,
   parseCrossLensResponse,
+  parseCandidateSemantics,
   parseDeepReportResponse,
   parseHistoryResponse,
   parseLensNarrativeResponse,
   parsePhotoObservationResponse,
   parseRelationshipResponse,
 } from './schemas';
+import { gateCandidateSemantics } from './candidateSemanticGate';
 import { readAiConfig } from './serverEnv';
 import {
   aggregatePhotoObservations,
@@ -69,6 +76,7 @@ import {
 import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import type {
   AiFailureReason,
+  CandidateSemanticAllowance,
   AiMode,
   AiTask,
   AiObservedTrait,
@@ -862,31 +870,78 @@ export interface DeepReportRequest {
    */
   tense: RelationshipTense;
   /**
-   * v1.46.4 §9 — Insight별로 **실제로 payload에 실은 장면 id.**
+   * SEMANTIC DECOMPOSITION A5 — Top 3 카드별로 **실제로 payload에 실은** 근거·장면.
    *
-   * ⚠️ `context`에서 다시 뽑지 않고 최상위로 받는다(v1.42 §40.13의 계약 그대로 —
-   * `context: unknown`이므로 핸들러가 그 안을 들여다보지 않는다). 값은
-   * `contextBuilders.allowedSceneIdsOf`가 만든다.
+   * ⚠️ `context`에서 다시 뽑지 않고 최상위로 받는다(v1.42 §40.13 — `context: unknown`
+   * 이므로 핸들러가 그 안을 들여다보지 않는다). 값은 `contextBuilders.deepReportAllowancesOf`
+   * 가 만든다.
    *
-   * ⚠️ 생략하면 모든 장면 인용이 거부된다. 장면을 보내지 않은 호출에서 모델이 장면
-   * id를 들고 오는 것은 지어낸 것이므로, 그쪽이 안전한 기본값이다.
+   * ⚠️ 생략하면 카드 semantic이 전부 거부된다. 카드를 보내지 않은 호출에서 모델이
+   * candidateId를 들고 오는 것은 지어낸 것이므로, 그쪽이 안전한 기본값이다.
    */
-  allowedSceneIds?: Readonly<Record<string, readonly string[]>>;
+  candidates?: readonly CandidateSemanticAllowance[];
   /**
-   * v1.46.4 §36 — Insight별로 보낸 장면의 **원문.** 되풀이 검사의 기준이다.
+   * v1.46.4 Model A/B §9 — **개발 환경 전용** 모델 override. A/B 하네스만 넘긴다.
    *
-   * ⚠️ 프롬프트에는 들어가지 않는다 — 모델은 이미 `context`에서 같은 문장을 받았다.
-   * 여기 있는 것은 **서버가 대조할 사본**이고, 렌즈 Task가 `deterministicText`를
-   * 같은 이유로 최상위에서 받는 것과 같은 구조다(§31).
+   * 라우트가 NODE_ENV !== 'production'일 때만 채우고, deepReportModelFor가 한 번 더
+   * 확인한다. Production에서 사용자가 모델을 고르는 경로는 없다.
    */
-  sceneTextsByInsight?: Readonly<Record<string, readonly string[]>>;
+  devModelOverride?: string;
+  /**
+   * v1.46.4 Model A/B §13 · §39 — **개발 환경 전용** 계측 콜백.
+   *
+   * 원문(raw)이 들어간다. 그래서 로그로 남기지 않고 콜백으로만 넘기며, 라우트는 개발
+   * 환경 + 명시 요청(devCapture: true)일 때만 이 콜백을 준다 — 제품 경로에서는 호출되지
+   * 않는다.
+   */
+  onDiagnostics?: (diagnostics: DeepReportDiagnostics) => void;
+}
+
+/** v1.46.4 Model A/B §13 — semantic 계층이 **어디서** 탈락했는지 */
+export interface DeepReportDiagnostics {
+  model: string;
+  usage: AiProviderUsage | null;
+  stages: {
+    /** 모델이 semantic 객체를 만든 narrative 수 (파싱 전) */
+    attempted: number;
+    /** 스키마 파싱을 통과한 semantic 수 */
+    parsed: number;
+    /** 기존 narrative 게이트(E·B·C·F)를 통과한 narrative에 붙어 남은 semantic 수 */
+    survivedBaseGates: number;
+    /** §9 장면 id 부분집합을 통과한 수 */
+    grounded: number;
+    /** 안전 검사(인과·예측·진단·상대 마음·시제)를 통과한 수 */
+    safetyPassed: number;
+    /** 문체 검사(메타 언어·상투구·복창·틀 반복)를 통과한 수 */
+    stylePassed: number;
+    /** 최종 채택 */
+    accepted: number;
+  };
+  /** 탈락 사유 라벨. 문장 원문이 아니다 */
+  violations: string[];
+  /** Provider 원 응답. 개발 전용 QA 기록(§39)에만 쓴다 */
+  raw: unknown;
+}
+
+function isObjectLike(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 export async function runDeepReportTask(
   request: DeepReportRequest,
 ): Promise<TaskResult<DeepNarrativeBundle>> {
   const config = readAiConfig();
-  const provider = resolveProvider(false);
+  /**
+   * v1.46.4 Model A/B §8 — **이 Task만** 모델을 따로 고른다. 다른 Task는
+   * resolveProvider(false)를 인자 없이 부르므로 영향이 없다.
+   */
+  const deepModel = deepReportModelFor({
+    textModel: config.textModel,
+    envOverride: process.env.AI_MODEL_DEEP_REPORT,
+    devOverride: request.devModelOverride,
+    nodeEnv: process.env.NODE_ENV,
+  });
+  const provider = resolveProvider(false, deepModel);
 
   const metaFor = (mode: AiMode, model?: string) =>
     buildMeta({
@@ -920,7 +975,7 @@ export async function runDeepReportTask(
       userPayload: wrapUserData({ context: request.context }),
     });
 
-    const parsed = parseDeepReportResponse(raw, allowedIds, request.allowedSceneIds ?? {});
+    const parsed = parseDeepReportResponse(raw, allowedIds);
 
     /**
      * Quality Gate (E) — 원래 Insight에 없던 evidenceRef를 들고 오면 그 항목 전체를 버린다.
@@ -998,73 +1053,17 @@ export async function runDeepReportTask(
      * 개수와 위반 라벨만이다(§34 Privacy).
      */
     /**
-     * ══ Quality Gate (G) — **semantic 계층** (v1.46.4 §9 · §10 · §35 · §36) ════
+     * ══ Quality Gate (G) — **Top 3 카드 semantic** (SEMANTIC DECOMPOSITION A5 · A11) ══
      *
-     * ⚠️ (E)(B)(C)(F)를 통과한 narrative의 **semantic만 따로** 버릴 수 있다. 두 필드
-     * 묶음이 화면의 **다른 자리**에 그려지기 때문이다:
+     * ⚠️ (E)(B)(C)(F)와 **독립이다.** 직전 구조에서 semantic은 narrative 안에 있었고, 그
+     * narrative가 (F)에서 떨어지면 첫 화면 문장도 함께 사라졌다. 이제 두 출력은 화면의
+     * 다른 자리이고 다른 키(insightId / candidateId)로 검증된다.
      *
-     * ```
-     * headline · interpretation   리포트 아래쪽 연결 목록
-     * semantic.*                  유료 첫 화면 주인공 카드
-     * ```
-     *
-     * 첫 화면 쪽이 더 엄격하다(메타 언어 금지 · 입력 되풀이 금지). 그래서 연결 목록에
-     * 쓸 만한 문장이 첫 화면에는 못 나가는 경우가 정상적으로 생기고, 그때 narrative
-     * 전체를 버리면 **아래쪽 카드까지 빈다** — 더 엄격한 기준 하나가 덜 엄격한 자리의
-     * 내용을 지우는 것이고, §9가 요구한 것은 그게 아니다.
-     *
-     * semantic이 버려지면 그 Candidate는 결정론 조립문을 쓴다(§18) — 첫 화면이 비는
-     * 자리는 없다.
+     * ⚠️ 사슬은 `gateCandidateSemantics` 하나다 — dev 검증기(contract-test)와 같은 함수다.
      */
-    const semanticViolations: string[] = [];
-    let semanticRejected = 0;
-    const withSemantic = novel.map((item) => {
-      if (!item.semantic) return item;
-
-      /* §9 — 허용집합 밖의 장면 id를 들고 왔으면 그것만으로 버린다 */
-      if (item.rejectedEventIds.length > 0) {
-        semanticViolations.push('semantic_event_id_outside_allowed');
-        semanticRejected += 1;
-        return { ...item, semantic: undefined };
-      }
-
-      const scan = scanSemanticNarrative(
-        item.semantic,
-        request.tense,
-        request.sceneTextsByInsight?.[item.insightId] ?? [],
-      );
-      if (!scan.safe) {
-        semanticViolations.push(...scan.violations);
-        semanticRejected += 1;
-        return { ...item, semantic: undefined };
-      }
-      return item;
-    });
-
-    /*
-      §17 — **카드들이 같은 틀로 수렴했는지**는 항목 하나만 봐서는 알 수 없다.
-
-      실측에서 semantic 7건이 주제 이름만 갈아 끼운 같은 문장이었다. 각 문장은
-      개별 검사를 통과했고(금지어가 없었다), 문제는 **문장들 사이의 거리**였다.
-      그래서 항목 단위 게이트 뒤에 한 번 더 돌린다 —
-      `limitStockPhraseRepeats`(렌즈 §8)가 같은 자리에서 배운 구조 그대로다.
-
-      ⚠️ 버려진 카드는 결정론 조립문을 쓴다. 실측 기준으로 그 문장이 더 낫다(§18).
-    */
-    const templateCheck = dropTemplateRepeats(
-      withSemantic.filter((item) => item.semantic),
-      (item) => `${item.semantic!.soWhat} ${item.semantic!.whyItMatters}`,
-    );
-    const keptSemanticIds = new Set(templateCheck.kept.map((item) => item.insightId));
-    const deduped = withSemantic.map((item) =>
-      item.semantic && !keptSemanticIds.has(item.insightId)
-        ? { ...item, semantic: undefined }
-        : item,
-    );
-    if (templateCheck.dropped > 0) {
-      semanticViolations.push('semantic_template_repeat');
-      semanticRejected += templateCheck.dropped;
-    }
+    const allowances = request.candidates ?? [];
+    const parsedSemantics = parseCandidateSemantics(raw, allowances);
+    const semanticGate = gateCandidateSemantics(parsedSemantics, allowances, request.tense);
 
     logAiFilter({
       task: 'deep-report-narrative',
@@ -1079,7 +1078,7 @@ export async function runDeepReportTask(
       refChecked: refChecked.length,
       rejectedRefSources: rejectedRefs,
       safe: scan.items.length,
-      violations: [...scan.violations, ...semanticViolations],
+      violations: [...scan.violations, ...semanticGate.violations],
       extra: {
         novel: novel.length,
         /**
@@ -1087,13 +1086,41 @@ export async function runDeepReportTask(
          * 게이트가 몇 개를 버렸는지 구분해서 남긴다. 하나로 합치면 "프롬프트가
          * 문제인가 게이트가 과했는가"를 구분할 수 없다(v1.27이 배운 것 그대로).
          */
-        semanticParsed: novel.filter((item) => item.semantic).length,
-        semanticRejected,
-        semanticKept: deduped.filter((item) => item.semantic).length,
+        semanticParsed: parsedSemantics.length,
+        semanticRejected: parsedSemantics.length - semanticGate.kept.length,
+        semanticKept: semanticGate.kept.length,
+        verificationDropped: semanticGate.verificationDropped,
+        /** §8 · §26 — 어느 모델이 얼마나 썼는지. 토큰 수는 사용자 데이터가 아니다 */
+        model: provider.model,
+        inTokens: provider.lastUsage?.inputTokens ?? -1,
+        outTokens: provider.lastUsage?.outputTokens ?? -1,
       },
     });
 
-    const narratives: DeepNarrative[] = deduped.map((item) => ({
+    if (request.onDiagnostics) {
+      const rawSemantics =
+        isObjectLike(raw) && Array.isArray(raw.candidateSemantics)
+          ? (raw.candidateSemantics as unknown[])
+          : [];
+      request.onDiagnostics({
+        model: provider.model,
+        usage: provider.lastUsage,
+        stages: {
+          attempted: rawSemantics.filter(isObjectLike).length,
+          parsed: semanticGate.stages.parsed,
+          /* 카드 semantic은 narrative 게이트와 독립이다 — 파싱 통과가 곧 다음 단계 입력이다 */
+          survivedBaseGates: semanticGate.stages.parsed,
+          grounded: semanticGate.stages.grounded,
+          safetyPassed: semanticGate.stages.safetyPassed,
+          stylePassed: semanticGate.stages.stylePassed,
+          accepted: semanticGate.stages.accepted,
+        },
+        violations: [...scan.violations, ...semanticGate.violations],
+        raw,
+      });
+    }
+
+    const narratives: DeepNarrative[] = novel.map((item) => ({
       insightId: item.insightId,
       headline: item.headline,
       interpretation: item.interpretation,
@@ -1101,12 +1128,15 @@ export async function runDeepReportTask(
       uncertainty: item.uncertainty,
       conversationQuestion: item.conversationQuestion,
       evidenceRefs: item.evidenceRefs,
-      ...(item.semantic ? { semantic: item.semantic } : {}),
     }));
 
     return {
       ok: true,
-      data: { narratives, meta: metaFor(config.mode === 'mock' ? 'mock' : 'real', provider.model) },
+      data: {
+        narratives,
+        candidateSemantics: semanticGate.kept,
+        meta: metaFor(config.mode === 'mock' ? 'mock' : 'real', provider.model),
+      },
     };
   } catch (error) {
     return failureFrom(error);

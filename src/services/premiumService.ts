@@ -46,6 +46,7 @@ import type {
   ConversationQuestion,
   CrossSourceInsight,
   DeepApproachInsight,
+  CandidateSemanticNarrative,
   DeepNarrative,
   HistoryReport,
   MbtiLensReport,
@@ -675,6 +676,12 @@ export function buildRelationshipDeepReport(input: {
   /** 이미 §6 우선순위로 정렬된 목록(`rankInsights`/`buildCrossSourceInsights`의 반환값) */
   insights: readonly CrossSourceInsight[];
   narratives: readonly DeepNarrative[];
+  /**
+   * SEMANTIC DECOMPOSITION A5 — Top 3 카드별 AI 문장. **필수다.** AI를 부르지 않는
+   * 호출부는 `[]`를 명시한다 — optional이면 새 호출부가 빼먹어도 tsc가 모르고, 그러면
+   * 그 화면만 조용히 결정론 문장으로 남는다(v1.40.1 §38.2와 같은 판단).
+   */
+  candidateSemantics: readonly CandidateSemanticNarrative[];
   resolverContext: EvidenceResolverContext;
   compatibility: CompatibilityResult;
   historyReport: HistoryReport;
@@ -724,6 +731,7 @@ export function buildRelationshipDeepReport(input: {
   const {
     insights,
     narratives,
+    candidateSemantics,
     resolverContext,
     compatibility,
     historyReport,
@@ -887,16 +895,12 @@ export function buildRelationshipDeepReport(input: {
       ),
     ),
     /**
-     * v1.46.4 §7 ~ §9 — **AI가 장면의 의미까지 읽은 문장.**
+     * SEMANTIC DECOMPOSITION A5 — **Top 3 카드에 candidateId로 붙는 문장.**
      *
-     * ⚠️ `narratives`는 이 함수가 이미 받고 있던 값이다(`buildConnections`가 쓴다).
-     * 새 호출이 아니다 — 같은 Deep Report 응답의 다른 필드(`semantic`)를 첫 화면이
-     * 쓰기 시작한 것뿐이고, 그래서 Provider 호출 수는 그대로 5회다(§42).
-     *
-     * ⚠️ 비어 있으면(AI 실패 · Demo · provider 미설정) Candidate는 결정론 조립문을
-     * 쓴다. 그 경로는 v1.46.4 HARDENING과 글자 그대로 같다(§18 · VALUE-12).
+     * ⚠️ 같은 Deep Report 응답의 다른 필드다 — Provider 호출 수는 그대로 5회다(§42).
+     * ⚠️ 비어 있으면(AI 실패 · Demo · provider 미설정) 결정론 조립문을 쓴다(§18).
      */
-    narratives,
+    candidateSemantics,
   });
 
   return {

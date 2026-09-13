@@ -270,6 +270,7 @@ export async function POST(request: Request): Promise<Response> {
   const deepReport = buildRelationshipDeepReport({
     insights,
     narratives: [],
+    candidateSemantics: [],
     resolverContext: {
       answers,
       validated: [],

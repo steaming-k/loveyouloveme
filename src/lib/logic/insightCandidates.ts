@@ -8,8 +8,8 @@ import { RELATIONSHIP_EVENT_LABEL } from '@/data/relationshipEvents';
 import type { SelfLevel } from '@/data/firstContact';
 import { chapterSoWhatOf } from '@/lib/premiumSoWhat';
 import type {
+  CandidateSemanticNarrative,
   CrossSourceInsight,
-  DeepNarrative,
   EvidenceRef,
   InsightCandidate,
   InsightConfidence,
@@ -25,6 +25,7 @@ import type {
   TargetProfile,
   UserFitQuestion,
 } from '@/types';
+import { refsWithinAllowed } from './allowedEvidence';
 import { repeatedWithinAnalysis, selectRelevantEvents } from './eventRelevance';
 import { buildUserFitQuestions } from './userFitQuestions';
 
@@ -448,17 +449,18 @@ export interface InsightCandidateInput {
   /** §10 — Candidate 하나에 붙일 장면 수. FREE와 Premium이 서로 다른 예산을 쓴다 */
   eventsPerCandidate?: number;
   /**
-   * v1.46.4 §7 ~ §9 — **Deep Report AI가 장면의 의미까지 읽고 만든 문장.**
+   * v1.46.4 SEMANTIC DECOMPOSITION A5 · A6 — **Top 3 카드에 candidateId로 직접 붙는 문장.**
    *
-   * ⚠️ 생략하면 v1.46.4 HARDENING과 **완전히 같은 동작**이다(결정론 조립문만 쓴다).
-   * AI 실패·Demo 모드·provider 미설정에서 이 배열이 비고, 그때 첫 화면이 비는 자리는
-   * 없다 — §18이 AXIS_VERDICT를 삭제하지 않고 fallback으로 남긴 이유다.
+   * ⚠️ 생략하거나 비면 결정론 조립문만 쓴다(AI 실패·Demo·provider 미설정). 첫 화면이
+   * 비는 자리는 없다 — §18이 AXIS_VERDICT를 fallback으로 남긴 이유다.
    *
-   * ⚠️ **여기 들어오는 값은 이미 서버 게이트를 통과했다**(§9 · §10 · §35 · §36).
-   * 이 파일에서 안전 검사를 다시 하지 않는다 — 두 곳에서 검사하면 한쪽 기준만
-   * 조정되고, 그러면 '어디서 걸렀는지' QA가 구분할 수 없다.
+   * ⚠️ **안전 검사는 서버 게이트가 이미 했다.** 이 파일은 '이 카드가 인용할 수 있었던
+   * 장면·근거인가'(부분집합)만 한 번 더 본다 — 판정 계층을 두 벌 만들지 않는다.
+   *
+   * ⚠️ **Candidate 집합·순서를 바꾸지 않는다**(A7). 문장은 dedup·정렬이 끝난 뒤에
+   * 얹힌다 — 그래서 AI 호출 전에 고른 Top 3와 화면의 Top 3가 같다(SEM-DEC-02).
    */
-  narratives?: readonly DeepNarrative[];
+  candidateSemantics?: readonly CandidateSemanticNarrative[];
 }
 
 /* ═══════════════════════════════════════════════════════════ 본체 */
@@ -473,17 +475,12 @@ export function buildInsightCandidates(input: InsightCandidateInput): InsightCan
     allowsOutwardQuestions,
     usedFingerprints,
     eventsPerCandidate = 3,
-    narratives = [],
+    candidateSemantics = [],
   } = input;
 
   const byId = new Map(insights.map((insight) => [insight.id, insight]));
   const events = target.events ?? [];
   const repeated = repeatedWithinAnalysis(events);
-  const semanticByInsight = new Map(
-    narratives
-      .filter((narrative) => narrative.semantic)
-      .map((narrative) => [narrative.insightId, narrative.semantic!]),
-  );
 
   /*
     ⚠️ fingerprint 집합은 **Candidate를 만들어 가며 자란다.** 처음에는 FREE에서 쓴
@@ -594,44 +591,15 @@ export function buildInsightCandidates(input: InsightCandidateInput): InsightCan
       것을 센다 — `composed`는 '조립 재료가 있었는가'(VALUE-03의 기준), `soWhatSource`는
       '실제로 어느 계층이 썼는가'(§19 fallback 사용률)다. 하나로 합치면 AI가 성공한
       세션에서 VALUE-03이 무엇을 검사하는지 알 수 없게 된다.
+
+      ⚠️ **SEMANTIC DECOMPOSITION A6 — 이 루프는 결정론 문장만 만든다.** 예전에는 여기서
+      '판정을 정한 Insight'의 semantic을 Chapter 안에서 찾아 붙였고, 그 매핑이 A0 감사의
+      두 loss point였다. AI 문장은 dedup·정렬이 끝난 뒤 `applyCandidateSemantics`가
+      candidateId로 직접 얹는다.
     */
     const core = primaryAxis ? AXIS_VERDICT[primaryAxis][verdict] : undefined;
     const composed = Boolean(core);
     const fallback = chapterSoWhatOf(chapter, { tense });
-
-    /*
-      §8 — 이 Candidate의 semantic은 **판정을 정한 Insight**의 것이다.
-
-      ⚠️ 왜 '아무거나 하나'가 아닌가: Chapter 하나가 Insight 여러 개를 품을 수 있고,
-      Candidate의 축·판정은 그 중 **가장 강한 것**에서 나왔다(위 `verdict`·`primaryAxis`).
-      장면 선별도 그 값으로 했으므로, 다른 Insight의 narrative를 붙이면 문장이 말하는
-      이야기와 화면의 근거·장면이 서로 다른 것을 가리킨다.
-
-      ⚠️ 그래서 순서가 아니라 **일치**로 고른다. 먼저 축·판정이 같은 Insight를 찾고,
-      없으면 붙이지 않는다 — 억지로 채우면 위 문제가 조용히 생긴다.
-    */
-    const governing = linkedInsights.find(
-      (insight) =>
-        (insight.axis ?? null) === primaryAxis && TYPE_TO_VERDICT[insight.type] === verdict,
-    );
-    const semanticRaw = governing ? semanticByInsight.get(governing.id) : undefined;
-
-    /*
-      §9 — **Candidate 쪽에서 부분집합을 한 번 더 확인한다.**
-
-      서버 게이트는 '이 Insight에 보낸 장면'으로 검증했다. Candidate의 장면 목록은
-      그것과 **같은 함수·같은 입력**으로 만들어지므로 보통 일치하지만, 두 계층이
-      독립적으로 계산하는 값이라 일치를 가정하지 않는다 — 어긋나면 화면이 '근거 토글에
-      없는 장면'을 근거로 삼은 문장을 그리게 된다.
-
-      ⚠️ 어긋났을 때 semantic을 **버린다**(문장만 남기지 않는다). 근거와 문장이 다른
-      것을 가리키는 카드는 조립문보다 나쁘다.
-    */
-    const semantic = (() => {
-      if (!semanticRaw) return undefined;
-      const allowed = new Set(linkedEvents.map((event) => event.id));
-      return semanticRaw.usedEventIds.every((id) => allowed.has(id)) ? semanticRaw : undefined;
-    })();
 
     const composedSoWhat = core
       ? `${core}${eventClause(linkedEvents, repeated)}`
@@ -642,15 +610,12 @@ export function buildInsightCandidates(input: InsightCandidateInput): InsightCan
         */
         (fallback?.soWhat ?? chapter.deterministicTakeaway);
 
-    const soWhat = semantic ? semantic.soWhat : composedSoWhat;
-    const soWhatSource: InsightCandidate['soWhatSource'] = semantic
-      ? 'semantic_ai'
-      : core
-        ? 'deterministic_composed'
-        : 'static_fallback';
+    const soWhat = composedSoWhat;
+    const soWhatSource: InsightCandidate['soWhatSource'] = core
+      ? 'deterministic_composed'
+      : 'static_fallback';
 
     const whyItMatters =
-      semantic?.whyItMatters ||
       (tense === 'former' ? WHY[verdict].former : WHY[verdict].current) ||
       (fallback?.whyItMatters ?? '');
 
@@ -670,7 +635,7 @@ export function buildInsightCandidates(input: InsightCandidateInput): InsightCan
       hasUnresolvedPoint: verdict === 'UNRESOLVED',
       hasUserReportedEvent: linkedEvents.length > 0,
       relevantEventIds: linkedEvents.map((event) => event.id),
-      semanticEventIds: semantic?.usedEventIds ?? [],
+      semanticEventIds: [],
       noveltyScore: noveltyOf(verdict, hasOutsideFreeEvidence, linkedEvents.length > 0),
       /* 질문이 아직 없으므로 잠정값이다 — `assignQuestions`가 확정한다 */
       actionabilityScore: actionabilityOf(0, linkedEvents.length > 0),
@@ -686,13 +651,14 @@ export function buildInsightCandidates(input: InsightCandidateInput): InsightCan
       }),
       composed,
       soWhatSource,
+      semanticMode: null,
       /**
        * §12 마지막 줄 — 근거 조합 문장은 **토글 안에서만** 쓴다. 근거가 한 갈래면
        * '조합'이 아니므로 빈 문자열이고, 그때 토글에 그 줄이 없다.
        */
       evidenceNote: sourceClause(sources, tense),
-      /** §13 — VERIFY 한 줄. AI가 만들지 못했으면 null이고, 그때 질문만 남는다 */
-      verification: semantic?.verification ?? null,
+      /** §13 — VERIFY 한 줄. AI 문장이 얹히기 전에는 null이다 */
+      verification: null,
     };
 
     candidates.push(candidate);
@@ -714,12 +680,72 @@ export function buildInsightCandidates(input: InsightCandidateInput): InsightCan
     })
     .map((item) => item.candidate);
 
-  return assignQuestions(dedupeByConclusion(ordered), {
+  /*
+    A7 — **순서가 계약이다: dedup → Top 3 확정 → AI 문장 → 질문.**
+
+    AI 문장은 집합이 확정된 뒤에만 얹힌다. 그래서 좋은 문장이 dedup에 접혀 사라지는
+    경로(A0 loss point ②)가 구조적으로 없고, AI 출력이 Candidate를 합치거나 순서를
+    바꾸는 경로도 없다. 질문은 그 뒤다 — `verification`이 질문 재료(semanticAsk)이기
+    때문이다(A12).
+  */
+  return assignQuestions(applyCandidateSemantics(dedupeByConclusion(ordered), candidateSemantics), {
     target,
     declaredLevels,
     tense,
     allowsOutwardQuestions,
     used,
+  });
+}
+
+/**
+ * A1 — **AI가 해석할 카드.** 첫 화면 주인공 셋과 같은 목록이다.
+ *
+ * ⚠️ 새 선택 규칙이 아니다. §14 정렬 + §31 dedup이 끝난 목록의 앞 3개이고, 화면
+ * (`PremiumCandidateSection`)이 그리는 셋과 같다. 두 곳이 다른 규칙으로 고르면 AI가
+ * 화면에 없는 카드를 해석하게 된다 — 직전 구조의 실패 형태 그대로다.
+ */
+export function semanticTopCandidates(
+  candidates: readonly InsightCandidate[],
+): InsightCandidate[] {
+  return candidates.slice(0, PREMIUM_CANDIDATE_COUNT);
+}
+
+/**
+ * A5 · A6 — **candidateId → 문장**을 직접 잇는다. Chapter를 거치지 않는다.
+ *
+ * ⚠️ Top 3 밖의 id로 온 문장은 쓰지 않는다. 호출 전에 확정한 셋이 아닌 카드에 문장이
+ * 붙으면, 그건 모델이 '무엇을 볼지' 고른 것이다(A1 위반).
+ *
+ * ⚠️ **부분집합을 카드 쪽에서 한 번 더 본다.** 서버는 '보낸 장면·근거'로 검증했고,
+ * 여기서는 '이 카드의 근거 토글에 실제로 있는 것'으로 본다. 어긋나면 문장을 버린다 —
+ * 근거와 문장이 다른 것을 가리키는 카드는 조립문보다 나쁘다.
+ */
+function applyCandidateSemantics(
+  candidates: readonly InsightCandidate[],
+  semantics: readonly CandidateSemanticNarrative[],
+): InsightCandidate[] {
+  if (semantics.length === 0) return [...candidates];
+
+  const topIds = new Set(semanticTopCandidates(candidates).map((candidate) => candidate.id));
+  const byId = new Map(semantics.map((semantic) => [semantic.candidateId, semantic]));
+
+  return candidates.map((candidate) => {
+    const semantic = byId.get(candidate.id);
+    if (!semantic || !topIds.has(candidate.id)) return candidate;
+
+    const allowedEvents = new Set(candidate.relevantEventIds);
+    if (!semantic.usedEventIds.every((id) => allowedEvents.has(id))) return candidate;
+    if (!refsWithinAllowed(semantic.usedEvidenceRefs, candidate.evidenceRefs)) return candidate;
+
+    return {
+      ...candidate,
+      soWhat: semantic.soWhat,
+      whyItMatters: semantic.whyItMatters,
+      verification: semantic.verification ?? null,
+      semanticEventIds: [...semantic.usedEventIds],
+      soWhatSource: 'semantic_ai',
+      semanticMode: semantic.semanticMode,
+    };
   });
 }
 
@@ -1023,6 +1049,7 @@ export function buildFreeCandidates(input: {
       composed: Boolean(core),
       /** §19 — 무료는 AI 계층이 없으므로 두 값 중 하나뿐이다 */
       soWhatSource: core ? 'deterministic_composed' : 'static_fallback',
+      semanticMode: null,
       evidenceNote: sourceClause(sources, tense),
       verification: null,
     };

@@ -16,7 +16,7 @@ import type { EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
 import { aiModeOf } from '@/lib/aiMeta';
 import { buildCrossSourceInsights } from '@/lib/logic/crossSourceInsights';
 import {
-  buildSemanticEventContexts,
+  allocateCandidateScenes,
   semanticEventSignature,
   semanticSelectionSignature,
 } from '@/lib/logic/semanticEventContext';
@@ -54,6 +54,7 @@ import type {
   CompatibilityNarrativeBundle,
   CrossSourceInsight,
   DeepNarrativeBundle,
+  InsightCandidate,
   HistoryNarrativeBundle,
   RelationshipNarrativeBundle,
   ValidatedObservation,
@@ -514,6 +515,11 @@ const deepReportHasItems: HasItems<DeepNarrativeBundle> = (data) => data.narrati
 export function useDeepReportNarrative(
   insights: readonly CrossSourceInsight[],
   enabled = true,
+  /**
+   * SEMANTIC DECOMPOSITION A1 — **AI 호출 전에 확정한 Top 3.** 결정론 리포트의
+   * `semanticTopCandidates`를 넘긴다. 생략하면 카드 해석을 요청하지 않는다.
+   */
+  topCandidates: readonly InsightCandidate[] = [],
 ): AiNarrativeState<DeepNarrativeBundle> {
   const { answers } = useSession();
   const validated = useValidatedObservations();
@@ -546,22 +552,19 @@ export function useDeepReportNarrative(
   */
   const events = useMemo(() => answers.target.events ?? [], [answers.target.events]);
   const eventSignature = useMemo(() => semanticEventSignature(events), [events]);
+  /*
+    SEMANTIC DECOMPOSITION — 선택 서명이 **카드 기준**이 됐다. 어느 카드가 해석 대상인지
+    (id)와 카드마다 어떤 장면이 실렸는지가 둘 다 들어간다. 사건 추가로 Top 3가 바뀌거나
+    장면 배분이 바뀌면 지문이 갈린다.
+  */
   const selectionSignature = useMemo(
-    () =>
-      semanticSelectionSignature(
-        buildSemanticEventContexts({
-          insights: insights
-            .filter((insight) => insight.eligibleForNarrative)
-            .map((insight) => ({
-              id: insight.id,
-              type: insight.type,
-              axis: insight.axis ?? null,
-            })),
-          events,
-          tense: deepTense,
-        }),
+    () => [
+      ...topCandidates.map((candidate) => `top:${candidate.id}`),
+      ...semanticSelectionSignature(
+        allocateCandidateScenes({ candidates: topCandidates, events }),
       ),
-    [insights, events, deepTense],
+    ],
+    [topCandidates, events],
   );
 
   const fingerprint = useMemo(
@@ -589,7 +592,7 @@ export function useDeepReportNarrative(
   );
 
   const run = () =>
-    requestDeepReportNarrative(insights, resolverContext, fingerprint, deepTense, events);
+    requestDeepReportNarrative(insights, resolverContext, fingerprint, deepTense, events, topCandidates);
 
   return useNarrativeTask<DeepNarrativeBundle>({
     task: 'deep-report-narrative',

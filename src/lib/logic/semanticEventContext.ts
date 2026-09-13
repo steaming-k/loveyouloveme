@@ -1,13 +1,6 @@
 import { RELATIONSHIP_EVENT_LABEL } from '@/data/relationshipEvents';
 import { sanitizeFreeText } from '@/services/ai/safety';
-import type {
-  CrossSourceInsight,
-  MirrorAxisKey,
-  RelationshipEvent,
-  RelationshipTense,
-  SelectedEventContext,
-} from '@/types';
-import { selectRelevantEvents } from './eventRelevance';
+import type { MirrorAxisKey, RelationshipEvent, SelectedEventContext } from '@/types';
 
 /**
  * Semantic Event Context Layer — **어떤 장면의 의미를 Provider에 보내는가** (v1.46.4 · §4 ~ §6)
@@ -49,128 +42,80 @@ import { selectRelevantEvents } from './eventRelevance';
 /* ═══════════════════════════════════════════════════════ 예산 (§5 · §42) */
 
 /**
- * §5 — **한 이야기에 붙는 장면 수.**
+ * A2 — **카드 한 장에 붙는 장면 수.**
  *
- * §5의 권장 범위는 `candidate당 1~3`이고 그 중 2를 쓴다. 3이 아니라 2인 이유는
- * 토큰이 아니라 **문장**이다: 한 카드의 SO WHAT은 두 문장 안에서 끝나야 하고
- * (§13 copy contract), 장면 3개의 의미를 그 안에 넣으면 나열이 된다 — §16의 기대
- * 문장들이 전부 '장면 하나의 의미'를 말하는 형태인 것과 같은 이유다.
+ * v1.46.4 SEMANTIC까지 이 상한은 Insight 단위였다(`PER_INSIGHT_LIMIT`). 그런데 장면을
+ * 받은 Insight가 화면 카드가 된다는 보장이 없었다 — A0 감사에서 장면 전부가
+ * `cs_reltarget_contact`로 갔고, 그 Insight의 Chapter는 dedup에서 접혀 화면에 오르지
+ * 않았다. 이제 받는 쪽이 **이미 확정된 Top 3 카드**다.
+ *
+ * 2인 이유는 그대로다: SO WHAT은 두 문장 안에서 끝나야 하고, 장면 3개의 의미를 그 안에
+ * 넣으면 나열이 된다.
  */
-const PER_INSIGHT_LIMIT = 2;
+const PER_CANDIDATE_LIMIT = 2;
 
 /**
- * §5 — **Deep Report 한 호출 전체의 장면 수.**
+ * §5 — **Deep Report 한 호출 전체의 장면 수.** 사건이 20개여도 4건이다(§42).
  *
- * §5의 권장 범위는 `3~6`이고 그 중 4를 쓴다. 상한이 있는 이유는 §42다:
- *
- * ```
- * 사건 3개  → 최대 4건 전송
- * 사건 20개 → 최대 4건 전송   ← 같다. 이 상수가 하는 일이 이것이다
- * ```
- *
- * ⚠️ 이 숫자를 올리기 전에 `run-semantic-fixtures`의 예산 측정(SEM-BUDGET)을 먼저
- * 본다. 임의로 정하지 않기로 한 자리다(§5 마지막 줄).
+ * ⚠️ 이 숫자를 올리기 전에 `run-semantic-fixtures`의 예산 측정(SEM-BUDGET)을 먼저 본다.
  */
 const TOTAL_LIMIT = 4;
 
-/* ══════════════════════════════════════════════ 판정 → 방향 (읽기 전용) */
+/* ═══════════════════════════════════════════════════════════════ 배분 */
 
-/**
- * ⚠️ `insightCandidates.ts`의 `TYPE_TO_VERDICT`·`directionOf`와 **같은 표를 두 벌
- * 만들지 않는다.** 그래서 여기서는 `CrossSourceInsight.type`에서 방향만 바로 읽는다 —
- * Candidate 계층의 표현 어휘(`InsightVerdict`)를 이 파일이 알 필요가 없다.
- *
- * 방향이 하는 일은 하나다: 어긋남을 말하는 자리에는 어긋남으로 기억된 장면이, 일치를
- * 말하는 자리에는 통했다고 기억된 장면이 더 관련 있다(§9-3).
- */
-function directionOfType(type: CrossSourceInsight['type']): 'divergent' | 'convergent' | 'unknown' {
-  switch (type) {
-    case 'CONTRADICTION':
-    case 'GAP':
-    case 'CHANGE':
-      return 'divergent';
-    case 'MATCH':
-    case 'REPEATED_SIGNAL':
-      return 'convergent';
-    default:
-      return 'unknown';
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════ 선별 */
-
-export interface SemanticEventSelectionInput {
-  /** **AI에게 실제로 보내는 Insight만.** `buildDeepReportContext`가 이미 걸러낸 목록 */
-  insights: readonly { id: string; type: CrossSourceInsight['type']; axis: MirrorAxisKey | null }[];
+export interface CandidateSceneAllocationInput {
+  /**
+   * **이미 확정된 Top 3, 표시 순서 그대로.** `relevantEventIds`는 Candidate 엔진이
+   * `selectRelevantEvents`(metadata만 보는 계층)로 이미 관련성 순으로 고른 값이다.
+   */
+  candidates: readonly {
+    id: string;
+    primaryAxis: MirrorAxisKey | null;
+    relevantEventIds: readonly string[];
+  }[];
   events: readonly RelationshipEvent[];
-  tense: RelationshipTense;
-  perInsight?: number;
+  perCandidate?: number;
   total?: number;
 }
 
 /**
- * §5 — Insight마다 붙일 장면. **전체 예산 안에서, 장면은 한 번만 쓰인다.**
+ * A2 · §28 — Top 3 카드마다 해석할 장면. **전체 예산 안에서, 장면은 한 카드에만.**
  *
- * ══ 같은 장면을 두 Insight에 주지 않는 이유 (§28) ═════════════════════════
+ * ⚠️ **다시 고르지 않는다.** 관련성 판정은 Candidate 엔진이 이미 했고(근거 토글이 같은
+ * 목록을 보여준다), 여기서 하는 일은 그 목록을 앞 카드부터 **나눠 담고 자르는 것**뿐이다.
+ * 점수를 다시 매기면 '토글에 보이는 장면'과 '모델이 읽은 장면'이 갈라질 수 있다.
  *
- * §28은 "Event 하나가 Top 3 모든 카드에 반복해서 붙지 않게 한다"를 요구한다. 그걸
- * **출력 검사**로 막으려면 모델이 쓴 문장 세 개를 서로 비교해야 하는데, 그건
- * paraphrase에 약하다. 입력에서 막으면 구조적으로 불가능해진다 — 모델은 같은 장면을
- * 두 번 받지 않으므로 두 번 인용할 수 없다.
- *
- * ⚠️ **근거 토글에서는 여전히 재사용된다.** 그쪽이 읽는 것은
- * `candidate.relevantEventIds`(관련 있으면 다 보여준다)이고, 이 함수가 정하는 것은
- * **의미를 말할 자리**뿐이다 — §28 마지막 줄이 허용한 구분 그대로다.
- *
- * ⚠️ 순서를 지킨다. `insights`는 이미 §6 우선순위로 정렬돼 있으므로, 앞의 Insight가
- * 더 관련 있는 장면을 먼저 가져간다. 점수로 다시 고르면 같은 세션을 두 번 열었을 때
- * 배분이 달라 보일 수 있다.
+ * ⚠️ 같은 장면을 두 카드에 주지 않는다(§28). 모델은 같은 장면을 두 번 받지 않으므로 세
+ * 카드의 SO WHAT에 같은 장면을 반복 인용할 수 없다 — 출력 비교보다 입력 차단이 튼튼하다.
+ * 근거 토글에서는 여전히 재사용된다(`candidate.relevantEventIds`).
  */
-export function buildSemanticEventContexts(
-  input: SemanticEventSelectionInput,
+export function allocateCandidateScenes(
+  input: CandidateSceneAllocationInput,
 ): Map<string, SelectedEventContext[]> {
-  const { insights, events, tense } = input;
-  const perInsight = input.perInsight ?? PER_INSIGHT_LIMIT;
+  const { candidates, events } = input;
+  const perCandidate = input.perCandidate ?? PER_CANDIDATE_LIMIT;
   const total = input.total ?? TOTAL_LIMIT;
 
-  const byInsight = new Map<string, SelectedEventContext[]>();
-  if (events.length === 0 || total <= 0) return byInsight;
+  const byCandidate = new Map<string, SelectedEventContext[]>();
+  if (events.length === 0 || total <= 0) return byCandidate;
 
-  /** §28 — 한 번 쓰인 장면은 다른 Insight의 의미 자리에 다시 가지 않는다 */
   const taken = new Set<string>();
   let budget = total;
 
-  for (const insight of insights) {
+  for (const candidate of candidates) {
     if (budget <= 0) break;
-
-    /*
-      ⚠️ 후보에서 **이미 쓰인 장면을 먼저 뺀다.** 점수를 매긴 뒤에 빼면, 1위가 빠진
-      자리에 2위가 올라오는 대신 그 Insight의 몫이 그냥 줄어든다 — 관련 있는 장면이
-      남아 있는데 자리를 비우는 것이고, 그러면 뒤쪽 카드만 계속 장면을 못 받는다.
-    */
-    const pool = events.filter((event) => !taken.has(event.id));
-    if (pool.length === 0) break;
-
-    const ranked = selectRelevantEvents(
-      pool,
-      {
-        axis: insight.axis,
-        direction: directionOfType(insight.type),
-        tense,
-        unresolved: insight.type === 'UNKNOWN',
-      },
-      Math.min(perInsight, budget),
-    );
-
     const selected: SelectedEventContext[] = [];
-    for (const item of ranked) {
-      const event = pool.find((candidate) => candidate.id === item.eventId);
+
+    for (const eventId of candidate.relevantEventIds) {
+      if (selected.length >= perCandidate || budget <= 0) break;
+      /* 앞 카드가 가져간 장면은 건너뛰고 다음 관련 장면을 본다 — 자리를 비우지 않는다 */
+      if (taken.has(eventId)) continue;
+      const event = events.find((item) => item.id === eventId);
       if (!event) continue;
 
       /*
-        §6 · §34 — 자유 입력은 **경계에서 한 번 더 자르고 정규화한다.** 렌즈 Task가
-        쓰는 것과 같은 상한(120/80)이다. 두 Task가 다른 상한을 쓰면 같은 장면이
-        어디서는 잘리고 어디서는 안 잘려서, 되풀이 검사의 기준이 흔들린다.
+        §6 · §34 — 자유 입력은 **경계에서 한 번 더 자르고 정규화한다.** 렌즈 Task와 같은
+        상한(120/80)이다. 두 Task가 다른 상한을 쓰면 되풀이 검사의 기준이 흔들린다.
       */
       const description = sanitizeFreeText(event.description, 120);
       if (!description) continue;
@@ -180,19 +125,18 @@ export function buildSemanticEventContexts(
         typeLabel: RELATIONSHIP_EVENT_LABEL[event.type],
         description,
         myReaction: sanitizeFreeText(event.myReaction, 80),
-        linkedAxis: insight.axis,
-        relevanceReasons: item.reasons,
+        linkedAxis: candidate.primaryAxis,
+        relevanceReasons: [],
         source: 'user_reported_event',
       });
       taken.add(event.id);
       budget -= 1;
-      if (budget <= 0) break;
     }
 
-    if (selected.length > 0) byInsight.set(insight.id, selected);
+    if (selected.length > 0) byCandidate.set(candidate.id, selected);
   }
 
-  return byInsight;
+  return byCandidate;
 }
 
 /* ═══════════════════════════════════════════════════ 캐시 지문 (§43 · §44) */

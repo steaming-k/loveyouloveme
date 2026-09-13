@@ -24,8 +24,8 @@ import { callAiTask } from '@/services/ai/aiClient';
 import {
   buildCompatibilityContext,
   buildCrossLensContext,
-  allowedSceneIdsOf,
   buildDeepReportContext,
+  deepReportAllowancesOf,
   buildHistoryContext,
   buildPremiumLensContext,
   buildRelationshipContext,
@@ -49,6 +49,7 @@ import type {
   DeepNarrativeBundle,
   HistoryAxisChange,
   HistoryNarrativeBundle,
+  InsightCandidate,
   MbtiLensReport,
   MbtiType,
   MirrorReport,
@@ -389,8 +390,14 @@ export function requestDeepReportNarrative(
    * 빼먹었을 때 자유서술이 조용히 나가는 쪽으로 기울면 안 된다.
    */
   events: readonly RelationshipEvent[] = [],
+  /**
+   * SEMANTIC DECOMPOSITION A1 — **AI 호출 전에 확정한 Top 3.** 결정론 리포트
+   * (`narratives: []`)의 `semanticTopCandidates`를 그대로 넘긴다. 생략하면 카드 해석을
+   * 요청하지 않는다(아래쪽 연결 문장만 만든다).
+   */
+  topCandidates: readonly InsightCandidate[] = [],
 ): Promise<{ ok: true; data: DeepNarrativeBundle } | { ok: false; reason: AiFailureReason }> {
-  const context = buildDeepReportContext(insights, resolverContext, tense, events);
+  const context = buildDeepReportContext(insights, resolverContext, tense, events, topCandidates);
 
   if (context.insights.length === 0) {
     return Promise.resolve({
@@ -419,19 +426,11 @@ export function requestDeepReportNarrative(
     /** v1.43 §47.5 — 서버의 시제 스캐너가 읽는다. context 안에도 같은 값이 있다 */
     tense,
     /**
-     * v1.46.4 §9 — **payload에서 직접 읽는다.** 선별을 다시 돌려 만들면 '보낸 것'과
-     * '허용집합'이 갈라질 수 있다(`refsWithinAllowed`가 같은 자리에서 배운 규칙).
+     * A5 — 카드별 허용 근거·장면과 되풀이 검사용 원문 사본. **payload에서 직접 읽는다** —
+     * 다시 계산하면 '보낸 것'과 '허용집합'이 갈라질 수 있다. 원문 사본은 프롬프트에
+     * 들어가지 않는다(모델은 이미 context에서 같은 문장을 받았다).
      */
-    allowedSceneIds: allowedSceneIdsOf(context),
-    /** §36 — 서버가 대조할 원문 사본. 프롬프트에는 들어가지 않는다 */
-    sceneTextsByInsight: Object.fromEntries(
-      context.insights.map((item) => [
-        item.id,
-        (item.relatedScenes ?? []).flatMap((scene) =>
-          [scene.fact, scene.myReaction].filter((text): text is string => Boolean(text)),
-        ),
-      ]),
-    ),
+    candidates: deepReportAllowancesOf(context),
   });
 }
 

@@ -1,5 +1,6 @@
 'use client';
 
+import { semanticTopCandidates } from '@/lib/logic/insightCandidates';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
 
@@ -109,17 +110,6 @@ function PremiumPreviewView() {
   // v1.9 — Relationship Deep Report 전용. 다른 feature일 때도 훅은 항상 호출한다(조건 없이).
   const crossSourceInsights = useCrossSourceInsights();
   const resolverContext = useEvidenceContext();
-  const deepNarrative = useDeepReportNarrative(crossSourceInsights, featureId === 'relationship_deep_report');
-
-  // v1.17 §10 — 무료 화면(S22/S27/F2)과 같은 방식으로 '실제로 보였다'를 1회 기록한다.
-  useNarrativeViewEvent({
-    task: 'deep-report-narrative',
-    source: 'deep_report',
-    status: deepNarrative.status,
-    mode: deepNarrative.mode,
-    itemCount: deepNarrative.data?.narratives.length ?? 0,
-  });
-
   useEffect(() => {
     if (PREMIUM_PREVIEW && featureId) trackEvent('premium_preview_view', { feature: featureId });
   }, [featureId]);
@@ -140,6 +130,49 @@ function PremiumPreviewView() {
     () => deepReportJobContext(resolveRelationshipContext(answers).job),
     [answers],
   );
+
+  /**
+   * SEMANTIC DECOMPOSITION A1 — **Top 3는 AI 호출 전에 확정된다.** `useDeepReport`와 같은
+   * 순서다: 결정론 리포트의 첫 화면 카드 셋을 먼저 고르고, 그 셋을 AI에게 넘긴다.
+   *
+   * ⚠️ 그래서 AI 훅이 `lifecycle` 아래로 내려왔다(결정론 리포트가 Job 문맥을 필수로 받는다).
+   */
+  const deepTopCandidates = useMemo(
+    () =>
+      featureId === 'relationship_deep_report'
+        ? semanticTopCandidates(
+            buildRelationshipDeepReport({
+              insights: crossSourceInsights,
+              narratives: [],
+              candidateSemantics: [],
+              resolverContext,
+              compatibility,
+              historyReport,
+              repeatedSignals: repeated,
+              target: answers.target,
+              mirror,
+              lifecycle,
+              today: new Date(),
+            }).candidates,
+          )
+        : [],
+    [featureId, crossSourceInsights, resolverContext, compatibility, historyReport, repeated, answers.target, mirror, lifecycle],
+  );
+  const deepNarrative = useDeepReportNarrative(
+    crossSourceInsights,
+    featureId === 'relationship_deep_report',
+    deepTopCandidates,
+  );
+
+  // v1.17 §10 — 무료 화면(S22/S27/F2)과 같은 방식으로 '실제로 보였다'를 1회 기록한다.
+  useNarrativeViewEvent({
+    task: 'deep-report-narrative',
+    source: 'deep_report',
+    status: deepNarrative.status,
+    mode: deepNarrative.mode,
+    itemCount: deepNarrative.data?.narratives.length ?? 0,
+  });
+
 
   const report = useMemo(() => {
     if (!featureId) return null;
@@ -183,6 +216,7 @@ function PremiumPreviewView() {
         return buildRelationshipDeepReport({
           insights: crossSourceInsights,
           narratives: deepNarrative.data?.narratives ?? [],
+          candidateSemantics: deepNarrative.data?.candidateSemantics ?? [],
           resolverContext,
           compatibility,
           historyReport,

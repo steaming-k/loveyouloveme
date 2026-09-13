@@ -1644,54 +1644,81 @@ export interface DeepNarrative {
   uncertainty?: string;
   conversationQuestion?: string;
   evidenceRefs: EvidenceRef[];
-  /**
-   * v1.46.4 SEMANTIC — **이 Insight를 주인공 카드로 쓸 때의 세 문장.**
-   *
-   * ⚠️ 위 `headline`/`interpretation`과 **다른 자리에 그려진다.** 그 둘은 리포트
-   * 아래쪽 연결 목록(`connections`)의 문장이고, 이쪽은 첫 화면 Candidate의
-   * SO WHAT / WHY / VERIFY다. 한 호출이 두 자리의 문장을 함께 만든다(§7 — Provider
-   * 호출 수는 5회를 넘지 않는다).
-   *
-   * ⚠️ 없으면 Candidate는 결정론 조립문을 쓴다(§18). 그래서 전부 optional이고,
-   * 화면에는 셋 중 `semantic.soWhat`이 있을 때만 이 계층이 쓰인다.
-   */
-  semantic?: SemanticInsightNarrative;
 }
 
 /**
- * v1.46.4 §8 — Deep Report AI가 **사용자가 적은 장면의 의미까지 읽고** 만든 narrative.
+ * ══ v1.46.4 SEMANTIC DECOMPOSITION — **AI는 무엇을 볼지 고르지 않는다** ══════
  *
- * ══ 왜 candidateId가 아니라 insightId인가 (§8과의 의도된 차이) ═══════════════
- *
- * §8은 `candidateId`를 제안했다. 그런데 Candidate는 **AI 호출 뒤에** 만들어진다:
+ * 직전 구조에서 semantic은 `insightId`에 붙었고, Candidate가 자기 Chapter 안에서
+ * '판정을 정한 Insight'의 문장을 찾아 왔다. 실측(A0 감사 · R1~R5 전부)에서 두 곳이 샜다:
  *
  * ```
- * insights ──▶ AI 호출(deep-report) ──▶ narratives ──▶ chapters ──▶ candidates
- *                                                       (buildRelationshipDeepReport)
+ * ① 모델이 Insight 11개 중 어디에 쓸지 골랐다 → Top 3의 #2·#3을 정하는
+ *    cs_history_change_* 에는 모든 호출에서 문장을 쓰지 않았다
+ * ② 장면은 첫 Insight(cs_reltarget_contact)에 배분됐는데, 그 Insight의 Chapter는
+ *    dedupeByConclusion에서 접혀 화면에 오르지 않았다
  * ```
  *
- * 호출 시점에 candidateId는 존재하지 않으므로, 그 id를 계약에 쓰면 모델에게 아직
- * 없는 식별자를 요구하는 것이 된다. 그래서 계약의 키는 이미 있는 `insightId`이고,
- * Candidate는 자기 Chapter가 품은 Insight의 narrative를 집어 온다
- * (`lib/logic/insightCandidates.ts` · `semanticFor`). 검증 규칙(§9)은 그대로다 —
- * **Candidate 쪽에서** refs·eventIds의 부분집합 여부를 다시 확인한다.
+ * 그래서 순서를 뒤집었다: **Top 3를 AI 호출 전에 결정론으로 확정**하고, 모델은 그
+ * 카드 셋에 대해서만 `candidateId`로 답한다. Candidate id(`cand_${chapter.id}`)는
+ * 결정론 입력만으로 정해지고 AI 출력에 따라 바뀌지 않는다(SEM-DEC-02가 값으로 고정).
  */
-export interface SemanticInsightNarrative {
-  /** §11 — 관계에서 무엇을 중요하게 봐야 하는지. **분석 메타 언어 금지**(§12) */
+export type SemanticMode = 'shared_condition' | 'different_condition' | 'unresolved_condition';
+
+/**
+ * A2 — 모델에게 보내는 **카드 한 장의 해석 재료.** 여기 없는 것은 말할 수 없다.
+ *
+ * ⚠️ `selectedEvents`는 사용자가 **직접 적은 상황·반응·종류**까지다(A3). 상대 의도·
+ * 숨은 원인 같은 해석 칸은 만들지 않는다 — 칸이 있으면 모델은 채운다.
+ */
+export interface SemanticCandidateBundle {
+  candidateId: string;
+  rank: 1 | 2 | 3;
+  /** 주제 이름(연락·갈등 …). 판정 어휘가 아니라 **무엇에 대한 카드인가** */
+  topic: string | null;
+  verdict: InsightVerdict;
+  deterministicFacts: Array<{ ref: EvidenceRef; label: string; text: string }>;
+  selectedEvents: Array<{
+    eventId: string;
+    type: string;
+    situation: string;
+    myReaction: string | null;
+    source: 'user_reported_event';
+  }>;
+  /** 결정론이 '아직 모른다'고 판정한 것. 모델은 이 중 하나를 좁혀 말할 수 있다 */
+  unresolvedPoints: string[];
+}
+
+/** A5 — 핸들러가 검증에 쓰는 허용집합. 프롬프트에는 들어가지 않는다 */
+export interface CandidateSemanticAllowance {
+  candidateId: string;
+  evidenceRefs: EvidenceRef[];
+  eventIds: string[];
+  /** §36 — 되풀이 검사의 기준이 될 장면 원문(잘린 값) */
+  sceneTexts: string[];
+}
+
+/** A5 — Top 3 카드 하나에 대한 모델 출력. **candidateId 없는 문장은 없다** */
+export interface CandidateSemanticNarrative {
+  candidateId: string;
+  semanticMode: SemanticMode;
+  /** A8 — 그래서 이 관계에서 무엇을 구분해서 봐야 하는가. 메타 언어 금지 */
   soWhat: string;
-  /** §13 — 실제 어떤 상황에서 차이가 드러날 수 있는지 */
+  /** A9 — 그 구분이 실제 어떤 장면에서 오해·불편·확인 필요로 이어지는가 */
   whyItMatters: string;
-  /** §13 — 확인할 질문/행동. 없을 수 있다 */
+  /** A10 — current: 상대에게 물을 수 있는 질문 / former: 회고 질문. 없을 수 있다 */
   verification?: string;
-  /**
-   * §9 — 이 문장이 실제로 근거로 쓴 장면 id. **반드시 전달된 shortlist의 부분집합**이고,
-   * Candidate 쪽에서 한 번 더 그 Candidate의 장면 목록으로 좁힌다.
-   */
+  usedEvidenceRefs: EvidenceRef[];
   usedEventIds: string[];
 }
 
 export interface DeepNarrativeBundle {
   narratives: DeepNarrative[];
+  /**
+   * A5 — Top 3 카드별 semantic. 없거나 비면 Candidate는 결정론 조립문을 쓴다(§18).
+   * ⚠️ optional — 캐시에 남은 v6 응답에는 이 필드가 없다(버전이 올라가 재호출된다).
+   */
+  candidateSemantics?: CandidateSemanticNarrative[];
   meta: AiNarrativeMeta;
 }
 
@@ -2183,6 +2210,8 @@ export interface InsightCandidate {
    * high-data 정상 경로에서 `static_fallback`이 0인지를 fixture가 이 값으로 센다.
    */
   soWhatSource: 'semantic_ai' | 'deterministic_composed' | 'static_fallback';
+  /** A4 — semantic_ai일 때 모델이 고른 해석 모드. 그 외에는 null */
+  semanticMode: SemanticMode | null;
   /**
    * v1.46.4 §12 — **근거가 몇 갈래에서 왔는가.** 근거 토글 안에만 그린다.
    *

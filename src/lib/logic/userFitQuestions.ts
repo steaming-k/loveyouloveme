@@ -390,6 +390,30 @@ export function isSendableQuestion(text: string, sceneTexts: readonly string[]):
   if (/상대(는|가|방은|방이|의)/.test(trimmed)) return false;
 
   /*
+    ④-b **자기에게 묻는 회고 질문은 상대에게 보내는 질문이 아니다** (v1.46.4 SEMANTIC
+    DECOMPOSITION Final QA · A10).
+
+    gpt-5.4 실측에서 current 관계의 VERIFY가 이렇게 나왔고, 물음표로 끝나서 이 검사를
+    통과해 '상대에게 물어볼 질문' 칸에 올라갔다:
+
+    ```
+    ❌ 서운한 일이 지나간 뒤, 나는 말할 타이밍을 놓친 쪽이 더 걸렸을까?
+    ❌ 혼자 있는 시간을 못 챙긴 날에도 괜찮았을까, 아니면 계속 남았을까?
+    ```
+
+    주어가 '나'이거나 과거 회고 어미(~했을까?)인데 **상대를 부르는 표지가 없으면** 자기
+    점검이다. ended의 회고 질문으로는 맞지만, 상대에게 보낼 말은 아니다.
+
+    ⚠️ '나는'이 들어간 정상 질문은 막지 않는다 — 내 기준을 먼저 말하고 상대에게 묻는 형태
+    (`나는 좀 초조해지는데, 짧게라도 알려줄 수 있어?`)는 상대를 부르는 표지가 있다.
+  */
+  const selfSubject = /(^|[\s,])(나는|내가|난)\s/.test(trimmed);
+  const retroEnding = /(았|었|였|했)을까\?$/.test(trimmed);
+  /* '너무'의 '너'는 상대를 부르는 말이 아니다 */
+  const addressesPartner = /(^|[\s,])(너(?!무)|네가|네\s)|알려줄|말해줄|해줄|줄\s*수\s*있/.test(trimmed);
+  if ((selfSubject || retroEnding) && !addressesPartner) return false;
+
+  /*
     ⑤ 답을 유도하지 않는다(§26). `~한 게 맞지?` · `~지 않아?` 계열.
 
     ⚠️ `~아니면`은 허용이다. 두 선택지를 나란히 주는 것은 유도가 아니라 선택지 제시고,

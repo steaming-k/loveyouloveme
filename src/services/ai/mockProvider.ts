@@ -411,6 +411,8 @@ function crossLensResponse(payload: Record<string, unknown>): unknown {
 export function createMockProvider(): AiProvider {
   return {
     model: MOCK_MODEL,
+    /** mock은 Provider를 부르지 않으므로 사용량이 없다(§26 — 추정하지 않는다) */
+    lastUsage: null,
     async generateStructured(input: GenerateStructuredInput): Promise<unknown> {
       const payload = readPayload(input.userPayload);
 

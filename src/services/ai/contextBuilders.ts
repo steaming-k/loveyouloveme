@@ -11,16 +11,19 @@ import {
 } from '@/data/labels';
 import { resolveEvidenceRef, type EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
 import { selectRelevantEvents } from '@/lib/logic/eventRelevance';
-import { buildSemanticEventContexts } from '@/lib/logic/semanticEventContext';
+import { allocateCandidateScenes } from '@/lib/logic/semanticEventContext';
 import { limitationFor } from '@/services/premiumConnections';
 import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import { sanitizeFreeText } from './safety';
 import type {
+  CandidateSemanticAllowance,
   CompatibilityResult,
   CrossSourceInsight,
   DeclaredPreference,
   EvidenceRef,
   HistoryAxisChange,
+  InsightCandidate,
+  InsightVerdict,
   MirrorReport,
   PremiumLensKind,
   PremiumCrossLens,
@@ -29,6 +32,7 @@ import type {
   RelationshipEvent,
   RelationshipEventType,
   RelationshipExperience,
+  SemanticCandidateBundle,
   SessionAnswers,
   ValidatedObservation,
 } from '@/types';
@@ -447,25 +451,22 @@ export interface DeepReportContext {
      * 경계가 다르면 경계가 아니다.
      */
     limitation: string;
-    /**
-     * v1.46.4 §4 ~ §6 — **사용자가 직접 적은 장면.** 없으면 필드 자체가 없다.
-     *
-     * ⚠️ 이 필드가 v1.46.4에서 Core Task의 privacy 경계를 옮긴다. 그전까지
-     * deep-report는 자유서술을 한 글자도 받지 않았고(`logic/relationshipEvents.ts`
-     * 상단 표), 렌즈 Task 4개만 받았다. 무엇이 달라졌는지는 그 표에 함께 적었다 —
-     * **문서와 코드가 다른 상태로 두지 않는다.**
-     *
-     * ⚠️ **개수가 사용자 입력량에 비례하지 않는다.** 선별·상한은
-     * `logic/semanticEventContext.ts`가 정하고(Insight당 2 · 호출당 4), 이 builder는
-     * 그 결과를 배치만 한다. 사건 20개 세션도 4건을 넘지 않는다(§42).
-     */
-    relatedScenes?: Array<{
-      id: string;
-      type: string;
-      fact: string;
-      myReaction: string | null;
-    }>;
   }>;
+  /**
+   * ══ SEMANTIC DECOMPOSITION A1 ~ A3 — **이미 확정된 Top 3 카드** ════════════
+   *
+   * v1.46.4 SEMANTIC까지 장면은 `insights[].relatedScenes`로 Insight에 붙었고, 모델이
+   * 11개 Insight 중 어디에 첫 화면 문장을 쓸지 골랐다. A0 감사에서 그 구조가 두 곳에서
+   * 샜다(장면을 받은 Insight의 Chapter는 dedup에서 접혔고, #2·#3 카드를 정하는
+   * Insight에는 모델이 한 번도 쓰지 않았다).
+   *
+   * 이제 장면은 **카드에만** 실린다. `insights`는 아래쪽 연결 목록 문장(headline ·
+   * interpretation)의 재료로만 남고, 자유 입력을 싣지 않는다 — 한 호출의 장면 상한(4)은
+   * 이 필드 하나가 전부 쓴다.
+   *
+   * ⚠️ 카드가 없으면 필드 자체가 없다(빈 배열을 보내지 않는다 — 모델은 빈 칸을 설명하려 든다).
+   */
+  candidates?: SemanticCandidateBundle[];
 }
 
 /**
@@ -477,45 +478,25 @@ export function buildDeepReportContext(
   insights: readonly CrossSourceInsight[],
   resolverContext: EvidenceResolverContext,
   /**
-   * v1.41 §39.13 — **화면과 같은 경계 문장을 모델에게 준다.**
-   *
-   * v1.27이 세운 규칙 그대로다: `limitation`은 화면에 이미 보이는 것과 **같은
-   * 문자열**이어야 하고, 사용자가 보는 경계와 모델이 받는 경계가 다르면 그건
-   * 경계가 아니다. `limitationFor`가 시점을 말하게 됐으므로 이 자리도 같은
-   * 시점을 받아야 한다 — 안 받으면 `ended` 사용자의 프롬프트에만
-   * `지금 이 관계`가 남는다.
-   *
-   * ⚠️ **context의 모양(필드 목록)은 바뀌지 않는다.** 프롬프트 템플릿·스키마·
-   * `promptVersion` 전부 그대로이고, 기존 필드의 **값**이 정확해질 뿐이다
-   * (v1.36이 `declaredPhrase` 값을 고친 것과 같은 종류의 변경).
+   * v1.41 §39.13 — **화면과 같은 경계 문장을 모델에게 준다.** `limitation`은 화면에 이미
+   * 보이는 것과 같은 문자열이어야 하고, 사용자가 보는 경계와 모델이 받는 경계가 다르면
+   * 그건 경계가 아니다.
    */
   tense: RelationshipTense,
   /**
-   * v1.46.4 §4 — 사용자가 알려준 장면. **생략하면 v1.46.4 HARDENING과 같은 동작**
-   * (Core Task가 자유서술을 받지 않는 상태)이다.
-   *
-   * ⚠️ optional로 둔 이유는 호출부가 빼먹어도 되기 때문이 **아니다** — 이 builder를
-   * 부르는 세 곳(aiService · dev route · fixture) 중 계측용 호출이 사건 없는 상태를
-   * 재현해야 하고, 그 상태가 '기본값'이어야 안전하다(사건이 나가는 것은 명시적
-   * 선택이다). 실제 제품 경로(`requestDeepReportNarrative`)는 항상 넘긴다.
+   * v1.46.4 §4 — 사용자가 알려준 장면. **생략하면 자유서술을 한 글자도 보내지 않는다.**
+   * 사건이 나가는 것은 명시적 선택이어야 한다(제품 경로 `requestDeepReportNarrative`는
+   * 항상 넘긴다).
    */
   events: readonly RelationshipEvent[] = [],
+  /**
+   * SEMANTIC DECOMPOSITION A1 — **AI 호출 전에 확정한 Top 3.** `semanticTopCandidates`가
+   * 고른 목록을 그대로 받는다. 생략하면 카드 해석을 요청하지 않는다.
+   */
+  topCandidates: readonly InsightCandidate[] = [],
 ): DeepReportContext {
   const built: DeepReportContext['insights'] = [];
 
-  /*
-    ══ 왜 여기서 두 번 도는가 ════════════════════════════════════════════════
-
-    장면 배분(§28 — 한 장면은 한 Insight에만)은 **어느 Insight가 실제로 전송되는지**
-    알아야 정해진다. Quality Gate (A)(근거 2개 미만 탈락)를 통과한 목록이 그것이고,
-    그 목록은 아래 루프가 끝나야 확정된다. 그래서 게이트를 먼저 한 번 돌려 통과
-    목록을 만들고, 그 목록으로 장면을 배분한 뒤 본 루프를 돈다.
-
-    ⚠️ 게이트 판정을 두 벌로 만들지 않는다 — `eligibleOf`가 아래 루프에서도 쓰이는
-    같은 술어다. 두 곳이 달라지면 전송 목록과 장면 배분 목록이 어긋나고, 그러면
-    모델이 받은 장면의 주인 Insight가 payload에 없는 상태가 된다.
-  */
-  const resolvedByInsight = new Map<string, Array<{ ref: EvidenceRef; text: string }>>();
   for (const insight of insights) {
     if (!insight.eligibleForNarrative) continue;
     const seen = new Set<string>();
@@ -527,81 +508,147 @@ export function buildDeepReportContext(
       evidence.push({ ref, text: resolved.text });
     }
     if (evidence.length < 2) continue;
-    resolvedByInsight.set(insight.id, evidence);
-  }
-
-  const sent = insights.filter((insight) => resolvedByInsight.has(insight.id));
-  const scenesByInsight = buildSemanticEventContexts({
-    insights: sent.map((insight) => ({
-      id: insight.id,
-      type: insight.type,
-      axis: insight.axis ?? null,
-    })),
-    events,
-    tense,
-  });
-
-  for (const insight of insights) {
-    const evidence = resolvedByInsight.get(insight.id);
-    if (!evidence) continue;
-
-    const scenes = scenesByInsight.get(insight.id) ?? [];
 
     built.push({
       id: insight.id,
       type: insight.type,
       axis: insight.axis ?? null,
       sources: insight.sources,
-      /**
-       * v1.27 — 모델에게 **규칙이 확인한 주장**과 **말할 수 없는 것**을 함께 준다.
-       *
-       * v1.26까지는 evidence와 type 라벨만 보냈다. 그래서 모델은 "이 연결이 왜 눈에
-       * 띄는지 설명하라"는 요청만 받았고, 규칙이 어디까지 확인했는지 몰랐다 —
-       * 실측에서 두 관찰이 같은 축을 가리킨다는 것만 확인된 상황에 모델이
-       * '영향을 미칠 수 있을'이라는 **인과 방향**을 새로 붙였다.
-       *
-       * 두 문장은 화면에 이미 보이는 것과 **같은 문자열**이다 — 사용자가 보는 경계와
-       * 모델이 받는 경계가 다르면 안 된다.
-       */
       allowedConnection: insight.ruleSummary,
       limitation: limitationFor(insight.sources, tense),
       evidence,
       strength: insight.strength,
-      /*
-        ⚠️ 빈 배열을 보내지 않는다. `relatedScenes: []`를 받은 모델은 '장면 칸이
-        있는데 비어 있다'를 읽고 그 자리를 설명하려 든다(렌즈 Task에서 `basis`가
-        빈 배열일 때 실측으로 나온 형태다). 없으면 필드가 없는 것이 계약이다.
-      */
-      ...(scenes.length > 0
-        ? {
-            relatedScenes: scenes.map((scene) => ({
-              id: scene.eventId,
-              type: scene.typeLabel,
-              fact: scene.description,
-              myReaction: scene.myReaction,
-            })),
-          }
-        : {}),
     });
   }
 
-  return { tense, insights: built };
+  const bundles = buildSemanticCandidateBundles({
+    candidates: topCandidates,
+    events,
+    resolverContext,
+    tense,
+  });
+
+  return { tense, insights: built, ...(bundles.length > 0 ? { candidates: bundles } : {}) };
 }
 
 /**
- * v1.46.4 §9 — 이 호출에서 **각 Insight에 실어 보낸 장면 id.**
+ * A4 · A12 — 판정별로 **결정론이 아직 모른다고 말할 수 있는 것.**
  *
- * ⚠️ 핸들러가 `usedEventIds`를 검증할 때 쓰는 허용집합이고, `buildDeepReportContext`가
- * 만든 payload에서 **직접 읽는다.** 선별을 다시 돌려 만들지 않는 이유는
- * `refsWithinAllowed`가 같은 자리에서 배운 것과 같다 — 게이트의 입력은 실제로 보낸
- * 것이어야 하고, 다시 계산한 값은 '보낸 것'이라는 보장이 없다.
+ * ⚠️ 새 판정이 아니다. 판정이 GAP이면 '어떤 조건에서 커지는가'는 정의상 확인되지 않은
+ * 것이다 — 규칙 엔진은 어긋남이 있다는 것까지만 확인했다. 모델은 이 목록 중 하나를
+ * 장면으로 좁히거나(`different_condition`), 좁힐 수 없다고 말한다(`unresolved_condition`).
  */
-export function allowedSceneIdsOf(context: DeepReportContext): Record<string, string[]> {
-  const map: Record<string, string[]> = {};
-  for (const insight of context.insights) {
-    map[insight.id] = (insight.relatedScenes ?? []).map((scene) => scene.id);
-  }
-  return map;
+const UNRESOLVED_BY_VERDICT: Record<InsightVerdict, Record<RelationshipTense, string>> = {
+  GAP: {
+    current: '말한 기준보다 크게 반응한 순간이 있는데, 어떤 조건일 때 그 반응이 커지는지는 아직 확인되지 않았어',
+    former: '말한 기준보다 크게 반응한 순간이 있었는데, 어떤 조건일 때 그 반응이 커졌는지는 아직 확인되지 않았어',
+  },
+  CONTRADICTION: {
+    current: '서로 다른 방향의 마음이 같이 있는데, 어떤 상황에서 어느 쪽이 먼저 오는지는 아직 확인되지 않았어',
+    former: '서로 다른 방향의 마음이 같이 있었는데, 어떤 상황에서 어느 쪽이 먼저 왔는지는 아직 확인되지 않았어',
+  },
+  CHANGE: {
+    current: '두 시점의 답이 다른데, 어느 쪽이 지금 관계의 기준에 가까운지는 아직 확인되지 않았어',
+    former: '두 시점의 답이 다른데, 어느 쪽이 그 관계에서 더 크게 남았는지는 아직 확인되지 않았어',
+  },
+  UNRESOLVED: {
+    current: '어느 쪽이라고 말할 근거가 아직 모자라',
+    former: '어느 쪽이었다고 말할 근거가 아직 모자라',
+  },
+  MATCH: {
+    current: '비슷하게 나온 기준이 실제로 어긋나는 순간이 있었는지는 아직 확인되지 않았어',
+    former: '비슷하게 나온 기준이 실제로 어긋난 순간이 있었는지는 아직 확인되지 않았어',
+  },
+};
+
+/**
+ * A2 · A3 — Top 3 카드마다 **해석 재료 묶음**을 만든다.
+ *
+ * ⚠️ 판정·순서·근거를 다시 만들지 않는다. Candidate가 이미 들고 있는 값을 모델이 읽을
+ * 수 있는 모양으로 옮기고, 장면만 호출 예산 안에서 나눠 담는다.
+ *
+ * ⚠️ `user_reported_event` 근거는 **사실 목록에 넣지 않는다.** 그 근거를 resolve하면
+ * 장면 본문이 되고, 그러면 장면이 예산(호출당 4건) 밖에서 한 번 더 나간다 — 장면은
+ * `selectedEvents` 하나로만 나간다.
+ */
+export function buildSemanticCandidateBundles(input: {
+  candidates: readonly InsightCandidate[];
+  events: readonly RelationshipEvent[];
+  resolverContext: EvidenceResolverContext;
+  tense: RelationshipTense;
+}): SemanticCandidateBundle[] {
+  const { resolverContext, tense } = input;
+  const top = input.candidates.slice(0, 3);
+  if (top.length === 0) return [];
+
+  const scenes = allocateCandidateScenes({ candidates: top, events: input.events });
+  const target = resolverContext.answers.target;
+
+  return top.map((candidate, index): SemanticCandidateBundle => {
+    const seen = new Set<string>();
+    const facts: SemanticCandidateBundle['deterministicFacts'] = [];
+    for (const ref of candidate.evidenceRefs) {
+      if (ref.source === 'user_reported_event') continue;
+      const resolved = resolveEvidenceRef(ref, resolverContext);
+      if (!resolved || seen.has(resolved.key)) continue;
+      seen.add(resolved.key);
+      facts.push({ ref, label: resolved.sourceLabel, text: resolved.text });
+    }
+
+    const selected = scenes.get(candidate.id) ?? [];
+    const topic = candidate.primaryAxis
+      ? (MIRROR_AXES.find((axis) => axis.key === candidate.primaryAxis)?.label ?? null)
+      : null;
+
+    const unresolved: string[] = [];
+    const axis = candidate.primaryAxis;
+    /* 상대의 평소를 모르면, 두 사람 사이의 조건은 정의상 확인되지 않았다 */
+    if (axis && axis !== 'hobby' && topic) {
+      const level = target[axis];
+      if (!level || level === 'x') {
+        unresolved.push(`${topic}에서 상대가 평소 어떤 쪽인지는 입력되지 않았어`);
+      }
+    }
+    unresolved.push(UNRESOLVED_BY_VERDICT[candidate.verdict][tense]);
+    if (selected.length === 0) {
+      unresolved.push('이 이야기와 이어진 장면은 아직 없어');
+    } else if (selected.some((scene) => !scene.myReaction)) {
+      unresolved.push('알려준 장면 중 네 반응이 적혀 있지 않은 것이 있어');
+    }
+
+    return {
+      candidateId: candidate.id,
+      rank: (index + 1) as 1 | 2 | 3,
+      topic,
+      verdict: candidate.verdict,
+      deterministicFacts: facts,
+      selectedEvents: selected.map((scene) => ({
+        eventId: scene.eventId,
+        type: scene.typeLabel,
+        situation: scene.description,
+        myReaction: scene.myReaction,
+        source: 'user_reported_event' as const,
+      })),
+      unresolvedPoints: unresolved,
+    };
+  });
+}
+
+/**
+ * A5 · §9 — 이 호출에서 **각 카드에 실어 보낸** 근거·장면. 핸들러가 검증에 쓰는 허용집합이다.
+ *
+ * ⚠️ payload에서 직접 읽는다. 다시 계산한 값은 '보낸 것'이라는 보장이 없다
+ * (`refsWithinAllowed`가 같은 자리에서 배운 규칙).
+ */
+export function deepReportAllowancesOf(context: DeepReportContext): CandidateSemanticAllowance[] {
+  return (context.candidates ?? []).map((bundle) => ({
+    candidateId: bundle.candidateId,
+    evidenceRefs: bundle.deterministicFacts.map((fact) => fact.ref),
+    eventIds: bundle.selectedEvents.map((event) => event.eventId),
+    sceneTexts: bundle.selectedEvents.flatMap((event) =>
+      [event.situation, event.myReaction].filter((text): text is string => Boolean(text)),
+    ),
+  }));
 }
 
 /** Mirror 축 라벨 — 화면·프롬프트에서 공통으로 쓴다 */

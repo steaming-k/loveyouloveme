@@ -3,6 +3,7 @@ import { MIRROR_AXES } from '@/data/axes';
 import { lensAiUnitsFor } from '@/data/premiumLensAi';
 import { clampNarrativeText, maskInternalCodes } from './safety';
 import type {
+  CandidateSemanticAllowance,
   AiObservedTrait,
   CompatibilityNarrative,
   Confidence,
@@ -17,7 +18,7 @@ import type {
   PremiumLensKind,
   PhotoObservation,
   RelationshipNarrative,
-  SemanticInsightNarrative,
+  SemanticMode,
   TargetAxisKey,
 } from '@/types';
 
@@ -530,14 +531,6 @@ export function parseHistoryResponse(
 export function parseDeepReportResponse(
   raw: unknown,
   allowedInsightIds: readonly string[],
-  /**
-   * v1.46.4 §9 — Insight별로 **실제로 보낸** 장면 id. 여기 없는 id를 인용하면
-   * `usedEventIds`에서 지워진다.
-   *
-   * ⚠️ 기본값 `{}`이면 모든 장면 인용이 거부된다 — 장면을 안 보낸 호출에서 모델이
-   * 장면 id를 들고 오는 것은 정의상 지어낸 것이다. 이 기본값이 '안전한 쪽'이다.
-   */
-  allowedSceneIds: Readonly<Record<string, readonly string[]>> = {},
 ): {
   insightId: string;
   headline: string;
@@ -546,9 +539,6 @@ export function parseDeepReportResponse(
   uncertainty?: string;
   conversationQuestion?: string;
   evidenceRefs: EvidenceRef[];
-  semantic?: SemanticInsightNarrative;
-  /** §9 — 허용집합 밖이라 지운 장면 id. 핸들러가 이 값을 보고 semantic을 버린다 */
-  rejectedEventIds: string[];
 }[] {
   if (!isObject(raw) || !Array.isArray(raw.narratives)) return [];
 
@@ -572,54 +562,8 @@ export function parseDeepReportResponse(
     // §13 — 근거도 한계도 없으면 버린다. Cross-source Insight는 특히 근거 2개 이상을 기대한다.
     if (evidenceRefs.length === 0 && !uncertainty) continue;
 
-    /*
-      ══ v1.46.4 §9 — semantic 파싱 ═══════════════════════════════════════════
-
-      ⚠️ **셋 중 둘(soWhat · whyItMatters)이 다 있어야 통과다.** 하나만 있으면 카드가
-      반쪽이고, 그때 화면은 나머지 절반을 조립문으로 채워야 한다 — 한 카드에 두 계층의
-      문장이 섞이는 상태다(`scanSemanticNarrative` 주석과 같은 판단).
-
-      ⚠️ `verification`은 optional이다. 확인할 것이 없는 이야기가 실제로 있고
-      (`ended`에서 특히), 그 자리를 채우려고 문장을 만들면 §46이 금지한 '근거 없는
-      멋진 문장'이 된다.
-    */
-    const rejectedEventIds: string[] = [];
-    const semantic = ((): SemanticInsightNarrative | undefined => {
-      if (!isObject(item.semantic)) return undefined;
-      const soWhat = str(item.semantic.soWhat, 400);
-      const whyItMatters = str(item.semantic.whyItMatters, 400);
-      if (!soWhat || !whyItMatters) return undefined;
-
-      const allowedScenes = new Set(allowedSceneIds[insightId] ?? []);
-      const usedEventIds: string[] = [];
-      if (Array.isArray(item.semantic.usedEventIds)) {
-        for (const entry of item.semantic.usedEventIds) {
-          const id = str(entry, 80);
-          if (!id) continue;
-          /* §9 — 부분집합 위반은 **지우고 기록한다.** 판정은 핸들러가 한다 */
-          if (!allowedScenes.has(id)) {
-            rejectedEventIds.push(id);
-            continue;
-          }
-          if (!usedEventIds.includes(id)) usedEventIds.push(id);
-        }
-      }
-
-      const verification = str(item.semantic.verification, 300);
-      return {
-        soWhat: clampNarrativeText(soWhat, NARRATIVE_LIMITS.semanticSoWhat),
-        whyItMatters: clampNarrativeText(whyItMatters, NARRATIVE_LIMITS.semanticWhy),
-        ...(verification
-          ? { verification: clampNarrativeText(verification, NARRATIVE_LIMITS.semanticVerify) }
-          : {}),
-        usedEventIds,
-      };
-    })();
-
     seen.add(insightId);
     result.push({
-      ...(semantic ? { semantic } : {}),
-      rejectedEventIds,
       insightId,
       headline: clampNarrativeText(headline, NARRATIVE_LIMITS.deepHeadline),
       interpretation: clampNarrativeText(interpretation, NARRATIVE_LIMITS.deepInterpretation),
@@ -635,6 +579,96 @@ export function parseDeepReportResponse(
         return q ? clampNarrativeText(q, NARRATIVE_LIMITS.deepQuestion) : undefined;
       })(),
       evidenceRefs,
+    });
+  }
+
+  return result;
+}
+
+/**
+ * SEMANTIC DECOMPOSITION A5 — **Top 3 카드별 semantic 파싱.**
+ *
+ * 계약(A5):
+ * ```
+ * candidateId 없는 문장 금지        → 버린다
+ * 입력에 없는 카드(모델이 추가)       → 버린다
+ * 카드당 최대 1개                   → 두 번째부터 버린다
+ * semanticMode는 세 값 중 하나       → 다른 값이면 버린다(A4 — 모드를 발명하지 못한다)
+ * ```
+ *
+ * ⚠️ 장면 id 허용집합 밖은 **지우고 기록한다.** 버릴지는 게이트(`gateCandidateSemantics`)가
+ * 정한다 — 판정과 계산을 한 함수에 섞지 않는다(직전 파서와 같은 구조).
+ *
+ * ⚠️ `soWhat` · `whyItMatters` 둘 다 있어야 한다. 하나만 있으면 카드가 반쪽이고, 그러면
+ * 한 카드에 AI 문장과 조립문이 섞인다.
+ */
+const SEMANTIC_MODES: readonly SemanticMode[] = [
+  'shared_condition',
+  'different_condition',
+  'unresolved_condition',
+];
+
+export function parseCandidateSemantics(
+  raw: unknown,
+  allowances: readonly CandidateSemanticAllowance[],
+): Array<{
+  candidateId: string;
+  semanticMode: SemanticMode;
+  soWhat: string;
+  whyItMatters: string;
+  verification?: string;
+  usedEvidenceRefs: EvidenceRef[];
+  usedEventIds: string[];
+  rejectedEventIds: string[];
+}> {
+  if (!isObject(raw) || !Array.isArray(raw.candidateSemantics)) return [];
+
+  const allowed = new Map(allowances.map((allowance) => [allowance.candidateId, allowance]));
+  const seen = new Set<string>();
+  const result: ReturnType<typeof parseCandidateSemantics> = [];
+
+  for (const item of raw.candidateSemantics) {
+    if (!isObject(item)) continue;
+    const candidateId = str(item.candidateId, 80);
+    if (!candidateId || seen.has(candidateId)) continue;
+    const allowance = allowed.get(candidateId);
+    if (!allowance) continue;
+
+    const semanticMode = oneOf(item.semanticMode, SEMANTIC_MODES);
+    if (!semanticMode) continue;
+
+    const soWhat = str(item.soWhat, 400);
+    const whyItMatters = str(item.whyItMatters, 400);
+    if (!soWhat || !whyItMatters) continue;
+
+    const allowedScenes = new Set(allowance.eventIds);
+    const usedEventIds: string[] = [];
+    const rejectedEventIds: string[] = [];
+    if (Array.isArray(item.usedEventIds)) {
+      for (const entry of item.usedEventIds) {
+        const id = str(entry, 80);
+        if (!id) continue;
+        if (!allowedScenes.has(id)) {
+          rejectedEventIds.push(id);
+          continue;
+        }
+        if (!usedEventIds.includes(id)) usedEventIds.push(id);
+      }
+    }
+
+    const verification = str(item.verification, 300);
+    seen.add(candidateId);
+    result.push({
+      candidateId,
+      semanticMode,
+      soWhat: clampNarrativeText(soWhat, NARRATIVE_LIMITS.semanticSoWhat),
+      whyItMatters: clampNarrativeText(whyItMatters, NARRATIVE_LIMITS.semanticWhy),
+      ...(verification
+        ? { verification: clampNarrativeText(verification, NARRATIVE_LIMITS.semanticVerify) }
+        : {}),
+      usedEvidenceRefs: parseEvidenceRefs(item.usedEvidenceRefs),
+      usedEventIds,
+      rejectedEventIds,
     });
   }
 

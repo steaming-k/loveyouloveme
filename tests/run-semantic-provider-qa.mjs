@@ -1,314 +1,310 @@
 /**
- * Real Provider QA — Semantic Event Personalization (v1.46.4 · §31 ~ §34 · §38)
+ * Semantic Decomposition — **Real Provider QA** (v1.46.4 SEMANTIC DECOMPOSITION · A13 ~ A16)
  *
- * ══ 이 스크립트가 하는 일 ═══════════════════════════════════════════════════
+ * ══ 이 하네스가 보는 것 ════════════════════════════════════════════════════
  *
- * **실제 Provider를 부른다.** `run-semantic-fixtures.mjs`는 Provider를 부르지 않고
- * `narratives`를 직접 넘겨 계층 배선만 확인한다 — 그건 "구조가 맞는가"까지이고,
- * §31이 요구한 것은 **사람이 읽고 품질을 판정하는 것**이다:
+ * 직전 하네스(insight 단위 semantic)와 A/B 하네스 둘을 **이 파일 하나로 대체했다.** 둘 다
+ * 모델이 Insight에 쓴 문장을 세었고, 그 문장이 첫 화면 카드에 오르는지는 별도 스크립트로
+ * 다시 넣어봐야 알 수 있었다 — 그 틈이 A0 감사의 loss point였다.
  *
- * > Mock/fixture만으로 종료 금지.
- *
- * 그래서 이 스크립트는 판정하지 않는다. `/api/ai/deep-report-narrative`(진짜 라우트)를
- * R1~R6 시나리오로 부르고, **모델이 실제로 쓴 문장을 그대로 출력한다.** 점수(§33)는
- * 사람이 매긴다.
- *
- * ══ 무엇을 자동으로 확인하는가 ══════════════════════════════════════════════
- *
- * 사람이 읽기 전에 **값으로 확정할 수 있는 것**만 확인한다:
+ * 이 하네스는 **사용자가 보는 Top 3를 직접 잰다**:
  *
  * ```
- * meta.mode === 'real'   실제 Provider가 응답했는가 (아니면 QA가 아니다)
- * semantic 존재 여부      게이트를 통과한 건수
- * 메타 언어 0             §35 lint를 출력에 다시 돌린다
- * 장면 복창 0             §36 lint를 출력에 다시 돌린다
- * usedEventIds ⊆ 전송     §9
+ * ① /api/dev/premium-test?withAiContext=1  → 제품과 같은 요청 본문(aiRequest) + AI 전 Top 3 id
+ * ② /api/ai/deep-report-narrative          → 실제 Provider (dev 전용 모델 override · 계측)
+ * ③ /api/dev/premium-test                  → ②의 응답을 넣어 화면과 같은 함수로 Top 3 조립
  * ```
  *
- * Novelty·Specificity·Actionability·Tone은 **자동 판정하지 않는다.** 그건 문장을
- * 읽어야 아는 것이고, 자동 점수를 매기면 점수를 맞추려고 프롬프트를 고치게 된다
- * (§34 마지막 줄 — 점수 맞추기 위해 과장 금지).
+ * ⚠️ 게이트를 여기서 다시 돌리지 않는다. ②가 제품 핸들러이고, ③이 제품 조립 함수다.
+ * ⚠️ 품질 점수(rubric · '돈값' Q1~Q5)는 사람이 기록을 읽고 매긴다. 자동 검사는 안전·형식·
+ *    배선(Top 3 반영 · 순서 불변)까지다.
+ * ⚠️ 앱 rate limiter(60초당 12회)를 풀지 않는다. 호출 간격(LYM_QA_PACE_MS)으로 맞춘다.
  *
- * ⚠️ **비용이 든다.** 시나리오마다 deep-report 1회다(R2·R3은 변동성 확인을 위해 2회).
- * 기본 총 호출 수는 아래 `SCENARIOS`의 `repeat` 합계로 계산되어 실행 전에 출력된다.
+ * 실행: 터미널 A `npm run dev` → 터미널 B
+ *   LYM_QA_MODEL=gpt-5.4 node tests/run-semantic-provider-qa.mjs
  *
- * 사용법:
- *   1) .env.local에 AI_MODE=real · AI_API_KEY
- *   2) npm run dev
- *   3) node tests/run-semantic-provider-qa.mjs
+ * 옵션: LYM_QA_MODEL(기본 gpt-5.4) · LYM_QA_DIR(기본 /tmp/qa) · LYM_QA_PACE_MS(기본 6000)
+ *       LYM_QA_ONLY=R2:1,R5 · LYM_QA_SUFFIX=rerun
  */
 
-import { writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
 
-import {
-  EVENTS_SEM_B,
-  SEM_A,
-  SEM_B,
-  SEM_C,
-  SEM_D,
-  run,
-} from './fixtures-v1464.mjs';
+import { SEMANTIC_QA_SCENARIOS } from './fixtures-v1464.mjs';
 
 const BASE_URL = process.env.LYM_BASE_URL ?? 'http://localhost:3000';
-const OUT = process.env.LYM_QA_OUT ?? null;
+const MODEL = process.env.LYM_QA_MODEL ?? 'gpt-5.4';
+const OUT_DIR = process.env.LYM_QA_DIR ?? '/tmp/qa';
+const PACE_MS = Number(process.env.LYM_QA_PACE_MS ?? 6000);
+const SUFFIX = process.env.LYM_QA_SUFFIX ? `-${process.env.LYM_QA_SUFFIX}` : '';
 
-/* ══════════════════════════════════════════════════════════ 시나리오 (§32) */
+/** A14 — R2 · R3 · R5 중점. 모델 A/B와 같은 반복 수(비교 가능하게) */
+const REPEAT = { R1: 1, R2: 3, R3a: 3, R3b: 3, R4: 1, R5: 2, R6: 1 };
+const ONLY = process.env.LYM_QA_ONLY
+  ? Object.fromEntries(
+      process.env.LYM_QA_ONLY.split(',').map((item) => {
+        const [id, count] = item.split(':');
+        return [id.trim(), Number(count ?? REPEAT[id.trim()] ?? 1)];
+      }),
+    )
+  : null;
 
-/**
- * §32 — 최소 6개.
- *
- * ⚠️ 각 시나리오의 세션은 `/api/dev/premium-test`로 한 번 돌려서 **제품과 같은
- * context**를 뽑는다. 여기서 context를 손으로 조립하면 QA가 검증하는 것이 제품이
- * 아니라 이 스크립트가 된다.
- */
-const SCENARIOS = [
-  { id: 'R1', label: 'current / 사건 0 / high-data', body: SEM_A, repeat: 1 },
-  { id: 'R2', label: 'current / 사건 많음 / contact GAP', body: SEM_B, repeat: 2 },
-  { id: 'R3a', label: 'same verdict · 다른 사건 의미 (C)', body: SEM_C, repeat: 2 },
-  { id: 'R3b', label: 'same verdict · 다른 사건 의미 (D)', body: SEM_D, repeat: 1 },
-  {
-    id: 'R4',
-    label: 'current / Target 부분정보',
-    body: {
-      ...SEM_B,
-      target: { ...SEM_B.target, conflict: 'x', alone: 'x', affection: 'x', mbti: null },
-    },
-    repeat: 1,
-  },
-  {
-    id: 'R5',
-    label: 'ended / 사건 많음',
-    body: { ...SEM_B, status: 'ended', target: { ...SEM_B.target, relation: 'ex' } },
-    repeat: 1,
-  },
-  {
-    id: 'R6',
-    label: 'sparse / fallback 경계',
-    body: {
-      ...SEM_B,
-      declared: { contact: 3, conflict: null, alone: null, affection: null, hobby: null },
-      experience: { important: [], hardest: null, selfGap: null, skipped: true },
-      entries: [],
-      target: {
-        ...SEM_B.target,
-        contact: 'x',
-        conflict: 'x',
-        alone: 'x',
-        affection: 'x',
-        events: [EVENTS_SEM_B[0]],
-      },
-    },
-    repeat: 1,
-  },
-];
-
-/* ══════════════════════════════════════════════════ 자동 확인 (§35 · §36 · §9) */
-
-/** §35 — 출력에 남으면 게이트가 새는 것이다. 서버 패턴과 같은 목록을 여기서도 본다 */
-const META_PATTERNS = [
-  /동기화율|싱크율|매칭\s*점수/,
-  /\b(MATCH|GAP|CHANGE|CONTRADICTION|UNRESOLVED|REPEATED_SIGNAL)\b/,
+/** A8 — 첫 화면 금지 어휘 (SEM-07과 같은 목록 + '축' 낱말) */
+const META = [
+  /동기화율/,
+  /자료\s*\d+\s*종/,
+  /근거\s*\d+\s*개/,
+  /같은 자리를 가리/,
+  /같은 축을 가리/,
+  /판정/,
+  /\b(MATCH|GAP|CHANGE|CONTRADICTION)\b/,
+  /evidence|candidate|insight/i,
+  /분석 결과상|데이터상/,
   /(^|[^가-힣])축(?![하적구소제])/,
-  /(^|[^가-힣])판정/,
-  /자료\s*\d+\s*종|근거\s*\d+\s*(개|종)|\d+\s*가지가\s*같은/,
-  /같은\s*자리를\s*가리|같은\s*축을\s*가리|나란히\s*놓[아이여]/,
-  /\b(evidence|source|candidate|insight|narrative)\b/i,
-  /분석\s*결과(상|에\s*따르면)|데이터상|계산\s*결과/,
 ];
+/** A11 — ended에서 현재 상대에게 향하는 행동 */
+const OUTWARD = ['다가가', '연락해봐', '먼저 연락', '다음 만남', '재회', '물어봐', '물어볼 수', '제안해봐', '말해봐'];
 
-/** §36 — 장면 원문의 12자 조각이 문장에 들어가면 복창이다 */
-function recites(text, sceneTexts) {
-  const compact = text.replace(/[^0-9A-Za-z가-힣]/g, '');
-  for (const scene of sceneTexts) {
-    const s = scene.replace(/[^0-9A-Za-z가-힣]/g, '');
-    for (let i = 0; i + 12 <= s.length; i += 1) {
-      if (compact.includes(s.slice(i, i + 12))) return true;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sha = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 16);
+const compact = (text) => text.replace(/[^0-9A-Za-z가-힣]/g, '');
+function recites(text, scenes) {
+  const target = compact(text);
+  return scenes.some((scene) => {
+    const reference = compact(scene);
+    for (let i = 0; i + 12 <= reference.length; i += 1) {
+      if (target.includes(reference.slice(i, i + 12))) return true;
     }
-  }
-  return false;
+    return false;
+  });
+}
+function percentile(values, p) {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1)];
 }
 
-/* ═══════════════════════════════════════════════════════════════════ 실행 */
-
-async function callProvider(context, insights, tense, allowedSceneIds, sceneTexts, tag) {
-  const response = await fetch(`${BASE_URL}/api/ai/deep-report-narrative`, {
+async function post(path, body) {
+  const response = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      inputFingerprint: `qa_${tag}_${Date.now()}`,
-      context,
-      insights,
-      tense,
-      allowedSceneIds,
-      sceneTextsByInsight: sceneTexts,
-    }),
+    body: JSON.stringify(body),
   });
-  const json = await response.json().catch(() => null);
-  return { status: response.status, json };
+  return { status: response.status, json: await response.json().catch(() => null) };
 }
 
-const lines = [];
-const say = (text = '') => {
-  console.log(text);
-  lines.push(text);
+console.log(`\nSemantic Decomposition Real Provider QA — model ${MODEL}\n`);
+await mkdir(OUT_DIR, { recursive: true });
+
+const md = [`# Semantic Decomposition Real Provider QA — ${MODEL}`, ''];
+const stats = {
+  calls: 0,
+  failures: 0,
+  stages: { attempted: 0, parsed: 0, survivedBaseGates: 0, grounded: 0, safetyPassed: 0, stylePassed: 0, accepted: 0 },
+  violations: {},
+  latency: [],
+  inputTokens: 0,
+  outputTokens: 0,
+  cachedTokens: 0,
+  reasoningTokens: 0,
+  metaLeaks: 0,
+  recitationLeaks: 0,
+  endedOutwardLeaks: 0,
+  endedQuestions: 0,
+  verifyNotQuestion: 0,
+  orderChanged: 0,
+  modes: {},
+  modelsSeen: new Set(),
 };
+const perScenario = {};
+const accepted = [];
 
-say('\n══════════════════════════════════════════════════════════════════');
-say(' Real Provider QA — Semantic Event Personalization (v1.46.4 §32)');
-say('══════════════════════════════════════════════════════════════════');
-const totalCalls = SCENARIOS.reduce((sum, scenario) => sum + scenario.repeat, 0);
-say(` 시나리오 ${SCENARIOS.length}개 · deep-report 호출 ${totalCalls}회 예정\n`);
+for (const scenario of SEMANTIC_QA_SCENARIOS) {
+  const repeat = ONLY ? (ONLY[scenario.id] ?? 0) : (REPEAT[scenario.id] ?? 1);
+  if (repeat === 0) continue;
 
-let realCount = 0;
-let semanticTotal = 0;
-let metaHits = 0;
-let recitationHits = 0;
-let subsetViolations = 0;
-
-for (const scenario of SCENARIOS) {
-  say(`\n──────── ${scenario.id} · ${scenario.label} ────────`);
-
-  /* 제품과 같은 함수로 context·insights·허용집합을 만든다 */
-  const session = await run(scenario.body);
-  /*
-    ⚠️ `tense`는 응답의 **최상위** 키다(`report.tense`가 아니다). 첫 판에서
-    `session.report.tense ?? 'current'`로 읽었고, 그래서 R5(ended)가 `current`로
-    호출됐다 — §41이 요구한 ended 검증이 실제로는 current를 검증하고 있었다.
-    실측 로그의 `tense=current`가 그것을 드러냈다.
-  */
-  const tense = session.tense;
-  if (tense !== 'current' && tense !== 'former') {
-    say(`  ✗ tense를 읽지 못했다: ${JSON.stringify(tense)}`);
-    continue;
+  const first = await post('/api/dev/premium-test?withAiContext=1', scenario.body);
+  const second = await post('/api/dev/premium-test?withAiContext=1', scenario.body);
+  const request = first.json?.aiRequest;
+  if (!request) {
+    console.error(`✗ ${scenario.id} — aiRequest 없음 (dev 라우트 확인)`);
+    process.exit(2);
   }
-  const deepCall = session.ai.calls.find((call) => call.task === 'deep-report');
-
-  say(`  세션: insight ${session.insights.filter((i) => i.eligibleForNarrative).length}건 ·` +
-    ` Candidate ${session.report.candidates.length}개 · 전송 장면 ${deepCall.eventCount}건` +
-    ` · tense=${tense}`);
-  say(`  결정론 첫 화면 (AI 없이):`);
-  for (const candidate of session.report.candidates.slice(0, 3)) {
-    say(`    [${candidate.soWhatSource}] ${candidate.headline}`);
-    say(`      SO WHAT  ${candidate.soWhat}`);
+  const inputHash = sha(request);
+  if (sha(second.json.aiRequest) !== inputHash) {
+    console.error(`✗ ${scenario.id} — 같은 입력의 요청 본문 해시가 다르다. QA 무효로 멈춘다.`);
+    process.exit(2);
   }
 
-  if (deepCall.count === 0) {
-    say('  ⚠ 보낼 Insight가 없어 Provider를 부르지 않는다 (제품과 같은 게이트)');
-    continue;
-  }
+  const tense = first.json.tense;
+  const topIds = first.json.semanticTopCandidateIds;
+  const sceneTexts = request.candidates.flatMap((card) => card.sceneTexts);
+  perScenario[scenario.id] = { label: scenario.label, tense, top3SemanticAi: [], inputHash };
 
-  /*
-    ⚠️ context를 dev 라우트에서 그대로 꺼낼 수 없다 — 그 라우트는 payload 크기만
-    낸다(본문을 응답에 싣지 않기 위해서다 · §29). 그래서 여기서 **같은 builder를
-    서버에서 한 번 더** 부르게 하는 대신, dev 라우트에 붙어 있는 context 노출
-    엔드포인트를 쓴다.
-  */
-  const ctxResponse = await fetch(`${BASE_URL}/api/dev/premium-test?withAiContext=1`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(scenario.body),
-  });
-  const ctxJson = await ctxResponse.json();
-  const context = ctxJson.aiContext;
-  if (!context) {
-    say('  ✗ aiContext를 받지 못했다 — dev 라우트의 withAiContext 파라미터 확인');
-    continue;
-  }
-
-  const insights = context.insights.map((item) => ({
-    id: item.id,
-    evidenceRefs: item.evidence.map((entry) => entry.ref),
-    ruleSummary: item.allowedConnection,
-  }));
-  const allowedSceneIds = Object.fromEntries(
-    context.insights.map((item) => [item.id, (item.relatedScenes ?? []).map((scene) => scene.id)]),
+  md.push(`## ${scenario.id} · ${scenario.label}`, '');
+  md.push(
+    `- input hash: \`${inputHash}\` · tense: ${tense}`,
+    `- AI 전 Top 3: ${JSON.stringify(topIds)}`,
+    `- 카드별 장면: ${JSON.stringify(request.candidates.map((card) => [card.candidateId, card.eventIds]))}`,
+    '',
+    '결정론 첫 화면 (AI 없이):',
+    ...first.json.report.candidates
+      .slice(0, 3)
+      .map((card) => `- [${card.soWhatSource}] ${card.headline} — ${card.soWhat}`),
+    '',
   );
-  const sceneTexts = Object.fromEntries(
-    context.insights.map((item) => [
-      item.id,
-      (item.relatedScenes ?? []).flatMap((scene) =>
-        [scene.fact, scene.myReaction].filter(Boolean),
-      ),
-    ]),
-  );
-  const allSceneTexts = Object.values(sceneTexts).flat();
+  console.log(`  ${scenario.id.padEnd(4)} hash=${inputHash} tense=${tense} top3=${topIds.length} scenes=${sceneTexts.length > 0 ? request.candidates.reduce((n, c) => n + c.eventIds.length, 0) : 0}`);
 
-  for (let attempt = 1; attempt <= scenario.repeat; attempt += 1) {
-    const { status, json } = await callProvider(
-      context,
-      insights,
-      tense,
-      allowedSceneIds,
-      sceneTexts,
-      `${scenario.id}_${attempt}`,
+  if (request.context.insights.length === 0) {
+    md.push('- Provider 호출 없음 (보낼 Insight 0 — 제품과 같은 게이트)', '');
+    continue;
+  }
+
+  for (let attempt = 1; attempt <= repeat; attempt += 1) {
+    if (PACE_MS > 0) await sleep(PACE_MS);
+    const started = Date.now();
+    const call = await post('/api/ai/deep-report-narrative', {
+      inputFingerprint: `qa_${MODEL}_${scenario.id}_${attempt}_${Date.now()}`,
+      ...request,
+      devModelOverride: MODEL,
+      devCapture: true,
+    });
+    const latency = Date.now() - started;
+    stats.calls += 1;
+    md.push(`### 호출 ${attempt} — HTTP ${call.status} · ${latency}ms`, '');
+
+    if (call.status !== 200 || !call.json?.ok || !call.json.dev) {
+      stats.failures += 1;
+      md.push(`- 실패: ${JSON.stringify(call.json)?.slice(0, 300)}`, '');
+      console.log(`    ✗ ${scenario.id}#${attempt} 실패 HTTP ${call.status}`);
+      continue;
+    }
+    if (call.json.data?.meta?.mode !== 'real') {
+      stats.failures += 1;
+      md.push(`- BLOCKED: mode=${call.json.data?.meta?.mode}`, '');
+      continue;
+    }
+
+    const dev = call.json.dev;
+    stats.modelsSeen.add(dev.model);
+    stats.latency.push(latency);
+    for (const [key, value] of Object.entries(dev.stages)) stats.stages[key] += value;
+    for (const label of dev.violations) stats.violations[label] = (stats.violations[label] ?? 0) + 1;
+    if (dev.usage) {
+      stats.inputTokens += dev.usage.inputTokens ?? 0;
+      stats.outputTokens += dev.usage.outputTokens ?? 0;
+      stats.cachedTokens += dev.usage.cachedTokens ?? 0;
+      stats.reasoningTokens += dev.usage.reasoningTokens ?? 0;
+    }
+
+    const semantics = call.json.data.candidateSemantics ?? [];
+    const rendered = await post('/api/dev/premium-test', {
+      ...scenario.body,
+      narratives: call.json.data.narratives,
+      candidateSemantics: semantics,
+    });
+    const top = rendered.json.report.candidates.slice(0, 3);
+    const aiCount = top.filter((card) => card.soWhatSource === 'semantic_ai').length;
+    perScenario[scenario.id].top3SemanticAi.push(aiCount);
+
+    /* A7 — AI 응답이 Top 3 집합·순서를 바꾸지 않는다 */
+    if (JSON.stringify(top.map((card) => card.id)) !== JSON.stringify(topIds)) {
+      stats.orderChanged += 1;
+      md.push('- ✗ AI 응답 뒤 Top 3 순서가 AI 전과 다르다', '');
+    }
+
+    md.push(
+      `- model: ${dev.model} · stages: ${JSON.stringify(dev.stages)}`,
+      `- violations: ${JSON.stringify(dev.violations)}`,
+      `- tokens: in ${dev.usage?.inputTokens ?? '-'} / out ${dev.usage?.outputTokens ?? '-'} / cached ${dev.usage?.cachedTokens ?? '-'}`,
+      `- **Top 3 semantic_ai ${aiCount}/3**`,
+      '',
     );
 
-    if (status !== 200 || !json?.ok) {
-      say(`  ✗ 호출 ${attempt} 실패 — HTTP ${status} ${JSON.stringify(json)?.slice(0, 200)}`);
-      continue;
-    }
-
-    const mode = json.data?.meta?.mode;
-    say(`\n  · 호출 ${attempt} — mode=${mode} · narrative ${json.data.narratives.length}건`);
-    if (mode !== 'real') {
-      say('    ⚠ BLOCKED: REAL PROVIDER QA — mode가 real이 아니다. 이 결과로 품질을 말하지 않는다');
-      continue;
-    }
-    realCount += 1;
-
-    const withSemantic = json.data.narratives.filter((item) => item.semantic);
-    semanticTotal += withSemantic.length;
-    say(`    semantic ${withSemantic.length}/${json.data.narratives.length}건 통과`);
-
-    for (const narrative of json.data.narratives) {
-      say(`\n    ── insight ${narrative.insightId}`);
-      say(`    HEADLINE  ${narrative.headline}`);
-      say(`    INTERP    ${narrative.interpretation}`);
-      if (!narrative.semantic) {
-        say('    SEMANTIC  (없음 — 모델이 안 만들었거나 게이트가 버렸다 → 조립문 fallback)');
-        continue;
+    for (const [index, card] of top.entries()) {
+      md.push(
+        `#### ${index + 1}. [${card.soWhatSource}${card.semanticMode ? ` · ${card.semanticMode}` : ''}] ${card.headline}`,
+        `- SO WHAT: ${card.soWhat}`,
+        `- WHY: ${card.whyItMatters}`,
+        `- VERIFY: ${card.verification ?? '(없음)'}`,
+        ...card.questions.map((question) => `- Q(${question.register}): ${question.text}`),
+        `- usedEventIds: ${JSON.stringify(card.semanticEventIds)} · relevant: ${JSON.stringify(card.relevantEventIds)}`,
+        '',
+      );
+      if (card.soWhatSource === 'semantic_ai') {
+        stats.modes[card.semanticMode] = (stats.modes[card.semanticMode] ?? 0) + 1;
+        accepted.push({
+          scenario: scenario.id,
+          attempt,
+          rank: index + 1,
+          candidateId: card.id,
+          semanticMode: card.semanticMode,
+          soWhat: card.soWhat,
+          whyItMatters: card.whyItMatters,
+          verification: card.verification,
+          questions: card.questions.map((question) => `${question.register}: ${question.text}`),
+          usedEventIds: card.semanticEventIds,
+        });
       }
-      const sem = narrative.semantic;
-      say(`    SO WHAT   ${sem.soWhat}`);
-      say(`    WHY       ${sem.whyItMatters}`);
-      say(`    VERIFY    ${sem.verification ?? '(없음)'}`);
-      say(`    usedEventIds  ${JSON.stringify(sem.usedEventIds)}`);
 
-      const texts = [sem.soWhat, sem.whyItMatters, sem.verification ?? ''].filter(Boolean);
-      const meta = texts.filter((text) => META_PATTERNS.some((pattern) => pattern.test(text)));
-      if (meta.length > 0) {
-        metaHits += 1;
-        say(`    ✗ 메타 언어 누출: ${JSON.stringify(meta)}`);
+      const visible = [card.headline, card.soWhat, card.whyItMatters, card.verification ?? '', ...card.questions.map((q) => q.text)].filter(Boolean);
+      if (visible.some((text) => META.some((pattern) => pattern.test(text)))) {
+        stats.metaLeaks += 1;
+        md.push(`- ✗ 메타 언어: ${JSON.stringify(visible.filter((text) => META.some((pattern) => pattern.test(text))))}`, '');
       }
-      const recited = texts.filter((text) => recites(text, allSceneTexts));
-      if (recited.length > 0) {
-        recitationHits += 1;
-        say(`    ✗ 장면 복창: ${JSON.stringify(recited)}`);
+      if (card.soWhatSource === 'semantic_ai' && visible.some((text) => recites(text, sceneTexts))) {
+        stats.recitationLeaks += 1;
+        md.push('- ✗ 장면 복창', '');
       }
-      const allowed = new Set(allowedSceneIds[narrative.insightId] ?? []);
-      const outside = sem.usedEventIds.filter((id) => !allowed.has(id));
-      if (outside.length > 0) {
-        subsetViolations += 1;
-        say(`    ✗ 허용집합 밖 장면 인용: ${JSON.stringify(outside)}`);
+      if (tense === 'former') {
+        if (visible.some((text) => OUTWARD.some((word) => text.includes(word)))) {
+          stats.endedOutwardLeaks += 1;
+          md.push('- ✗ ended outward', '');
+        }
+        stats.endedQuestions += card.questions.length;
+      } else if (card.soWhatSource === 'semantic_ai' && card.verification && !card.verification.trim().endsWith('?')) {
+        stats.verifyNotQuestion += 1;
       }
     }
+    console.log(`    ${scenario.id}#${attempt} Top3 semantic_ai ${aiCount}/3 · ${latency}ms · accepted ${dev.stages.accepted}/${dev.stages.attempted}`);
   }
 }
 
-say('\n══════════════════════════════════════════════════════════════════');
-say(' 자동 확인 요약 (품질 점수는 사람이 매긴다 · §33)');
-say('══════════════════════════════════════════════════════════════════');
-say(` 실제 Provider 응답      ${realCount}회`);
-say(` semantic 통과 총합      ${semanticTotal}건`);
-say(` 메타 언어 누출          ${metaHits}건   (0이어야 한다 · §35)`);
-say(` 장면 복창               ${recitationHits}건   (0이어야 한다 · §36)`);
-say(` 허용집합 밖 인용        ${subsetViolations}건   (0이어야 한다 · §9)`);
-if (realCount === 0) {
-  say('\n ⚠ BLOCKED: REAL PROVIDER QA — 실제 Provider 응답이 0회다.');
-  say('   release ready라고 말하지 않는다(§31).');
-}
+const summary = {
+  model: MODEL,
+  modelsSeen: [...stats.modelsSeen],
+  calls: stats.calls,
+  failures: stats.failures,
+  stages: stats.stages,
+  violations: stats.violations,
+  latency: {
+    median: percentile(stats.latency, 50),
+    p90: percentile(stats.latency, 90),
+    max: stats.latency.length ? Math.max(...stats.latency) : null,
+  },
+  tokens: {
+    input: stats.inputTokens,
+    output: stats.outputTokens,
+    cached: stats.cachedTokens,
+    reasoning: stats.reasoningTokens,
+  },
+  leaks: {
+    meta: stats.metaLeaks,
+    recitation: stats.recitationLeaks,
+    endedOutward: stats.endedOutwardLeaks,
+    endedQuestions: stats.endedQuestions,
+    verifyNotQuestion: stats.verifyNotQuestion,
+  },
+  orderChanged: stats.orderChanged,
+  modes: stats.modes,
+  perScenario,
+};
 
-if (OUT) {
-  await writeFile(OUT, lines.join('\n'), 'utf8');
-  say(`\n 기록: ${OUT}`);
-}
+md.push('## 요약', '', '```json', JSON.stringify(summary, null, 2), '```', '');
+await writeFile(`${OUT_DIR}/semantic-decomposition-${MODEL}${SUFFIX}.md`, md.join('\n'));
+await writeFile(`${OUT_DIR}/semantic-decomposition-${MODEL}${SUFFIX}-accepted.json`, JSON.stringify(accepted, null, 2));
+await writeFile(`${OUT_DIR}/semantic-decomposition-${MODEL}${SUFFIX}-summary.json`, JSON.stringify(summary, null, 2));
+
+console.log('\n요약');
+console.log(JSON.stringify(summary, null, 2));
+console.log(`\n기록: ${OUT_DIR}/semantic-decomposition-${MODEL}${SUFFIX}.md`);

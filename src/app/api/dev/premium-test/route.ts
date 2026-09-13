@@ -14,7 +14,7 @@ import {
 } from '@/lib/logic/relationshipStage';
 import { buildSoloHistoryReport } from '@/lib/logic/soloHistory';
 import { soloModeOfTarget } from '@/lib/logic/soloMode';
-import { buildDeepReportContext } from '@/services/ai/contextBuilders';
+import { buildDeepReportContext, deepReportAllowancesOf } from '@/services/ai/contextBuilders';
 import { hasDeepConnection } from '@/services/premiumConnections';
 import {
   answeredDeclaredAxisCount,
@@ -38,6 +38,7 @@ import {
   eventIdsForAi,
   eventTypeHistogram,
   openQuestionFor,
+  semanticTopCandidates,
 } from '@/lib/logic/insightCandidates';
 import { sanitizeRelationshipEvents } from '@/lib/logic/relationshipEvents';
 import { buildSelfLevels } from '@/lib/logic/firstContact';
@@ -49,6 +50,7 @@ import { jobAllowsOutwardAction } from '@/lib/logic/relationshipStage';
 import { toValidatedObservations } from '@/services/aiService';
 import { createEmptyAnswers } from '@/state/defaultAnswers';
 import type {
+  CandidateSemanticNarrative,
   CurrentRelationshipEvidence,
   PremiumFeatureId,
   DeclaredPreference,
@@ -115,6 +117,11 @@ interface PremiumTestRequest {
    * 그 상태에서도 리포트가 완결되는지가 요구되는 검사다.
    */
   narratives?: DeepNarrative[];
+  /**
+   * SEMANTIC DECOMPOSITION A5 — AI가 성공했을 때 돌아왔다고 가정할 **카드별 문장.**
+   * 생략하면 결정론 조립문만 쓴다.
+   */
+  candidateSemantics?: CandidateSemanticNarrative[];
 }
 
 function buildAnswers(body: PremiumTestRequest): SessionAnswers {
@@ -232,6 +239,30 @@ export async function POST(request: Request): Promise<Response> {
     tense,
   };
 
+  const reportInput = {
+    insights,
+    resolverContext,
+    compatibility,
+    historyReport,
+    repeatedSignals,
+    target: answers.target,
+    mirror,
+    lifecycle,
+    // v1.46 PremiumLens — 렌즈 생년월일 유효성 판정용. 일주·태양궁은 날짜 문자열로만 정해진다
+    today: new Date(),
+  };
+
+  /**
+   * SEMANTIC DECOMPOSITION A1 — **훅과 같은 순서로** Top 3를 AI 호출 전에 확정한다.
+   * 결정론 리포트(`narratives: []` · `candidateSemantics: []`)의 첫 화면 카드 셋이다.
+   */
+  const baseReport = buildRelationshipDeepReport({
+    ...reportInput,
+    narratives: [],
+    candidateSemantics: [],
+  });
+  const topCandidates = semanticTopCandidates(baseReport.candidates);
+
   /** Quality Gate (A) 통과분 — **Provider에 보내는 payload**다. 호출 수가 아니다 */
   /**
    * v1.46.4 §4 — **사건을 함께 넘긴다.** fixture가 보는 payload와 제품이 보내는
@@ -242,20 +273,13 @@ export async function POST(request: Request): Promise<Response> {
     resolverContext,
     tense,
     answers.target.events,
+    topCandidates,
   );
 
   const report = buildRelationshipDeepReport({
-    insights,
+    ...reportInput,
     narratives: body.narratives ?? [],
-    resolverContext,
-    compatibility,
-    historyReport,
-    repeatedSignals,
-    target: answers.target,
-    mirror,
-    lifecycle,
-    // v1.46 PremiumLens — 렌즈 생년월일 유효성 판정용. 일주·태양궁은 날짜 문자열로만 정해진다
-    today: new Date(),
+    candidateSemantics: body.candidateSemantics ?? [],
   });
 
   /**
@@ -306,7 +330,28 @@ export async function POST(request: Request): Promise<Response> {
      * §31 — `?withAiContext=1`일 때만. 제품이 Provider에 보내는 payload 그대로다
      * (본문 포함) — 그래서 기본으로는 내지 않는다.
      */
-    ...(withAiContext ? { aiContext } : {}),
+    ...(withAiContext
+      ? {
+          aiContext,
+          /**
+           * SEMANTIC DECOMPOSITION — **제품 요청 본문과 같은 모양.** Real Provider QA가
+           * 이 값을 그대로 `/api/ai/deep-report-narrative`에 보낸다(`requestDeepReportNarrative`
+           * 와 같은 필드 · 같은 함수로 만든 허용집합).
+           */
+          aiRequest: {
+            context: aiContext,
+            insights: aiContext.insights.map((item) => ({
+              id: item.id,
+              evidenceRefs: item.evidence.map((entry) => entry.ref),
+              ruleSummary: item.allowedConnection,
+            })),
+            tense,
+            candidates: deepReportAllowancesOf(aiContext),
+          },
+        }
+      : {}),
+    /** A1 — AI 호출 전에 확정한 Top 3. 최종 리포트의 앞 3장과 같아야 한다(SEM-DEC-02) */
+    semanticTopCandidateIds: topCandidates.map((candidate) => candidate.id),
     job,
     tense,
     lifecycle: {
@@ -501,7 +546,16 @@ export async function POST(request: Request): Promise<Response> {
        * 같은 규칙).
        */
       const deepReportScenes =
-        deepReportCalls > 0 ? aiContext.insights.flatMap((item) => item.relatedScenes ?? []) : [];
+        deepReportCalls > 0
+          ? (aiContext.candidates ?? []).flatMap((bundle) =>
+              bundle.selectedEvents.map((scene) => ({
+                id: scene.eventId,
+                type: scene.type,
+                fact: scene.situation,
+                myReaction: scene.myReaction,
+              })),
+            )
+          : [];
 
       /**
        * §SEM-01 — payload에 실린 장면 **본문의 지문.**
@@ -733,6 +787,8 @@ export async function POST(request: Request): Promise<Response> {
         semanticEventIds: candidate.semanticEventIds,
         /** §19 — fallback 사용률 계측의 값. high-data 정상 경로에서 static 0 */
         soWhatSource: candidate.soWhatSource,
+        /** A4 — semantic_ai일 때 모델이 고른 해석 모드 */
+        semanticMode: candidate.semanticMode,
         /** §12 — 근거 조합 문장. **첫 화면이 아니라 토글 안** */
         evidenceNote: candidate.evidenceNote,
         /** §13 — VERIFY 한 줄. AI가 못 만들면 null */
@@ -827,8 +883,8 @@ export async function POST(request: Request): Promise<Response> {
        * §42 — Deep Report payload에 실린 장면 수. **payload에서 직접 센다** —
        * `aiContext`는 위에서 제품과 같은 함수로 만든 값이다.
        */
-      const deepReportSceneCount = aiContext.insights.reduce(
-        (total, item) => total + (item.relatedScenes?.length ?? 0),
+      const deepReportSceneCount = (aiContext.candidates ?? []).reduce(
+        (total, bundle) => total + bundle.selectedEvents.length,
         0,
       );
       const lensContexts = report.lensBundle.lenses
