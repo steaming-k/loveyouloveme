@@ -4,6 +4,7 @@ import { ToastProvider } from '@/components/common/ToastProvider';
 import { AppShell } from '@/components/shell/AppShell';
 import { GaScriptLoader } from '@/components/shell/GaScriptLoader';
 import { MotionProvider } from '@/components/shell/MotionProvider';
+import { AccountProvider } from '@/state/AccountProvider';
 import { HistoryProvider } from '@/state/HistoryProvider';
 import { SessionProvider } from '@/state/SessionProvider';
 import '@/styles/globals.css';
@@ -32,9 +33,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <MotionProvider>
           <SessionProvider>
             <HistoryProvider>
-              <ToastProvider>
-                <AppShell>{children}</AppShell>
-              </ToastProvider>
+              {/* v1.47 — 계정은 선택이다. 설정이 없으면 disabled이고 children을 막지 않는다 */}
+              <AccountProvider>
+                <ToastProvider>
+                  <AppShell>{children}</AppShell>
+                </ToastProvider>
+              </AccountProvider>
             </HistoryProvider>
           </SessionProvider>
         </MotionProvider>
