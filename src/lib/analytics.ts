@@ -426,6 +426,14 @@ const EXTERNAL_FORBIDDEN_KEYS = new Set([
   'birth_date',
   'birth_time',
   'birth_location',
+  /**
+   * v1.47 §30 — 상대 별칭 · 계정 이메일. 계정 저장이 생기면서 코드에 이름으로 존재하게 됐다.
+   * 사건 본문 · 반응 필드명은 여기에도 적지 않는다 — 이 파일에 그 이름이 **아예 없는 것**이
+   * 더 강한 보장이다(semantic fixture SEM-06).
+   */
+  'target_label',
+  'targetLabel',
+  'email',
 ]);
 
 /**

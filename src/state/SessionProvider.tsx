@@ -34,6 +34,13 @@ import {
   sanitizeTargetRelation,
 } from '@/lib/sessionSanitize';
 import { clearPremiumIntents } from '@/lib/premiumIntentStore';
+import { newUuid } from '@/lib/persistence/ids';
+import {
+  clearTargetRegistry,
+  ensureTargetRegistry,
+  preserveActiveTarget,
+  writeTargetRegistry,
+} from '@/lib/persistence/targetRegistry';
 import { buildDemoObservedResult } from '@/services/ai/fallback';
 import type {
   ObservedProfileResult,
@@ -378,6 +385,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [droppedEventCount, setDroppedEventCount] = useState(0);
   /** 해제해야 할 object URL 목록 */
   const objectUrls = useRef<string[]>([]);
+  /** v1.47 — `resetTargetContext()`가 '지금 상대'를 보관할 때 읽는 최신 값 */
+  const answersRef = useRef(answers);
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
 
   useEffect(() => {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -1051,6 +1063,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
    * 두 경로 모두 `useHistory().clearAll()`을 화면에서 직접 부른다.
    */
   const resetTargetContext = useCallback(() => {
+    /*
+      v1.47 — **새로운 사람은 이전 사람을 지우지 않는다.**
+
+      세션을 비우기 직전에 지금 상대의 맥락(상대 정보 · 사건 · 현재 관계 근거 · 저장 질문)을
+      로컬 관계 목록(`lym.targets.v1`)에 보관하고 새 activeTargetId로 시작한다. 아래 세션
+      초기화는 **그대로**다 — 점수 · Mirror · 화면은 바뀌지 않는다. 보관이 실패해도(quota)
+      흐름은 막지 않는다.
+    */
+    writeTargetRegistry(
+      preserveActiveTarget(ensureTargetRegistry(), answersRef.current, newUuid(), new Date().toISOString()),
+    );
     clearPremiumIntents();
     // vNext — Preview Unlock도 분석 단위 상태다. 새 상대로 넘어가면 함께 비운다.
     clearPreviewUnlocks();
@@ -1101,6 +1124,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return createEmptyAnswers();
     });
     clearSessionDedup();
+    // v1.47 — 전체 삭제는 보관해 둔 이전 상대들도 지운다(이 기기 안의 관계 정보다)
+    clearTargetRegistry();
   }, []);
 
   const reset = useCallback(() => {
