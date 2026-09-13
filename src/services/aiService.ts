@@ -25,6 +25,7 @@ import {
   buildCompatibilityContext,
   buildCrossLensContext,
   buildDeepReportContext,
+  deepReportActionAllowanceOf,
   deepReportAllowancesOf,
   buildHistoryContext,
   buildPremiumLensContext,
@@ -396,8 +397,17 @@ export function requestDeepReportNarrative(
    * 요청하지 않는다(아래쪽 연결 문장만 만든다).
    */
   topCandidates: readonly InsightCandidate[] = [],
+  /**
+   * v1.46.4 Action Layer — 요청 쪽(훅)이 결정론으로 고른 Action 카드와, 서버 게이트가 쓸
+   * '상대에게 물을 수 있는가'. ⚠️ 기본값은 **요청하지 않음 · 물을 수 없음**이다(안전한 쪽).
+   * `canAskPartner`는 허용집합에만 실리고 프롬프트에는 들어가지 않는다(§41.7).
+   */
+  action: { selection: { candidateId: string; priorityReason: string } | null; canAskPartner: boolean } = {
+    selection: null,
+    canAskPartner: false,
+  },
 ): Promise<{ ok: true; data: DeepNarrativeBundle } | { ok: false; reason: AiFailureReason }> {
-  const context = buildDeepReportContext(insights, resolverContext, tense, events, topCandidates);
+  const context = buildDeepReportContext(insights, resolverContext, tense, events, topCandidates, action.selection);
 
   if (context.insights.length === 0) {
     return Promise.resolve({
@@ -431,6 +441,8 @@ export function requestDeepReportNarrative(
      * 들어가지 않는다(모델은 이미 context에서 같은 문장을 받았다).
      */
     candidates: deepReportAllowancesOf(context),
+    /** v1.46.4 Action Layer — 결정론이 고른 Action 카드의 허용집합. 같은 요청이다(호출 수 불변) */
+    actionAllowance: deepReportActionAllowanceOf(context, action.canAskPartner),
   });
 }
 

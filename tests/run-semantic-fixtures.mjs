@@ -1385,7 +1385,17 @@ console.log('\nSEM-ROUTE · Deep Report만 모델을 따로 고르고, 캐시가
     'SEM-ROUTE · deepReportFingerprint가 모델 id를 digest에 넣는다',
     /`model:\$\{semanticModelId\}`/.test(fingerprintSrc) && /input\.semanticModelId \?\? DEEP_REPORT_MODEL_ROUTE/.test(fingerprintSrc),
   );
-  check('SEM-ROUTE · 라우트가 카드 허용집합을 최대 3장으로 자른다', /\.slice\(0, 3\)/.test(routeSrc) && /candidates: allowancesOf\(candidates\)/.test(routeSrc));
+  /*
+    v1.46.4 Action Layer — 라우트가 카드 허용집합을 한 번 만들어 Action 허용집합에서도 재사용한다
+    (`const cardAllowances = allowancesOf(candidates)` → `candidates: cardAllowances`). 검사 의도는 같다:
+    3장으로 자른 그 값이 핸들러의 candidates로 간다.
+  */
+  check(
+    'SEM-ROUTE · 라우트가 카드 허용집합을 최대 3장으로 자른다',
+    /\.slice\(0, 3\)/.test(routeSrc) &&
+      (/candidates: allowancesOf\(candidates\)/.test(routeSrc) ||
+        (/const cardAllowances = allowancesOf\(candidates\)/.test(routeSrc) && /candidates: cardAllowances/.test(routeSrc))),
+  );
 }
 
 console.log('\nSEM-BUDGET · Provider 호출 수와 토큰 예산');

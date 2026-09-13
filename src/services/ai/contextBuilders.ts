@@ -22,6 +22,8 @@ import { limitationFor } from '@/services/premiumConnections';
 import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import { sanitizeFreeText } from './safety';
 import type {
+  ActionPlanAllowance,
+  ActionTargetBundle,
   CandidateSemanticAllowance,
   CompatibilityResult,
   CrossSourceInsight,
@@ -474,6 +476,11 @@ export interface DeepReportContext {
    * ⚠️ 카드가 없으면 필드 자체가 없다(빈 배열을 보내지 않는다 — 모델은 빈 칸을 설명하려 든다).
    */
   candidates?: SemanticCandidateBundle[];
+  /**
+   * v1.46.4 Action Layer §15 — **결정론이 고른 Action 카드 하나.** 모델은 대상을 고르지 않는다.
+   * 행동을 만들 재료가 있는 카드가 없으면 필드가 없다(ACT-04 — 억지 plan 금지).
+   */
+  actionTarget?: ActionTargetBundle;
 }
 
 /**
@@ -501,6 +508,11 @@ export function buildDeepReportContext(
    * 고른 목록을 그대로 받는다. 생략하면 카드 해석을 요청하지 않는다.
    */
   topCandidates: readonly InsightCandidate[] = [],
+  /**
+   * v1.46.4 Action Layer — 요청 쪽이 **결정론으로 이미 고른** Action 카드(`actionSelectionOf`).
+   * 생략하면 actionPlan을 요청하지 않는다. ⚠️ Job 게이트 값은 받지 않는다(§41.7).
+   */
+  actionSelection: { candidateId: string; priorityReason: string } | null = null,
 ): DeepReportContext {
   const built: DeepReportContext['insights'] = [];
 
@@ -536,7 +548,33 @@ export function buildDeepReportContext(
     tense,
   });
 
-  return { tense, insights: built, ...(bundles.length > 0 ? { candidates: bundles } : {}) };
+  const actionTarget = buildActionTarget({ bundles, selection: actionSelection, tense });
+
+  return { tense, insights: built, ...(bundles.length > 0 ? { candidates: bundles } : {}), ...(actionTarget ? { actionTarget } : {}) };
+}
+
+/**
+ * v1.46.4 Action Layer §15 — 이미 고른 카드를 **모델이 읽는 모양**으로 옮긴다. 새로 고르지 않는다.
+ *
+ * ⚠️ 선택은 요청 쪽에서 끝났다(`actionSelectionOf`) — 화면 블록을 조립하는 `premiumService`와 같은
+ * 함수다. 여기서는 그 id가 실제로 보낸 카드 번들 안에 있을 때만 싣는다.
+ */
+export function buildActionTarget(input: {
+  bundles: readonly SemanticCandidateBundle[];
+  selection: { candidateId: string; priorityReason: string } | null;
+  tense: RelationshipTense;
+}): ActionTargetBundle | null {
+  if (!input.selection) return null;
+  const bundle = input.bundles.find((item) => item.candidateId === input.selection?.candidateId);
+  if (!bundle) return null;
+  return {
+    candidateId: bundle.candidateId,
+    rank: bundle.rank,
+    topic: bundle.topic,
+    lifecycle: input.tense === 'former' ? 'former' : 'current',
+    priorityReason: input.selection.priorityReason,
+    unresolvedPoints: bundle.unresolvedPoints,
+  };
 }
 
 /**
@@ -694,7 +732,33 @@ export function deepReportAllowancesOf(context: DeepReportContext): CandidateSem
     ),
     eligibleOperators: [...bundle.eligibleOperators],
     knownSelfStatement: bundle.knownSelfStatement,
+    /* Core Value Closure §11 — conditionContext 근거 확인용(이미 context에 실린 문장 그대로) */
+    evidenceTexts: bundle.evidence.map((item) => item.value),
+    unresolvedPoints: [...bundle.unresolvedPoints],
   }));
+}
+
+/**
+ * v1.46.4 Action Layer — actionPlan 게이트의 허용집합. **Action 카드에 실어 보낸 근거·장면 그대로**다
+ * (카드 semantic 허용집합과 같은 값 — 새 근거가 생기지 않는다).
+ */
+export function deepReportActionAllowanceOf(
+  context: DeepReportContext,
+  /** 서버 게이트 전용 값. 프롬프트에는 들어가지 않는다(요청 쪽이 Job 술어로 계산해 넘긴다) */
+  canAskPartner: boolean,
+): ActionPlanAllowance | null {
+  const target = context.actionTarget;
+  if (!target) return null;
+  const card = deepReportAllowancesOf(context).find((item) => item.candidateId === target.candidateId);
+  if (!card) return null;
+  return {
+    candidateId: target.candidateId,
+    evidenceRefs: card.evidenceRefs,
+    eventIds: card.eventIds,
+    sceneTexts: card.sceneTexts,
+    canAskPartner: context.tense === 'current' && canAskPartner,
+    unresolvedPoints: [...target.unresolvedPoints],
+  };
 }
 
 /**

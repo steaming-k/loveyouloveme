@@ -4,7 +4,11 @@ import { lensAiUnitsFor } from '@/data/premiumLensAi';
 import { clampNarrativeText, maskInternalCodes } from './safety';
 import { INSIGHT_OPERATORS } from '@/lib/logic/insightOperators';
 import type {
+  ActionDecisionSignal,
+  ActionPlanAllowance,
+  ActionPlanNarrative,
   CandidateSemanticAllowance,
+  ConditionContext,
   InsightOperator,
   AiObservedTrait,
   CompatibilityNarrative,
@@ -605,12 +609,24 @@ export function parseDeepReportResponse(
  * 한 카드에 AI 문장과 조립문이 섞인다.
  */
 
+/** Core Value Closure §10 — 세 칸 중 하나라도 있으면 객체, 전부 없으면 null(부분 context 허용) */
+function parseConditionContext(raw: unknown): ConditionContext | null {
+  if (!isObject(raw)) return null;
+  const field = (value: unknown): string | null => {
+    const parsed = str(value, 200);
+    return parsed ? clampNarrativeText(parsed, 80) : null;
+  };
+  const context = { trigger: field(raw.trigger), state: field(raw.state), uncertainty: field(raw.uncertainty) };
+  return context.trigger || context.state || context.uncertainty ? context : null;
+}
+
 export function parseCandidateSemantics(
   raw: unknown,
   allowances: readonly CandidateSemanticAllowance[],
 ): Array<{
   candidateId: string;
   operator: InsightOperator;
+  conditionContext?: ConditionContext;
   connection: string;
   narrowedCondition: string | null;
   soWhat: string;
@@ -659,10 +675,12 @@ export function parseCandidateSemantics(
     }
 
     const verification = str(item.verification, 300);
+    const conditionContext = parseConditionContext(item.conditionContext);
     seen.add(candidateId);
     result.push({
       candidateId,
       operator,
+      ...(conditionContext ? { conditionContext } : {}),
       connection: clampNarrativeText(connection, 200),
       narrowedCondition: narrowedRaw
         ? clampNarrativeText(narrowedRaw, NARRATIVE_LIMITS.semanticSoWhat)
@@ -679,6 +697,69 @@ export function parseCandidateSemantics(
   }
 
   return result;
+}
+
+/**
+ * v1.46.4 Action Layer §14 — **단일 actionPlan 파싱.**
+ *
+ * 계약:
+ * ```
+ * sourceCandidateId 없음        → null (대상이 맞는지는 게이트가 본다)
+ * decisionSignals 2개 초과       → 앞 2개만 · 잘린 수를 기록한다(§11)
+ * 허용집합 밖 장면 id             → 지우고 기록한다(버릴지는 게이트가 정한다)
+ * ```
+ */
+export function parseActionPlan(
+  raw: unknown,
+  allowance: ActionPlanAllowance | null,
+): (ActionPlanNarrative & { rejectedEventIds: string[]; droppedSignals: number }) | null {
+  if (!isObject(raw) || !isObject(raw.actionPlan)) return null;
+  const item = raw.actionPlan;
+  const sourceCandidateId = str(item.sourceCandidateId, 80);
+  if (!sourceCandidateId) return null;
+
+  const text = (value: unknown, limit: number): string | null => {
+    const parsed = str(value, 400);
+    return parsed ? clampNarrativeText(parsed, limit) : null;
+  };
+
+  const signals: ActionDecisionSignal[] = [];
+  if (Array.isArray(item.decisionSignals)) {
+    for (const entry of item.decisionSignals) {
+      if (!isObject(entry)) continue;
+      const ifObserved = text(entry.ifObserved, 120);
+      const interpretation = text(entry.interpretation, 160);
+      if (ifObserved && interpretation) signals.push({ ifObserved, interpretation });
+    }
+  }
+
+  const allowedScenes = new Set(allowance?.eventIds ?? []);
+  const usedEventIds: string[] = [];
+  const rejectedEventIds: string[] = [];
+  if (Array.isArray(item.usedEventIds)) {
+    for (const entry of item.usedEventIds) {
+      const id = str(entry, 80);
+      if (!id) continue;
+      if (!allowedScenes.has(id)) {
+        rejectedEventIds.push(id);
+        continue;
+      }
+      if (!usedEventIds.includes(id)) usedEventIds.push(id);
+    }
+  }
+
+  return {
+    sourceCandidateId,
+    nextMove: text(item.nextMove, 140),
+    verificationQuestion: text(item.verificationQuestion, NARRATIVE_LIMITS.semanticVerify),
+    observeSignal: text(item.observeSignal, 140),
+    decisionSignals: signals.slice(0, 2),
+    unresolved: text(item.unresolved, 160),
+    usedEvidenceRefs: parseEvidenceRefs(item.usedEvidenceRefs),
+    usedEventIds,
+    rejectedEventIds,
+    droppedSignals: Math.max(0, signals.length - 2),
+  };
 }
 
 /** Mirror State는 규칙 값으로 덮어쓴다 — AI 응답의 state를 신뢰하지 않는다(§18) */

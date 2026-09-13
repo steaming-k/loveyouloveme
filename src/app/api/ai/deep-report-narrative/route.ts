@@ -9,7 +9,12 @@ import {
 } from '../_shared';
 import { runDeepReportTask, type DeepReportDiagnostics } from '@/services/ai/handlers';
 import { INSIGHT_OPERATORS } from '@/lib/logic/insightOperators';
-import type { CandidateSemanticAllowance, EvidenceRef, InsightOperator } from '@/types';
+import type {
+  ActionPlanAllowance,
+  CandidateSemanticAllowance,
+  EvidenceRef,
+  InsightOperator,
+} from '@/types';
 
 /**
  * POST /api/ai/deep-report-narrative
@@ -38,6 +43,7 @@ export async function POST(request: Request): Promise<Response> {
     insights,
     tense,
     candidates,
+    actionAllowance,
     devModelOverride,
     devCapture,
   } = body as Record<string, unknown>;
@@ -94,6 +100,9 @@ export async function POST(request: Request): Promise<Response> {
             ),
             knownSelfStatement:
               typeof item.knownSelfStatement === 'string' ? item.knownSelfStatement : null,
+            /* Core Value Closure — context 근거 확인용. 수용 범위를 좁히는 데만 쓰인다 */
+            evidenceTexts: strings(item.evidenceTexts).slice(0, 20),
+            unresolvedPoints: strings(item.unresolvedPoints).slice(0, 5),
           },
         ];
       })
@@ -106,6 +115,32 @@ export async function POST(request: Request): Promise<Response> {
    * ⚠️ Production에서는 요청 본문에 무엇이 와도 무시한다. 사용자가 모델을 고르거나
    * 원 응답을 받아가는 경로를 만들지 않는다(§9 마지막 줄).
    */
+  const cardAllowances = allowancesOf(candidates);
+
+  /**
+   * v1.46.4 Action Layer §15 — Action 카드 허용집합.
+   *
+   * ⚠️ **카드 허용집합 안의 id일 때만** 받는다. 근거·장면도 그 카드에서 다시 읽는다 — 요청이 더 넓은
+   * 근거를 보내도 카드에 실린 범위를 넘지 못한다(신뢰 경계를 넓히지 않는다).
+   */
+  const actionAllowanceOf = (value: unknown): ActionPlanAllowance | null => {
+    if (!value || typeof value !== 'object') return null;
+    const item = value as Record<string, unknown>;
+    const card = cardAllowances.find((entry) => entry.candidateId === item.candidateId);
+    if (!card) return null;
+    return {
+      candidateId: card.candidateId,
+      evidenceRefs: card.evidenceRefs,
+      eventIds: card.eventIds,
+      sceneTexts: card.sceneTexts,
+      canAskPartner: item.canAskPartner === true && tense === 'current',
+      /* Action Alignment 기준 문장 — 수용 범위를 좁히는 데만 쓰인다(신뢰 경계를 넓히지 않는다) */
+      unresolvedPoints: Array.isArray(item.unresolvedPoints)
+        ? item.unresolvedPoints.filter((entry): entry is string => typeof entry === 'string').slice(0, 5)
+        : [],
+    };
+  };
+
   const isDev = process.env.NODE_ENV !== 'production';
   let diagnostics: DeepReportDiagnostics | null = null;
 
@@ -114,7 +149,8 @@ export async function POST(request: Request): Promise<Response> {
     context,
     tense,
     insights: insights as never,
-    candidates: allowancesOf(candidates),
+    candidates: cardAllowances,
+    actionAllowance: actionAllowanceOf(actionAllowance),
     ...(isDev && typeof devModelOverride === 'string' ? { devModelOverride } : {}),
     ...(isDev && devCapture === true
       ? {

@@ -271,6 +271,7 @@ export async function POST(request: Request): Promise<Response> {
     insights,
     narratives: [],
     candidateSemantics: [],
+    actionPlan: null,
     resolverContext: {
       answers,
       validated: [],

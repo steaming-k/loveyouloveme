@@ -1740,6 +1740,26 @@ export interface CandidateSemanticAllowance {
   eligibleOperators: InsightOperator[];
   /** Operator Pass §20 — '한 단계 더 좁혀졌는가' 검사의 기준 */
   knownSelfStatement: string | null;
+  /** Core Value Closure §11 — conditionContext 근거 확인용. 이 카드에 실어 보낸 근거 문장 그대로 */
+  evidenceTexts?: string[];
+  /** Core Value Closure §11 — uncertainty 근거 확인용. 이 카드 번들의 unresolvedPoints 그대로 */
+  unresolvedPoints?: string[];
+}
+
+/**
+ * v1.46.4 Core Value Closure §5 — **관계 조건의 구조적 source.** narrowedCondition은 이것의 요약이다.
+ *
+ * ```
+ * trigger      무엇이 있은 뒤 · 어떤 순간에
+ * state        그때 실제로 어떤 상태가 됐는지(관찰 가능한 상태만)
+ * uncertainty  사용자가 아직 알 수 없는 것
+ * ```
+ * 근거가 없는 칸은 null이다(§23 — 억지 context 금지). 게이트가 근거 없는 칸을 지운다.
+ */
+export interface ConditionContext {
+  trigger: string | null;
+  state: string | null;
+  uncertainty: string | null;
 }
 
 /** A5 — Top 3 카드 하나에 대한 모델 출력. **candidateId 없는 문장은 없다** */
@@ -1747,6 +1767,8 @@ export interface CandidateSemanticNarrative {
   candidateId: string;
   /** Operator Pass §8 — eligibleOperators 중 정확히 하나 */
   operator: InsightOperator;
+  /** Core Value Closure — 게이트가 근거로 확인한 칸만 남는다. 없거나 전부 지워지면 생략 */
+  conditionContext?: ConditionContext;
   /** §16 — 어떤 두 근거를 이었는지. **내부 검증용 · 화면에 노출하지 않는다** */
   connection: string;
   /** §17 — 큰 기준 → 더 좁은 조건. 좁힐 수 없으면 null */
@@ -1761,8 +1783,103 @@ export interface CandidateSemanticNarrative {
   usedEventIds: string[];
 }
 
+/* ═════════════════════════════ v1.46.4 Premium Action Layer (Decision Support) */
+
+/**
+ * Action Layer §10 — 관찰 결과 하나와, 그때 **더 볼 수 있는 가설** 하나.
+ *
+ * ⚠️ 결정이 아니다. `interpretation`은 '헤어져 / 계속 만나'가 아니라 '~라는 가설을 더 볼 수
+ * 있어'까지다(§2-1 Decision Support). 게이트가 그 형태를 검사한다.
+ */
+export interface ActionDecisionSignal {
+  ifObserved: string;
+  interpretation: string;
+}
+
+/**
+ * Action Layer §15 — 모델에게 보내는 **이미 고른 카드 하나.** 모델은 무엇을 먼저 볼지 고르지 않는다.
+ *
+ * ⚠️ 근거·장면은 여기 다시 싣지 않는다 — 같은 candidateId의 `context.candidates[]` 카드가 이미
+ * 들고 있다(토큰 중복 없음). 여기 있는 것은 그 카드를 **행동으로 옮길 때만** 필요한 값이다.
+ */
+export interface ActionTargetBundle {
+  candidateId: string;
+  rank: 1 | 2 | 3;
+  topic: string | null;
+  lifecycle: 'current' | 'former';
+  /*
+    ⚠️ '상대에게 물을 수 있는가'(Job 게이트)는 여기 없다 — AI에게 Job을 주지 않는다(v1.42 §41.7).
+    그 값은 서버 허용집합(`ActionPlanAllowance.canAskPartner`)에만 있고, 게이트가 결과로 막는다.
+  */
+  /** 결정론이 이 카드를 먼저 고른 이유(사용자 언어). 화면에 그대로 나간다 */
+  priorityReason: string;
+  unresolvedPoints: string[];
+}
+
+/** Action Layer — 핸들러가 검증에 쓰는 허용집합. 프롬프트에는 들어가지 않는다 */
+export interface ActionPlanAllowance {
+  candidateId: string;
+  evidenceRefs: EvidenceRef[];
+  eventIds: string[];
+  sceneTexts: string[];
+  canAskPartner: boolean;
+  /** Action Alignment — narrowedCondition이 없을 때의 두 번째 기준(카드 번들이 보낸 그대로) */
+  unresolvedPoints: string[];
+}
+
+/** Action Layer §14 — 같은 Deep Report 응답의 `actionPlan`. 게이트를 통과한 것만 온다 */
+export interface ActionPlanNarrative {
+  sourceCandidateId: string;
+  nextMove: string | null;
+  verificationQuestion: string | null;
+  observeSignal: string | null;
+  /** §11 — 최대 2개 */
+  decisionSignals: ActionDecisionSignal[];
+  unresolved: string | null;
+  usedEvidenceRefs: EvidenceRef[];
+  usedEventIds: string[];
+}
+
+/**
+ * Action Layer §4 · §18 — **화면에 그리는 단일 블록.** Top 3 아래 하나뿐이다(§19).
+ *
+ * ```
+ * plan         nextMove + observe + decisionSignals가 연결됨 (Actionability 2)
+ * verify_only  AI가 없거나 거부됨 — 카드의 확인 질문만 (억지 행동을 만들지 않는다)
+ * unresolved   근거가 모자라 행동을 고를 수 없음 — 무엇이 아직 구분되지 않았는지 + 질문
+ * ```
+ */
+export interface PremiumActionPlan {
+  sourceCandidateId: string;
+  title: string;
+  topic: string | null;
+  mode: 'plan' | 'verify_only' | 'unresolved';
+  source: 'semantic_ai' | 'deterministic';
+  lifecycle: 'current' | 'former';
+  priorityReason: string | null;
+  /** Top 3 안에서 이 카드의 순위(1~3). 화면이 '위 01 카드'를 가리킬 때 쓴다 */
+  sourceRank: number;
+  nextMove: string | null;
+  verificationQuestion: string | null;
+  /**
+   * §8 · §31 — 질문이 어디서 왔는가. `card`면 같은 문장이 이미 위 카드 VERIFY에 그려져 있으므로
+   * 화면은 원문을 반복하지 않고 카드를 가리킨다(393px 실측에서 같은 질문이 두 번 보였다).
+   */
+  verificationFrom: 'card' | 'action' | null;
+  observeSignal: string | null;
+  decisionSignals: ActionDecisionSignal[];
+  unresolved: string | null;
+  usedEvidenceRefs: EvidenceRef[];
+  usedEventIds: string[];
+}
+
 export interface DeepNarrativeBundle {
   narratives: DeepNarrative[];
+  /**
+   * Action Layer §14 — Top 3 아래 단일 Action 블록의 AI 문장. 없거나 null이면 결정론
+   * `verify_only`/`unresolved`로 남는다. ⚠️ 별도 호출이 아니라 같은 응답의 필드다.
+   */
+  actionPlan?: ActionPlanNarrative | null;
   /**
    * A5 — Top 3 카드별 semantic. 없거나 비면 Candidate는 결정론 조립문을 쓴다(§18).
    * ⚠️ optional — 캐시에 남은 v6 응답에는 이 필드가 없다(버전이 올라가 재호출된다).
@@ -2314,6 +2431,11 @@ export interface RelationshipDeepReport {
    * ⚠️ `available: false`면 빈 배열이다 — 팔지 않는 리포트에 주인공이 있으면 안 된다.
    */
   candidates: InsightCandidate[];
+  /**
+   * Action Layer §3 · §19 — Top 3 중 **가장 먼저 확인할 하나**의 행동 블록. 카드마다 붙이지 않는다.
+   * `available: false`이거나 카드가 없으면 null.
+   */
+  actionPlan: PremiumActionPlan | null;
   /**
    * §21 — Paywall이 실제로 tease할 수 있는 문장. **재료가 없으면 null**이고,
    * 그때 Paywall은 "하나 더 있어"라고 말하지 않는다(VALUE-15).

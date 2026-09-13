@@ -14,7 +14,12 @@ import {
 } from '@/lib/logic/relationshipStage';
 import { buildSoloHistoryReport } from '@/lib/logic/soloHistory';
 import { soloModeOfTarget } from '@/lib/logic/soloMode';
-import { buildDeepReportContext, deepReportAllowancesOf } from '@/services/ai/contextBuilders';
+import {
+  buildDeepReportContext,
+  deepReportActionAllowanceOf,
+  deepReportAllowancesOf,
+} from '@/services/ai/contextBuilders';
+import { actionPrioritiesOf, actionSelectionOf } from '@/lib/logic/actionPriority';
 import { hasDeepConnection } from '@/services/premiumConnections';
 import {
   answeredDeclaredAxisCount,
@@ -51,6 +56,7 @@ import { jobAllowsOutwardAction } from '@/lib/logic/relationshipStage';
 import { toValidatedObservations } from '@/services/aiService';
 import { createEmptyAnswers } from '@/state/defaultAnswers';
 import type {
+  ActionPlanNarrative,
   CandidateSemanticNarrative,
   CurrentRelationshipEvidence,
   PremiumFeatureId,
@@ -123,6 +129,8 @@ interface PremiumTestRequest {
    * 생략하면 결정론 조립문만 쓴다.
    */
   candidateSemantics?: CandidateSemanticNarrative[];
+  /** v1.46.4 Action Layer — AI가 성공했을 때 돌아왔다고 가정할 actionPlan(게이트 통과분) */
+  actionPlan?: ActionPlanNarrative | null;
 }
 
 function buildAnswers(body: PremiumTestRequest): SessionAnswers {
@@ -261,6 +269,7 @@ export async function POST(request: Request): Promise<Response> {
     ...reportInput,
     narratives: [],
     candidateSemantics: [],
+    actionPlan: null,
   });
   const topCandidates = semanticTopCandidates(baseReport.candidates);
 
@@ -269,18 +278,27 @@ export async function POST(request: Request): Promise<Response> {
    * v1.46.4 §4 — **사건을 함께 넘긴다.** fixture가 보는 payload와 제품이 보내는
    * payload가 같아야 §42 예산 보고가 의미를 갖는다.
    */
+  /* v1.46.4 Action Layer — 훅과 같은 함수 · 같은 게이트 술어로 Action 카드를 고른다 */
+  const actionSelection = actionSelectionOf(topCandidates, {
+    tense,
+    allowsOutwardQuestions: lifecycle.allowsOutwardQuestions,
+    events: answers.target.events ?? [],
+    target: answers.target,
+  });
   const aiContext = buildDeepReportContext(
     insights,
     resolverContext,
     tense,
     answers.target.events,
     topCandidates,
+    actionSelection,
   );
 
   const report = buildRelationshipDeepReport({
     ...reportInput,
     narratives: body.narratives ?? [],
     candidateSemantics: body.candidateSemantics ?? [],
+    actionPlan: body.actionPlan ?? null,
   });
 
   /**
@@ -357,11 +375,26 @@ export async function POST(request: Request): Promise<Response> {
             })),
             tense,
             candidates: deepReportAllowancesOf(aiContext),
+            actionAllowance: deepReportActionAllowanceOf(
+              aiContext,
+              tense === 'current' && lifecycle.allowsOutwardQuestions,
+            ),
           },
         }
       : {}),
     /** A1 — AI 호출 전에 확정한 Top 3. 최종 리포트의 앞 3장과 같아야 한다(SEM-DEC-02) */
     semanticTopCandidateIds: topCandidates.map((candidate) => candidate.id),
+    /**
+     * v1.46.4 Action Layer §5 — AI 요청에 실린 Action 카드와, 그 선택을 만든 우선순위(내부 점수 포함 ·
+     * dev 전용). 최종 `report.actionPlan.sourceCandidateId`와 같아야 한다(ACT-SEL).
+     */
+    actionTargetId: aiContext.actionTarget?.candidateId ?? null,
+    actionPriorities: actionPrioritiesOf(topCandidates, {
+      tense,
+      allowsOutwardQuestions: lifecycle.allowsOutwardQuestions,
+      events: answers.target.events ?? [],
+      target: answers.target,
+    }),
     job,
     tense,
     lifecycle: {
@@ -778,6 +811,8 @@ export async function POST(request: Request): Promise<Response> {
        * 리포트가 이미 들고 있는 값을 그대로 낸다.
        */
       executive: report.executive,
+      /** v1.46.4 Action Layer — 화면이 그리는 단일 Action 블록(가공 없음) */
+      actionPlan: report.actionPlan,
       /**
        * v1.46.4 §12 ~ §16 — **이번 개편의 1차 판정 대상.** 라우트가 가공하지 않고
        * 리포트가 들고 있는 값을 그대로 낸다(화면과 fixture가 같은 것을 본다).

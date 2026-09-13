@@ -57,6 +57,7 @@ import {
   attachRuleStates,
   parseCompatibilityResponse,
   parseCrossLensResponse,
+  parseActionPlan,
   parseCandidateSemantics,
   parseDeepReportResponse,
   parseHistoryResponse,
@@ -65,6 +66,7 @@ import {
   parseRelationshipResponse,
 } from './schemas';
 import { gateCandidateSemantics } from './candidateSemanticGate';
+import { gateActionPlan } from './actionPlanGate';
 import { readAiConfig } from './serverEnv';
 import {
   aggregatePhotoObservations,
@@ -76,6 +78,7 @@ import {
 import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import type {
   AiFailureReason,
+  ActionPlanAllowance,
   CandidateSemanticAllowance,
   AiMode,
   AiTask,
@@ -881,6 +884,11 @@ export interface DeepReportRequest {
    */
   candidates?: readonly CandidateSemanticAllowance[];
   /**
+   * v1.46.4 Action Layer §14 — **결정론이 고른 Action 카드의 허용집합.** `deepReportActionAllowanceOf`.
+   * 생략하면 actionPlan은 전부 거부된다(대상 없이 온 plan은 모델이 고른 것이다).
+   */
+  actionAllowance?: ActionPlanAllowance | null;
+  /**
    * v1.46.4 Model A/B §9 — **개발 환경 전용** 모델 override. A/B 하네스만 넘긴다.
    *
    * 라우트가 NODE_ENV !== 'production'일 때만 채우고, deepReportModelFor가 한 번 더
@@ -901,6 +909,19 @@ export interface DeepReportRequest {
 export interface DeepReportDiagnostics {
   model: string;
   usage: AiProviderUsage | null;
+  /** v1.46.4 Action Layer — actionPlan 단계(0 또는 1) */
+  action?: {
+    attempted: number;
+    parsed: number;
+    grounded: number;
+    safetyPassed: number;
+    aligned: number;
+    accepted: number;
+    /** Action Alignment 판정 이유(개념 라벨) · 서명. 원문 아님 */
+    alignment: string | null;
+    conditionSignature: string[];
+    actionSignature: string[];
+  };
   stages: {
     /** 모델이 semantic 객체를 만든 narrative 수 (파싱 전) */
     attempted: number;
@@ -1064,6 +1085,22 @@ export async function runDeepReportTask(
     const allowances = request.candidates ?? [];
     const parsedSemantics = parseCandidateSemantics(raw, allowances);
     const semanticGate = gateCandidateSemantics(parsedSemantics, allowances, request.tense);
+    /*
+      ══ Quality Gate (H) — Action Layer (§14 · §21) ══════════════════════════
+      ⚠️ 같은 응답의 다른 필드다 — Provider 호출은 늘지 않는다(§27). 카드 semantic과 독립이라
+      plan이 버려져도 카드 문장은 그대로다.
+    */
+    const actionAllowance = request.actionAllowance ?? null;
+    const parsedAction = parseActionPlan(raw, actionAllowance);
+    /*
+      Action Alignment — narrowedCondition은 actionPlan과 **같은 응답에서** 만들어지므로 요청 context에
+      넣을 수 없다. 그래서 게이트를 통과한 그 카드 semantic의 조건을 서버가 기준으로 쓴다.
+    */
+    const actionSemantic = semanticGate.kept.find((item) => item.candidateId === actionAllowance?.candidateId);
+    const actionGate = gateActionPlan(parsedAction, actionAllowance, request.tense, {
+      narrowedCondition: actionSemantic?.narrowedCondition ?? null,
+      conditionContext: actionSemantic?.conditionContext ?? null,
+    });
 
     logAiFilter({
       task: 'deep-report-narrative',
@@ -1078,8 +1115,10 @@ export async function runDeepReportTask(
       refChecked: refChecked.length,
       rejectedRefSources: rejectedRefs,
       safe: scan.items.length,
-      violations: [...scan.violations, ...semanticGate.violations],
+      violations: [...scan.violations, ...semanticGate.violations, ...actionGate.violations],
       extra: {
+        actionParsed: parsedAction ? 1 : 0,
+        actionKept: actionGate.kept ? 1 : 0,
         novel: novel.length,
         /**
          * §19 — **fallback 사용률의 원천 값.** 모델이 semantic을 몇 개 만들었고
@@ -1115,7 +1154,14 @@ export async function runDeepReportTask(
           stylePassed: semanticGate.stages.stylePassed,
           accepted: semanticGate.stages.accepted,
         },
-        violations: [...scan.violations, ...semanticGate.violations],
+        action: {
+          attempted: isObjectLike(raw) && isObjectLike(raw.actionPlan) ? 1 : 0,
+          ...actionGate.stages,
+          alignment: actionGate.alignment?.reason ?? null,
+          conditionSignature: actionGate.alignment?.conditionSignature ?? [],
+          actionSignature: actionGate.alignment?.actionSignature ?? [],
+        },
+        violations: [...scan.violations, ...semanticGate.violations, ...actionGate.violations],
         raw,
       });
     }
@@ -1135,6 +1181,7 @@ export async function runDeepReportTask(
       data: {
         narratives,
         candidateSemantics: semanticGate.kept,
+        actionPlan: actionGate.kept,
         meta: metaFor(config.mode === 'mock' ? 'mock' : 'real', provider.model),
       },
     };

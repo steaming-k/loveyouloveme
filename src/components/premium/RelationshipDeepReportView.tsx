@@ -6,6 +6,7 @@ import { Button } from '@/components/common/Button';
 import { NoticeBox, SectionLabel } from '@/components/common/primitives';
 import { AiNarrativeNotice, AiSourceLabel } from '@/components/ai/AiModeNotice';
 import { DeepReportValueCheck } from '@/components/premium/DeepReportValueCheck';
+import { PremiumActionPlanSection } from '@/components/premium/PremiumActionPlanSection';
 import { PremiumCandidateSection } from '@/components/premium/PremiumCandidateSection';
 import { PremiumChapterAccordion } from '@/components/premium/PremiumChapterAccordion';
 import { PremiumLensSection } from '@/components/premium/PremiumLensSection';
@@ -352,6 +353,14 @@ export function RelationshipDeepReportView({
             lenses={report.lensBundle.lenses}
           />
         </div>
+      ) : null}
+
+      {/*
+        v1.46.4 Action Layer §18 · §19 — Top 3 **아래 단일 블록.** 카드마다 붙이지 않는다.
+        ⚠️ 문장을 만들지 않는다 — `report.actionPlan`은 `buildPremiumActionPlan`이 조립한 값이다.
+      */}
+      {report.actionPlan && report.candidates.length > 0 ? (
+        <PremiumActionPlanSection plan={report.actionPlan} />
       ) : null}
 
       {/*

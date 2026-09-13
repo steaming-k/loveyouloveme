@@ -1,4 +1,5 @@
 import { gateCandidateSemantics } from '@/services/ai/candidateSemanticGate';
+import { gateActionPlan } from '@/services/ai/actionPlanGate';
 import {
   aggregatePhotoObservations,
   groupDuplicateLikePhotos,
@@ -28,6 +29,7 @@ import {
   attachRuleStates,
   parseCompatibilityResponse,
   parseCrossLensResponse,
+  parseActionPlan,
   parseCandidateSemantics,
   parseDeepReportResponse,
   parseHistoryResponse,
@@ -37,7 +39,9 @@ import {
   parseRelationshipResponse,
 } from '@/services/ai/schemas';
 import type {
+  ActionPlanAllowance,
   CandidateSemanticAllowance,
+  ConditionContext,
   EvidenceRef,
   MirrorAxisKey,
   MirrorState,
@@ -80,6 +84,12 @@ interface ContractRequest {
    * 기본값은 안전한 쪽(거부)이다 — 실서비스 핸들러와 같은 규칙.
    */
   candidates?: unknown;
+  /** v1.46.4 Action Layer — actionPlan 게이트 fixture용. `ActionPlanAllowance | null` */
+  actionAllowance?: unknown;
+  /** Action Alignment fixture용 — 선택 카드의 narrowedCondition을 직접 준다(string | null) */
+  actionNarrowedCondition?: unknown;
+  /** Core Value Closure fixture용 — 선택 카드의 conditionContext를 직접 준다(ConditionContext | null) */
+  actionConditionContext?: unknown;
   /**
    * v1.43 §46 — 근거 귀속 fixture용. `{ [axis|dimensionKey|insightId]: EvidenceRef[] }`.
    *
@@ -506,6 +516,27 @@ export async function POST(request: Request): Promise<Response> {
     */
     const parsedSemantics = parseCandidateSemantics(raw, allowances);
     const semanticGate = gateCandidateSemantics(parsedSemantics, allowances, deepTense);
+    /* v1.46.4 Action Layer — 핸들러와 같은 함수 */
+    const actionAllowance = (body.actionAllowance ?? null) as ActionPlanAllowance | null;
+    const parsedAction = parseActionPlan(raw, actionAllowance);
+    /*
+      Action Alignment — 핸들러와 같은 기준(통과한 카드 semantic의 narrowedCondition). fixture가
+      `actionNarrowedCondition`을 **명시하면** 그 값을 쓴다(null 포함 · dev 검증기 전용).
+    */
+    const actionNarrowed =
+      'actionNarrowedCondition' in body
+        ? typeof body.actionNarrowedCondition === 'string'
+          ? body.actionNarrowedCondition
+          : null
+        : (semanticGate.kept.find((item) => item.candidateId === actionAllowance?.candidateId)?.narrowedCondition ?? null);
+    const actionContext =
+      'actionConditionContext' in body
+        ? ((body.actionConditionContext ?? null) as ConditionContext | null)
+        : (semanticGate.kept.find((item) => item.candidateId === actionAllowance?.candidateId)?.conditionContext ?? null);
+    const actionGate = gateActionPlan(parsedAction, actionAllowance, deepTense, {
+      narrowedCondition: actionNarrowed,
+      conditionContext: actionContext,
+    });
 
     return Response.json({
       ok: true,
@@ -534,9 +565,23 @@ export async function POST(request: Request): Promise<Response> {
           whyLength: item.whyItMatters.length,
           hasVerification: Boolean(item.verification),
           usedEventIds: item.usedEventIds,
+          /** Core Value Closure — 게이트가 근거로 확인한 칸만 남은 context(fixture 자신의 값) */
+          conditionContext: item.conditionContext ?? null,
         })),
         /** §9 — 허용집합 밖이라 지운 장면 id. 0이 아니면 그 카드 문장이 버려진다 */
         rejectedEventIds: parsedSemantics.flatMap((item) => item.rejectedEventIds),
+      },
+      /** v1.46.4 Action Layer — fixture가 넣은 plan의 게이트 결과. 원문은 fixture 자신의 값이다 */
+      action: {
+        parsed: Boolean(parsedAction),
+        kept: Boolean(actionGate.kept),
+        violations: [...new Set(actionGate.violations)],
+        stages: actionGate.stages,
+        verificationDropped: actionGate.verificationDropped,
+        droppedSignals: parsedAction?.droppedSignals ?? 0,
+        signalCount: actionGate.kept?.decisionSignals.length ?? 0,
+        alignment: actionGate.alignment,
+        plan: actionGate.kept,
       },
       narratives: novel.map((item) => ({
         insightId: item.insightId,

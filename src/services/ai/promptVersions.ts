@@ -192,7 +192,20 @@ export const PROMPT_VERSIONS = {
    * ⚠️ 지문도 함께 넓혔다. `deepReportFingerprint`에 사건 본문 해시와 장면 배분이
    * 들어간다 — 그게 없으면 사건 본문을 고쳐도 같은 문장이 캐시에서 나온다(§43).
    */
-  deepReport: 'deep-report-v9-role-recitation',
+  /*
+    v1.46.4 Premium Action Layer — v10. 출력에 `actionPlan`이 추가되고 context에 `actionTarget`이
+    들어간다. v9 캐시에는 actionPlan이 없으므로 올리지 않으면 캐시 히트 세션이 Action 블록을
+    영영 결정론 verify_only로만 본다.
+  */
+  /*
+    v1.46.4 Action Alignment — v11. actionPlan이 그 카드의 narrowedCondition을 유지해야 한다는 계약이
+    추가됐고, 서버 게이트가 조건 밖으로 넓어진 plan을 버린다. v10 캐시의 plan은 이 검사를 받지 않았다.
+  */
+  /*
+    v1.46.4 Core Value Closure — v12. 카드 semantic에 conditionContext(trigger/state/uncertainty)가 추가되고,
+    actionPlan은 그 칸들을 유지해야 한다. v11 캐시에는 context가 없다.
+  */
+  deepReport: 'deep-report-v12-condition-context',
   /**
    * v1.46 AI Lens §6 — **렌즈별 프롬프트 4개.**
    *
