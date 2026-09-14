@@ -348,6 +348,105 @@ check(
   participantRatingHosts,
 );
 
+/* ═════════════════════════════ P2 — Result Value-Density */
+
+console.log('\nP2 — 결과 알맹이 밀도 · 러비 · 시각화');
+
+const compatP2 = await src('src/app/compatibility/page.tsx');
+const mirrorP2 = await src('src/app/mirror/page.tsx');
+const lensBlocks = await src('src/components/lens/LensStateBlocks.tsx');
+const scaleHearts = await src('src/components/common/ScaleHearts.tsx');
+const comparisonRow = await src('src/components/mirror/MirrorComparisonRow.tsx');
+const historyRow = await src('src/components/history/HistoryChangeRow.tsx');
+const hintsLogic = await src('src/lib/logic/approachHints.ts');
+const actionPlanSection = await readFile(join(ROOT, 'src/components/premium/PremiumActionPlanSection.tsx'), 'utf8').catch(() => '');
+const metaCopy = await src('src/lib/premiumMetaCopy.ts');
+const candidateSection = await src('src/components/premium/PremiumCandidateSection.tsx');
+const reportedLogic = await src('src/lib/logic/relationshipEvents.ts');
+const resolver = await src('src/lib/aiEvidenceResolver.ts');
+const onboardingVisual = await src('src/components/onboarding/OnboardingVisual.tsx');
+
+const idx = (text, needle) => text.indexOf(needle);
+check(
+  'P2-01 궁합 점수가 긴 텍스트보다 먼저 — SyncScore가 첫 ReportSection · 신호 카드보다 앞',
+  idx(compatP2, '<SyncScore score={result.score} />') > 0 &&
+    /* `<ReportSectionEyebrow`(점수 위 번호 표식)가 아니라 번호 붙은 섹션 본체 */
+    idx(compatP2, '<SyncScore score={result.score} />') < compatP2.search(/<ReportSection\s/),
+);
+check(
+  'P2-02 첫 takeaway — 궁합: 점수 바로 다음 결과 한 문장 / Mirror: 핵심 문장이 비교 행보다 먼저',
+  idx(compatP2, '{resultHeadline}') < idx(compatP2, 'id={RESULT_ANCHORS.compatibilityWhy}') &&
+    idx(mirrorP2, 'id={RESULT_ANCHORS.mirrorCoreInsight}') < idx(mirrorP2, '<FreeInsightSection') &&
+    idx(mirrorP2, 'id={RESULT_ANCHORS.mirrorCoreInsight}') < idx(mirrorP2, '<MirrorComparisonRow'),
+);
+check(
+  'P2-03 기본 노출 블록의 입력 재진술 축소 — 헤더 meta에 신호 개수 0 · 점수 사용법은 접힌 근거 안(ended만 노출)',
+  !/관찰한 신호 \$\{/.test(compatP2) &&
+    !/비교한 신호 \$\{/.test(compatP2) &&
+    /\{job !== 'ended' \? ` \$\{jobCopy\.scoreUse\}` : ''\}/.test(compatP2) &&
+    /\{job === 'ended' \? \(\s*<p[^>]*>\s*\{jobCopy\.scoreUse\}/.test(compatP2),
+);
+check(
+  'P2-04 같은 결론 반복 없음 — Mirror 핵심 문장 블록 1개 · 점프 칩(ResultSectionNav) 제거',
+  (mirrorP2.match(/id=\{RESULT_ANCHORS\.mirrorCoreInsight\}/g) ?? []).length === 1 &&
+    !/ResultSectionNav/.test(mirrorP2) &&
+    (mirrorP2.match(/\{headline\}/g) ?? []).length === 1,
+);
+check(
+  'P2-05 접힌 근거는 계속 열 수 있다 — 점수 근거 토글 · 신호 근거(details) · Mirror MATCH 자세히',
+  /aria-expanded=\{showScoreBasis\}/.test(compatP2) &&
+    /<details/.test(await src('src/components/compatibility/SignalCard.tsx')) &&
+    /aria-expanded=\{open\}/.test(comparisonRow),
+);
+check(
+  'P2-06 러비 checkpoint — 점수 직후(FIRST SURPRISE) · FREE→Premium · Next Move 뒤 · Mirror 핵심 · 렌즈 질문',
+  /<Lovy pose="question"/.test(await src('src/components/compatibility/FirstSurprise.tsx')) &&
+    /premiumAccess\.surfaceEnabled \? \(\s*<LovyMessage/.test(compatP2) &&
+    /showOutwardQuestions \? \(\s*<LovyMessage/.test(compatP2) &&
+    /<Lovy pose="note" size=\{28\} decorative \/>\s*러비가 가장 눈여겨본 부분/.test(mirrorP2) &&
+    /<Lovy pose="question" size=\{28\} decorative \/>\s*러비의 한 가지 질문/.test(lensBlocks),
+);
+check(
+  'P2-07 숫자 척도 = 하트 수 — 숫자 유지(`{value}/{max}`) · 채운 하트 = value · 하트는 aria-hidden · Mirror · History 적용',
+  /\{value\}\/\{max\}/.test(scaleHearts) &&
+    /index < filled/.test(scaleHearts) &&
+    /const filled = Math\.max\(0, Math\.min\(max, value\)\);/.test(scaleHearts) &&
+    /aria-hidden/.test(scaleHearts) &&
+    /<ScaleHearts value=\{insight\.declared\} \/>/.test(comparisonRow) &&
+    /<ScaleHearts value=\{value\}/.test(historyRow),
+);
+check(
+  "P2-08 렌즈 질문 — 가벼운 코너('러비의 한 가지 질문') · 첫 질문 1개 + 나머지 펼치기 · 저장 이벤트 유지 · '이야기해볼 주제' 0",
+  /prompts\.slice\(0, 1\)/.test(lensBlocks) &&
+    /aria-expanded=\{showAll\}/.test(lensBlocks) &&
+    /lens_conversation_question_save/.test(lensBlocks) &&
+    !/이야기해볼 주제/.test(lensBlocks),
+);
+check(
+  "P2-09 generic 추천이 핵심처럼 안 보임 — activity · conversation 힌트는 첫 카드가 되지 않고 '가벼운 아이디어'로 표시",
+  /const GENERIC_HINT_KINDS: ReadonlySet<ApproachHint\['kind'\]> = new Set\(\['activity', 'conversation'\]\);/.test(compatP2) &&
+    /density=\{index === 0 && !GENERIC_HINT_KINDS\.has\(hint\.kind\) \? 'primary' : 'compact'\}/.test(compatP2) &&
+    /activity: '가벼운 아이디어 · 같이 해볼 것',/.test(hintsLogic),
+);
+check(
+  'P2-10 Core Action Layer 무변경 — 궁합/Mirror FREE 화면에 Action 블록 0 · Action 섹션 파일 존재',
+  !/PremiumActionPlanSection|buildPremiumActionPlan/.test(compatP2 + mirrorP2) && actionPlanSection.length > 0,
+);
+check(
+  "P2-11 '사건' 용어 — 사용자 입력을 가리키는 화면 라벨(리포트 헤더 · 사건 블록 · 카드 라벨 · 근거 칩 · 온보딩)",
+  /parts\.push\('기억나는 사건'\)/.test(metaCopy) &&
+    /네가 알려준 사건 · \{scene\.typeLabel\}/.test(candidateSection) &&
+    /title: '네가 알려준 사건',/.test(reportedLogic) &&
+    /sourceLabel: '내가 알려준 사건',/.test(resolver) &&
+    /label: '내가 알려준 사건'/.test(onboardingVisual) &&
+    !/이 장면/.test(reportedLogic),
+);
+check(
+  'P2-12 UT Premium visibility 유지 — 궁합 Friction 0 UT 진입 · 진입 행 UT 분기 그대로',
+  /\) : utMode \? \(\s*<div className="mt-6">\s*<PremiumEntryRow feature=\{premiumFeature\} source="compatibility" \/>/.test(compatP2) &&
+    /\{gapInsights\.length > 0 \|\| utMode \? \(/.test(mirrorP2),
+);
+
 const after = await guardCount();
 check(`실제 Provider 호출 0 증가 (${before} → ${after})`, after === before);
 
