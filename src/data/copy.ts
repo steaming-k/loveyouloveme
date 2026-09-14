@@ -534,15 +534,13 @@ export const SAJU_COPY = {
   caption: '전통 해석 체계로 우리 둘을 한번 겹쳐보는 참고 렌즈야.',
   notPrediction:
     '사주는 전통적인 해석 체계야. 실제 관계가 잘될 확률을 예측하는 결과로는 사용하지 않을게.',
-  selfCta: '내 사주 보기',
-  coupleCta: '우리 사주 궁합 보기',
-  engineOffTitle: '아직 계산 엔진이 연결되지 않았어',
-  /** SELF만 준비됐을 때(§13) */
-  engineOffBodySelf:
-    '네 정보는 준비됐어. 사주 계산 엔진이 연결되면 먼저 네 사주 렌즈부터 볼 수 있어.',
-  /** SELF + TARGET 모두 준비됐을 때(§13) */
-  engineOffBodyCouple:
-    '두 사람의 정보는 준비됐어. 엔진이 연결되면 각각의 결과와 둘의 비교까지 볼 수 있어.',
+  /**
+   * 260914 UT 후속 P0 — 'engineOff*' 문구를 뺐다. 이 화면은 이제 Premium 렌즈와 같은
+   * 일주 엔진(`logic/sajuPillars.ts`)으로 실제 값을 보여준다.
+   */
+  selfLabel: '나의 일주',
+  coupleLabel: '우리 둘',
+  readingLabel: '두 일간을 같이 놓으면',
 } as const;
 
 /** X1-b Astrology Lens */

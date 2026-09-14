@@ -1,5 +1,6 @@
 'use client';
 
+import { useUtMode } from '@/hooks/useUtMode';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -11,32 +12,55 @@ import { PageHeading, SectionLabel, Tag } from '@/components/common/primitives';
 import {
   BirthMissingBlock,
   BirthSummaryRows,
-  ConversationPromptList,
   EntertainmentNotice,
   LimitationList,
 } from '@/components/lens/LensStateBlocks';
-import { Lovy } from '@/components/lovy/Lovy';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
+import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
 import { SAJU_COPY } from '@/data/copy';
+import { LENS_UNAVAILABLE_REASON } from '@/data/premiumLens';
+import {
+  DAY_STEM_ELEMENT_SELF,
+  ELEMENT_LABEL_KO,
+  ELEMENT_RELATION_NOTE,
+  SAJU_SCOPE_NOTE,
+} from '@/data/saju';
+import { useCrossSourceInsights } from '@/hooks/useAiNarrative';
+import { useMirror } from '@/hooks/useAnalysis';
 import { trackEvent } from '@/lib/analytics';
 import { lensAvailability } from '@/lib/logic/birth';
-import { ROUTES } from '@/lib/routes';
+import { hasPremiumEvidence } from '@/lib/logic/premiumChapters';
 import {
-  calculateSaju,
-  calculateSajuCompatibility,
-  sajuEngineAvailable,
-} from '@/services/sajuService';
+  jobAllowsOutwardAction,
+  resolveRelationshipContext,
+} from '@/lib/logic/relationshipStage';
+import {
+  elementRelation,
+  isLunarBlocked,
+  readSajuDay,
+  type DayPillar,
+} from '@/lib/logic/sajuPillars';
+import { soloModeOf } from '@/lib/logic/soloMode';
+import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
+import { ROUTES } from '@/lib/routes';
+import { premiumFeatureState } from '@/services/premiumService';
 import { useSession } from '@/state/SessionProvider';
 
 /**
  * X1-c 사주 Lens — Entertainment
  *
- * ⚠️ 이 화면은 **사주 명식을 계산하지 않는다.** 검증된 계산 엔진이 없는 동안은
- * `sajuService`가 `available: false`를 돌려주고, 화면은 그 상태를 정직하게 보여준다 —
- * 없는 결과를 그럴듯하게 채워 넣지 않는다.
+ * ══ 260914 UT 후속 P0 — 'DEMO · 계산 엔진 미연결' 회귀 ═══════════════════════
  *
- * 엔진이 붙으면(`NEXT_PUBLIC_SAJU_ENGINE_READY=true`) 이 화면 코드는 그대로 두고
- * 서비스 구현만 교체하면 된다.
+ * v1.46이 일주 계산 엔진(`logic/sajuPillars.ts`)을 붙였지만 **Premium 렌즈에만** 연결했고,
+ * 이 화면은 v1.4의 `services/sajuService.ts`(`SAJU_ENGINE_READY=false` 스텁)를 계속 불렀다.
+ * 그래서 계산이 실제로 되는 사용자에게도 'DEMO · 계산 엔진 미연결'이 보였다 — env/Provider
+ * 문제가 아니라 **낡은 코드 경로** 문제였다.
+ *
+ * 이제 Premium 렌즈와 같은 엔진(`readSajuDay`)을 쓴다. 판정·계산을 이 화면에서 복제하지 않는다.
+ *
+ * ⚠️ FREE / Premium 경계. 이 화면이 보여주는 것은 **일주 값 + 한 줄 해석 + 질문 하나**다.
+ * 일간 음양 비교 · 어긋나기 쉬운 지점 · 사건 연결 · Cross-Lens는 Premium 번들에만 있다
+ * (`buildPremiumLensBundle`) — 여기서 그 번들을 만들지 않는다.
  */
 export default function SajuLensPage() {
   return (
@@ -46,31 +70,53 @@ export default function SajuLensPage() {
   );
 }
 
+function pillarText(pillar: DayPillar): string {
+  return `${pillar.label}(${pillar.hanja})일`;
+}
+
 function SajuLensView() {
   const router = useRouter();
   const { answers } = useSession();
   const [today] = useState(() => new Date());
+  const [variant] = useState(() => resolvePriceVariant());
+  /** v1.47 — UT에서는 Premium 표면이 flag와 무관하게 열린다(`resolvePremiumAccess`) */
+  const utMode = useUtMode();
+  const crossSourceInsights = useCrossSourceInsights();
+  const mirror = useMirror();
 
   const mine = answers.birthProfile;
   const theirs = answers.target.birthProfile;
   const availability = lensAvailability(mine, theirs, today);
 
-  const self = useMemo(() => calculateSaju(mine, today), [mine, today]);
-  const couple = useMemo(
-    () => calculateSajuCompatibility(mine, theirs, today),
-    [mine, theirs, today],
-  );
+  const mineSaju = useMemo(() => readSajuDay(mine, today), [mine, today]);
+  const theirsSaju = useMemo(() => readSajuDay(theirs, today), [theirs, today]);
+  const lunarBlocked = isLunarBlocked(mine, today);
+  const relationNote =
+    mineSaju && theirsSaju
+      ? ELEMENT_RELATION_NOTE[
+          elementRelation(mineSaju.pillar.stemElement, theirsSaju.pillar.stemElement)
+        ]
+      : null;
 
   useEffect(() => {
     trackEvent('saju_lens_view', {
-      mode: availability.couple ? 'compatibility' : 'self',
-      engine_available: sajuEngineAvailable,
+      mode: relationNote ? 'compatibility' : 'self',
+      pillar_available: Boolean(mineSaju),
       has_self: availability.self,
       has_target: availability.couple || availability.missing === 'self',
     });
-  }, [availability.couple, availability.self, availability.missing]);
+  }, [relationNote, mineSaju, availability.couple, availability.self, availability.missing]);
 
-  const showEngineNotice = availability.self && !sajuEngineAvailable;
+  const limitations = useMemo(
+    () => [
+      ...new Set([
+        ...(lunarBlocked ? [LENS_UNAVAILABLE_REASON.sajuLunar] : []),
+        ...(mineSaju ? [SAJU_SCOPE_NOTE, ...mineSaju.limitations] : []),
+        ...(theirsSaju ? theirsSaju.limitations : []),
+      ]),
+    ],
+    [lunarBlocked, mineSaju, theirsSaju],
+  );
 
   return (
     <ScreenLayout
@@ -91,80 +137,82 @@ function SajuLensView() {
           <BirthMissingBlock lens="saju" missing={availability.missing === 'both' ? 'both' : 'self'} />
         ) : null}
 
-        {/*
-          엔진이 없을 때의 정직한 상태. 명식·해석 대신 '무엇이 왜 안 되는지'와
-          '연결되면 무엇을 제공할지'를 보여준다.
-        */}
-        {showEngineNotice ? (
-          <section className="flex flex-col items-center gap-3 rounded-card border border-dashed border-line-strong bg-canvas-warm px-4 py-6 text-center">
-            <Lovy pose="book" size={92} decorative />
-            <h2 className="text-section keep-all">{SAJU_COPY.engineOffTitle}</h2>
-            <p className="text-caption keep-all leading-relaxed text-ink-sub">
-              {availability.couple ? SAJU_COPY.engineOffBodyCouple : SAJU_COPY.engineOffBodySelf}
-            </p>
-            <span className="rounded-tag bg-chip px-2.5 py-1.5 text-[11px] font-semibold text-ink-muted">
-              DEMO · 계산 엔진 미연결
-            </span>
-          </section>
-        ) : null}
-
-        {/* 엔진이 붙으면 이 자리에 명식·해석이 들어온다 */}
-        {self.available && self.interpretation ? (
+        {mineSaju ? (
           <section className="flex flex-col gap-2.5">
-            <SectionLabel>전통 해석에서 보는 주요 성향</SectionLabel>
-            <ul className="flex flex-col gap-2">
-              {self.interpretation.traits.map((trait) => (
-                <li
-                  key={trait}
-                  className="rounded-row border border-line bg-surface px-3.5 py-3 text-caption keep-all leading-relaxed"
-                >
-                  {trait}
-                </li>
-              ))}
-            </ul>
+            <SectionLabel>{SAJU_COPY.selfLabel}</SectionLabel>
+            <div className="flex flex-col gap-2 rounded-card border border-line bg-surface p-4">
+              <p className="text-[10.5px] font-semibold tracking-[0.06em] text-ink-muted">
+                DAY PILLAR
+              </p>
+              <p className="text-[21px] font-semibold tracking-[-0.5px]">
+                {pillarText(mineSaju.pillar)}
+              </p>
+              <p className="text-caption keep-all leading-relaxed text-ink-sub">
+                일간 {ELEMENT_LABEL_KO[mineSaju.pillar.stemElement]} ·{' '}
+                {DAY_STEM_ELEMENT_SELF[mineSaju.pillar.stemElement]}
+              </p>
+            </div>
           </section>
         ) : null}
 
-        {couple.available && couple.observations.length > 0 ? (
-          <section className="flex flex-col gap-2.5">
-            <SectionLabel>전통 해석으로 본 우리 둘</SectionLabel>
-            <ul className="flex flex-col gap-2">
-              {couple.observations.map((observation) => (
-                <li
-                  key={`${observation.kind}-${observation.label}`}
-                  className="flex flex-col gap-1.5 rounded-card border border-line bg-surface p-4"
-                >
-                  <p
-                    className={
-                      observation.kind === 'similar'
-                        ? 'text-[10px] font-semibold tracking-[0.06em] text-mint-text'
-                        : 'text-[10px] font-semibold tracking-[0.06em] text-ink-muted'
-                    }
-                  >
-                    {observation.kind === 'similar'
-                      ? '비슷하게 읽히는 부분'
-                      : '다르게 읽힐 수 있는 부분'}
-                  </p>
-                  <p className="text-caption font-medium">{observation.label}</p>
-                  <p className="text-[12.5px] keep-all leading-relaxed text-[#555]">
-                    {observation.text}
-                  </p>
-                </li>
-              ))}
-            </ul>
+        {mineSaju && theirsSaju && relationNote ? (
+          <section className="flex flex-col gap-3">
+            <SectionLabel>{SAJU_COPY.coupleLabel}</SectionLabel>
+
+            <div className="flex items-center justify-between gap-3 rounded-card border border-line bg-surface p-4">
+              <div className="min-w-0">
+                <p className="text-[10.5px] font-semibold tracking-[0.05em] text-ink-muted">나</p>
+                <p className="text-body font-semibold">{pillarText(mineSaju.pillar)}</p>
+              </div>
+              <span className="flex-none text-[13px] text-ink-faint" aria-hidden>
+                ×
+              </span>
+              <div className="min-w-0 text-right">
+                <p className="text-[10.5px] font-semibold tracking-[0.05em] text-ink-muted">상대</p>
+                <p className="text-body font-semibold">{pillarText(theirsSaju.pillar)}</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5 rounded-card border border-line bg-surface p-4">
+              <p className="text-[10px] font-semibold tracking-[0.06em] text-mint-text">
+                {SAJU_COPY.readingLabel}
+              </p>
+              <p className="text-[12.5px] keep-all leading-relaxed text-[#555]">
+                {relationNote.reading}
+              </p>
+            </div>
+
+            <LovyMessage pose="question" size={44}>
+              {relationNote.question}
+            </LovyMessage>
           </section>
         ) : null}
 
-        <ConversationPromptList lens="saju" prompts={couple.prompts} />
-
-        {/* 상대 정보만 없으면 알려준다 */}
-        {availability.self && !availability.couple ? (
-          <BirthMissingBlock lens="saju" missing="target" />
-        ) : null}
+        {availability.self && !theirsSaju ? <BirthMissingBlock lens="saju" missing="target" /> : null}
 
         <BirthSummaryRows mine={mine} theirs={theirs} />
 
-        <LimitationList items={availability.couple ? couple.limitations : self.limitations} />
+        <LimitationList items={limitations} />
+
+        {mineSaju ? (
+          <PremiumEntryRow
+            /*
+              v1.46 PremiumLens §2 · §35 — 개별 렌즈 상세를 팔지 않는다. 별자리 · MBTI 화면과
+              같은 Bundle을 가리키고, `source`로만 지불 의향이 어디서 생겼는지 구분한다.
+            */
+            feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
+              utMode,
+              allowsOutwardAction: jobAllowsOutwardAction(resolveRelationshipContext(answers).job),
+              deepReportAvailable: hasPremiumEvidence({
+                insights: crossSourceInsights,
+                declared: answers.declared,
+                mirror,
+              }),
+              solo: soloModeOf(answers) === 'no_target',
+            })}
+            source="saju"
+          />
+        ) : null}
 
         <LovyMessage pose="book" size={52}>
           {SAJU_COPY.notPrediction}
