@@ -234,8 +234,40 @@ Guest                     분석 결과 = 로컬만. cloud 요청 0
 ## 9-5. Model-aware cache · Deep Report routing
 
 - 캐시 키: `task::promptVersion::model=<resolved model>::bundleSignature` (`src/services/ai/aiCacheKey.ts`). 모델 칸은 코드 상수가 아니라 **서버 응답 `meta.model`**로 확정된다 — env로만 모델을 바꿔도 이전 모델 결과가 캐시에서 나오지 않는다. 지문(bundle signature)은 입력만 담는다.
-- 라우팅: Deep Report만 `gpt-5.4`(`DEEP_REPORT_MODEL_ROUTE` + `AI_MODEL_DEEP_REPORT`). 렌즈 · Cross-Lens · 그 밖의 Task는 공용 `AI_MODEL` 그대로. 호출 수 불변(Deep Report 1 · 렌즈 3 · Cross-Lens 1).
-- fixture: `npm run test:model-routing` — CACHE-01~05 · ROUTE-01~06 · 실제 Provider 호출 0.
+- 라우팅(v1.47 Integration): **코드에 모델 id가 없다.** Deep Report = dev override(non-production) → `AI_MODEL_DEEP_REPORT` → 공용 `AI_MODEL`. local/dev · preview/staging은 `AI_MODEL_DEEP_REPORT=gpt-5.4`, production은 명시 설정할 때만. 렌즈 · Cross-Lens · 그 밖의 Task는 공용 `AI_MODEL`. 호출 수 불변(Deep Report 1 · 렌즈 3 · Cross-Lens 1).
+- fixture: `npm run test:model-routing` — CACHE-01~05 · ROUTE-ENV-01~07 · ROUTE-06 · 실제 Provider 호출 0.
+- real smoke(유료 · opt-in): `ALLOW_REAL_AI_TESTS=1 npm run test:ai:deep-report-smoke` — resolved model · 호출 1 · 캐시 키 모델 · 렌더. 2026-09-14 1회 PASS(gpt-5.4 · 27.6s · Top 3 semantic_ai 3/3 · actionPlan plan).
+
+## 9-6. Integration pass — logical run · 관계 저장 UI · 분석 snapshot 저장
+
+**generationRequestId = 한 번의 분석 행위** (`src/lib/logicalRun.ts`)
+
+```
+분석 시작          deepReportRuns.begin(fingerprint) → 새 UUID
+실패 뒤 retry      같은 UUID (닫히지 않았다)
+결과 확정          close → 다음 분석은 새 UUID
+서버               형식만 확인하고 결과 data.generationRequestId로 돌려준다 · requestId는 로그용
+```
+
+**'이 관계 저장하기'** — 궁합 결과에서 점수 · 잘 맞는/확인할 신호를 **본 뒤**, Premium 진입 앞(`SaveRelationshipCard`).
+
+```
+offer → (Guest) InlineAuth(이메일 코드 · 메일 링크, Privacy와 같은 폼) → consent → 저장 → 저장됨
+      → (로그인됨) consent → 저장 → 저장됨
+```
+
+- 단계 판정: `saveRelationshipStage`(순수). Supabase 설정 없음이면 hidden — Guest 화면 불변.
+- 저장: `saveActiveRelationshipWith` — 나 최소값 · 지금 상대 · 사건 · link. 실패하면 link를 남기지 않는다.
+- link 복구: 로그인 뒤 link가 없으면 결정론 cloud id로 **읽기만** 해서 다시 잇는다(`recoverCloudLink`).
+
+**Deep Report analysis_run 저장** (`lib/persistence/deepReportSnapshot.ts` · `DeepReportSnapshotSaver`)
+
+| 저장 | 저장 안 함 |
+|---|---|
+| 로그인 · 이 사용자가 저장한 관계 · status ready · real/mock · 리포트 available · Top 3 semantic_ai ≥1 또는 AI plan · generationRequestId 있음 · **렌더 커밋 뒤(useEffect)** | Guest · 저장 안 한 관계 · Provider 실패 · demo · 게이트 거부 · verify_only fallback만 · 렌더 전 · id 없음 |
+
+- 스냅샷의 사건 id는 **cloud 사건 id**로 바꿔 저장한다. 원문 복제 검사 · idempotency key(§9-3) 그대로.
+- fixture: `logical_run`(GEN-01~06) · `save_relationship_ui`(SAVE-UI-01~07) · `analysis_run_flow`(RUN-01~07) · `link_recovery`(LINK-01~04) + 정적 배치 검사.
 
 ## 10. Known limitations
 
@@ -244,8 +276,8 @@ Guest                     분석 결과 = 로컬만. cloud 요청 0
 3. 로그인 후에도 **지속 동기화는 없다.** 저장은 사용자가 누른 시점의 스냅샷 migration이고, 이후 로컬 수정은 다시 저장해야 올라간다(같은 내용은 중복되지 않지만, 바뀐 내용은 conflict로 보고되고 덮어쓰지 않는다). revision 기반 update API는 있으나 UI에 연결하지 않았다.
 4. 클라우드 → 기기 불러오기(다른 기기에서 이어보기) UI 없음. `sessionWithCloudContext()`와 parity fixture까지만.
 5. 저장된 관계 목록 · 전환 UI 없음(service 수준까지).
-6. ~~두 번째 계정 id 충돌~~ → 해결(§9-4). 같은 로컬 슬롯이라도 계정마다 cloud id가 다르다. 단 link는 기기 localStorage에 있어, 브라우저 저장소를 지우면 기기 전체 저장을 다시 눌러야 link가 복구된다(같은 결정론 id라 중복 행은 생기지 않는다).
-7. Deep Report 결과 저장은 정책 · 저장소 · fixture까지(§9-3 · §9-4). **화면에서 '이 관계 저장하기' 버튼과 렌더 확정 시점의 `recordAnalysisForRelationship` 호출은 아직 없다**(generationRequestId는 서버 requestId 사용을 권장).
+6. ~~두 번째 계정 id 충돌~~ → 해결(§9-4). 같은 로컬 슬롯이라도 계정마다 cloud id가 다르다. link가 localStorage에서 사라져도 로그인 뒤 결정론 id로 읽기만 해서 복구한다(§9-6). 단 기기 상대 목록(`lym.targets.v1`)까지 사라지면 localTargetId가 바뀌어 복구할 수 없다 — 다시 저장하면 새 관계 행이 생긴다.
+7. '이 관계 저장하기' UI · 렌더 뒤 snapshot 저장은 연결했다(§9-6). 저장한 관계를 **다른 기기에서 목록으로 불러와 세션에 올리는 화면**은 아직 없다(`loadSavedRelationship` · `sessionWithCloudContext`까지). CTA는 Supabase 설정이 있을 때만 보이므로 실제 화면 확인은 dev 프로젝트 연결 후 가능하다.
 10. `feat/v147-supabase-persistence-clean`은 안정 base `b6f2a2d`(Core Value Final Fix) 위에 다시 쌓았다. 이전 `feat/v147-supabase-persistence`는 참고용으로 남겨 두었다(force push 없음).
 8. Magic Link는 Supabase 대시보드의 Site URL / Redirect URL(`/auth/callback`) 설정이 필요하다. OTP 코드 입력은 이메일 템플릿에 `{{ .Token }}`이 있어야 한다.
 9. middleware 기반 세션 갱신은 넣지 않았다(서버 렌더에서 사용자 데이터를 읽는 곳이 아직 없다).
