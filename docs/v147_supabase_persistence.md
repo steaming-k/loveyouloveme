@@ -47,7 +47,7 @@ SessionProvider ─ resetTargetContext() ─→ targetRegistry (lym.targets.v1, 
 | `user_profiles` | `user_id` PK → auth.users · `profile_json` · `schema_version` · `revision` | 나(status · declared · experience · mbti · 출생정보) |
 | `relationship_targets` | `id` · `user_id` · `label`(선택 별칭, ≤40) · `relation_status` · `target_json` · `revision` · `archived_at` | `unique(id, user_id)` = 복합 FK 대상. 실명 요구 없음 |
 | `relationship_events` | `id` · `user_id` · `target_id` · `type`(8종 CHECK) · `description` · `my_reaction` · `revision` | **target_json 배열이 아니라 행** |
-| `analysis_runs` | `id` · `user_id` · `target_id?` · `analysis_type` · `result_snapshot` · `source_fingerprint` · `app_version` · `model_meta` | **UPDATE 불가**(정책 없음 + 트리거) |
+| `analysis_runs` | `id` · `user_id` · `target_id?` · `analysis_type` · `result_snapshot` · `source_fingerprint` · `prompt_version` · `model` · `idempotency_key` · `app_version` | **UPDATE 불가**(정책 없음 + 트리거) · `UNIQUE(user_id, idempotency_key)` · `model_meta` jsonb는 `20260915000000`에서 제거 |
 
 - FK: `relationship_events.(target_id, user_id)` · `analysis_runs.(target_id, user_id)` → `relationship_targets.(id, user_id)` — **같은 소유자의 상대에만** 붙는다.
 - Index: `targets(user_id, updated_at desc)` · `events(target_id, created_at)` · `events(user_id)` · `runs(user_id, created_at desc)` · `runs(target_id, created_at desc)`.
@@ -87,7 +87,7 @@ Guest ─ 궁합 · Mirror · 사건 · Premium (전부 로컬, 변화 없음)
 | 제외 | 사진 · 사진 관찰 결과(observedAnalysis) · AI 캐시 · analytics |
 | 동의 | `consent !== true`면 요청 0건(`consent_required`) |
 | 로컬 | **읽기만** 한다 |
-| 멱등 | target id = registry의 stable UUID · event id = `uuidv5(targetId:localEventId)`(이미 UUID면 그대로) · run id = History id(UUID면 그대로, 아니면 uuidv5) · 전부 insert-if-absent |
+| 멱등 | cloud target id = `uuidv5(userId:localTargetId)`(이 사용자가 이미 저장한 관계면 link의 id) · event id = `uuidv5(cloudTargetId:localEventId)`(이미 UUID면 그대로) · History run id = `uuidv5(history:userId:entryId)` · 전부 insert-if-absent |
 | 이미 다른 값 | 덮어쓰지 않고 `conflicts`(entity + id만) · 충돌한 상대에는 사건을 섞지 않음 |
 | 중간 실패 | offline/unauthorized에서 멈춤 → `partial` · 재시도하면 남은 것만 |
 
@@ -97,8 +97,8 @@ Guest ─ 궁합 · Mirror · 사건 · Premium (전부 로컬, 변화 없음)
 
 - **새로운 사람과 궁합 보기**: `resetTargetContext()`가 세션을 비우기 직전 `preserveActiveTarget()`으로 이전 상대 맥락(상대 정보 · 사건 · 현재 관계 근거 · 저장 질문 · funnelAnalysisId)을 `lym.targets.v1`에 보관하고 새 activeTargetId를 발급한다. 세션 초기화 자체와 점수 · 화면은 그대로다.
 - `switchToSavedTarget()` · `localRelationshipSummaries()` · `targetRepository.listSummaries()`(별칭 · 관계 상태 · 마지막 분석 시각)는 **domain/service 수준까지** 구현했다. 목록/전환 UI는 붙이지 않았다(내비게이션 재설계 금지).
-- analysis_runs: 새 실행 = 새 행. 같은 id 재기록은 덮어쓰지 않고 `differs`로 알린다. `validateSnapshot()`이 raw Provider 응답 · 추론 · 프롬프트 · AI payload · 사건 본문 · 생년월일 · 사진 키를 거부한다.
-- 동일 input 재실행 정책: 현재 Deep Report는 저장하지 않고 재계산하며 AI 결과는 메모리 캐시뿐이다(감사 §2). 그래서 이번 단계는 **자동 저장을 붙이지 않았다** — Deep Report 저장 시점(렌더 확정 · entitlement)과 id 규칙은 결정이 필요하다.
+- analysis_runs: 새 분석 = 새 random UUID 행(`recordGenerated`). 같은 생성 결과의 retry는 idempotency key로 막는다(§9-3). id가 결정론인 History 스냅샷은 `record` — 같은 id 재기록은 덮어쓰지 않고 `differs`로 알린다. `validateSnapshot()`이 raw Provider 응답 · 추론 · 프롬프트 · AI payload · 사건 본문 · 생년월일 · 사진 키를 거부한다.
+- 저장 정책(§9-4): Guest는 분석 결과를 로컬에만 둔다. 로그인 + '이 관계 저장하기' 동의가 있는 관계만 cloud에 저장하고, 그 관계의 성공한 분석은 다시 묻지 않고 snapshot한다(`analysisSaveDecision` · `recordAnalysisForRelationship`). **화면 흐름(Deep Report 렌더 확정 시점)에는 아직 연결하지 않았다.**
 
 ## 7. RLS
 
@@ -171,7 +171,7 @@ rollback;
 | 사진 · 바이너리 차단 | 필드 이름(photo · image · thumbnail · screenshot · objectUrl · dataUrl · base64 · blob · file · audio · video) · 값(`data:image/` · `;base64,` · `blob:` · 긴 base64 문자열 · ArrayBuffer/typed array) → `payload_rejected` |
 | Provider 원문 차단 | raw · choices · completion · reasoning · prompt · messages · aiContext · debug · trace 키 → 거부 |
 | 원문 한 곳에만 | 사건 본문 · 반응은 `relationship_events` 행에만. JSON 칸 안의 `events` · `description` · `myReaction` → 거부. `target_json`은 mapper가 도메인 칸만 옮긴다 |
-| 분석 스냅샷 | `deepReportRunInput()` — candidate id · 판정 · 화면 문장 · evidence ref · event id · actionPlan · 모델/버전만. `reportedScenes`(원문) 없음. 저장 시 `forbiddenTexts`(사건 본문)가 스냅샷에 다시 들어가면 거부 |
+| 분석 스냅샷 | `deepReportRunInput()` — `renderedResult`(카드 · actionPlan 화면 문장 + 판정 · id · ref) · `candidateIds` · `usedEvidenceRefs` · `usedEventIds`. 모델 · 프롬프트 버전은 칸(column). `reportedScenes`(원문) 없음. 저장 시 `forbiddenTexts`(사건 본문)가 스냅샷에 다시 들어가면 거부 |
 | 몰래 자르지 않는다 | mapper의 `slice()` 절단 제거. 너무 크면 **write 실패 + 로컬 원본 유지 + 어떤 칸이 왜 문제인지(path · reason, 값 없음) 반환** |
 | 기존 행 보호 | 거부는 gateway 앞에서 멈춘다 — 기존 cloud row의 본문 · revision 그대로 |
 | migration | repository 단위 작은 write. 거부된 항목만 `rejected`(entity · id · issues)로 모으고 나머지는 계속 → `completed_with_rejections`. 상대가 거부되면 그 상대의 사건은 올리지 않는다. `bytes`(profile · targets · events · analysisRuns · total) 측정 |
@@ -183,20 +183,59 @@ rollback;
 | profile 행 | 518 |
 | target 행 | 736 |
 | event 행(사건 1개) | 315 |
-| deep report analysis 행 | 1,796 |
-| migration batch(나 · 상대 1 · 사건 3 · History 2) | 5,240 |
+| deep report analysis 행 | 1,951 |
+| migration batch(나 · 상대 1 · 사건 3 · History 2) | 5,174 |
 
 | 사건 수 | 사건 행 합계 | Deep Report 스냅샷 | migration 합계 |
 |---|---|---|---|
-| 10 | 3,690 | 1,580 | 7,869 |
-| 100 | 37,080 | 1,580 | 41,259 |
-| 500 | 186,280 | 1,580 | 190,459 |
+| 10 | 3,690 | 1,660 | 7,803 |
+| 100 | 37,080 | 1,660 | 41,193 |
+| 500 | 186,280 | 1,660 | 190,393 |
 
 → 사건이 늘면 사건 행만 늘고, 분석 스냅샷은 커지지 않는다.
 
 ## 9-2. 테스트는 실제 AI Provider를 부르지 않는다 (P0)
 
 `.env.local`이 `AI_MODE=real`이어도 `tests/run-*.mjs`는 모두 `tests/_aiTestGuard.mjs`를 import해 테스트 헤더를 붙이고, 서버는 그 요청을 mock으로 처리한다. 실제 호출은 `ALLOW_REAL_AI_TESTS=1`일 때만(`test:ai:real` · semantic provider QA). `npm run test:ai-guard`가 고정하고, `GET /api/dev/ai-guard`로 실제 호출 수를 본다.
+
+## 9-3. Analysis run 정책 · idempotency (Clean Base §7 · §11)
+
+| 칸 | 값 |
+|---|---|
+| `id` | 새 분석마다 `crypto.randomUUID()` |
+| `target_id` | **cloud** target id (로컬 슬롯 id 아님) |
+| `analysis_type` | `deep_report` · `mirror_history` |
+| `result_snapshot` | `renderedResult` · `candidateIds` · `usedEvidenceRefs` · `usedEventIds` — 이 네 칸뿐(`DEEP_REPORT_SNAPSHOT_KEYS`) |
+| `source_fingerprint` · `prompt_version` · `model` · `app_version` · `created_at` | 스칼라 칸. 작은 값을 JSONB로 두지 않는다 |
+| `idempotency_key` | `sha256(userId \| targetId \| analysisType \| sourceFingerprint \| generationRequestId)` hex · `UNIQUE(user_id, idempotency_key)` |
+
+- 같은 retry(같은 `generationRequestId`) → 기존 행을 돌려준다(`created:false`). 동시에 두 번 들어가면 두 번째 INSERT가 23505 → 기존 행을 다시 읽는다.
+- 사용자가 다시 분석 → 새 `generationRequestId` → 새 행. 입력 지문이 바뀌어도 새 행.
+- 금지: Target/Profile 전체 JSON · 사건 본문 복제 · 사진 · Provider raw · prompt · debug payload(키 · 원문 검사 둘 다).
+- fixture: `analysis_policy` — ANALYSIS-01~05 · IDEMP-01~06.
+
+## 9-4. Local/cloud id · 관계 저장 동의 · 계정 전환 (Clean Base §10 · §12)
+
+```
+Guest                     분석 결과 = 로컬만. cloud 요청 0
+로그인                    그것만으로는 업로드 없음
+'이 관계 저장하기' 동의   (userId, localTargetId) → cloudTargetId link  (lym.cloudLinks.v1, 사용자별)
+저장한 관계의 분석        성공할 때마다 그 관계에 snapshot — 매번 다시 묻지 않음
+계정 전환                 다른 사용자의 link는 보지 않음 → 자동 공유 · 자동 복사 없음
+                          B가 동의하면 B용 새 cloud id (A 행과 겹치지 않음)
+계정 저장분 삭제          그 사용자의 link만 지움
+```
+
+- `cloudLinks.ts`: `grantRelationshipSave` · `analysisSaveDecision` · `saveRelationshipToCloud`(기기 전체 저장과 같은 `migratePlan` 경로 · 세션 사용자 불일치면 멈춤) · `recordAnalysisForRelationship` · `loadSavedRelationship`.
+- 기기 전체 저장(동의 버튼)도 같은 매핑을 쓰고, 계정에 들어간 상대마다 link를 남긴다(`AccountProvider`).
+- fixture: `cross_account`(ACCOUNT-01~05) · `saved_relationship`(SAVE-01~10: Guest → login → 동의 → 저장 → 분석 snapshot → logout → login → 상대 · 사건 · 최근 분석 복원) · `account_switch`(A → B → A).
+- ⚠️ 전부 **메모리 gateway** 검증이다. 실제 Supabase RLS · Auth는 연결 후 §7 절차로 확인해야 한다.
+
+## 9-5. Model-aware cache · Deep Report routing
+
+- 캐시 키: `task::promptVersion::model=<resolved model>::bundleSignature` (`src/services/ai/aiCacheKey.ts`). 모델 칸은 코드 상수가 아니라 **서버 응답 `meta.model`**로 확정된다 — env로만 모델을 바꿔도 이전 모델 결과가 캐시에서 나오지 않는다. 지문(bundle signature)은 입력만 담는다.
+- 라우팅: Deep Report만 `gpt-5.4`(`DEEP_REPORT_MODEL_ROUTE` + `AI_MODEL_DEEP_REPORT`). 렌즈 · Cross-Lens · 그 밖의 Task는 공용 `AI_MODEL` 그대로. 호출 수 불변(Deep Report 1 · 렌즈 3 · Cross-Lens 1).
+- fixture: `npm run test:model-routing` — CACHE-01~05 · ROUTE-01~06 · 실제 Provider 호출 0.
 
 ## 10. Known limitations
 
@@ -205,16 +244,16 @@ rollback;
 3. 로그인 후에도 **지속 동기화는 없다.** 저장은 사용자가 누른 시점의 스냅샷 migration이고, 이후 로컬 수정은 다시 저장해야 올라간다(같은 내용은 중복되지 않지만, 바뀐 내용은 conflict로 보고되고 덮어쓰지 않는다). revision 기반 update API는 있으나 UI에 연결하지 않았다.
 4. 클라우드 → 기기 불러오기(다른 기기에서 이어보기) UI 없음. `sessionWithCloudContext()`와 parity fixture까지만.
 5. 저장된 관계 목록 · 전환 UI 없음(service 수준까지).
-6. 같은 기기 데이터를 **두 번째 계정**에 저장하면 stable id가 첫 계정 행과 겹쳐 conflict로 남는다(첫 계정 데이터는 보호됨). 계정 전환 시 id 재발급 정책은 미결정.
-7. Deep Report 결과 자동 저장 없음(§6). 저장 모양(`deepReportRunInput`)과 원문 복제 검사는 있으나 화면 흐름에 연결하지 않았다 — 저장 시점(렌더 확정 · entitlement)과 id 규칙 결정 필요.
-10. 이 branch는 Core Value 종료 전 WIP(`4cbefd8`) 위에 있다. P0 가드만 cherry-pick했고 Core Value Final Fix(`b6f2a2d`)는 없다 — 병합 전에 안정 base 위로 옮기는 계획이 필요하다(보고서 참고).
+6. ~~두 번째 계정 id 충돌~~ → 해결(§9-4). 같은 로컬 슬롯이라도 계정마다 cloud id가 다르다. 단 link는 기기 localStorage에 있어, 브라우저 저장소를 지우면 기기 전체 저장을 다시 눌러야 link가 복구된다(같은 결정론 id라 중복 행은 생기지 않는다).
+7. Deep Report 결과 저장은 정책 · 저장소 · fixture까지(§9-3 · §9-4). **화면에서 '이 관계 저장하기' 버튼과 렌더 확정 시점의 `recordAnalysisForRelationship` 호출은 아직 없다**(generationRequestId는 서버 requestId 사용을 권장).
+10. `feat/v147-supabase-persistence-clean`은 안정 base `b6f2a2d`(Core Value Final Fix) 위에 다시 쌓았다. 이전 `feat/v147-supabase-persistence`는 참고용으로 남겨 두었다(force push 없음).
 8. Magic Link는 Supabase 대시보드의 Site URL / Redirect URL(`/auth/callback`) 설정이 필요하다. OTP 코드 입력은 이메일 템플릿에 `{{ .Token }}`이 있어야 한다.
 9. middleware 기반 세션 갱신은 넣지 않았다(서버 렌더에서 사용자 데이터를 읽는 곳이 아직 없다).
 
 ## 11. Setup (dev/staging 전용)
 
 1. Supabase에서 **dev/staging** 프로젝트를 준비한다. production에는 사용자 승인 없이 적용하지 않는다.
-2. SQL Editor 또는 `supabase db push`로 `supabase/migrations/20260914000000_v147_persistence_foundation.sql` 적용.
+2. SQL Editor 또는 `supabase db push`로 `supabase/migrations/20260914000000_v147_persistence_foundation.sql` → `20260915000000_v147_analysis_run_policy.sql` 순서로 적용.
 3. Authentication → Email 활성화 · Site URL · Redirect URL(`http://localhost:3000/auth/callback`) 추가 · (OTP 입력을 쓰려면) 이메일 템플릿에 `{{ .Token }}`.
 4. `.env.local`에 `NEXT_PUBLIC_SUPABASE_URL` · `NEXT_PUBLIC_SUPABASE_ANON_KEY`(anon/publishable) — **secret/service_role 금지**(코드도 거부한다).
 5. dev 서버 재시작 → Privacy에 "계정에 저장 (선택)"이 보이는지 확인.
