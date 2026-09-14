@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 import { createClient } from '@supabase/supabase-js';
 
+import { createLogicalRunRegistry } from '@/lib/logicalRun';
 import { createAnalysisRunRepository } from '@/lib/persistence/analysisRunRepository';
 import {
   analysisSaveDecision,
@@ -14,13 +15,16 @@ import {
   linkOf,
   loadSavedRelationship,
   recordAnalysisForRelationship,
+  recoverCloudLink,
   sanitizeCloudLinks,
+  saveActiveRelationshipWith,
   saveRelationshipToCloud,
   type SavedRelationship,
 } from '@/lib/persistence/cloudLinks';
 import { CLOUD_WRITE_BUDGET, estimateUtf8Bytes, inspectCloudPayload } from '@/lib/persistence/cloudWriteBudget';
+import { persistDeepReportSnapshot } from '@/lib/persistence/deepReportSnapshot';
 import type { PersistenceGateway } from '@/lib/persistence/gateway';
-import { cloudTargetIdOf, isUuid, newUuid } from '@/lib/persistence/ids';
+import { analysisIdempotencyKeyOf, cloudTargetIdOf, isUuid, newUuid } from '@/lib/persistence/ids';
 import {
   migrateLocalData,
   planLocalMigration,
@@ -41,6 +45,7 @@ import { createMemoryDatabase, createMemoryGateway, type MemoryDatabase } from '
 import { createProfileRepository } from '@/lib/persistence/profileRepository';
 import { createRelationshipEventRepository } from '@/lib/persistence/relationshipEventRepository';
 import { createRelationshipTargetRepository } from '@/lib/persistence/relationshipTargetRepository';
+import { SAVE_RELATIONSHIP_COPY, saveRelationshipStage } from '@/lib/persistence/saveRelationshipFlow';
 import { DEEP_REPORT_SNAPSHOT_KEYS, deepReportRunInput, validateSnapshot } from '@/lib/persistence/snapshotGuard';
 import { createSupabaseGateway } from '@/lib/persistence/supabaseGateway';
 import {
@@ -55,6 +60,7 @@ import { isSupabaseConfigured, supabaseConfigFrom } from '@/lib/supabase/config'
 import type { Json, PersistenceTable } from '@/lib/supabase/types';
 import { createEmptyAnswers, createEmptyTargetProfile } from '@/state/defaultAnswers';
 import type {
+  DeepNarrativeBundle,
   RelationshipDeepReport,
   RelationshipEvent,
   RelationshipHistoryEntry,
@@ -902,6 +908,7 @@ function reasonsOf(error: PersistenceError | undefined): string[] {
 /** 제품 리포트 중 스냅샷 builder가 읽는 칸만 채운 합성 리포트 — reportedScenes에 원문을 넣어 새는지 본다 */
 function syntheticDeepReport(eventIds: readonly string[], sceneTexts: readonly string[]): RelationshipDeepReport {
   return {
+    available: true,
     candidates: [
       {
         id: 'cand_ch_declared_vs_shown',
@@ -1802,6 +1809,357 @@ async function scenarioAccountSwitch(body: PersistenceTestRequest) {
   return c.checks;
 }
 
+/* ══════════════════════════════════════════════════════════════════ v1.47 Integration — logical run (GEN) */
+
+const FLOW_FORBIDDEN = [...POLICY_SCENES, POLICY_REACTION];
+
+async function scenarioLogicalRun() {
+  const c = checker();
+  let counter = 0;
+  const runs = createLogicalRunRegistry(() => `00000000-0000-4000-8000-${String((counter += 1)).padStart(12, '0')}`);
+  const fingerprint = 'dr_logical';
+  const initial = runs.begin(fingerprint);
+  const retry1 = runs.begin(fingerprint);
+  const retry2 = runs.begin(fingerprint);
+  c.check('GEN-01 · initial + retry 1 + retry 2 → 같은 generationRequestId', initial === retry1 && retry1 === retry2, {
+    initial,
+    retry1,
+    retry2,
+  });
+
+  const db = createMemoryDatabase();
+  const gw = createMemoryGateway(db, USER_A);
+  const seeded = await seedRelationship(gw, POLICY_SCENES);
+  if (!seeded) {
+    c.check('GEN — 기준 관계 생성', false);
+    return c.checks;
+  }
+  const keyOf = (generationRequestId: string) =>
+    analysisIdempotencyKeyOf({
+      userId: USER_A,
+      targetId: seeded.targetId,
+      analysisType: 'deep_report',
+      sourceFingerprint: fingerprint,
+      generationRequestId,
+    });
+  c.check('GEN-02 · 같은 logical run → 같은 idempotencyKey', (await keyOf(initial)) === (await keyOf(retry2)));
+
+  const repo = createAnalysisRunRepository(gw);
+  const inputFor = (generationRequestId: string) =>
+    deepReportRunInput({
+      targetId: seeded.targetId,
+      report: syntheticDeepReport(seeded.eventIds, POLICY_SCENES),
+      promptVersion: 'deep-report-v13-uncertainty-move',
+      model: 'gpt-5.4',
+      sourceFingerprint: fingerprint,
+      generationRequestId,
+    });
+  /* 네트워크 retry — 서버 requestId는 요청마다 다르다. 저장 입력에는 logical run id만 들어간다 */
+  const attempts: { serverRequestId: string; created: boolean }[] = [];
+  for (const serverRequestId of ['req_first', 'req_retry_1', 'req_retry_2']) {
+    const saved = await repo.recordGenerated({ ...inputFor(runs.begin(fingerprint)), forbiddenTexts: FLOW_FORBIDDEN });
+    attempts.push({ serverRequestId, created: saved.ok && saved.value.created });
+  }
+  c.check(
+    'GEN-03 · 같은 logical run의 retry → analysis_run 1개',
+    attempts.filter((item) => item.created).length === 1 && db.tables.analysis_runs.length === 1,
+    attempts,
+  );
+  c.check(
+    'GEN-06 · 서버 requestId가 달라도 duplicate 아님 · 행에 서버 requestId가 남지 않는다',
+    new Set(attempts.map((item) => item.serverRequestId)).size === 3 &&
+      db.tables.analysis_runs.length === 1 &&
+      !JSON.stringify(db.tables.analysis_runs).includes('req_'),
+  );
+
+  runs.close(fingerprint);
+  const rerun = runs.begin(fingerprint);
+  c.check('GEN-04 · 결과가 확정된 뒤 사용자가 다시 분석 → 새 generationRequestId', rerun !== initial, { initial, rerun });
+  const rerunSaved = await repo.recordGenerated({ ...inputFor(rerun), forbiddenTexts: FLOW_FORBIDDEN });
+  c.check(
+    'GEN-05 · 다시 분석 → 새 analysis_run',
+    rerunSaved.ok && rerunSaved.value.created && db.tables.analysis_runs.length === 2,
+    rerunSaved,
+  );
+  c.check('GEN · 입력(지문)이 다르면 다른 logical run', runs.begin('dr_other_input') !== rerun && runs.peek(fingerprint) === rerun);
+  return c.checks;
+}
+
+/* ══════════════════════════════════════════════════════════════════ v1.47 Integration — save relationship UI (SAVE-UI) */
+
+async function scenarioSaveRelationshipUi(body: PersistenceTestRequest) {
+  const c = checker();
+  const answers = answersFrom(body.answers);
+  const registry = createTargetRegistry();
+  const base = {
+    hasValue: true,
+    hasTargetContext: true,
+    linked: false,
+    intent: 'none' as const,
+    saving: false,
+    failed: false,
+  };
+  c.check(
+    'SAVE-UI-01 · 결과를 보기 전 · Supabase 없음 → CTA 없음 / 결과를 본 Guest → CTA',
+    saveRelationshipStage({ ...base, accountStatus: 'signed_out', hasValue: false }) === 'hidden' &&
+      saveRelationshipStage({ ...base, accountStatus: 'disabled' }) === 'hidden' &&
+      saveRelationshipStage({ ...base, accountStatus: 'signed_out' }) === 'offer' &&
+      SAVE_RELATIONSHIP_COPY.offerTitle === '이 관계를 저장해둘까?' &&
+      SAVE_RELATIONSHIP_COPY.cta === '이 관계 저장하기',
+  );
+  c.check(
+    'SAVE-UI-02 · Guest가 저장을 누르면 → 인라인 로그인',
+    saveRelationshipStage({ ...base, accountStatus: 'signed_out', intent: 'requested' }) === 'auth',
+  );
+  const db = createMemoryDatabase();
+  const gw = createMemoryGateway(db, USER_A);
+  c.check(
+    'SAVE-UI-03 · 로그인만 → 동의 질문 · 업로드 0행',
+    saveRelationshipStage({ ...base, accountStatus: 'signed_in', intent: 'requested' }) === 'consent' &&
+      totalRows(db) === 0 &&
+      SAVE_RELATIONSHIP_COPY.consentQuestion === '이 기기에 입력한 정보를 이 계정에 저장할까?',
+  );
+  const localBefore = JSON.stringify({ answers, registry });
+  const saved = await saveActiveRelationshipWith({
+    gateway: gw,
+    userId: USER_A,
+    answers,
+    registry,
+    links: createCloudLinks(),
+    now: NOW,
+  });
+  const link = linkOf(saved.links, USER_A, registry.activeTargetId);
+  c.check(
+    'SAVE-UI-04 · 동의 → cloud save(나 최소값 · 현재 상대 · 사건 · link)',
+    saved.saved &&
+      link !== null &&
+      db.tables.user_profiles.length === 1 &&
+      db.tables.relationship_targets.length === 1 &&
+      db.tables.relationship_targets[0]?.id === link.cloudTargetId &&
+      db.tables.relationship_events.length === answers.target.events.length,
+    saved.report,
+  );
+  c.check(
+    'SAVE-UI-05 · 저장된 관계 → "저장됨"',
+    saveRelationshipStage({ ...base, accountStatus: 'signed_in', linked: true }) === 'saved' &&
+      saveRelationshipStage({ ...base, accountStatus: 'signed_in', linked: true, intent: 'requested' }) === 'saved' &&
+      SAVE_RELATIONSHIP_COPY.saved === '저장됨',
+  );
+  const offline = createMemoryDatabase();
+  offline.offline = true;
+  const failedSave = await saveActiveRelationshipWith({
+    gateway: createMemoryGateway(offline, USER_A),
+    userId: USER_A,
+    answers,
+    registry,
+    links: createCloudLinks(),
+    now: NOW,
+  });
+  c.check(
+    'SAVE-UI-06 · cloud save 실패 → 저장됨 아님 · link 없음 · 로컬 데이터 그대로',
+    !failedSave.saved &&
+      linkOf(failedSave.links, USER_A, registry.activeTargetId) === null &&
+      JSON.stringify({ answers, registry }) === localBefore &&
+      saveRelationshipStage({ ...base, accountStatus: 'signed_in', intent: 'requested', failed: true }) === 'failed',
+    failedSave.report.status,
+  );
+  const photoAnswers = answersFrom({
+    ...body.answers,
+    photos: [{ id: 'photo-1', label: 'fixture', source: 'upload', objectUrl: 'blob:http://localhost/1' }] as unknown as SessionAnswers['photos'],
+    target: { ...answers.target, photoUrl: TINY_PNG, thumbnail: TINY_PNG } as unknown as SessionAnswers['target'],
+  });
+  const photoDb = createMemoryDatabase();
+  const photoSave = await saveActiveRelationshipWith({
+    gateway: createMemoryGateway(photoDb, USER_A),
+    userId: USER_A,
+    answers: photoAnswers,
+    registry: createTargetRegistry(),
+    links: createCloudLinks(),
+    now: NOW,
+  });
+  c.check(
+    'SAVE-UI-07 · 사진 · 이미지는 절대 포함되지 않는다',
+    photoSave.saved &&
+      !/data:image|blob:|base64|objectUrl|photoUrl|thumbnail|"photos"|observedAnalysis/i.test(JSON.stringify(photoDb.tables)),
+    photoSave.report.status,
+  );
+  return c.checks;
+}
+
+/* ══════════════════════════════════════════════════════════════════ v1.47 Integration — analysis_run 저장 조건 (RUN) */
+
+function syntheticNarrativeBundle(generationRequestId: string | null, mode: 'real' | 'mock' | 'demo' = 'real'): DeepNarrativeBundle {
+  return {
+    narratives: [],
+    candidateSemantics: [],
+    actionPlan: null,
+    meta: {
+      mode,
+      analysisVersion: 'fixture',
+      promptVersion: 'deep-report-v13-uncertainty-move',
+      model: 'gpt-5.4',
+      generatedAt: NOW,
+      inputFingerprint: 'dr_flow',
+    },
+    ...(generationRequestId ? { generationRequestId } : {}),
+  } as unknown as DeepNarrativeBundle;
+}
+
+const RUN_IDS = [
+  'aaaaaaaa-1111-4111-8111-000000000001',
+  'aaaaaaaa-1111-4111-8111-000000000002',
+  'aaaaaaaa-1111-4111-8111-000000000003',
+  'aaaaaaaa-1111-4111-8111-000000000004',
+] as const;
+
+async function scenarioAnalysisRunFlow(body: PersistenceTestRequest) {
+  const c = checker();
+  const answers = answersFrom(body.answers);
+  const registry = createTargetRegistry();
+  const db = createMemoryDatabase();
+  const gw = createMemoryGateway(db, USER_A);
+  const saved = await saveActiveRelationshipWith({ gateway: gw, userId: USER_A, answers, registry, links: createCloudLinks(), now: NOW });
+  const links = saved.links;
+  const cloudTargetId = linkOf(links, USER_A, registry.activeTargetId)?.cloudTargetId ?? '';
+  const events = answers.target.events;
+  const accepted = syntheticDeepReport(events.map((event) => event.id), []);
+  const gateRejected = {
+    ...accepted,
+    candidates: accepted.candidates.map((card) => ({ ...card, soWhatSource: 'deterministic_composed' })),
+    actionPlan: accepted.actionPlan ? { ...accepted.actionPlan, source: 'deterministic', mode: 'unresolved' } : null,
+  } as unknown as RelationshipDeepReport;
+  const verifyOnly = {
+    ...gateRejected,
+    actionPlan: accepted.actionPlan ? { ...accepted.actionPlan, source: 'deterministic', mode: 'verify_only' } : null,
+  } as unknown as RelationshipDeepReport;
+
+  type PersistInput = Parameters<typeof persistDeepReportSnapshot>[0];
+  const persist = (overrides: Partial<PersistInput> = {}) =>
+    persistDeepReportSnapshot({
+      gateway: gw,
+      userId: USER_A,
+      links,
+      localTargetId: registry.activeTargetId,
+      rendered: true,
+      status: 'ready',
+      mode: 'real',
+      bundle: syntheticNarrativeBundle(RUN_IDS[0]),
+      report: accepted,
+      events,
+      ...overrides,
+    });
+  const reasonOf = (outcome: Awaited<ReturnType<typeof persistDeepReportSnapshot>>): string =>
+    outcome.status === 'skipped' ? outcome.reason : outcome.status;
+
+  const first = await persist();
+  const row = db.tables.analysis_runs[0];
+  const usedEventIds = ((row?.result_snapshot ?? {}) as { usedEventIds?: string[] }).usedEventIds ?? [];
+  const runsJson = JSON.stringify(db.tables.analysis_runs);
+  c.check(
+    'RUN-01 · 렌더된 성공 결과 → 저장 · 저장한 그 관계에 · 사건은 cloud id로만 참조',
+    saved.saved &&
+      first.status === 'recorded' &&
+      first.created &&
+      row?.target_id === cloudTargetId &&
+      usedEventIds.length > 0 &&
+      usedEventIds.every((id) => db.tables.relationship_events.some((event) => event.id === id)) &&
+      !runsJson.includes('evt-fixture') &&
+      events.every((event) => !runsJson.includes(event.description)),
+    first,
+  );
+  const providerFail = await persist({ status: 'unavailable', mode: null, bundle: null });
+  const notRendered = await persist({ rendered: false, bundle: syntheticNarrativeBundle(RUN_IDS[1]) });
+  const demo = await persist({ mode: 'demo', bundle: syntheticNarrativeBundle(RUN_IDS[1], 'demo') });
+  c.check(
+    'RUN-02 · Provider 실패 · 렌더 전(cancel) · demo → 저장 안 함',
+    reasonOf(providerFail) === 'provider_failed' &&
+      reasonOf(notRendered) === 'not_rendered' &&
+      reasonOf(demo) === 'not_ai_mode' &&
+      db.tables.analysis_runs.length === 1,
+    [providerFail, notRendered, demo].map(reasonOf),
+  );
+  const gate = await persist({ report: gateRejected, bundle: syntheticNarrativeBundle(RUN_IDS[2]) });
+  const verify = await persist({ report: verifyOnly, bundle: syntheticNarrativeBundle(RUN_IDS[2]) });
+  c.check(
+    'RUN-03 · 게이트 거부(AI 문장 0) · verify_only fallback만 → 저장 안 함',
+    reasonOf(gate) === 'gate_rejected' && reasonOf(verify) === 'verify_only_fallback' && db.tables.analysis_runs.length === 1,
+    [reasonOf(gate), reasonOf(verify)],
+  );
+  const guest = await persist({ gateway: null, userId: null });
+  c.check('RUN-04 · Guest → cloud 저장 없음', reasonOf(guest) === 'guest' && db.tables.analysis_runs.length === 1, reasonOf(guest));
+  const otherTarget = await persist({ localTargetId: newUuid() });
+  const otherUser = await persist({ gateway: createMemoryGateway(db, USER_B), userId: USER_B });
+  c.check(
+    'RUN-05 · 저장하지 않은 관계(다른 상대 · 다른 계정) → 분석 저장 안 함',
+    reasonOf(otherTarget) === 'relationship_not_saved' &&
+      reasonOf(otherUser) === 'relationship_not_saved' &&
+      db.tables.analysis_runs.length === 1,
+  );
+  const retry = await persist();
+  c.check(
+    'RUN-06 · 같은 logical run retry → duplicate 0',
+    retry.status === 'recorded' && !retry.created && db.tables.analysis_runs.length === 1,
+    retry,
+  );
+  const rerun = await persist({ bundle: syntheticNarrativeBundle(RUN_IDS[3]) });
+  c.check(
+    'RUN-07 · 다시 분석(새 generationRequestId) → 새 analysis row',
+    rerun.status === 'recorded' && rerun.created && db.tables.analysis_runs.length === 2,
+    rerun,
+  );
+  const missingId = await persist({ bundle: syntheticNarrativeBundle(null) });
+  c.check(
+    'RUN · generationRequestId가 없는 결과는 저장하지 않는다',
+    reasonOf(missingId) === 'missing_generation_id' && db.tables.analysis_runs.length === 2,
+  );
+  return c.checks;
+}
+
+/* ══════════════════════════════════════════════════════════════════ v1.47 Integration — link 복구 audit */
+
+async function scenarioLinkRecovery(body: PersistenceTestRequest) {
+  const c = checker();
+  const answers = answersFrom(body.answers);
+  const registry = createTargetRegistry();
+  const db = createMemoryDatabase();
+  const gw = createMemoryGateway(db, USER_A);
+  const first = await saveActiveRelationshipWith({ gateway: gw, userId: USER_A, answers, registry, links: createCloudLinks(), now: NOW });
+  const original = linkOf(first.links, USER_A, registry.activeTargetId);
+  const rowsBefore = JSON.stringify(rowCounts(db));
+
+  const recovered = await recoverCloudLink({
+    gateway: gw,
+    userId: USER_A,
+    localTargetId: registry.activeTargetId,
+    links: createCloudLinks(),
+    now: NOW,
+  });
+  c.check(
+    'LINK-01 · localStorage link가 사라져도 결정론 id로 같은 cloud 관계를 다시 찾는다(읽기만 · 행 변화 0)',
+    first.saved && recovered.recovered && recovered.link?.cloudTargetId === original?.cloudTargetId && JSON.stringify(rowCounts(db)) === rowsBefore,
+    { recovered, original },
+  );
+  const resave = await saveActiveRelationshipWith({ gateway: gw, userId: USER_A, answers, registry, links: createCloudLinks(), now: NOW });
+  c.check(
+    'LINK-02 · link 없이 다시 저장해도 중복 행이 생기지 않는다',
+    resave.saved &&
+      db.tables.relationship_targets.length === 1 &&
+      db.tables.relationship_events.length === answers.target.events.length,
+    resave.report.status,
+  );
+  const other = await recoverCloudLink({
+    gateway: createMemoryGateway(db, USER_B),
+    userId: USER_B,
+    localTargetId: registry.activeTargetId,
+    links: createCloudLinks(),
+    now: NOW,
+  });
+  c.check('LINK-03 · 다른 계정은 복구되지 않는다(자동 공유 없음)', !other.recovered && other.link === null);
+  const lostRegistry = await recoverCloudLink({ gateway: gw, userId: USER_A, localTargetId: newUuid(), links: createCloudLinks(), now: NOW });
+  c.check('LINK-04 · 기기 상대 목록(lym.targets.v1)까지 사라지면 복구되지 않는다 — 알려진 한계', !lostRegistry.recovered);
+  return c.checks;
+}
+
 export async function POST(request: Request): Promise<Response> {
   if (process.env.NODE_ENV === 'production') {
     return Response.json({ ok: false, reason: 'NOT_FOUND' }, { status: 404 });
@@ -1844,6 +2202,14 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ ok: true, checks: await scenarioSavedRelationship(body) });
     case 'account_switch':
       return Response.json({ ok: true, checks: await scenarioAccountSwitch(body) });
+    case 'logical_run':
+      return Response.json({ ok: true, checks: await scenarioLogicalRun() });
+    case 'save_relationship_ui':
+      return Response.json({ ok: true, checks: await scenarioSaveRelationshipUi(body) });
+    case 'analysis_run_flow':
+      return Response.json({ ok: true, checks: await scenarioAnalysisRunFlow(body) });
+    case 'link_recovery':
+      return Response.json({ ok: true, checks: await scenarioLinkRecovery(body) });
     default:
       return Response.json({ ok: false, reason: 'UNKNOWN_SCENARIO' }, { status: 400 });
   }

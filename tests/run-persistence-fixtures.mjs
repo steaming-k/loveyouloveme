@@ -323,6 +323,48 @@ async function sourceChecks() {
   check('Privacy — 클라우드 저장과 AI Provider 처리를 구분', privacy.includes('계정 저장과 AI 분석은 별개야') && privacy.includes('Provider로 보내는'));
   check('Privacy — 상대 정보는 사용자가 입력한 정보', privacy.includes('상대가 직접 확인한 정보가 아니'));
 
+  console.log('\n■ v1.47 Integration (정적)');
+  const compat = codes.get('src/app/compatibility/page.tsx') ?? '';
+  const frictionAt = compat.indexOf('id={RESULT_ANCHORS.compatibilityFriction}');
+  const ctaAt = compat.indexOf('<SaveRelationshipCard');
+  check(
+    'SAVE-UI-01 · CTA는 점수 · 확인할 신호(첫 핵심 신호)를 본 뒤, Premium 진입 앞',
+    frictionAt > 0 && compat.indexOf('<SyncScore') < frictionAt && ctaAt > frictionAt && ctaAt < compat.indexOf('<PremiumEntryRow'),
+    { frictionAt, ctaAt },
+  );
+  const relationshipSaveCallers = [...codes].filter(([, text]) => /saveActiveRelationship\(\)/.test(text)).map(([path]) => path).sort();
+  check(
+    'SAVE-UI-03 · 관계 저장은 동의 버튼 클릭에서만 호출(로그인만으로 업로드 없음)',
+    relationshipSaveCallers.join(',') === 'src/components/account/SaveRelationshipCard.tsx',
+    relationshipSaveCallers,
+  );
+  const saveCard = codes.get('src/components/account/SaveRelationshipCard.tsx') ?? '';
+  check(
+    'SAVE-UI-02 · CTA 단계 = saveRelationshipStage 한 곳 · 로그인은 기존 폼(InlineAuth) 재사용',
+    /saveRelationshipStage\(/.test(saveCard) && /<InlineAuth/.test(saveCard) && (codes.get('src/components/account/AccountSection.tsx') ?? '').includes('<InlineAuth'),
+  );
+  const saverMounts = [...codes].filter(([, text]) => /<DeepReportSnapshotSaver/.test(text)).map(([path]) => path).sort();
+  const reportViews = [...codes].filter(([path, text]) => path.startsWith('src/app/') && /<RelationshipDeepReportView/.test(text)).map(([path]) => path).sort();
+  check(
+    'RUN-01 · Deep Report를 그리는 화면마다 렌더 뒤 snapshot saver가 붙어 있다',
+    reportViews.length > 0 && JSON.stringify(saverMounts) === JSON.stringify(reportViews),
+    { saverMounts, reportViews },
+  );
+  check(
+    'RUN · saver는 useEffect(렌더 커밋 뒤)에서만 저장하고 rendered:true를 넘긴다',
+    /useEffect\(\(\) => \{[\s\S]*persistDeepReportSnapshot\(\{ rendered: true/.test(codes.get('src/components/account/DeepReportSnapshotSaver.tsx') ?? ''),
+  );
+  const narrativeHook = codes.get('src/hooks/useAiNarrative.ts') ?? '';
+  check(
+    'GEN-01 · Deep Report 훅 — logical run id를 begin하고 결과가 확정될 때만 close',
+    /deepReportRuns\.begin\(fingerprint\)/.test(narrativeHook) && /if \(result\.ok\) deepReportRuns\.close\(fingerprint\)/.test(narrativeHook),
+  );
+  const deepRoute = codes.get('src/app/api/ai/deep-report-narrative/route.ts') ?? '';
+  check(
+    'GEN-06 · 라우트는 클라이언트 generationRequestId만 형식 확인 후 돌려준다(서버 requestId로 만들지 않음)',
+    /UUID_PATTERN\.test\(generationRequestId\)/.test(deepRoute) && !/generationRequestId:\s*requestId/.test(deepRoute),
+  );
+
   console.log('\n■ analytics (정적)');
   const analytics = read('src/lib/analytics.ts');
   const forbiddenBlock = analytics.slice(analytics.indexOf('const EXTERNAL_FORBIDDEN_KEYS'), analytics.indexOf(']);', analytics.indexOf('const EXTERNAL_FORBIDDEN_KEYS')));
@@ -353,6 +395,10 @@ const SCENARIOS = [
   ['cross_account', 'cross-account · ACCOUNT-01~05 · Guest local-first'],
   ['saved_relationship', 'saved relationship smoke · SAVE-01~10 (memory gateway)'],
   ['account_switch', 'A → B → A isolation · Target · Events · Latest analysis'],
+  ['logical_run', 'logical generationRequestId · GEN-01~06'],
+  ['save_relationship_ui', 'save relationship flow · SAVE-UI-01~07'],
+  ['analysis_run_flow', 'deep report snapshot 조건 · RUN-01~07'],
+  ['link_recovery', 'cloud link 복구 audit · LINK-01~04'],
   ['sync_conflict', 'sync-conflict'],
   ['migration_offline', 'failure/offline · migration'],
   ['failure_offline', 'failure/offline · supabase gateway'],
