@@ -717,6 +717,15 @@ function CompatibilityView() {
             }}
           />
           </div>
+        ) : utMode ? (
+          /*
+            v1.47 UT-2 — **UT 참가자에게는 Friction이 없어도 Premium 진입을 둔다.** 실제 참가자 입력(Friction 0)에서
+            이 화면에 Premium 진입이 하나도 없었다(브라우저 리허설). 일반 사용자는 위 §4 규칙 그대로다.
+            Hook 문구 없이 기본 진입 — 없는 차이를 약속하지 않는다.
+          */
+          <div className="mt-6">
+            <PremiumEntryRow feature={premiumFeature} source="compatibility" />
+          </div>
         ) : null}
 
         {/* 번호를 붙이지 않는 보조 블록 — 모든 것을 같은 크기의 섹션으로 만들지 않는다 */}

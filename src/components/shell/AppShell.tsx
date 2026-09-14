@@ -3,6 +3,7 @@
 import { Suspense, type ReactNode } from 'react';
 
 import { AiDebugPanel } from '@/components/ai/AiDebugPanel';
+import { PremiumReturnWatcher } from '@/components/premium/PremiumReturnWatcher';
 import { ConsentBanner } from '@/components/common/ConsentBanner';
 import { NavTrailTracker } from './NavTrailTracker';
 import { PrototypePanel } from './PrototypePanel';
@@ -25,6 +26,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       */}
       <Suspense fallback={null}>
         <NavTrailTracker />
+      </Suspense>
+      {/* v1.47 UT-2 — 입력 보완 뒤 Premium 자동 복귀. 결과 화면(체크포인트)에서만 판정한다 */}
+      <Suspense fallback={null}>
+        <PremiumReturnWatcher />
       </Suspense>
 
       <div className="w-full max-w-[430px] lg:w-auto lg:max-w-none lg:flex-none lg:rounded-[52px] lg:bg-[#1A1A1A] lg:p-3 lg:shadow-[0_8px_24px_rgba(0,0,0,0.14)]">

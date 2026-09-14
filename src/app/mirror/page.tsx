@@ -568,7 +568,11 @@ function MirrorView() {
             차이(GAP)가 하나도 없으면 이 질문 자체가 성립하지 않으므로 만들지 않는다.
             무료 Mirror 본문(근거·검증 버튼·저장)은 이 아래로 그대로 이어진다 — 끝까지 읽을 수 있다.
           */}
-          {gapInsights.length > 0 ? (
+          {/*
+            v1.47 UT-2 — UT 참가자에게는 GAP이 없어도 Premium 진입을 둔다(참가자가 Premium을 못 보는 화면을 남기지 않는다).
+            '다르게 행동했을까' 문구는 차이가 있을 때만 붙인다 — GAP이 없으면 기본 진입 문구다. 일반 사용자는 기존 규칙 그대로.
+          */}
+          {gapInsights.length > 0 || utMode ? (
             <PremiumEntryRow
               feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
                 utMode,
@@ -596,13 +600,17 @@ function MirrorView() {
                 allowsOutwardAction: showOutwardAction,
               })}
               source="mirror"
-              hook={{
-                variant: 'mirror_why',
-                title: PREMIUM_HOOK_COPY.mirror_why.title,
-                description:
-                  '네가 중요하다고 말한 기준, 실제 연애에서의 경험, 이번 상대와의 차이를 함께 연결해봤어.',
-                cta: PREMIUM_HOOK_COPY.mirror_why.cta,
-              }}
+              hook={
+                gapInsights.length > 0
+                  ? {
+                      variant: 'mirror_why',
+                      title: PREMIUM_HOOK_COPY.mirror_why.title,
+                      description:
+                        '네가 중요하다고 말한 기준, 실제 연애에서의 경험, 이번 상대와의 차이를 함께 연결해봤어.',
+                      cta: PREMIUM_HOOK_COPY.mirror_why.cta,
+                    }
+                  : undefined
+              }
             />
           ) : null}
 

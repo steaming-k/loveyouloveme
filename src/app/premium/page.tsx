@@ -14,6 +14,12 @@ import { Lovy } from '@/components/lovy/Lovy';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { PremiumPreparingReport } from '@/components/premium/PremiumPreparingReport';
 import { PremiumUnlockSuccess } from '@/components/premium/PremiumUnlockSuccess';
+import {
+  PREMIUM_EVIDENCE_SHELL_COPY,
+  PremiumEvidenceShell,
+  usePremiumEvidenceFill,
+} from '@/components/premium/PremiumEvidenceShell';
+import { resolvePremiumEvidenceState } from '@/lib/logic/premiumEvidenceState';
 import { RelationshipDeepReportView } from '@/components/premium/RelationshipDeepReportView';
 import { DeepReportSnapshotSaver } from '@/components/account/DeepReportSnapshotSaver';
 import { ReportHeader } from '@/components/report/ReportShell';
@@ -250,6 +256,7 @@ function PremiumView() {
      (`lib/premiumAccess.ts`). UT 탭이면 `NEXT_PUBLIC_PREMIUM_FAKE_DOOR`가 꺼져 있어도 Paywall · CTA · 리포트가 열리고,
      쿼리 없이 들어와도(진입 행 · 새로고침 · 뒤로가기) UT가 유지된다(`lib/utMode.ts`). */
   const access = usePremiumAccess();
+  const fillEvidence = usePremiumEvidenceFill();
   const [stage, setStage] = useState<UnlockStage>('paywall');
   const [unlockMode, setUnlockMode] = useState<PremiumAccessMode | null>(null);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -507,6 +514,42 @@ function PremiumView() {
   if (!access.surfaceEnabled) return null;
 
   /* 상세를 만들 근거가 없으면 Paywall을 띄우지 않는다 — 가격도 CTA도 보여주지 않는다(§40) */
+  /*
+    v1.47 UT-2 — **UT 참가자에게는 Premium을 숨기지 않는다.** 근거가 부족하면 막다른 안내 대신 입력 보완 화면을 연다.
+    리포트 · 가격 · unlock은 만들지 않는다(빈 분석을 결과로 보여주지 않는다). 채우고 돌아오면 `PremiumReturnWatcher`가 이 주소로 복귀시킨다.
+    일반 사용자는 아래 기존 unavailable 화면 그대로다.
+  */
+  if (feature.status === 'unavailable' && access.utMode && isDeepReport) {
+    const gap = resolvePremiumEvidenceState({
+      insights: crossSourceInsights,
+      declared: answers.declared,
+      mirror,
+      target: answers.target,
+      experience: answers.experience,
+      solo: soloModeOf(answers) === 'no_target',
+    });
+    return (
+      <ScreenLayout
+        header={
+          <ScreenHeader backHref={backHref} action={<Tag tone="brand">{copy.entryLabel}</Tag>} />
+        }
+        footer={
+          <div className="flex flex-col gap-2">
+            <Button className="press-scale" onClick={() => fillEvidence(gap.fills[0]?.href ?? ROUTES.target)}>
+              {PREMIUM_EVIDENCE_SHELL_COPY.fillCta}
+            </Button>
+            <Button variant="text" onClick={goBack}>
+              돌아가기
+            </Button>
+          </div>
+        }
+        bodyClassName="pt-1.5 pb-4"
+      >
+        <PremiumEvidenceShell gap={gap} onFill={fillEvidence} />
+      </ScreenLayout>
+    );
+  }
+
   if (feature.status === 'unavailable') {
     return (
       <ScreenLayout
@@ -525,6 +568,8 @@ function PremiumView() {
   }
 
   const handlePurchaseIntent = () => {
+    /* v1.47 UT-2 — 연타 · 전환 중 재클릭은 무시한다. 의향 기록 · unlock · 리포트 요청이 두 번 나가지 않는다 */
+    if (stage !== 'paywall') return;
     // ① 의향 기록 (연락처는 받지 않는다)
     trackEvent('premium_purchase_intent', {
       feature: featureId,

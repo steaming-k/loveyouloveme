@@ -284,6 +284,9 @@ export const DEEP_REPORT_COPY = {
  * 톤: '결제 성공!' · '축하합니다!' · 'Premium unlocked!' 같은 일반 SaaS/쇼핑몰 문구를 쓰지
  * 않는다. 이 제품의 유료 경험은 luxury unlock이 아니라 **더 깊은 관찰 자료에 접근**이다.
  */
+/** v1.47 UT-2 — Deep Report AI 문장을 기다리는 동안(15~25초) 앱 오류로 읽히지 않게 한 줄 */
+export const DEEP_REPORT_NARRATIVE_LOADING = '답변과 기록을 연결해서 보고 있어. 조금만 기다려줘.';
+
 export const UNLOCK_COPY = {
   payment: {
     status: '결제가 완료됐어',
@@ -305,9 +308,13 @@ export const UNLOCK_COPY = {
     status: '미리보기로 리포트를 열었어',
     noteSuffix: '실제 결제는 아니야 · 정밀 관찰 리포트',
   },
+  /**
+   * v1.47 UT-2 — UT 참가자에게는 실제 Premium처럼 보인다. '결제 없음'을 여기서 다시 강조하지 않는다 —
+   * 그 사실은 결제 의향 질문 바로 앞(`PremiumWtpQuestion`)에서 한 번 말한다.
+   */
   betaUt: {
-    status: '결제 없이 리포트를 열었어',
-    noteSuffix: '실제 결제는 아니야 · 정밀 관찰 리포트',
+    status: '정밀 관찰 리포트를 열었어',
+    noteSuffix: '모아둔 신호를 연결해서 보여줄게',
   },
 
   /** 러비 한 줄. 관찰자 화법 그대로 — 축하하지 않고, 다음에 할 일을 말한다. */

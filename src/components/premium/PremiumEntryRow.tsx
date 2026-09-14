@@ -131,7 +131,11 @@ export function PremiumEntryRow({
   if (!access.surfaceEnabled) return null;
 
   // 상세를 만들 근거가 없는 기능은 유료 CTA 없이 사실만 알린다.
-  if (feature.status === 'unavailable') {
+  /*
+    v1.47 UT-2 — UT 참가자에게는 unavailable 카드로 바꾸지 않고 Premium 진입을 그대로 보여준다.
+    근거가 부족하면 `/premium`이 입력 보완 화면을 연다(리포트는 만들지 않는다). 일반 사용자는 기존 카드 그대로다.
+  */
+  if (feature.status === 'unavailable' && !access.utMode) {
     return (
       <section className="flex flex-col gap-2">
         <SectionLabel as={headingLevel}>{copy.entryLabel}</SectionLabel>

@@ -36,6 +36,7 @@ import {
   resolveLovyPoses,
 } from '@/lib/premiumLovy';
 import { buildRelationshipDeepReport, premiumFeatureState } from '@/services/premiumService';
+import { resolvePremiumEvidenceState } from '@/lib/logic/premiumEvidenceState';
 import { chapterSoWhatOf } from '@/lib/premiumSoWhat';
 import { chapterSourceLine, reportLookedAtLine } from '@/lib/premiumMetaCopy';
 import { orderMirrorInsightsForDisplay } from '@/lib/resultPriority';
@@ -433,6 +434,15 @@ export async function POST(request: Request): Promise<Response> {
       const normalized = normalizeBirthTime(raw);
       const stored = normalized ?? raw;
       return { raw, normalized, stored, error: validateBirthTime(stored) };
+    }),
+    /** v1.47 UT-2 — 근거 부족 사유 · 채울 입력. 화면의 입력 보완 shell과 같은 함수 */
+    premiumEvidence: resolvePremiumEvidenceState({
+      insights,
+      declared: answers.declared,
+      mirror,
+      target: answers.target,
+      experience: answers.experience,
+      solo: soloModeOfTarget(answers.target) === 'no_target',
     }),
     premiumEntry: (() => {
       const soloMode = soloModeOfTarget(answers.target);

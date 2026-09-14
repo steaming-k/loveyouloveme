@@ -104,7 +104,8 @@ export function HomePremiumBundle({
    * 다르다 — Home은 결과 화면이 아니라 허브라, 아직 살 수 없는 상품의 안내
    * 카드가 상시로 붙어 있으면 그건 광고 자리가 된다. 살 수 있게 되면 나타난다.
    */
-  if (feature.status === 'unavailable') return null;
+  // v1.47 UT-2 — UT 참가자에게는 숨기지 않는다. 근거가 부족하면 누른 뒤 `/premium`이 입력 보완 화면을 연다
+  if (feature.status === 'unavailable' && !access.utMode) return null;
 
   const go = (source: PremiumSource, hash?: string) => {
     trackEvent('premium_entry_click', {
@@ -136,8 +137,13 @@ export function HomePremiumBundle({
           <p className="text-[11px] tnum text-ink-muted">
             {formatPrice(price)}
             <span className="sr-only"> ({priceForScreenReader(price)})</span>
-            <span aria-hidden> · </span>
-            <span className="tabular-nums">{PREMIUM_BUNDLE_COPY.priceSuffix}</span>
+            {/* v1.47 UT-2 — UT 참가자에게는 '테스트' 메타 문구를 붙이지 않는다. 결제 없음 안내는 결제 의향 질문에서 한 번 한다 */}
+            {access.utMode ? null : (
+              <>
+                <span aria-hidden> · </span>
+                <span className="tabular-nums">{PREMIUM_BUNDLE_COPY.priceSuffix}</span>
+              </>
+            )}
           </p>
         </div>
 

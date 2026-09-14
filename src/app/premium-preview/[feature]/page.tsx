@@ -8,7 +8,7 @@ import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
-import { NoticeBox, PageHeading, Tag } from '@/components/common/primitives';
+import { PageHeading } from '@/components/common/primitives';
 import { useNarrativeViewEvent } from '@/components/ai/AiModeNotice';
 import { PremiumDetailView } from '@/components/premium/PremiumDetailView';
 import { RelationshipDeepReportView } from '@/components/premium/RelationshipDeepReportView';
@@ -16,6 +16,13 @@ import { DeepReportSnapshotSaver } from '@/components/account/DeepReportSnapshot
 import { Lovy } from '@/components/lovy/Lovy';
 import { PREMIUM_FEATURES } from '@/data/premium';
 import { usePremiumAccess } from '@/hooks/useUtMode';
+import {
+  PREMIUM_EVIDENCE_SHELL_COPY,
+  PremiumEvidenceShell,
+  usePremiumEvidenceFill,
+} from '@/components/premium/PremiumEvidenceShell';
+import { resolvePremiumEvidenceState } from '@/lib/logic/premiumEvidenceState';
+import { soloModeOf } from '@/lib/logic/soloMode';
 import { trackEvent } from '@/lib/analytics';
 import { lensAvailability } from '@/lib/logic/birth';
 import { analysisFingerprint } from '@/lib/logic/history';
@@ -94,6 +101,7 @@ function PremiumPreviewView() {
    */
   const access = usePremiumAccess();
   const isBetaUt = access.utMode;
+  const fillEvidence = usePremiumEvidenceFill();
   const accessMode: 'preview' | 'beta_ut' = isBetaUt ? 'beta_ut' : 'preview';
   const analysisId = useMemo(
     () => analysisFingerprint(answers.status, answers.declared, answers.experience),
@@ -269,6 +277,34 @@ function PremiumPreviewView() {
     );
   }
 
+  /*
+    v1.47 UT-2 — UT 참가자의 근거가 부족하면 빈 리포트를 그리지 않고 입력 보완 화면을 연다(`/premium`과 같은 규칙).
+    `report.available`은 `hasPremiumEvidence`와 항상 같다(premium fixture gate).
+  */
+  if (isBetaUt && featureId === 'relationship_deep_report' && 'overview' in report && !report.available) {
+    const gap = resolvePremiumEvidenceState({
+      insights: crossSourceInsights,
+      declared: answers.declared,
+      mirror,
+      target: answers.target,
+      experience: answers.experience,
+      solo: soloModeOf(answers) === 'no_target',
+    });
+    return (
+      <ScreenLayout
+        header={<ScreenHeader backHref={ROUTES.home} />}
+        footer={
+          <Button onClick={() => fillEvidence(gap.fills[0]?.href ?? ROUTES.target)}>
+            {PREMIUM_EVIDENCE_SHELL_COPY.fillCta}
+          </Button>
+        }
+        bodyClassName="pt-1.5 pb-4"
+      >
+        <PremiumEvidenceShell gap={gap} onFill={fillEvidence} />
+      </ScreenLayout>
+    );
+  }
+
   // 출생정보 없이 Astrology 상세를 보려는 경우 등 — 근거가 없으면 만들지 않는다.
   const birth = lensAvailability(answers.birthProfile, answers.target.birthProfile, today);
 
@@ -277,7 +313,6 @@ function PremiumPreviewView() {
       header={
         <ScreenHeader
           backHref={ROUTES.home}
-          action={isBetaUt ? <Tag tone="neutral">BETA TEST</Tag> : undefined}
         />
       }
       footer={
@@ -299,12 +334,6 @@ function PremiumPreviewView() {
       bodyClassName="pt-1.5 pb-4"
     >
       <div className="flex flex-col gap-5">
-        {isBetaUt ? (
-          <NoticeBox>
-            결제 없이 먼저 보는 리포트야. 실제 결제 화면으로 이어지지 않아 — 정밀 리포트를 경험해보고
-            마지막에 몇 가지만 물어볼게.
-          </NoticeBox>
-        ) : null}
         <PageHeading
           lines={[PREMIUM_FEATURES[featureId].title]}
           caption={PREMIUM_FEATURES[featureId].description}
