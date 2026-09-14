@@ -31,6 +31,7 @@
     "test:persistence": "node tests/run-persistence-fixtures.mjs",
     "test:ui-assets": "node tests/run-ui-asset-copy-fixtures.mjs",
     "test:ut-premium": "node tests/run-ut-premium-fixtures.mjs",
+    "test:ut-stability": "node tests/run-ut-stability-fixtures.mjs",
     "test:ai:e2e": "node tests/run-provider-e2e.mjs"
   },
   "dependencies": {

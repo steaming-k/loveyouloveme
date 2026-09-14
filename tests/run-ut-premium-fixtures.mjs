@@ -191,7 +191,8 @@ check(
 );
 
 const paymentModeWriters = [...code.keys()].filter(
-  (file) => file !== 'src/lib/premiumAccess.ts' && /(mode|Mode)\s*[:=]\s*'payment'/.test(src(file)),
+  // dev fixture 라우트(production 404)는 판정 검사용으로 결제 상태를 일부러 만든다 — 제품 경로가 아니다
+  (file) => file !== 'src/lib/premiumAccess.ts' && !file.startsWith('src/app/api/dev/') && /(mode|Mode)\s*[:=]\s*'payment'/.test(src(file)),
 );
 check(
   'UT-PREM-11 payment 없음 + UT → 콘텐츠 열림 · mode beta_ut · 결제 실행 false (결제 주장이 들어와도 UT는 결제로 표시하지 않음)',
