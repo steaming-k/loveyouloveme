@@ -26,6 +26,8 @@ import type {
  */
 export const runtime = 'nodejs';
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export async function POST(request: Request): Promise<Response> {
   /* P0 Real AI Guard — 테스트 실행 요청은 opt-in 없이 실제 Provider로 가지 않는다 */
   return withAiRequestPolicy(request, () => handlePost(request));
@@ -52,6 +54,7 @@ async function handlePost(request: Request): Promise<Response> {
     actionAllowance,
     devModelOverride,
     devCapture,
+    generationRequestId,
   } = body as Record<string, unknown>;
 
   if (typeof inputFingerprint !== 'string' || !Array.isArray(insights)) {
@@ -148,6 +151,15 @@ async function handlePost(request: Request): Promise<Response> {
   };
 
   const isDev = process.env.NODE_ENV !== 'production';
+  /**
+   * v1.47 Integration — **logical generationRequestId.** 클라이언트가 '한 번의 분석 행위'마다 만든 UUID다.
+   * 서버는 형식만 확인하고 결과에 그대로 돌려준다(저장 멱등 키의 재료). 서버 requestId로 만들지 않는다 —
+   * requestId는 retry마다 달라져 같은 분석이 두 번 저장된다. requestId는 로그 대조용으로만 남는다.
+   */
+  const logicalRunId =
+    typeof generationRequestId === 'string' && UUID_PATTERN.test(generationRequestId)
+      ? generationRequestId.toLowerCase()
+      : null;
   let diagnostics: DeepReportDiagnostics | null = null;
 
   const result = await runDeepReportTask({
@@ -170,13 +182,14 @@ async function handlePost(request: Request): Promise<Response> {
   const durationMs = Date.now() - startedAt;
 
   if (!result.ok) {
-    logAi({ requestId, task: 'deep-report-narrative', status: 'fail', durationMs, reason: result.reason });
+    logAi({ requestId, task: 'deep-report-narrative', status: 'fail', durationMs, reason: result.reason, generationRequestId: logicalRunId });
     return failureResponse(result.reason, requestId);
   }
 
-  logAi({ requestId, task: 'deep-report-narrative', status: 'ok', durationMs });
+  logAi({ requestId, task: 'deep-report-narrative', status: 'ok', durationMs, generationRequestId: logicalRunId });
+  const data = logicalRunId ? { ...result.data, generationRequestId: logicalRunId } : result.data;
   if (diagnostics) {
-    return Response.json({ ok: true, data: result.data, requestId, dev: { ...(diagnostics as DeepReportDiagnostics), durationMs } });
+    return Response.json({ ok: true, data, requestId, dev: { ...(diagnostics as DeepReportDiagnostics), durationMs } });
   }
-  return successResponse(result.data, requestId);
+  return successResponse(data, requestId);
 }

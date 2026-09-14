@@ -406,6 +406,11 @@ export function requestDeepReportNarrative(
     selection: null,
     canAskPartner: false,
   },
+  /**
+   * v1.47 Integration — **한 번의 분석 행위** id(`lib/logicalRun.ts`). 실패 뒤 retry는 같은 값이다.
+   * 서버가 결과에 그대로 돌려주고 저장 멱등 키의 재료가 된다. 생략하면 보내지 않는다.
+   */
+  generationRequestId?: string,
 ): Promise<{ ok: true; data: DeepNarrativeBundle } | { ok: false; reason: AiFailureReason }> {
   const context = buildDeepReportContext(insights, resolverContext, tense, events, topCandidates, action.selection);
 
@@ -443,6 +448,7 @@ export function requestDeepReportNarrative(
     candidates: deepReportAllowancesOf(context),
     /** v1.46.4 Action Layer — 결정론이 고른 Action 카드의 허용집합. 같은 요청이다(호출 수 불변) */
     actionAllowance: deepReportActionAllowanceOf(context, action.canAskPartner),
+    ...(generationRequestId ? { generationRequestId } : {}),
   });
 }
 

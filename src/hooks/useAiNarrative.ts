@@ -14,6 +14,7 @@ import type { EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
  * 그 분기를 호출할 수 없어 `@/lib/aiMeta`로 옮겼다(이유는 그 파일 주석에 있다).
  */
 import { aiModeOf } from '@/lib/aiMeta';
+import { deepReportRuns } from '@/lib/logicalRun';
 import { buildCrossSourceInsights } from '@/lib/logic/crossSourceInsights';
 import {
   allocateCandidateScenes,
@@ -624,11 +625,28 @@ export function useDeepReportNarrative(
     ],
   );
 
-  const run = () =>
-    requestDeepReportNarrative(insights, resolverContext, fingerprint, deepTense, events, topCandidates, {
-      selection: actionSelection,
-      canAskPartner: deepTense === 'current' && deepAllowsOutwardQuestions,
-    });
+  const run = async () => {
+    /*
+      v1.47 Integration — 한 번의 분석 행위 = 한 generationRequestId. 실패 뒤 retry는 같은 id를 다시 쓰고,
+      결과가 확정되면 닫는다(다음 분석은 새 id). 서버 requestId는 쓰지 않는다(`lib/logicalRun.ts`).
+    */
+    const generationRequestId = deepReportRuns.begin(fingerprint);
+    const result = await requestDeepReportNarrative(
+      insights,
+      resolverContext,
+      fingerprint,
+      deepTense,
+      events,
+      topCandidates,
+      {
+        selection: actionSelection,
+        canAskPartner: deepTense === 'current' && deepAllowsOutwardQuestions,
+      },
+      generationRequestId,
+    );
+    if (result.ok) deepReportRuns.close(fingerprint);
+    return result;
+  };
 
   return useNarrativeTask<DeepNarrativeBundle>({
     task: 'deep-report-narrative',

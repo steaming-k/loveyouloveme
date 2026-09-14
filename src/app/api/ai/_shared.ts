@@ -171,11 +171,13 @@ export function logAi(entry: {
   status: 'ok' | 'fail';
   durationMs: number;
   reason?: AiFailureReason;
+  /** v1.47 Integration — 한 번의 분석 행위 id. requestId(HTTP 요청)와 나란히 남긴다 */
+  generationRequestId?: string | null;
 }): void {
   if (entry.status === 'ok' && process.env.NODE_ENV === 'production') return;
   const line = `[ai] ${entry.task} ${entry.status} ${entry.durationMs}ms req=${entry.requestId}${
-    entry.reason ? ` reason=${entry.reason}` : ''
-  }`;
+    entry.generationRequestId ? ` gen=${entry.generationRequestId}` : ''
+  }${entry.reason ? ` reason=${entry.reason}` : ''}`;
   if (entry.status === 'fail') console.warn(line);
   else console.info(line);
 }

@@ -1885,6 +1885,11 @@ export interface DeepNarrativeBundle {
    * ⚠️ optional — 캐시에 남은 v6 응답에는 이 필드가 없다(버전이 올라가 재호출된다).
    */
   candidateSemantics?: CandidateSemanticNarrative[];
+  /**
+   * v1.47 Integration — 클라이언트가 만든 **logical generationRequestId**를 서버가 그대로 돌려준 값.
+   * 저장 멱등 키의 재료다. 요청에 없었으면 없다.
+   */
+  generationRequestId?: string;
   meta: AiNarrativeMeta;
 }
 
