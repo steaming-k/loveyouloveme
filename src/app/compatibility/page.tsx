@@ -1,7 +1,6 @@
 'use client';
 
 import { useUtMode } from '@/hooks/useUtMode';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
 
@@ -33,6 +32,7 @@ import { SignalCard } from '@/components/compatibility/SignalCard';
 import { ConversationCard } from '@/components/compatibility/ConversationCard';
 import { SyncScore } from '@/components/compatibility/SyncScore';
 import { PastObservationNote } from '@/components/history/PastObservationNote';
+import { CurrentRelationshipInline } from '@/components/profile/CurrentRelationshipInline';
 import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
 import { useToast } from '@/components/common/ToastProvider';
 import {
@@ -68,7 +68,6 @@ import {
   jobInvitesCurrentEvidence,
   resolveRelationshipContext,
 } from '@/lib/logic/relationshipStage';
-import { answeredAxisCount } from '@/lib/logic/relationshipEvidence';
 import { premiumFeatureState } from '@/services/premiumService';
 import { hasPremiumEvidence } from '@/lib/logic/premiumChapters';
 import { soloModeOf } from '@/lib/logic/soloMode';
@@ -171,7 +170,6 @@ function CompatibilityView() {
   const showOutwardQuestions = jobAllowsOutwardQuestions(job);
   /** v1.41 §39.6 — S30 권유 대상인가. **판정에는 들어가지 않는다**(화면 분기 전용) */
   const invitesCurrent = jobInvitesCurrentEvidence(job);
-  const currentAnsweredCount = answeredAxisCount(answers.currentRelationship);
   /**
    * v1.41 §39.21 — Analytics로 나가는 저카디널리티 시점 값.
    *
@@ -555,6 +553,15 @@ function CompatibilityView() {
             />
           </div>
         ) : null}
+
+        {/*
+          260914 UT 후속 P1 STEP 6 — '지금 관계 속의 나'를 **결과 안에서 펼쳐보는 형태**로 옮겼다.
+          예전에는 04 NOW WHAT 끝의 한 줄 링크 → 별도 화면(`/profile/current`)이었고, UT에서 화면 전체를
+          차지하는 구조가 흐름을 끊었다. 점수 · 결과 한 문장 · FIRST SURPRISE 다음, 신호 상세 앞에 **접힌 채** 둔다.
+          ⚠️ `dating`·`long_term`에만 보인다(`jobInvitesCurrentEvidence` · v1.41 §39.6 그대로).
+          ⚠️ `/profile/current` Route는 남아 있다 — 예전 링크 · 뒤로가기 호환.
+        */}
+        {invitesCurrent ? <CurrentRelationshipInline className="mt-4" /> : null}
 
         {/*
           §18 — Section Navigator를 FIRST SURPRISE **뒤로** 내렸다. 점수 바로 아래에 두면
@@ -1045,38 +1052,6 @@ function CompatibilityView() {
             )}
           </div>
 
-          {/*
-            04-c — 지금 관계 근거 보강 (v1.41 §39.6)
-
-            ⚠️ **이 화면의 유일한 진입점이고, 카드가 아니라 한 줄이다.**
-            §39.10이 정한 규칙 그대로다 — 새 카드를 만들지 않고 annotation·링크로만
-            얹는다. 결과 화면의 주인공은 여전히 판정이고, 이건 그 판정을 더 정확하게
-            만들 수 있다는 안내다.
-
-            ⚠️ `dating`·`long_term`에만 보인다(`jobInvitesCurrentEvidence`). `talking`
-            에게 '지금 관계'라고 부르는 것은 관계를 확정하는 셈이고, `ended`에게는
-            끝난 관계를 다시 관찰하게 만드는 것이다.
-
-            ⚠️ 이미 다 답한 사용자에게는 **권유가 아니라 수정 링크**로 바뀐다. 같은
-            줄이 계속 '알려줄래?'라고 물으면 답한 것이 반영되지 않은 것처럼 읽힌다.
-          */}
-          {invitesCurrent ? (
-            <div className="mt-7 flex flex-col gap-2 rounded-card border border-dashed border-line-strong bg-canvas-warm p-4">
-              <p className="text-caption keep-all leading-relaxed text-ink-sub">
-                {currentAnsweredCount === 0
-                  ? '위 해석은 네가 이전 관계에서 답한 내용을 근거로 했어. 지금 관계에서는 어떤지 알려주면 그 항목은 지금 기준으로 다시 볼게.'
-                  : `지금 관계 기준으로 답한 항목이 ${currentAnsweredCount}개 있어. 언제든 고치거나 더 답할 수 있어.`}
-              </p>
-              <Link
-                href={ROUTES.currentRelationship()}
-                className="inline-flex min-h-11 items-center self-start text-[12.5px] font-medium text-brand-pressed"
-              >
-                {currentAnsweredCount === 0
-                  ? '지금 관계에서의 나 알려주기 →'
-                  : '지금 관계 답변 고치기 →'}
-              </Link>
-            </div>
-          ) : null}
         </ReportSection>
 
         <ReportSection

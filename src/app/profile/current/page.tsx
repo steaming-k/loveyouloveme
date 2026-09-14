@@ -7,9 +7,9 @@ import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
-import { SelectableRow } from '@/components/common/SelectableRow';
-import { PageHeading, SectionLabel, Tag } from '@/components/common/primitives';
+import { PageHeading, Tag } from '@/components/common/primitives';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
+import { CurrentSignalQuestionList } from '@/components/profile/CurrentRelationshipInline';
 import { CURRENT_SIGNAL_QUESTIONS } from '@/data/currentRelationship';
 import {
   jobInvitesCurrentEvidence,
@@ -61,7 +61,7 @@ function CurrentRelationshipView() {
   const router = useRouter();
   const navReplace = useNavReplace();
   const searchParams = useSearchParams();
-  const { answers, setCurrentSignal, clearCurrentSignal, markCurrentEvidenceAsked } = useSession();
+  const { answers, markCurrentEvidenceAsked } = useSession();
 
   const job = useMemo(() => resolveRelationshipContext(answers).job, [answers]);
   const invited = jobInvitesCurrentEvidence(job);
@@ -116,58 +116,11 @@ function CurrentRelationshipView() {
           }
         />
 
-        {CURRENT_SIGNAL_QUESTIONS.map((question) => {
-          const selected = signals[question.axis];
-          return (
-            <section key={question.axis} className="flex flex-col gap-2.5">
-              <div className="flex items-center justify-between gap-2">
-                <SectionLabel as="h2">{question.label}</SectionLabel>
-                {/*
-                  답을 **되돌릴 수 있어야 한다.** 실수로 고른 답을 지울 방법이 없으면
-                  사용자는 틀린 근거를 남긴 채 나가게 되고, 그 근거가 Mirror 판정과
-                  History Snapshot에 그대로 들어간다.
-
-                  ⚠️ 처음에는 '같은 보기를 다시 누르면 해제'로 만들었는데 **동작하지
-                  않았다** — `SelectableRow`는 실제 `<input type="radio">`를 쓰고,
-                  이미 checked인 radio를 다시 클릭하면 `change` 이벤트가 발생하지
-                  않는다(브라우저 실측). 화면은 되돌릴 수 있다고 약속하고 코드는
-                  못 하는 상태였다. 공용 컴포넌트에 해제를 넣는 대신(S05·S11·S16·S17은
-                  전부 **필수 단일 선택**이라 해제가 생기면 진행 차단이 무너진다)
-                  이 화면에만 명시적인 버튼을 둔다.
-
-                  ⚠️ 답이 있을 때만 보인다. 지울 것이 없는데 '지우기'를 두면 그 자체가
-                  답을 요구하는 신호로 읽힌다.
-                */}
-                {selected !== undefined ? (
-                  <button
-                    type="button"
-                    onClick={() => clearCurrentSignal(question.axis)}
-                    className="flex min-h-11 items-center px-1 text-meta font-medium text-ink-muted"
-                  >
-                    답 지우기
-                  </button>
-                ) : null}
-              </div>
-              <p className="px-1 text-sub keep-all text-ink-sub">{question.question}</p>
-              <div
-                className="flex flex-col gap-2.5"
-                role="radiogroup"
-                aria-label={question.question}
-              >
-                {question.options.map((option) => (
-                  <SelectableRow
-                    key={option.value}
-                    name={`current-${question.axis}`}
-                    value={option.value}
-                    label={option.label}
-                    selected={selected === option.value}
-                    onSelect={() => setCurrentSignal(question.axis, option.value)}
-                  />
-                ))}
-              </div>
-            </section>
-          );
-        })}
+        {/*
+          260914 UT 후속 P1 STEP 6 — 결과 안 accordion(`CurrentRelationshipInline`)과 **같은 목록**을 쓴다.
+          해제 버튼 규칙(실제 radio는 다시 눌러도 change가 없다)도 그 컴포넌트로 옮겨갔다.
+        */}
+        <CurrentSignalQuestionList />
 
         <p className="px-1 text-meta keep-all leading-relaxed text-ink-muted">
           {

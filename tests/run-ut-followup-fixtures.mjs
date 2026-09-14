@@ -23,7 +23,10 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { run, stripComments } from './fixtures-v1464.mjs';
+import { SEM_B, run, stripComments } from './fixtures-v1464.mjs';
+
+/** P1-05 · P1-09 — 같은 세션에서 '이 사람과 나는'만 바꾼다 */
+const SEM_B_WITH_RELATION = (relation) => ({ ...SEM_B, target: { ...SEM_B.target, relation } });
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BASE_URL = process.env.LYM_BASE_URL ?? 'http://localhost:3000';
@@ -179,6 +182,134 @@ check(
     /variant: 'friction_why'/.test(compat) &&
     /job === 'ended'\s*\?\s*`[^`]*`/.test(compat) &&
     !/job === 'ended'\s*\?\s*`[^`]*확인할 것[^`]*`/.test(compat),
+);
+
+/* ═════════════════════════════ P1 — Input Flow Compression / Progressive Disclosure */
+
+console.log('\nP1 — 입력 흐름 압축 · 선택 입력 · 결과 accordion');
+
+const lensTest = await readFile(join(ROOT, 'tests/run-lens-fixtures.mjs'), 'utf8');
+const cacheKeySrc = await src('src/services/ai/aiCacheKey.ts');
+const pastIntro = await src('src/app/profile/past/intro/page.tsx');
+const declaredStep = await src('src/app/profile/declared/[step]/DeclaredStepView.tsx');
+const disclosure = await src('src/components/common/OptionalDisclosureButton.tsx');
+const eventSection = await src('src/components/profile/RelationshipEventSection.tsx');
+const inline = await src('src/components/profile/CurrentRelationshipInline.tsx');
+const mirrorPage = await src('src/app/mirror/page.tsx');
+const currentPage = await src('src/app/profile/current/page.tsx');
+const observedPage = await src('src/app/profile/observed/page.tsx');
+const relationTypes = await src('src/types/index.ts');
+const relationOptions = await src('src/data/targetFields.ts');
+const relationLabels = await src('src/data/labels.ts');
+const stageLogic = await src('src/lib/logic/relationshipStage.ts');
+
+check(
+  'P1-01 AI-LENS-18 — 옛 인라인 키 대신 aiCacheKey source of truth를 본다 (task · promptVersion · model · fingerprint)',
+  !lensTest.includes("client.includes('${task}::${promptVersionOf(task)}::${fingerprint}')") &&
+    lensTest.includes('src/services/ai/aiCacheKey.ts') &&
+    cacheKeySrc.includes('`${task}::${promptVersion}::model=${model}::${fingerprint}`'),
+);
+
+check(
+  'P1-02 S14 인트로 화면 제거 — Route는 첫 질문으로 replace(from 유지) · Declared 완료 → 과거 Q1 · 안내 문장은 Q1에 흡수',
+  /navReplace\(withReturnTo\(ROUTES\.past\(1\), searchParams\)\)/.test(pastIntro) &&
+    !/<Button|LovyMessage/.test(pastIntro) &&
+    /resolveReturnDestination\(searchParams, ROUTES\.past\(1\)\)/.test(declaredStep) &&
+    /누구와 만났는지는 묻지 않아/.test(pastStep) &&
+    /step === 1\s*\?\s*ROUTES\.declared\(4\)/.test(pastStep),
+);
+
+check(
+  'P1-03 이전 관계 있음 — Q1 → Q2 → (adaptive) → Q3 → 상대/First Contact · 건너뛰었다 돌아오면 resume',
+  /if \(step === 1 && experience\.skipped\) resumeExperience\(\);/.test(pastStep) &&
+    /router\.push\(resolveReturnDestination\(searchParams, afterProfileInput\)\);\s*return;/.test(pastStep) &&
+    /const afterProfileInput = soloStatus \? ROUTES\.firstContact : ROUTES\.target;/.test(pastStep),
+);
+
+check(
+  'P1-04 이전 관계 없음 — Q1의 건너뛰기 → 경험 비움 · 완료 표시 · E4 화면 없이 다음 입력 · 이미 고른 값이 있으면 버튼 숨김',
+  /const handleSkip = \(\) => \{\s*skipExperience\(\);\s*markComplete\('experience'\);\s*markComplete\('profile'\);\s*trackEvent\('profile_complete', \{ path: 'no_experience' \}\);\s*router\.push\(resolveReturnDestination\(searchParams, afterProfileInput\)\);/.test(pastStep) &&
+    /step === 1 && experience\.important\.length === 0 \? \(\s*<Button variant="text" onClick=\{handleSkip\}>/.test(pastStep),
+);
+
+const partnerRun = await run({ ...SEM_B_WITH_RELATION('partner') });
+const crushRun = await run({ ...SEM_B_WITH_RELATION('crush') });
+check(
+  'P1-05 연인 · 배우자 보기 — canonical `partner` 1개 · 라벨 = 복원 Record · STAGE 규칙은 ex만 · 동기화율 불변',
+  /\| 'partner'/.test(relationTypes) &&
+    /\{ value: 'partner', label: '연인 · 배우자' \}/.test(relationOptions) &&
+    /partner: '연인 · 배우자',/.test(relationLabels) &&
+    !/partner/.test(stageLogic) &&
+    partnerRun.compatibility.score === crushRun.compatibility.score &&
+    partnerRun.compatibility.comparedCount === crushRun.compatibility.comparedCount,
+  { partner: partnerRun.compatibility.score, crush: crushRun.compatibility.score },
+);
+
+const disclosureUsers = [target, eventSection].map((text) => (text.match(/<OptionalDisclosureButton/g) ?? []).length);
+check(
+  'P1-06 선택 입력 열기 버튼 — `· 선택` 유지 · 닫힘에 이유(benefit) + `+ 더 알려주기` + chevron · 상대 화면 MBTI · 좋아하는 것 · 사건 3곳',
+  /\{eyebrow\} · 선택/.test(disclosure) &&
+    /'\+ 더 알려주기'/.test(disclosure) &&
+    /\{benefit\}/.test(disclosure) &&
+    /<ChevronDown/.test(disclosure) &&
+    disclosureUsers[0] === 2 &&
+    disclosureUsers[1] === 1 &&
+    !/'펼치기'/.test(target) &&
+    !/'펼치기'/.test(eventSection),
+  disclosureUsers,
+);
+check(
+  'P1-07 aria-expanded · aria-controls — 버튼이 둘 다 갖고, 펼쳐진 영역 id가 panelId와 같다',
+  /aria-expanded=\{open\}/.test(disclosure) &&
+    /aria-controls=\{panelId\}/.test(disclosure) &&
+    /panelId="target-mbti-panel"[\s\S]*id="target-mbti-panel"/.test(target) &&
+    /panelId="target-interest-panel"[\s\S]*id="target-interest-panel"/.test(target) &&
+    /panelId="target-event-panel"[\s\S]*id="target-event-panel"/.test(eventSection) &&
+    /id=\{panelId\}/.test(inline),
+);
+
+check(
+  "P1-08 사건 입력 화면 문구 — '장면' 0 · '이 사건 추가하기' · '기억나는 사건'",
+  !/장면/.test(eventSection) && /이 사건 추가하기/.test(eventSection) && /기억나는 사건/.test(eventSection),
+  eventSection.match(/[^\n]*장면[^\n]*/g),
+);
+
+const restoredEvent = await run({
+  ...SEM_B_WITH_RELATION('crush'),
+  target: { ...SEM_B_WITH_RELATION('crush').target, events: [{ id: 'ev-old-1', type: 'conflict', description: '약속 얘기로 서운했어' }] },
+});
+check(
+  'P1-09 예전 사건 데이터 — 내부 타입 이름 그대로 · 저장된 사건이 리포트까지 복원',
+  /'affection_felt'[\s\S]*'conflict'[\s\S]*'contact_change'[\s\S]*'other'/.test(relationTypes) &&
+    restoredEvent.report.reportedScenes?.scenes?.[0]?.typeLabel === '갈등 · 서운했던 일',
+  restoredEvent.report.reportedScenes?.scenes?.[0],
+);
+
+check(
+  "P1-10 '지금 관계 속의 나' — 결과(궁합 · Mirror) 안 accordion · 기본 접힘 · 같은 질문 목록 · 별도 화면 링크 0 · Route 유지",
+  /\{invitesCurrent \? <CurrentRelationshipInline className="mt-4" \/> : null\}/.test(compat) &&
+    /\{invitesCurrent \? <CurrentRelationshipInline \/> : null\}/.test(mirrorPage) &&
+    /const \[open, setOpen\] = useState\(false\);/.test(inline) &&
+    /<CurrentSignalQuestionList \/>/.test(currentPage) &&
+    !/ROUTES\.currentRelationship\(/.test(compat) &&
+    !/ROUTES\.currentRelationship\(/.test(mirrorPage) &&
+    (await fetch(`${BASE_URL}/profile/current`, { redirect: 'manual' })).status === 200,
+);
+
+const iInline = compat.indexOf('<CurrentRelationshipInline');
+check(
+  'P1-11 점수가 여전히 첫 결과 — SyncScore → 결과 한 문장 → FIRST SURPRISE → 관계 속의 나(접힘) → 신호',
+  compat.indexOf('<SyncScore score={result.score} />') < compat.indexOf('{resultHeadline}') &&
+    compat.indexOf('<FirstSurprise') < iInline &&
+    iInline < compat.indexOf('id={RESULT_ANCHORS.compatibilityGood}'),
+);
+
+const emptyFooter = observedPage.slice(observedPage.indexOf('if (traits.length === 0 || photosGone || photosChanged)'));
+check(
+  'P1-12 S09가 흐름을 끊지 않는다 — 입력 단계 안내(caption) · 관찰 0개일 때 primary = 질문으로 계속 · 확인 후 Declared 1로',
+  /caption="맞는지 하나만 알려주면 바로 다음 질문으로 넘어가\./.test(observedPage) &&
+    emptyFooter.indexOf('질문으로 계속하기') < emptyFooter.indexOf('사진 더 고르기') &&
+    /router\.push\(resolveReturnDestination\(searchParams, ROUTES\.declared\(1\)\)\);/.test(observedPage),
 );
 
 const after = await guardCount();

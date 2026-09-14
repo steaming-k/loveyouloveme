@@ -1,7 +1,6 @@
 'use client';
 
 import { useUtMode } from '@/hooks/useUtMode';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -20,6 +19,7 @@ import { useToast } from '@/components/common/ToastProvider';
 import { RepeatedSignalNotice } from '@/components/history/PastObservationNote';
 import { MirrorComparisonRow, MirrorLegend } from '@/components/mirror/MirrorComparisonRow';
 import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
+import { CurrentRelationshipInline } from '@/components/profile/CurrentRelationshipInline';
 import { UtRatingCard } from '@/components/ut/UtRatingCard';
 import { LOVY_LINES } from '@/data/copy';
 import { PREMIUM_HOOK_COPY } from '@/data/premium';
@@ -457,20 +457,11 @@ function MirrorView() {
             ⚠️ 카드가 아니라 한 줄이다(§39.10). 그리고 `from=mirror`를 붙여 돌아올
             곳을 이 화면으로 고정한다.
           */}
-          {invitesCurrent && scope.currentCount === 0 ? (
-            <div className="flex flex-col gap-2 rounded-card border border-dashed border-line-strong bg-canvas-warm p-4">
-              <p className="text-caption keep-all leading-relaxed text-ink-sub">
-                지금 이 비교의 오른쪽 칸은 전부 이전 관계에서 답한 내용이야. 지금 관계에서는
-                어떤지 알려주면 그 항목부터 지금 기준으로 다시 볼게.
-              </p>
-              <Link
-                href={ROUTES.currentRelationship('mirror')}
-                className="inline-flex min-h-11 items-center self-start text-[12.5px] font-medium text-brand-pressed"
-              >
-                지금 관계에서의 나 알려주기 →
-              </Link>
-            </div>
-          ) : null}
+          {/*
+            260914 UT 후속 P1 STEP 6 — 별도 화면 링크 대신 **결과 안 accordion**(기본 접힘).
+            답하면 사라지던 권유 줄과 달리, 답한 뒤에도 같은 자리에서 고칠 수 있게 남긴다(개수 표시).
+          */}
+          {invitesCurrent ? <CurrentRelationshipInline /> : null}
 
           {/*
             v1.46.4 §18 — **결론이 비교보다 먼저다.**
