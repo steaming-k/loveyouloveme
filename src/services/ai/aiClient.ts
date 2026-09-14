@@ -1,7 +1,7 @@
 'use client';
 
 import { trackEvent } from '@/lib/analytics';
-import { TASK_CONTRACT } from './taskContract';
+import { aiCacheKey, createModelRegistry } from './aiCacheKey';
 import type { AiFailureReason, AiTask } from '@/types';
 
 /**
@@ -101,7 +101,11 @@ export function clearAiDebugLog(): void {
  * `TASK_CONTRACT`가 **선언만 하고 아무도 안 쓰는 문서**가 아니라 **캐시 키를 만드는
  * 실제 코드 경로**가 된다. 선언이 실행되지 않으면 그 선언은 언젠가 사실이 아니게 된다.
  */
-const promptVersionOf = (task: AiTask): string => TASK_CONTRACT[task].promptVersion;
+/*
+  v1.47 — 위 표 읽기는 `aiCacheKey.ts`로 옮겼다(dev fixture 라우트가 같은 함수를 부르게).
+  여기 남은 것은 **어느 모델의 응답인가**를 기억하는 자리다.
+*/
+const models = createModelRegistry();
 
 /**
  * 캐시 키. (v1.42 — `promptVersion`이 들어왔다 · §40.12)
@@ -125,7 +129,11 @@ const promptVersionOf = (task: AiTask): string => TASK_CONTRACT[task].promptVers
  * 세 함수가 같은 키를 만든다는 성질도 유지된다(한 곳만 바뀌면 재시도가 캐시를 못 지운다).
  */
 function cacheKey(task: AiTask, fingerprint: string): string {
-  return `${task}::${promptVersionOf(task)}::${fingerprint}`;
+  /*
+    v1.47 — **model-aware.** 키 모양은 `aiCacheKey.ts` 한 곳에 있다(promptVersion · 모델 · 지문).
+    모델 칸은 이 탭이 서버 응답으로 마지막에 확인한 모델이다 — 코드 상수가 아니라 **실제 resolved model**.
+  */
+  return aiCacheKey(task, models.expected(task), fingerprint);
 }
 
 /** 클라이언트 타임아웃 — 서버보다 약간 길게 둬서 서버 분류를 우선한다 */
@@ -138,6 +146,7 @@ export function getCachedAiResult<T>(task: AiTask, fingerprint: string): T | nul
 export function clearAiCache(): void {
   cache.clear();
   inFlight.clear();
+  models.reset();
 }
 
 /** 재시도 전용 — 이 (task, fingerprint) 한 건만 캐시/진행 중 요청에서 지운다. 다른 Task 캐시는 건드리지 않는다 */
@@ -226,7 +235,13 @@ export async function callAiTask<T>(
       const data = (json as { data: unknown }).data;
       const requestId = readRequestId(json) ?? 'unknown';
 
-      cache.set(key, data);
+      /*
+        v1.47 Model-Aware Cache — **응답을 만든 모델의 키에 넣는다.** 조회에 쓴 `key`는 이 탭이 마지막으로
+        확인한 모델이고, 서버 env가 바뀌었으면 응답 `meta.model`이 다르다. 그 경우 이전 모델 키에 새 응답을
+        넣지 않고, 이후 조회도 새 모델 키를 본다.
+      */
+      const model = models.settle(task, data);
+      cache.set(aiCacheKey(task, model, fingerprint), data);
       const metaProps = readMetaProps(data);
       trackEvent('ai_analysis_success', {
         task,
