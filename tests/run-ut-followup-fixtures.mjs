@@ -447,6 +447,112 @@ check(
     /\{gapInsights\.length > 0 \|\| utMode \? \(/.test(mirrorP2),
 );
 
+/* ═════════════════════════════ Relationship Language (P3) */
+
+console.log('\nREL-LANG — 관계 언어 체계');
+
+const langFiles = {
+  pastStep: await src('src/app/profile/past/[step]/PastStepView.tsx'),
+  profileResult: await src('src/app/profile/result/page.tsx'),
+  historyReport: await src('src/app/history/report/page.tsx'),
+  historyPage: await src('src/app/history/page.tsx'),
+  home: await src('src/app/home/page.tsx'),
+  bottomNav: await src('src/components/common/BottomNavigation.tsx'),
+  premiumData: await src('src/data/premium.ts'),
+  evidenceState: await src('src/lib/logic/premiumEvidenceState.ts'),
+  profileLogic: await src('src/lib/logic/profile.ts'),
+  copyData: await src('src/data/copy.ts'),
+  firstContactData: await src('src/data/firstContact.ts'),
+  savedLib: await src('src/lib/persistence/savedRelationships.ts'),
+  savedSection: await src('src/components/account/SavedRelationshipsSection.tsx'),
+  analyticsLib: await src('src/lib/analytics.ts'),
+  routesLib: await src('src/lib/routes.ts'),
+};
+const featureLabelHits = Object.entries(langFiles)
+  .filter(([, text]) => /이전 관계 경험 (알려주기|고치기)|이전 관계와 비교|caption: '이전 관계'|이전 관계에서 실제로 나타난 너|이제 이전 관계를 짧게/.test(text))
+  .map(([name]) => name);
+check(
+  "REL-LANG-01 상위 기능 이름에 '이전 관계' 0 — 도입 · 수정 허브 · Premium 보완 CTA · 레이어 caption · History 비교 문구",
+  featureLabelHits.length === 0 &&
+    /이제 관계 경험을 짧게 돌아볼게/.test(langFiles.pastStep) &&
+    /label="관계 경험 답변 고치기"/.test(langFiles.profileResult) &&
+    /experience: '관계 경험 알려주기',/.test(langFiles.premiumData) &&
+    /label: '관계 경험 알려주기',/.test(langFiles.evidenceState) &&
+    /이전 관찰 기록과 비교하면/.test(langFiles.historyReport),
+  featureLabelHits,
+);
+check(
+  "REL-LANG-02 관계 선택의 '이전 관계'(status)는 유지 — 칩 · 복원 라벨 · STAGE ended",
+  /\{ value: 'ex', label: '이전 관계' \}/.test(relationOptions) &&
+    /ex: '이전 관계',/.test(relationLabels) &&
+    /answers\.target\.relation === 'ex'\) return 'ended'/.test(stageLogic),
+);
+check(
+  'REL-LANG-03 연인 · 배우자 선택 유지',
+  /\{ value: 'partner', label: '연인 · 배우자' \}/.test(relationOptions) && /partner: '연인 · 배우자',/.test(relationLabels),
+);
+check(
+  'REL-LANG-04 내부 이름 무변경 — TargetRelation ex · tense current/former · route /profile/past · analytics key · Supabase relation_status',
+  /\| 'ex'/.test(relationTypes) &&
+    /export type RelationshipTense = 'current' \| 'former';/.test(relationTypes) &&
+    /pastIntro: '\/profile\/past\/intro'/.test(langFiles.routesLib) &&
+    /past: \(step: number\) => `\/profile\/past\/\$\{step\}`/.test(langFiles.routesLib) &&
+    /'relationship_experience_skip'/.test(langFiles.analyticsLib) &&
+    /'relationship_experience_complete'/.test(langFiles.analyticsLib) &&
+    /relation_status text/.test(await readFile(join(ROOT, 'supabase/migrations/20260914000000_v147_persistence_foundation.sql'), 'utf8')),
+);
+
+const endedRun = await run({ ...SEM_B, status: 'ended', target: { ...SEM_B.target, relation: 'ex' } });
+const currentRun = await run({ ...SEM_B, status: 'dating' });
+check(
+  "REL-LANG-05 끝난 관계 과거형 유지 — 사건 블록 '그 관계에서' · 한계 '그때' · 지금 관계 0",
+  endedRun.report.reportedScenes?.lovyNote?.startsWith('그 관계에서') &&
+    endedRun.report.reportedScenes?.limitation?.includes('그때') &&
+    !(endedRun.headerLine ?? '').includes('지금 관계'),
+  { lovyNote: endedRun.report.reportedScenes?.lovyNote, header: endedRun.headerLine },
+);
+check(
+  "REL-LANG-06 지금 관계 현재형 유지 — 사건 블록 '이 관계에서' · '그때' 0",
+  currentRun.report.reportedScenes?.lovyNote?.startsWith('이 관계에서') &&
+    !currentRun.report.reportedScenes?.limitation?.includes('그때'),
+  { lovyNote: currentRun.report.reportedScenes?.lovyNote },
+);
+check(
+  "REL-LANG-07 연애 경험 없음 — 건너뛰기 '이전 연애가 없어' · 결핍 프레이밍('없네' · '아직 없어') 0",
+  /이전 연애가 없어 · 건너뛰기/.test(langFiles.pastStep) &&
+    !/아직 관계 기록은 없네/.test(langFiles.copyData) &&
+    !/확인할 기록은 아직 없어/.test(langFiles.firstContactData),
+);
+check(
+  "REL-LANG-08 저장한 관계 — 과거/현재 중립 이름 · '이전 관계' 0",
+  /label: '저장한 관계'/.test(langFiles.savedLib) && !/이전 관계/.test(langFiles.savedSection + langFiles.savedLib),
+);
+check(
+  "REL-LANG-09 Home · History · 하단 탭 — '관찰 기록' 계열 · '이전 관계' · '관계 히스토리' 0",
+  /<SectionLabel>관찰 기록<\/SectionLabel>/.test(langFiles.historyPage) &&
+    /label: '관찰기록'/.test(langFiles.bottomNav) &&
+    !/이전 관계|관계 히스토리/.test(langFiles.home + langFiles.historyPage + langFiles.bottomNav),
+);
+check(
+  "REL-LANG-10 온보딩 · 프로필 — Relationship Me = '관계 경험' (S06 소개 · 프로필 레이어 caption)",
+  /caption: '관계 경험에서 실제로 나타난 너'/.test(langFiles.copyData) && /caption: '관계 경험',/.test(langFiles.profileLogic),
+);
+const currentTexts = [currentRun.headerLine ?? '', ...(currentRun.report.candidates ?? []).flatMap((c) => [c.soWhat, c.limitation ?? '']), currentRun.report.reportedScenes?.limitation ?? ''];
+const endedTexts = [endedRun.headerLine ?? '', ...(endedRun.report.candidates ?? []).flatMap((c) => [c.soWhat, c.limitation ?? '']), endedRun.report.reportedScenes?.limitation ?? ''];
+check(
+  "REL-LANG-11 Premium/Deep Report 시점 — 지금 관계를 '그때 이 관계'로 · 끝난 관계를 '지금 관계'로 부르지 않음",
+  !currentTexts.some((t) => t.includes('그때 이 관계')) && !endedTexts.some((t) => t.includes('지금 관계에서')),
+  { currentHits: currentTexts.filter((t) => t.includes('그때 이 관계')), endedHits: endedTexts.filter((t) => t.includes('지금 관계에서')) },
+);
+const hypothesesDoc = await readFile(join(ROOT, 'docs/UT2_followup_hypotheses.md'), 'utf8').catch(() => '');
+const languageDoc = await readFile(join(ROOT, 'docs/RELATIONSHIP_LANGUAGE.md'), 'utf8').catch(() => '');
+check(
+  'REL-LANG-12 P3 문서 — UT2-H1~H5 · 관계 언어 사전(필수 용어 9개 · internal/UI 분리)',
+  ['UT2-H1', 'UT2-H2', 'UT2-H3', 'UT2-H4', 'UT2-H5'].every((h) => hypothesesDoc.includes(`## ${h}`)) &&
+    ['관계 경험', '이전 관계', '지금 관계', '끝난 관계', '관찰 기록', '저장한 관계', '사건', '장면', '연인 · 배우자'].every((term) => languageDoc.includes(term)) &&
+    languageDoc.includes('rename 금지'),
+);
+
 const after = await guardCount();
 check(`실제 Provider 호출 0 증가 (${before} → ${after})`, after === before);
 
