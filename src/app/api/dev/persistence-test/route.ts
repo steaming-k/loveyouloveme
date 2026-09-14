@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createAnalysisRunRepository } from '@/lib/persistence/analysisRunRepository';
 import { CLOUD_WRITE_BUDGET, estimateUtf8Bytes, inspectCloudPayload } from '@/lib/persistence/cloudWriteBudget';
 import type { PersistenceGateway } from '@/lib/persistence/gateway';
-import { newUuid } from '@/lib/persistence/ids';
+import { cloudTargetIdOf, isUuid, newUuid } from '@/lib/persistence/ids';
 import { migrateLocalData, planLocalMigration, type LocalDataSnapshot } from '@/lib/persistence/localMigration';
 import {
   eventRowOf,
@@ -21,7 +21,7 @@ import { createMemoryDatabase, createMemoryGateway, type MemoryDatabase } from '
 import { createProfileRepository } from '@/lib/persistence/profileRepository';
 import { createRelationshipEventRepository } from '@/lib/persistence/relationshipEventRepository';
 import { createRelationshipTargetRepository } from '@/lib/persistence/relationshipTargetRepository';
-import { deepReportRunInput, validateSnapshot } from '@/lib/persistence/snapshotGuard';
+import { DEEP_REPORT_SNAPSHOT_KEYS, deepReportRunInput, validateSnapshot } from '@/lib/persistence/snapshotGuard';
 import { createSupabaseGateway } from '@/lib/persistence/supabaseGateway';
 import {
   createTargetRegistry,
@@ -170,7 +170,6 @@ async function scenarioRls() {
     type: 'deep_report',
     snapshot: { title: 'A' },
     sourceFingerprint: null,
-    modelMeta: null,
   });
   const profile = await createProfileRepository(a).createIfAbsent(selfProfileFromSession(createEmptyAnswers()));
   c.check('A가 자기 profile · target · event · run을 만든다', profile.ok && event.ok && run.ok);
@@ -212,7 +211,9 @@ async function scenarioRls() {
     result_snapshot: {},
     source_fingerprint: null,
     app_version: null,
-    model_meta: null,
+    prompt_version: null,
+    model: null,
+    idempotency_key: null,
   });
   c.check('B cannot INSERT as A · analysis_runs', !insertRun.ok && insertRun.error.kind === 'forbidden');
 
@@ -346,9 +347,9 @@ async function scenarioRepositories() {
     c.check('cloud-event — remove', removed.ok && removed.value.removed && after.ok && after.value.length === 1);
   }
 
-  const r1 = await runs.record({ id: newUuid(), targetId: id1, type: 'deep_report', snapshot: { title: 'run-1' }, sourceFingerprint: 'fp', modelMeta: { promptVersion: 'v' } });
-  const r2 = await runs.record({ id: newUuid(), targetId: id1, type: 'deep_report', snapshot: { title: 'run-2' }, sourceFingerprint: 'fp', modelMeta: null });
-  const r3 = await runs.record({ id: newUuid(), targetId: null, type: 'mirror_history', snapshot: { title: 'self' }, sourceFingerprint: null, modelMeta: null });
+  const r1 = await runs.record({ id: newUuid(), targetId: id1, type: 'deep_report', snapshot: { title: 'run-1' }, sourceFingerprint: 'fp', promptVersion: 'v' });
+  const r2 = await runs.record({ id: newUuid(), targetId: id1, type: 'deep_report', snapshot: { title: 'run-2' }, sourceFingerprint: 'fp' });
+  const r3 = await runs.record({ id: newUuid(), targetId: null, type: 'mirror_history', snapshot: { title: 'self' }, sourceFingerprint: null });
   c.check('analysisRun.record — 새 실행은 새 행', r1.ok && r2.ok && r3.ok && db.tables.analysis_runs.length === 3);
   const latest = await runs.latestForTarget(id1);
   c.check('analysisRun.latestForTarget — 가장 최근 실행', latest.ok && latest.value?.snapshot.title === 'run-2');
@@ -431,14 +432,22 @@ async function scenarioMigration(body: PersistenceTestRequest) {
     '사진 · 사진 관찰 결과가 계정에 올라가지 않는다',
     !stored.includes('objectUrl') && !stored.includes('"photos"') && !stored.includes('observedAnalysis'),
   );
-  const activeRow = db.tables.relationship_targets.find((row) => row.id === registry.activeTargetId);
+  const cloudIdOf = (localId: string | undefined) => first.links.find((link) => link.localTargetId === localId)?.cloudTargetId;
+  c.check(
+    'local/cloud id 분리 — 로컬 상대 id를 cloud id로 쓰지 않는다(link로만 잇는다)',
+    first.links.length === 2 &&
+      first.links.every((link) => link.cloudTargetId !== link.localTargetId) &&
+      db.tables.relationship_targets.every((row) => row.id !== registry.activeTargetId && row.id !== registry.saved[0]?.id),
+    first.links,
+  );
+  const activeRow = db.tables.relationship_targets.find((row) => row.id === cloudIdOf(registry.activeTargetId));
   c.check(
     '사건은 target_json 배열이 아니라 행이다',
     Boolean(activeRow) && !JSON.stringify(activeRow?.target_json).includes('"events"'),
   );
-  const activeEvents = db.tables.relationship_events.filter((row) => row.target_id === registry.activeTargetId);
+  const activeEvents = db.tables.relationship_events.filter((row) => row.target_id === cloudIdOf(registry.activeTargetId));
   const prevId = registry.saved[0]?.id;
-  const prevEvents = db.tables.relationship_events.filter((row) => row.target_id === prevId);
+  const prevEvents = db.tables.relationship_events.filter((row) => row.target_id === cloudIdOf(prevId));
   c.check(
     '사건이 자기 상대에만 붙는다(지금 상대 ↔ 보관된 상대)',
     activeEvents.length === answers.target.events.length &&
@@ -450,10 +459,15 @@ async function scenarioMigration(body: PersistenceTestRequest) {
   const otherUser = createMemoryGateway(db, USER_B);
   const otherMigration = await migrateLocalData({ gateway: otherUser, snapshot, consent: true });
   c.check(
-    '같은 기기 데이터를 다른 계정에 저장해도 A 행과 섞이지 않는다(id 충돌 → conflict, A 불변)',
-    otherMigration.conflicts.some((item) => item.entity === 'target') &&
+    '같은 기기 데이터를 다른 계정이 동의해 저장하면 새 cloud id — 충돌 없음 · A 행 불변 · 섞임 없음',
+    otherMigration.status === 'completed' &&
+      otherMigration.created.targets === 2 &&
+      otherMigration.links.every((link) => !first.links.some((mine) => mine.cloudTargetId === link.cloudTargetId)) &&
       db.tables.relationship_targets.filter((row) => row.user_id === USER_A).length === 2 &&
-      db.tables.relationship_events.every((row) => row.user_id === USER_A || row.user_id === USER_B),
+      db.tables.relationship_events.filter((row) => row.user_id === USER_A).length === expectedEvents &&
+      db.tables.relationship_events.every((row) =>
+        db.tables.relationship_targets.some((target) => target.id === row.target_id && target.user_id === row.user_id),
+      ),
     otherMigration,
   );
 
@@ -476,7 +490,7 @@ async function scenarioMigrationConflict(body: PersistenceTestRequest) {
   /* 계정에 이미 **다른** 나 · 같은 id의 다른 상대가 있다(다른 기기에서 먼저 저장) */
   await createProfileRepository(gw).createIfAbsent(selfProfileFromSession(answersFrom({ mbti: 'ESTJ' })));
   await createRelationshipTargetRepository(gw).createIfAbsent({
-    id: registry.activeTargetId,
+    id: await cloudTargetIdOf(USER_A, registry.activeTargetId),
     label: '다른 기기',
     relationStatus: 'dating',
     data: targetContextFromSession(answersFrom({ target: { ...createEmptyTargetProfile(), relation: 'friend' } })),
@@ -569,7 +583,9 @@ async function scenarioFailureOffline() {
     result_snapshot: {},
     source_fingerprint: null,
     app_version: null,
-    model_meta: null,
+    prompt_version: null,
+    model: null,
+    idempotency_key: null,
   });
   const update = await gw.updateAtRevision('relationship_targets', newUuid(), 1, { label: null });
   const remove = await gw.remove('relationship_events', newUuid());
@@ -710,14 +726,15 @@ async function scenarioTargetSwitch() {
     const gw = createMemoryGateway(db, USER_A);
     const migrated = await migrateLocalData({ gateway: gw, snapshot: { answers: toA.answers, history: [], registry: toA.state }, consent: true });
     const runs = createAnalysisRunRepository(gw);
-    for (const [index, id] of ids.entries()) {
-      await runs.record({ id: newUuid(), targetId: id, type: 'deep_report', snapshot: { title: `T${index} old` }, sourceFingerprint: null, modelMeta: null });
-      await runs.record({ id: newUuid(), targetId: id, type: 'deep_report', snapshot: { title: `T${index}` }, sourceFingerprint: null, modelMeta: null });
+    const cloudIds = ids.map((id) => migrated.links.find((link) => link.localTargetId === id)?.cloudTargetId ?? id);
+    for (const [index, id] of cloudIds.entries()) {
+      await runs.record({ id: newUuid(), targetId: id, type: 'deep_report', snapshot: { title: `T${index} old` }, sourceFingerprint: null });
+      await runs.record({ id: newUuid(), targetId: id, type: 'deep_report', snapshot: { title: `T${index}` }, sourceFingerprint: null });
     }
     const eventRepo = createRelationshipEventRepository(gw);
     let isolated = true;
     let latestOk = true;
-    for (const [index, id] of ids.entries()) {
+    for (const [index, id] of cloudIds.entries()) {
       const list = await eventRepo.listByTarget(id);
       if (!list.ok || !eventsBelongTo(list.value.map((item) => item.event), index)) isolated = false;
       const latest = await runs.latestForTarget(id);
@@ -745,9 +762,9 @@ async function scenarioAnalysisRun() {
   const id = newUuid();
   const accepted = { promptVersion: 'deep-report-v12', candidates: [{ id: 'c1', title: '연락이 멈춘 뒤' }] };
 
-  const first = await runs.record({ id, targetId: null, type: 'deep_report', snapshot: accepted, sourceFingerprint: 'fp-1', modelMeta: { mode: 'real' } });
+  const first = await runs.record({ id, targetId: null, type: 'deep_report', snapshot: accepted, sourceFingerprint: 'fp-1', promptVersion: 'deep-report-v13-uncertainty-move', model: 'gpt-5.4' });
   c.check('accepted/rendered output 저장', first.ok && first.value.created && first.value.run.appVersion !== null);
-  const again = await runs.record({ id, targetId: null, type: 'deep_report', snapshot: { promptVersion: 'x', candidates: [] }, sourceFingerprint: 'fp-2', modelMeta: null });
+  const again = await runs.record({ id, targetId: null, type: 'deep_report', snapshot: { promptVersion: 'x', candidates: [] }, sourceFingerprint: 'fp-2' });
   const stored = await runs.get(id);
   c.check(
     '같은 id 재기록 — 덮어쓰지 않고 differs로 알린다(당시 결과 불변)',
@@ -755,7 +772,7 @@ async function scenarioAnalysisRun() {
   );
   const raw = await (gw as ReturnType<typeof createMemoryGateway>).attemptRawUpdate('analysis_runs', id, { result_snapshot: {} });
   c.check('analysis_runs UPDATE 경로 자체가 거부된다', !raw.ok && raw.error.kind === 'forbidden');
-  const second = await runs.record({ id: newUuid(), targetId: null, type: 'deep_report', snapshot: { promptVersion: 'deep-report-v12', candidates: [] }, sourceFingerprint: 'fp-1', modelMeta: null });
+  const second = await runs.record({ id: newUuid(), targetId: null, type: 'deep_report', snapshot: { promptVersion: 'deep-report-v12', candidates: [] }, sourceFingerprint: 'fp-1' });
   const listed = await runs.list();
   c.check('새 실행 = 새 analysis_run (이전 결과와 함께 남는다)', second.ok && listed.ok && listed.value.length === 2);
 
@@ -775,7 +792,7 @@ async function scenarioAnalysisRun() {
     results.every((item) => !item.ok && item.error.kind === 'invalid'),
     results.map((item) => (item.ok ? 'accepted' : item.error.message)),
   );
-  const blocked = await runs.record({ id: newUuid(), targetId: null, type: 'deep_report', snapshot: forbidden[4]!, sourceFingerprint: null, modelMeta: null });
+  const blocked = await runs.record({ id: newUuid(), targetId: null, type: 'deep_report', snapshot: forbidden[4]!, sourceFingerprint: null });
   c.check('repository도 거부된 스냅샷은 저장하지 않는다', !blocked.ok && db.tables.analysis_runs.length === 2);
   const big = validateSnapshot({ text: 'x'.repeat(600 * 1024) });
   c.check('스냅샷 크기 상한', !big.ok && big.error.message === 'snapshot_too_large');
@@ -812,8 +829,9 @@ async function scenarioParity(body: PersistenceTestRequest) {
   const gw = createMemoryGateway(db, USER_A);
   const migrated = await migrateLocalData({ gateway: gw, snapshot: { answers, history: [], registry }, consent: true });
   const profile = await createProfileRepository(gw).get();
-  const target = await createRelationshipTargetRepository(gw).get(registry.activeTargetId);
-  const events = await createRelationshipEventRepository(gw).listByTarget(registry.activeTargetId);
+  const cloudTargetId = migrated.links[0]?.cloudTargetId ?? '';
+  const target = await createRelationshipTargetRepository(gw).get(cloudTargetId);
+  const events = await createRelationshipEventRepository(gw).listByTarget(cloudTargetId);
   c.check('parity — 저장 후 다시 읽기 성공', migrated.status === 'completed' && profile.ok && target.ok && events.ok, migrated);
   if (!profile.ok || !target.ok || !events.ok) return { checks: c.checks, rebuilt: null };
 
@@ -974,7 +992,6 @@ async function scenarioStorage(body: PersistenceTestRequest) {
     type: 'deep_report',
     snapshot: { candidates: [{ id: 'c1', soWhat: `네가 적은 "${scenes[0]}" 장면이 걸려` }] },
     sourceFingerprint: null,
-    modelMeta: null,
     forbiddenTexts: [...scenes, reaction],
   });
   c.check(
@@ -983,12 +1000,12 @@ async function scenarioStorage(body: PersistenceTestRequest) {
     duplicated,
   );
   const deepRun = deepReportRunInput({
-    id: newUuid(),
     targetId,
     report: syntheticDeepReport(eventIds, scenes),
     promptVersion: 'deep-report-v13-uncertainty-move',
-    mode: 'real',
+    model: 'gpt-5.4',
     sourceFingerprint: 'fp',
+    generationRequestId: 'gen-storage-1',
   });
   const deepJson = JSON.stringify(deepRun.snapshot);
   c.check(
@@ -1000,7 +1017,7 @@ async function scenarioStorage(body: PersistenceTestRequest) {
       deepJson.includes('candidateIds'),
     deepRun.snapshot,
   );
-  const recorded = await runs.record({ ...deepRun, forbiddenTexts: [...scenes, reaction] });
+  const recorded = await runs.recordGenerated({ ...deepRun, forbiddenTexts: [...scenes, reaction] });
   c.check('STORAGE-10 · 그 snapshot은 원문 금지 목록을 통과해 저장된다', recorded.ok && recorded.value.created, recorded);
   c.check(
     'STORAGE-03 · analysis_runs 전체에 사건 원문 0',
@@ -1032,7 +1049,6 @@ async function scenarioStorage(body: PersistenceTestRequest) {
     type: 'deep_report',
     snapshot: { choices: [{ message: { content: '{}' } }] },
     sourceFingerprint: null,
-    modelMeta: null,
   });
   const rawGatewayRun = await gw.insertIfAbsent('analysis_runs', {
     id: newUuid(),
@@ -1042,7 +1058,9 @@ async function scenarioStorage(body: PersistenceTestRequest) {
     result_snapshot: { prompt: 'system prompt' },
     source_fingerprint: null,
     app_version: null,
-    model_meta: null,
+    prompt_version: null,
+    model: null,
+    idempotency_key: null,
   });
   c.check(
     'STORAGE-05 · Provider raw response는 target에도 analysis에도 저장 거부',
@@ -1222,7 +1240,7 @@ async function scenarioStorage(body: PersistenceTestRequest) {
       targetRowOf(USER_A, { id: sampleTargetId, label: null, relationStatus: sample.status, data: targetContextFromSession(sample) }),
     ),
     eventPayloadBytes: estimateUtf8Bytes(eventRowOf(USER_A, sampleTargetId, newUuid(), sampleEvent)),
-    analysisPayloadBytes: estimateUtf8Bytes(runRowOf(USER_A, deepRun)),
+    analysisPayloadBytes: estimateUtf8Bytes(runRowOf(USER_A, { id: newUuid(), ...deepRun, idempotencyKey: '0'.repeat(64) })),
     migrationBatchBytes: bytesMigration.bytes,
   };
   c.check(
@@ -1261,19 +1279,19 @@ async function scenarioStorageScale(body: PersistenceTestRequest) {
     });
     const storedIds = db.tables.relationship_events.map((row) => row.id);
     const run = deepReportRunInput({
-      id: newUuid(),
-      targetId: registry.activeTargetId,
+      targetId: migration.links[0]?.cloudTargetId ?? null,
       report: syntheticDeepReport(storedIds.slice(0, 3), scaled.map((event) => event.description)),
       promptVersion: 'deep-report-v13-uncertainty-move',
-      mode: 'real',
+      model: 'gpt-5.4',
       sourceFingerprint: null,
+      generationRequestId: `gen-scale-${count}`,
     });
-    const recorded = await createAnalysisRunRepository(gw).record({
+    const recorded = await createAnalysisRunRepository(gw).recordGenerated({
       ...run,
       forbiddenTexts: scaled.flatMap((event) => [event.description, event.myReaction ?? '']),
     });
     const runsJson = JSON.stringify(db.tables.analysis_runs);
-    const deepBytes = estimateUtf8Bytes(db.tables.analysis_runs.find((row) => row.id === run.id)?.result_snapshot);
+    const deepBytes = estimateUtf8Bytes(db.tables.analysis_runs.find((row) => recorded.ok && row.id === recorded.value.run.id)?.result_snapshot);
     snapshotBytes.push(deepBytes);
     eventBytes.push(migration.bytes.events);
     c.check(
@@ -1301,6 +1319,157 @@ async function scenarioStorageScale(body: PersistenceTestRequest) {
   );
   c.check('사건 저장량은 사건 행에서만 늘어난다(10 < 100 < 500)', eventBytes[0]! < eventBytes[1]! && eventBytes[1]! < eventBytes[2]!, eventBytes);
   return { checks: c.checks, info };
+}
+
+/* ══════════════════════════════════════════════════════════════════ analysis run policy · idempotency */
+
+const POLICY_SCENES = ['얘기가 엇갈린 다음에 아무 답이 없던 날이 힘들었어', '같이 산책하면서 오래 이야기했어'];
+const POLICY_REACTION = '먼저 연락하지 못하고 기다렸어';
+
+async function seedRelationship(gw: PersistenceGateway, scenes: readonly string[]) {
+  const target = await createRelationshipTargetRepository(gw).createIfAbsent({
+    label: null,
+    relationStatus: 'dating',
+    data: targetContextFromSession(createEmptyAnswers()),
+  });
+  if (!target.ok) return null;
+  const eventIds: string[] = [];
+  for (const scene of scenes) {
+    const saved = await createRelationshipEventRepository(gw).createIfAbsent(target.value.target.id, {
+      type: 'conflict',
+      description: scene,
+      myReaction: POLICY_REACTION,
+    });
+    if (saved.ok) eventIds.push(saved.value.event.id);
+  }
+  return { targetId: target.value.target.id, eventIds };
+}
+
+async function scenarioAnalysisPolicy() {
+  const c = checker();
+  const db = createMemoryDatabase();
+  const gw = createMemoryGateway(db, USER_A);
+  const seeded = await seedRelationship(gw, POLICY_SCENES);
+  if (!seeded) {
+    c.check('analysis policy — 기준 관계 생성', false);
+    return c.checks;
+  }
+  const runs = createAnalysisRunRepository(gw);
+  const forbiddenTexts = [...POLICY_SCENES, POLICY_REACTION];
+  const input = deepReportRunInput({
+    targetId: seeded.targetId,
+    report: syntheticDeepReport(seeded.eventIds, POLICY_SCENES),
+    promptVersion: 'deep-report-v13-uncertainty-move',
+    model: 'gpt-5.4',
+    sourceFingerprint: 'dr_fixture',
+    generationRequestId: 'gen-1',
+  });
+  c.check(
+    'ANALYSIS-01 · snapshot 최상위 = renderedResult · candidateIds · usedEvidenceRefs · usedEventIds',
+    Object.keys(input.snapshot).sort().join(',') === [...DEEP_REPORT_SNAPSHOT_KEYS].sort().join(',') &&
+      Object.keys(input.snapshot).sort().join(',') === 'candidateIds,renderedResult,usedEventIds,usedEvidenceRefs',
+    Object.keys(input.snapshot),
+  );
+  const first = await runs.recordGenerated({ ...input, forbiddenTexts });
+  if (!first.ok) {
+    c.check('ANALYSIS-02 · 저장', false, first.error);
+    return c.checks;
+  }
+  const row = db.tables.analysis_runs[0];
+  c.check(
+    'ANALYSIS-02 · 행 칸 = id · target · type · snapshot · fingerprint · prompt_version · model · app_version · created_at (+ user_id · idempotency_key)',
+    Boolean(row) &&
+      Object.keys(row!).sort().join(',') ===
+        'analysis_type,app_version,created_at,id,idempotency_key,model,prompt_version,result_snapshot,source_fingerprint,target_id,user_id' &&
+      row!.model === 'gpt-5.4' &&
+      row!.prompt_version === 'deep-report-v13-uncertainty-move' &&
+      row!.source_fingerprint === 'dr_fixture' &&
+      row!.app_version !== null,
+    row,
+  );
+  const stored = JSON.stringify(db.tables.analysis_runs);
+  c.check(
+    'ANALYSIS-03 · Target/Profile 전체 JSON · 사건 본문 · 반응 · prompt · raw · 사진 · debug 없음 (사건은 id로만)',
+    !/target_json|profile_json|"prompt"|"raw|choices|photos|data:image|"debug/.test(stored) &&
+      forbiddenTexts.every((text) => !stored.includes(text)) &&
+      seeded.eventIds.every((id) => stored.includes(id)),
+  );
+  c.check(
+    'ANALYSIS-04 · 새 분석 id = 새 random UUID(v4)',
+    first.value.created && isUuid(first.value.run.id) && first.value.run.id[14] === '4',
+    first.value.run.id,
+  );
+  const key = first.value.run.idempotencyKey ?? '';
+  c.check(
+    'ANALYSIS-05 · idempotency_key = sha256 hex · 요청 id 원문이 행에 남지 않는다',
+    /^[0-9a-f]{64}$/.test(key) && !stored.includes('gen-1'),
+    key,
+  );
+
+  const retry = await runs.recordGenerated({ ...input, forbiddenTexts });
+  c.check(
+    'IDEMP-01 · 같은 retry(같은 generationRequestId) → 새 행 없음 · 같은 run',
+    retry.ok && !retry.value.created && retry.value.run.id === first.value.run.id && db.tables.analysis_runs.length === 1,
+    retry,
+  );
+  const again = await runs.recordGenerated({ ...input, generationRequestId: 'gen-2', forbiddenTexts });
+  c.check(
+    'IDEMP-02 · 사용자가 다시 분석(new generationRequestId) → 새 UUID · 새 행',
+    again.ok && again.value.created && again.value.run.id !== first.value.run.id && db.tables.analysis_runs.length === 2,
+    again,
+  );
+  const changed = await runs.recordGenerated({ ...input, sourceFingerprint: 'dr_changed', forbiddenTexts });
+  c.check(
+    'IDEMP-03 · 입력 지문이 바뀌면 같은 요청 id라도 다른 키 → 새 행',
+    changed.ok && changed.value.created && db.tables.analysis_runs.length === 3,
+    changed,
+  );
+  const race = await gw.insertIfAbsent(
+    'analysis_runs',
+    runRowOf(USER_A, {
+      id: newUuid(),
+      targetId: seeded.targetId,
+      type: 'deep_report',
+      snapshot: { candidateIds: [] },
+      sourceFingerprint: 'dr_fixture',
+      promptVersion: null,
+      model: null,
+      idempotencyKey: key,
+    }),
+  );
+  c.check(
+    'IDEMP-04 · UNIQUE(user_id, idempotency_key) — 같은 키의 두 번째 INSERT는 conflict · 행 수 그대로',
+    !race.ok && race.error.kind === 'conflict' && db.tables.analysis_runs.length === 3,
+    race,
+  );
+  const gwB = createMemoryGateway(db, USER_B);
+  const seededB = await seedRelationship(gwB, ['B가 적어둔 장면 하나가 있어']);
+  const otherUser = seededB
+    ? await createAnalysisRunRepository(gwB).recordGenerated(
+        deepReportRunInput({
+          targetId: seededB.targetId,
+          report: syntheticDeepReport(seededB.eventIds, []),
+          promptVersion: 'deep-report-v13-uncertainty-move',
+          model: 'gpt-5.4',
+          sourceFingerprint: 'dr_fixture',
+          generationRequestId: 'gen-1',
+        }),
+      )
+    : null;
+  c.check(
+    'IDEMP-05 · 다른 사용자의 같은 요청 id는 키가 달라 서로 막지 않는다',
+    Boolean(otherUser?.ok && otherUser.value.created && otherUser.value.run.idempotencyKey !== key),
+    otherUser,
+  );
+  const missing = await runs.recordGenerated({ ...input, generationRequestId: '  ', forbiddenTexts });
+  c.check('IDEMP-06 · generationRequestId가 없으면 저장하지 않는다(invalid)', !missing.ok && missing.error.kind === 'invalid', missing);
+  const promptLeak = await runs.recordGenerated({
+    ...input,
+    generationRequestId: 'gen-leak',
+    snapshot: { ...input.snapshot, prompt: 'system prompt' },
+  });
+  c.check('ANALYSIS-03 · prompt를 섞은 snapshot은 저장 거부', !promptLeak.ok, promptLeak);
+  return c.checks;
 }
 
 export async function POST(request: Request): Promise<Response> {
@@ -1337,6 +1506,8 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ ok: true, ...(await scenarioStorage(body)) });
     case 'storage_scale':
       return Response.json({ ok: true, ...(await scenarioStorageScale(body)) });
+    case 'analysis_policy':
+      return Response.json({ ok: true, checks: await scenarioAnalysisPolicy() });
     default:
       return Response.json({ ok: false, reason: 'UNKNOWN_SCENARIO' }, { status: 400 });
   }

@@ -31,7 +31,7 @@ export const CLOUD_WRITE_BUDGET = {
   /** 단일 문자열 UTF-8 바이트 — 한글 4000자 = 12KB */
   maxStringBytes: 12 * 1024,
   /** SQL char_length CHECK와 같은 값 */
-  maxTextChars: { eventText: 4000, label: 40 },
+  maxTextChars: { eventText: 4000, label: 40, promptVersion: 80, model: 80 },
   maxArrayLength: 200,
   maxDepth: 12,
   /** 이 길이 이상이고 base64 글자만으로 된 문자열은 바이너리로 본다 */
@@ -39,7 +39,7 @@ export const CLOUD_WRITE_BUDGET = {
 } as const satisfies {
   maxRowBytes: Record<PersistenceTable, number>;
   maxStringBytes: number;
-  maxTextChars: { eventText: number; label: number };
+  maxTextChars: { eventText: number; label: number; promptVersion: number; model: number };
   maxArrayLength: number;
   maxDepth: number;
   base64MinLength: number;
@@ -77,7 +77,7 @@ export const RAW_PROVIDER_KEYS: ReadonlySet<string> = new Set([
 /** JSON 칸 안에서 사건 원문이 다시 나오는 모양 — 사건은 relationship_events 행에만 산다 */
 const EVENT_TEXT_KEYS: ReadonlySet<string> = new Set(['events', 'relationshipEvents', 'description', 'myReaction', 'my_reaction']);
 
-const JSON_COLUMNS: ReadonlySet<string> = new Set(['profile_json', 'target_json', 'result_snapshot', 'model_meta']);
+const JSON_COLUMNS: ReadonlySet<string> = new Set(['profile_json', 'target_json', 'result_snapshot']);
 
 const DATA_URL = /data:image\/|;base64,/i;
 const BLOB_URL = /^\s*blob:/i;
@@ -163,6 +163,15 @@ export function inspectCloudPayload(table: PersistenceTable, row: unknown): Clou
   }
   if (table === 'relationship_targets' && typeof columns.label === 'string') {
     if ([...columns.label].length > CLOUD_WRITE_BUDGET.maxTextChars.label) push('label', 'text_too_long');
+  }
+  if (table === 'analysis_runs') {
+    for (const [column, limit] of [
+      ['prompt_version', CLOUD_WRITE_BUDGET.maxTextChars.promptVersion],
+      ['model', CLOUD_WRITE_BUDGET.maxTextChars.model],
+    ] as const) {
+      const text = columns[column];
+      if (typeof text === 'string' && [...text].length > limit) push(column, 'text_too_long');
+    }
   }
   if (estimateUtf8Bytes(row) > CLOUD_WRITE_BUDGET.maxRowBytes[table]) push('$', 'row_too_large');
   return issues;

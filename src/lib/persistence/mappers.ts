@@ -313,8 +313,10 @@ export function runRowOf(
     analysis_type: run.type,
     result_snapshot: asJson(run.snapshot),
     source_fingerprint: run.sourceFingerprint,
+    prompt_version: run.promptVersion,
+    model: run.model,
+    idempotency_key: run.idempotencyKey,
     app_version: PERSISTENCE_APP_VERSION,
-    model_meta: run.modelMeta ? asJson(run.modelMeta) : null,
     ...(run.createdAt ? { created_at: run.createdAt } : {}),
   };
 }
@@ -326,8 +328,10 @@ export function runFromRow(row: AnalysisRunRow): AnalysisRun {
     type: row.analysis_type as AnalysisRunType,
     snapshot: record(row.result_snapshot),
     sourceFingerprint: row.source_fingerprint,
+    promptVersion: row.prompt_version,
+    model: row.model,
+    idempotencyKey: row.idempotency_key,
     appVersion: row.app_version,
-    modelMeta: row.model_meta === null ? null : record(row.model_meta),
     createdAt: row.created_at,
   };
 }

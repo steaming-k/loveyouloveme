@@ -15,6 +15,8 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 export const ID_NAMESPACE = {
   event: '6f1d2c3b-4a59-4e87-9c10-2b3a4d5e6f70',
   analysisRun: '0a9b8c7d-6e5f-4a3b-8c2d-1e0f9a8b7c6d',
+  /** v1.47 Clean Base — (userId, localTargetId) → cloudTargetId */
+  target: '3c2b1a09-8f7e-4d6c-b5a4-9382716a5b4c',
 } as const;
 
 export function isUuid(value: unknown): value is string {
@@ -57,7 +59,44 @@ export async function cloudEventIdOf(targetId: string, localEventId: string): Pr
   return deterministicUuid(ID_NAMESPACE.event, `${targetId.toLowerCase()}:${localEventId}`);
 }
 
-export async function analysisRunIdOfHistoryEntry(entryId: string): Promise<string> {
-  if (isUuid(entryId)) return entryId.toLowerCase();
-  return deterministicUuid(ID_NAMESPACE.analysisRun, `history:${entryId}`);
+/**
+ * History 스냅샷 id — **사용자 id가 섞인다**(v1.47 Clean Base). 같은 기기의 History를 두 계정이 각각
+ * 저장해도 PK가 겹치지 않는다. 같은 사용자의 재시도는 같은 id(멱등).
+ */
+export async function analysisRunIdOfHistoryEntry(userId: string, entryId: string): Promise<string> {
+  return deterministicUuid(ID_NAMESPACE.analysisRun, `history:${userId.toLowerCase()}:${entryId}`);
+}
+
+/**
+ * (userId, localTargetId) → cloudTargetId (v1.47 Clean Base §12)
+ *
+ * 로컬 상대 id는 이 기기의 슬롯 이름이다. 그대로 cloud PK로 쓰면 같은 기기의 두 계정이 같은 행을 두고
+ * 부딪친다. 사용자 id를 섞어 **계정마다 다른** 결정론 UUID를 만든다 — 같은 사용자의 재시도 · 재로그인은
+ * 같은 id(멱등), 다른 사용자는 다른 id다.
+ */
+export async function cloudTargetIdOf(userId: string, localTargetId: string): Promise<string> {
+  return deterministicUuid(ID_NAMESPACE.target, `${userId.toLowerCase()}:${localTargetId.toLowerCase()}`);
+}
+
+/**
+ * analysis_runs.idempotency_key = sha256(userId | targetId | analysisType | sourceFingerprint | generationRequestId)
+ *
+ * ⚠️ 해시만 저장한다 — 요청 id · 지문 원문은 행에 남지 않는다.
+ */
+export async function analysisIdempotencyKeyOf(parts: {
+  userId: string;
+  targetId: string | null;
+  analysisType: string;
+  sourceFingerprint: string | null;
+  generationRequestId: string;
+}): Promise<string> {
+  const joined = [
+    parts.userId.toLowerCase(),
+    parts.targetId ?? '-',
+    parts.analysisType,
+    parts.sourceFingerprint ?? '-',
+    parts.generationRequestId,
+  ].join('|');
+  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(joined)));
+  return Array.from(hash, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }

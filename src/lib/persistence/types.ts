@@ -73,16 +73,41 @@ export interface CloudEvent {
 
 export type AnalysisRunType = 'mirror_history' | 'deep_report';
 
-/** '당시 결과'. 만든 뒤 수정하지 않는다 */
+/**
+ * '당시 결과'. 만든 뒤 수정하지 않는다.
+ *
+ * ⚠️ 허용 칸은 이것뿐이다(v1.47 Clean Base §7). Target/Profile 전체 JSON · 사건 본문 · 사진 ·
+ *    Provider raw · prompt · debug payload는 스냅샷에도 칸에도 없다.
+ */
 export interface AnalysisRun {
   id: string;
   targetId: string | null;
   type: AnalysisRunType;
+  /** renderedResult · candidateIds · usedEvidenceRefs · usedEventIds (Deep Report) */
   snapshot: Record<string, unknown>;
   sourceFingerprint: string | null;
+  promptVersion: string | null;
+  model: string | null;
+  /** 재시도 중복 방지 키(sha256 hex). History처럼 id가 결정론인 행은 null */
+  idempotencyKey: string | null;
   appVersion: string | null;
-  modelMeta: Record<string, unknown> | null;
   createdAt: string;
+}
+
+/**
+ * 새로 생성된 분석 결과. **id는 저장소가 새 random UUID로 만든다.**
+ *
+ * `generationRequestId`는 '한 번의 생성'의 이름이다 — 같은 결과를 다시 저장하는 retry는 같은 값이고,
+ * 사용자가 다시 분석하면 새 값이다. 저장되지 않고 idempotency key 해시에만 들어간다.
+ */
+export interface GeneratedAnalysisRun {
+  targetId: string | null;
+  type: AnalysisRunType;
+  snapshot: Record<string, unknown>;
+  sourceFingerprint: string | null;
+  promptVersion: string | null;
+  model: string | null;
+  generationRequestId: string;
 }
 
 export interface SavedRelationshipSummary {

@@ -2,14 +2,14 @@ import type { RelationshipDeepReport, RelationshipHistoryEntry } from '@/types';
 
 import { BINARY_KEY_PATTERN } from './cloudWriteBudget';
 import { analysisRunIdOfHistoryEntry } from './ids';
-import { fail, ok, type AnalysisRun, type Result } from './types';
+import { fail, ok, type AnalysisRun, type GeneratedAnalysisRun, type Result } from './types';
 
 /**
  * v1.47 — analysis_runs에 **들어가면 안 되는 것**을 코드로 막는다
  *
  * ```
- * 저장   accepted/rendered output (화면에 실제로 보인 결과)
- * 금지   raw Provider 응답 · 숨은 추론/사고 과정 · 프롬프트 · 원본 사건/상대 전체 복제 · 사진 · 생년월일
+ * 저장   accepted/rendered output (화면에 실제로 보인 결과) · candidate id · evidence ref · event id
+ * 금지   raw Provider 응답 · 숨은 추론/사고 과정 · 프롬프트 · 원본 사건/상대/나 전체 복제 · 사진 · 생년월일 · debug
  * ```
  *
  * 키 이름으로 막는다 — 호출부가 실수로 통째 객체를 넘겨도 저장 전에 거절된다.
@@ -94,41 +94,54 @@ export function validateSnapshot(
  *
  * History 항목은 설계상 이미 '그때 화면에 보인 요약'이고 자유서술 · 사진 원문 · 생년월일을
  * 담지 않는다(`types/index.ts` RelationshipHistoryEntry). 그대로 옮기되 guard를 한 번 더 통과시킨다.
+ *
+ * ⚠️ id는 **사용자 id가 섞인** 결정론 UUID다 — 같은 기기의 History를 두 계정이 각각 저장해도
+ *    id가 겹치지 않는다(v1.47 Clean Base §12).
  */
 export async function historyEntryRunInput(
   entry: RelationshipHistoryEntry,
+  userId: string,
 ): Promise<Omit<AnalysisRun, 'appVersion'>> {
   const { aiMeta } = entry.coreInsight;
   return {
-    id: await analysisRunIdOfHistoryEntry(entry.id),
+    id: await analysisRunIdOfHistoryEntry(userId, entry.id),
     targetId: null,
     type: 'mirror_history',
     snapshot: { ...entry } as unknown as Record<string, unknown>,
     sourceFingerprint: entry.analysisId,
-    modelMeta: aiMeta ? { mode: aiMeta.mode, promptVersion: aiMeta.promptVersion, generatedAt: aiMeta.generatedAt } : null,
+    promptVersion: aiMeta?.promptVersion ?? null,
+    model: null,
+    idempotencyKey: null,
     createdAt: entry.createdAt,
   };
 }
 
+/** §7 — Deep Report 스냅샷의 최상위 칸. 이 네 개 말고는 없다 */
+export const DEEP_REPORT_SNAPSHOT_KEYS = ['renderedResult', 'candidateIds', 'usedEvidenceRefs', 'usedEventIds'] as const;
+
 /**
- * Storage Capacity Guard §4 · §9 — Deep Report **렌더된 결과**를 '당시 결과'로 남길 최소 모양.
+ * Deep Report **렌더된 결과**를 '당시 결과'로 남길 최소 모양 (Storage Capacity Guard §4 · Clean Base §7).
  *
  * ```
- * 담는다   candidate id · 판정 · 화면 문장 · evidence ref · event id · actionPlan 문장 · 모델/버전
- * 안 담는다 reportedScenes(사건 원문) · 렌즈 전체 · 챕터 전체 · Provider 원문 · 프롬프트
+ * renderedResult     화면 문장(카드 · actionPlan) + 판정 · candidate id · evidence ref · event id
+ * candidateIds       Top 카드 id
+ * usedEvidenceRefs   카드 · actionPlan이 쓴 근거 ref (중복 제거)
+ * usedEventIds       참조한 사건 id — 사건 본문은 relationship_events 행에만 있다
+ * 칸(column)         sourceFingerprint · promptVersion · model
+ * 안 담는다          reportedScenes(사건 원문) · 렌즈 전체 · 챕터 전체 · Provider 원문 · 프롬프트 · mode
  * ```
  *
  * ⚠️ 사건 수가 늘어도 이 스냅샷은 커지지 않는다 — 사건은 id로만 참조한다(fixture 10/100/500).
- * ⚠️ 저장할 때는 `forbiddenTexts`에 사건 본문을 넘겨 한 번 더 확인한다(analysisRunRepository.record).
+ * ⚠️ 저장할 때는 `forbiddenTexts`에 사건 본문을 넘겨 한 번 더 확인한다(analysisRunRepository.recordGenerated).
  */
 export function deepReportRunInput(source: {
-  id: string;
   targetId: string | null;
   report: RelationshipDeepReport;
   promptVersion: string | null;
-  mode: string | null;
+  model: string | null;
   sourceFingerprint: string | null;
-}): Omit<AnalysisRun, 'appVersion' | 'createdAt'> {
+  generationRequestId: string;
+}): GeneratedAnalysisRun {
   const candidates = source.report.candidates.map((candidate) => ({
     id: candidate.id,
     verdict: candidate.verdict,
@@ -162,17 +175,20 @@ export function deepReportRunInput(source: {
         usedEventIds: plan.usedEventIds,
       }
     : null;
+  const refs: unknown[] = [...candidates.flatMap((candidate) => candidate.evidenceRefs), ...(plan?.usedEvidenceRefs ?? [])];
+  const usedEvidenceRefs = [...new Map(refs.map((ref) => [JSON.stringify(ref), ref])).values()];
   return {
-    id: source.id,
     targetId: source.targetId,
     type: 'deep_report',
     snapshot: {
+      renderedResult: { candidates, actionPlan },
       candidateIds: candidates.map((candidate) => candidate.id),
-      candidates,
-      actionPlan,
+      usedEvidenceRefs,
       usedEventIds: [...new Set([...candidates.flatMap((candidate) => candidate.eventIds), ...(plan?.usedEventIds ?? [])])],
     },
     sourceFingerprint: source.sourceFingerprint,
-    modelMeta: { promptVersion: source.promptVersion, mode: source.mode },
+    promptVersion: source.promptVersion,
+    model: source.model,
+    generationRequestId: source.generationRequestId,
   };
 }

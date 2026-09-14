@@ -12,6 +12,7 @@ import {
 } from 'react';
 
 import { createAnalysisRunRepository } from '@/lib/persistence/analysisRunRepository';
+import { applyMigrationLinks, cloudIdsForUser, forgetUser, readCloudLinks, writeCloudLinks } from '@/lib/persistence/cloudLinks';
 import { hasMeaningfulSelfProfile, migrateLocalData, type MigrationReport } from '@/lib/persistence/localMigration';
 import { createProfileRepository } from '@/lib/persistence/profileRepository';
 import { createRelationshipTargetRepository } from '@/lib/persistence/relationshipTargetRepository';
@@ -141,14 +142,20 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   /** ⚠️ 사용자가 '계정에 저장하기'를 눌렀을 때만 부른다 — consent:true의 근거가 그 클릭이다 */
   const saveDeviceData = useCallback(async (): Promise<MigrationReport | null> => {
     const client = getBrowserSupabase();
-    if (!client || !hydrated) return null;
+    const userId = userIdRef.current;
+    if (!client || !hydrated || !userId) return null;
     setMigrationRunning(true);
     try {
       const report = await migrateLocalData({
         gateway: createSupabaseGateway(client),
         snapshot: { answers, history: entries, registry: ensureTargetRegistry() },
         consent: true,
+        /* local/cloud id 분리 — 이 사용자가 이미 저장한 관계만 같은 cloud id로 잇는다(다른 계정 link는 보지 않는다) */
+        existingCloudIds: cloudIdsForUser(readCloudLinks(), userId),
+        expectedUserId: userId,
       });
+      /* 동의해서 계정에 들어간 상대마다 link — 이후 그 관계의 분석은 다시 묻지 않고 남길 수 있다 */
+      writeCloudLinks(applyMigrationLinks(readCloudLinks(), userId, report.links, new Date().toISOString()));
       setMigrationReport(report);
       return report;
     } finally {
@@ -179,6 +186,9 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     }
     const profile = await createProfileRepository(gateway).remove();
     if (!profile.ok) return { ok: false, reason: 'failed' };
+    /* 이 사용자의 link만 지운다 — 같은 기기의 다른 계정 link는 그대로 */
+    const userId = userIdRef.current;
+    if (userId) writeCloudLinks(forgetUser(readCloudLinks(), userId));
     setMigrationReport(null);
     return { ok: true };
   }, []);

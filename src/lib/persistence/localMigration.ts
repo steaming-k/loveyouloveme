@@ -3,7 +3,7 @@ import type { RelationshipEvent, RelationshipHistoryEntry, SessionAnswers } from
 import { createAnalysisRunRepository } from './analysisRunRepository';
 import { estimateUtf8Bytes } from './cloudWriteBudget';
 import type { PersistenceGateway } from './gateway';
-import { cloudEventIdOf } from './ids';
+import { cloudEventIdOf, cloudTargetIdOf } from './ids';
 import {
   eventRowOf,
   profileRowOf,
@@ -35,6 +35,8 @@ import type {
  * 대상               나 · 지금 상대 · 보관된 상대 · 상대별 사건 · History 스냅샷
  * 제외               사진 · 사진 관찰 결과 · AI 캐시 · analytics (필드 단위 allowlist로 옮긴다)
  * 단위               repository별 작은 write — 거대한 JSON 하나로 올리지 않는다
+ * id 분리            로컬 상대 id를 cloud 소유 id로 쓰지 않는다 — (userId, localTargetId) → cloudTargetId
+ *                    같은 기기를 다른 계정이 저장하면 cloud id가 다르다(cloudLinks.ts)
  * 멱등               stable id + insert-if-absent. 새로고침 · 재로그인 · 재시도해도 중복 없음
  * 이미 다른 값        덮어쓰지 않고 conflict로 보고한다
  * 너무 큰 · 사진 섞인 항목  그 항목만 거부(rejected)하고 나머지는 계속한다. 잘라서 올리지 않는다
@@ -49,6 +51,7 @@ export interface LocalDataSnapshot {
 }
 
 export interface PlannedTarget {
+  /** 이 기기의 상대 슬롯 id(`lym.targets.v1`). cloud id가 아니다 */
   id: string;
   label: string | null;
   relationStatus: SessionAnswers['status'];
@@ -147,13 +150,15 @@ export interface MigrationReport {
   rejected: { entity: MigrationEntity; id: string; issues: CloudPayloadIssue[] }[];
   failures: { entity: MigrationEntity; id: string; kind: PersistenceErrorKind }[];
   bytes: MigrationBytes;
+  /** 계정에 들어가 있는(created · unchanged) 상대의 local ↔ cloud id. 호출부가 이 사용자의 link로 남긴다 */
+  links: { localTargetId: string; cloudTargetId: string }[];
 }
 
 function emptyCounts(): MigrationCounts {
   return { profile: 0, targets: 0, events: 0, analysisRuns: 0 };
 }
 
-function report(status: MigrationStatus): MigrationReport {
+export function emptyMigrationReport(status: MigrationStatus): MigrationReport {
   return {
     status,
     created: emptyCounts(),
@@ -162,6 +167,7 @@ function report(status: MigrationStatus): MigrationReport {
     rejected: [],
     failures: [],
     bytes: { ...emptyCounts(), total: 0 },
+    links: [],
   };
 }
 
@@ -170,24 +176,45 @@ function isRejection(error: PersistenceError): boolean {
   return error.kind === 'payload_rejected' || error.kind === 'invalid';
 }
 
-export async function migrateLocalData(input: {
+interface MigrationOptions {
   gateway: PersistenceGateway;
-  snapshot: LocalDataSnapshot;
-  /** 사용자가 '계정에 저장하기'를 눌렀을 때만 true */
-  consent: boolean;
   /** 사건 created_at 기준 시각(순서 보존용) */
   now?: Date;
-}): Promise<MigrationReport> {
-  if (input.consent !== true) return report('consent_required');
+  /** 이 사용자가 이미 저장한 관계의 localTargetId → cloudTargetId. 없으면 (userId, localTargetId)에서 만든다 */
+  existingCloudIds?: Readonly<Record<string, string>>;
+  /** 동의를 받은 사용자. 세션 사용자가 다르면(도중에 계정 전환) 아무것도 올리지 않는다 */
+  expectedUserId?: string;
+}
+
+export async function migrateLocalData(
+  input: MigrationOptions & {
+    snapshot: LocalDataSnapshot;
+    /** 사용자가 '계정에 저장하기'를 눌렀을 때만 true */
+    consent: boolean;
+  },
+): Promise<MigrationReport> {
+  if (input.consent !== true) return emptyMigrationReport('consent_required');
 
   const plan = planLocalMigration(input.snapshot);
-  if (!plan.profile && plan.targets.length === 0 && plan.history.length === 0) return report('nothing_to_migrate');
+  if (!plan.profile && plan.targets.length === 0 && plan.history.length === 0) {
+    return emptyMigrationReport('nothing_to_migrate');
+  }
+  return migratePlan({ ...input, plan });
+}
 
-  const { gateway } = input;
+/**
+ * 동의가 이미 확인된 plan을 올린다 — 기기 전체 저장(`migrateLocalData`)과 '이 관계 저장하기'
+ * (`cloudLinks.saveRelationshipToCloud`)가 **같은 경로**를 쓴다.
+ */
+export async function migratePlan(input: MigrationOptions & { plan: MigrationPlan }): Promise<MigrationReport> {
+  const { gateway, plan } = input;
   const uid = await gateway.currentUserId();
-  if (!uid.ok) return report(uid.error.kind === 'offline' ? 'offline' : 'unauthorized');
+  if (!uid.ok) return emptyMigrationReport(uid.error.kind === 'offline' ? 'offline' : 'unauthorized');
+  if (input.expectedUserId !== undefined && input.expectedUserId !== uid.value) {
+    return emptyMigrationReport('unauthorized');
+  }
 
-  const result = report('completed');
+  const result = emptyMigrationReport('completed');
   const profiles = createProfileRepository(gateway);
   const targets = createRelationshipTargetRepository(gateway);
   const events = createRelationshipEventRepository(gateway);
@@ -220,17 +247,18 @@ export async function migrateLocalData(input: {
 
   for (const target of plan.targets) {
     if (stopped) break;
-    measure('targets', targetRowOf(uid.value, target));
+    const cloudTargetId = input.existingCloudIds?.[target.id] ?? (await cloudTargetIdOf(uid.value, target.id));
+    measure('targets', targetRowOf(uid.value, { ...target, id: cloudTargetId }));
     const saved = await targets.createIfAbsent({
-      id: target.id,
+      id: cloudTargetId,
       label: target.label,
       relationStatus: target.relationStatus,
       data: target.data,
     });
     if (!saved.ok) {
       /* 같은 id가 계정에서 보이지 않는다 = 다른 계정이 이미 가진 id. 건드리지 않고 충돌로 보고한다 */
-      if (saved.error.kind === 'conflict') result.conflicts.push({ entity: 'target', id: target.id });
-      else failed('target', target.id, saved.error);
+      if (saved.error.kind === 'conflict') result.conflicts.push({ entity: 'target', id: cloudTargetId });
+      else failed('target', cloudTargetId, saved.error);
       /* 상대가 올라가지 않았으면 그 상대의 사건도 올리지 않는다(FK · 섞임 방지) */
       continue;
     }
@@ -243,16 +271,17 @@ export async function migrateLocalData(input: {
       result.unchanged.targets += 1;
     } else {
       /* 계정의 상대가 이미 다르면 그 상대에 사건을 섞지 않는다 */
-      result.conflicts.push({ entity: 'target', id: target.id });
+      result.conflicts.push({ entity: 'target', id: cloudTargetId });
       continue;
     }
+    result.links.push({ localTargetId: target.id, cloudTargetId });
 
     for (const [index, event] of target.events.entries()) {
       if (stopped) break;
-      const id = await cloudEventIdOf(target.id, event.id);
+      const id = await cloudEventIdOf(cloudTargetId, event.id);
       const createdAt = new Date(base + index).toISOString();
-      measure('events', eventRowOf(uid.value, target.id, id, event, createdAt));
-      const stored = await events.createIfAbsent(target.id, event, { id, createdAt });
+      measure('events', eventRowOf(uid.value, cloudTargetId, id, event, createdAt));
+      const stored = await events.createIfAbsent(cloudTargetId, event, { id, createdAt });
       if (!stored.ok) {
         if (stored.error.kind === 'conflict') result.conflicts.push({ entity: 'event', id });
         else failed('event', id, stored.error);
@@ -277,7 +306,7 @@ export async function migrateLocalData(input: {
   );
   for (const entry of plan.history) {
     if (stopped) break;
-    const run = await historyEntryRunInput(entry);
+    const run = await historyEntryRunInput(entry, uid.value);
     measure('analysisRuns', runRowOf(uid.value, run));
     const stored = await runs.record({ ...run, forbiddenTexts: sourceTexts });
     if (!stored.ok) {

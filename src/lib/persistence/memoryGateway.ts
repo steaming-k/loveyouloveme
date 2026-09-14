@@ -1,5 +1,6 @@
 import {
   PRIMARY_KEY,
+  type AnalysisRunRow,
   type PersistenceRows,
   type PersistenceTable,
   type RelationshipEventRow,
@@ -21,6 +22,7 @@ import { fail, ok, type Result } from './types';
  * CHECK        event type 목록 · description 1..4000 · label 1..40
  * revision     UPDATE는 revision = expected일 때만, revision + 1
  * 불변         analysis_runs UPDATE 금지(정책 없음 + 트리거)
+ * UNIQUE       analysis_runs(user_id, idempotency_key) · prompt_version/model 1..80 · key sha256 hex
  * ```
  *
  * ⚠️ 실제 Postgres RLS를 검증하는 것이 아니다. 실제 검증은 dev/staging 프로젝트에서
@@ -79,6 +81,13 @@ function checkRow<T extends PersistenceTable>(db: MemoryDatabase, table: T, row:
     const event = row as RelationshipEventRow;
     if (!EVENT_TYPES.has(event.type)) return fail('invalid', 'check:type');
     if (event.description.length < 1 || event.description.length > 4000) return fail('invalid', 'check:description');
+  }
+  if (table === 'analysis_runs') {
+    const run = row as AnalysisRunRow;
+    if (run.idempotency_key !== null && !/^[0-9a-f]{64}$/.test(run.idempotency_key)) return fail('invalid', 'check:idempotency_key');
+    for (const text of [run.prompt_version, run.model]) {
+      if (text !== null && (text.length < 1 || text.length > 80)) return fail('invalid', 'check:prompt_version_model');
+    }
   }
   if (table === 'relationship_events' || table === 'analysis_runs') {
     const child = row as { target_id: string | null; user_id: string };
@@ -152,6 +161,16 @@ export function createMemoryGateway(db: MemoryDatabase, initialUserId: string | 
       const key = keyOf(table, full);
       /* ON CONFLICT DO NOTHING — 다른 사용자의 행이어도 내용은 드러나지 않는다 */
       if (list.some((existing) => keyOf(table, existing) === key)) return ok({ inserted: false });
+      /* UNIQUE(user_id, idempotency_key) — 같은 생성 결과의 두 번째 INSERT는 23505(PostgREST upsert onConflict id도 같다) */
+      if (table === 'analysis_runs') {
+        const run = full as unknown as AnalysisRunRow;
+        const duplicated =
+          run.idempotency_key !== null &&
+          db.tables.analysis_runs.some(
+            (existing) => existing.user_id === run.user_id && existing.idempotency_key === run.idempotency_key,
+          );
+        if (duplicated) return fail('conflict', 'postgrest:23505');
+      }
       const checked = checkRow(db, table, full);
       if (!checked.ok) return fail(checked.error.kind, checked.error.message);
       list.push(full);

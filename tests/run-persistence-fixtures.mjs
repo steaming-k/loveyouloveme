@@ -214,6 +214,18 @@ async function schemaChecks() {
   check('analysis_runs — raw 응답 컬럼 없음', !/raw_response|provider_response|reasoning/.test(sql));
   check('SQL에 service_role 사용 없음', !/service_role/.test(sql));
   check('Supabase Storage bucket · storage 스키마를 쓰지 않는다', !/storage\./i.test(sql));
+  check(
+    'analysis_runs — prompt_version · model · idempotency_key 컬럼 + UNIQUE(user_id, idempotency_key)',
+    /add column prompt_version\s+text/.test(sql) &&
+      /add column model\s+text/.test(sql) &&
+      /add column idempotency_key text/.test(sql) &&
+      /add constraint analysis_runs_user_idempotency unique \(user_id, idempotency_key\)/.test(sql),
+  );
+  check('analysis_runs — model_meta JSONB 제거(작은 값은 컬럼)', /alter table public\.analysis_runs drop column model_meta/.test(sql));
+  check(
+    'analysis_runs policy migration — 새 정책 · grant · RLS 변경 없음',
+    !/create policy|grant |disable row level security/.test(sql.slice(sql.indexOf('add column prompt_version'))),
+  );
 
   const env = await readFile(join(ROOT, '.env.example'), 'utf8');
   check('.env.example — NEXT_PUBLIC_SUPABASE_URL / ANON_KEY 빈 값', /^NEXT_PUBLIC_SUPABASE_URL=$/m.test(env) && /^NEXT_PUBLIC_SUPABASE_ANON_KEY=$/m.test(env));
@@ -257,6 +269,17 @@ async function sourceChecks() {
     ),
   );
   check('persistence mapper에 slice() 절단이 없다', !/\.slice\(/.test(codes.get('src/lib/persistence/mappers.ts') ?? ''));
+  const migrationCode = codes.get('src/lib/persistence/localMigration.ts') ?? '';
+  check(
+    'local/cloud id 분리 — migration은 cloudTargetIdOf로 cloud id를 만들고 로컬 id를 cloud id로 쓰지 않는다',
+    /cloudTargetIdOf\(uid\.value, target\.id\)/.test(migrationCode) && !/createIfAbsent\(\{\s*id: target\.id/.test(migrationCode),
+  );
+  const linkWriters = [...codes].filter(([, text]) => /writeCloudLinks\(/.test(text)).map(([path]) => path).sort();
+  check(
+    'cloud link 저장 = cloudLinks 정의 · AccountProvider(동의 저장 · 계정 저장분 삭제 뒤)뿐',
+    linkWriters.join(',') === 'src/lib/persistence/cloudLinks.ts,src/state/AccountProvider.tsx',
+    linkWriters,
+  );
   const provider = read('src/state/AccountProvider.tsx');
   const providerCode = codes.get('src/state/AccountProvider.tsx') ?? '';
   const providerRender = '  return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;';
@@ -326,6 +349,7 @@ const SCENARIOS = [
   ['migration_conflict', 'local-migration · 계정에 이미 다른 값'],
   ['target_switch', 'saved-target · target-switch (0 / 1 / 3 / 10)'],
   ['analysis_run', 'analysis-run'],
+  ['analysis_policy', 'analysis-run policy · ANALYSIS-01~05 · IDEMP-01~06'],
   ['sync_conflict', 'sync-conflict'],
   ['migration_offline', 'failure/offline · migration'],
   ['failure_offline', 'failure/offline · supabase gateway'],

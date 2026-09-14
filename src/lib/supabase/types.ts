@@ -49,7 +49,11 @@ export interface AnalysisRunRow {
   result_snapshot: Json;
   source_fingerprint: string | null;
   app_version: string | null;
-  model_meta: Json | null;
+  /* 20260915000000_v147_analysis_run_policy.sql — model_meta(jsonb)를 대체한다 */
+  prompt_version: string | null;
+  model: string | null;
+  /** sha256 hex · UNIQUE(user_id, idempotency_key). History처럼 id가 결정론인 행은 null */
+  idempotency_key: string | null;
   created_at: string;
 }
 
