@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { Button } from '@/components/common/Button';
 import { ConfirmModal } from '@/components/common/ConfirmModal';
+import { UtRatingCard } from '@/components/ut/UtRatingCard';
 import { usePremiumAccess, useUtMode } from '@/hooks/useUtMode';
 import { AI_DEBUG, AI_MODE_HINT } from '@/lib/env';
 import { resolvePremiumAccess } from '@/lib/premiumAccess';
@@ -117,6 +118,22 @@ export function UtOperatorConsole() {
         <Button variant="secondary" onClick={() => void runCheck()}>
           다시 점검
         </Button>
+      </section>
+
+      {/*
+        260914 UT 후속 P1 Final — S09 '관찰 유사도' 문항은 참가자 입력 흐름을 멈춰서 여기로 옮겼다.
+        진행자가 사진 관찰 단계를 지난 뒤 구두로 묻고 기록한다. 이벤트 이름은 그대로라 기존 지표와 이어진다.
+        ⚠️ `/ut`는 dev 서버 · UT 배포에서만 열린다(Production 404) — 참가자에게 보이지 않는다.
+      */}
+      <section className="flex flex-col gap-2">
+        <p className="text-[11px] font-semibold tracking-[0.06em] text-ink-muted">진행자 기록 · 인터뷰 문항</p>
+        <UtRatingCard
+          question="(S09 뒤 구두 질문) 사진 관찰 결과가 평소의 나와 얼마나 비슷했어?"
+          event="ut_analysis_similarity_rate"
+          properties={{ task: 'observed', recorded_by: 'operator' }}
+          lowLabel="전혀 다름"
+          highLabel="매우 비슷함"
+        />
       </section>
 
       <section className="flex flex-col gap-2">

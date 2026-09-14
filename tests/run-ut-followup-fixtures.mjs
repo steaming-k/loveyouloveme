@@ -312,6 +312,42 @@ check(
     /router\.push\(resolveReturnDestination\(searchParams, ROUTES\.declared\(1\)\)\);/.test(observedPage),
 );
 
+/* ═════════════════════════════ P1 Final — S09 UT 평가 제거 */
+
+console.log('\nP1F — 사진 관찰 단계에서 UT 평가 제거');
+
+const photosPage = await src('src/app/profile/photos/page.tsx');
+const utConsole = await src('src/components/ut/UtOperatorConsole.tsx');
+const utRatingCard = await src('src/components/ut/UtRatingCard.tsx');
+
+check(
+  'P1F-01 참가자 S09 — UT 유사도 평가 카드 · 문항 · 이벤트 0',
+  !/UtRatingCard|ut_analysis_similarity_rate|얼마나 비슷해/.test(observedPage),
+);
+check(
+  'P1F-02 S09 관찰 확인 → 바로 다음 질문(Declared 1)',
+  /<Button onClick=\{handleNext\}>확인했어 · 질문으로 계속<\/Button>/.test(observedPage) &&
+    /router\.push\(resolveReturnDestination\(searchParams, ROUTES\.declared\(1\)\)\);/.test(observedPage),
+);
+check(
+  'P1F-03 사진 없음 → 질문으로 (사진 입력 건너뛰기 · 관찰 0개 primary)',
+  /const handleSkip = \(\) => \{[\s\S]{0,200}router\.push\(resolveReturnDestination\(searchParams, ROUTES\.declared\(1\)\)\);/.test(photosPage) &&
+    emptyFooter.indexOf('질문으로 계속하기') < emptyFooter.indexOf('사진 더 고르기'),
+);
+check(
+  'P1F-04 운영자 경로에 평가 도구 유지 — /ut 콘솔에 같은 이벤트 문항',
+  /<UtRatingCard[\s\S]{0,200}event="ut_analysis_similarity_rate"/.test(utConsole),
+);
+const participantRatingHosts = [];
+for (const file of ['src/app/profile/observed/page.tsx', 'src/app/profile/photos/page.tsx', 'src/app/profile/analyzing/page.tsx', 'src/app/profile/past/[step]/PastStepView.tsx', 'src/app/target/page.tsx', 'src/app/profile/declared/[step]/DeclaredStepView.tsx']) {
+  if (/UtRatingCard/.test(await src(file))) participantRatingHosts.push(file);
+}
+check(
+  'P1F-05 참가자 입력 경로에 평가 메타 UI 0 · 평가 카드는 UT가 아니면 렌더하지 않음 · /ut Production 404 유지',
+  participantRatingHosts.length === 0 && /if \(!utMode\) return null;/.test(utRatingCard),
+  participantRatingHosts,
+);
+
 const after = await guardCount();
 check(`실제 Provider 호출 0 증가 (${before} → ${after})`, after === before);
 

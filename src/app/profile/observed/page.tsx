@@ -13,7 +13,6 @@ import { useToast } from '@/components/common/ToastProvider';
 import { Lovy } from '@/components/lovy/Lovy';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { ObservationCard } from '@/components/profile/ObservationCard';
-import { UtRatingCard } from '@/components/ut/UtRatingCard';
 import { LOVY_LINES, PRIVACY } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { observedEvidenceLabel } from '@/lib/logic/observed';
@@ -130,10 +129,6 @@ function ObservedResultView() {
    * 이 값이 없으므로(optional) null로 두고, 없으면 예전처럼 mode만 보고 말한다.
    */
   const observedState = analysis?.observedState ?? null;
-  const repeatedCount = useMemo(
-    () => traits.filter((trait) => trait.signal && trait.signal.strength !== 'single').length,
-    [traits],
-  );
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -378,20 +373,12 @@ function ObservedResultView() {
             </ul>
           ) : null}
 
-          {/* §44 — UT Mode에서만. '나 같다' 유사도는 관찰 결과를 본 직후에 묻는 게 맞다 */}
-          <UtRatingCard
-            question="이 관찰 결과가 평소의 나와 얼마나 비슷해?"
-            event="ut_analysis_similarity_rate"
-            properties={{
-              task: 'observed',
-              mode,
-              trait_count: traits.length,
-              repeated_signal_count: repeatedCount,
-              usable_evidence_count: coverage?.usableImageCount ?? 0,
-            }}
-            lowLabel="전혀 다름"
-            highLabel="매우 비슷함"
-          />
+          {/*
+            260914 UT 후속 P1 Final — S09의 UT 유사도 평가 카드를 **참가자 화면에서 뺐다.**
+            입력 단계 한가운데 1~5 척도가 끼면 '확인 → 바로 다음 질문' 흐름이 멈춘다(P1 보고 잔여 리스크).
+            같은 문항 · 같은 이벤트(`ut_analysis_similarity_rate`)는 `/ut` 운영자 콘솔로 옮겼다 —
+            진행자가 참가자에게 구두로 묻고 기록한다.
+          */}
 
           <NoticeBox>{PRIVACY.aiResult}</NoticeBox>
           {/*
