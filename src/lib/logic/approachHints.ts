@@ -24,7 +24,11 @@ export function describeTargetEvidence(ref: TargetEvidenceRef, target: TargetPro
 
 /** 카드 상단 카테고리 라벨(§20/§27) */
 export const APPROACH_HINT_KIND_LABEL: Record<ApproachHintKind, string> = {
-  activity: '같이 해볼 것',
+  /*
+    260914 P2-6 — '같이 해볼 것'이 UT에서 교과서적이라는 반응이 나왔다. 관심사 하나에 기대는
+    누구에게나 가능한 제안이라 **가벼운 아이디어**로 위계를 낮춘다(궁합 화면에서 첫 카드가 되지 않는다).
+  */
+  activity: '가벼운 아이디어 · 같이 해볼 것',
   communication: '대화할 때 참고할 것',
   pace: '관계 속도를 맞출 때 참고할 것',
   affection: '관계 속도를 맞출 때 참고할 것',

@@ -14,7 +14,7 @@ import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { EmptyStateView, FillDataRow } from '@/components/common/StateScreens';
 import { EvidenceList, PageHeading, Tag } from '@/components/common/primitives';
-import { ResultSectionNav } from '@/components/common/ResultSectionNav';
+import { Lovy } from '@/components/lovy/Lovy';
 import { useToast } from '@/components/common/ToastProvider';
 import { RepeatedSignalNotice } from '@/components/history/PastObservationNote';
 import { MirrorComparisonRow, MirrorLegend } from '@/components/mirror/MirrorComparisonRow';
@@ -444,10 +444,30 @@ function MirrorView() {
             }
           />
 
-          <ResultSectionNav
-            event="result_anchor_navigation"
-            items={[{ id: RESULT_ANCHORS.mirrorCoreInsight, label: '가장 중요한 관찰' }]}
-          />
+          {/*
+            260914 P2-2 — **takeaway-first.** '러비가 가장 눈여겨본 부분'이 비교 행 5개 아래에 있어서,
+            핵심 한 문장을 보려면 입력 비교를 다 지나야 했다(그래서 이 자리에 '가장 중요한 관찰'로
+            점프하는 칩이 있었다). 핵심 문장을 제목 바로 아래로 올리고 점프 칩은 뺐다 — anchor id는 그대로다.
+            근거 목록 · AI 설명은 비교 행 뒤 원래 자리에 남는다(결론 → 비교 → 이유).
+          */}
+          <section
+            id={RESULT_ANCHORS.mirrorCoreInsight}
+            className="flex flex-col gap-3 rounded-card bg-brand-tint px-[18px] py-5"
+          >
+            <p className="flex items-center gap-2 text-[10.5px] font-semibold tracking-[0.1em] text-brand-pressed">
+              <Lovy pose="note" size={28} decorative />
+              러비가 가장 눈여겨본 부분
+            </p>
+            <h2 className="text-[21px] font-semibold leading-[1.5] tracking-[-0.5px] keep-all text-brand-ink">
+              {headline}
+            </h2>
+            {edited ? (
+              <p className="text-[11.5px] text-brand-pressed">
+                네가 고친 문장이야. 러비의 원래 관찰도 기록에 함께 저장할게 — 아래 근거는
+                그대로야.
+              </p>
+            ) : null}
+          </section>
 
           {/*
             v1.41 §39.6 — **근거가 아직 과거뿐인 `dating`·`long_term`에게만** 보인다.
@@ -516,36 +536,10 @@ function MirrorView() {
 
           {repeated.length > 0 ? <RepeatedSignalNotice signals={repeated} /> : null}
 
-          <section
-            id={RESULT_ANCHORS.mirrorCoreInsight}
-            className="flex flex-col gap-3 rounded-card bg-brand-tint px-[18px] py-5"
-          >
-            <p className="text-[10.5px] font-semibold tracking-[0.1em] text-brand-pressed">
-              러비가 가장 눈여겨본 부분
-            </p>
-            <h2 className="text-[21px] font-semibold leading-[1.5] tracking-[-0.5px] keep-all text-brand-ink">
-              {headline}
-            </h2>
-            {/*
-              v1.43 §48.6 — **카피를 화면 사실에 맞췄다.**
-
-              이전 문구는 `러비의 원래 관찰은 아래 근거와 함께 남겨뒀어`였다. §48의
-              게이트가 Core AI 서술을 렌더에서 빼면 **아래에 남는 것은 결정론 근거
-              목록뿐**이고, 러비의 원래 관찰 문장은 화면에 없다. 원래 관찰이 실제로
-              남는 곳은 **저장을 눌렀을 때의 관찰 기록**이다
-              (`coreInsight.original` — `buildHistoryEntry`).
-
-              ⚠️ 문구를 그대로 두는 것이 더 작은 변경이지만, 그러면 화면이 없는 것을
-              있다고 말한다. v1.43이 닫는 것이 정확히 그 종류의 거짓이다.
-            */}
-            {edited ? (
-              <p className="text-[11.5px] text-brand-pressed">
-                네가 고친 문장이야. 러비의 원래 관찰도 기록에 함께 저장할게 — 아래 근거는
-                그대로야.
-              </p>
-            ) : null}
-          </section>
-
+          {/*
+            v1.43 §48.6 — 고친 문장 안내 카피('아래 근거는 그대로야')는 화면 사실에 맞춘 것이다.
+            260914 P2-2에서 핵심 문장 블록은 위로 올라갔고, 근거 · AI 설명은 여기 그대로 남는다.
+          */}
           <CoreInsightNarrativeView
             core={canUseAiAxisNarrative(focusInsight) ? narrative.data?.core : undefined}
             status={narrative.status}

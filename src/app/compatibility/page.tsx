@@ -1,6 +1,6 @@
 'use client';
 
-import { useUtMode } from '@/hooks/useUtMode';
+import { usePremiumAccess, useUtMode } from '@/hooks/useUtMode';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
 
@@ -85,6 +85,7 @@ import {
   usePastObservation,
 } from '@/hooks/useAnalysis';
 import { useShare } from '@/hooks/useShare';
+import type { ApproachHint } from '@/types';
 import { useSession } from '@/state/SessionProvider';
 
 /**
@@ -103,6 +104,9 @@ import { useSession } from '@/state/SessionProvider';
  * Report Header → 01 SUMMARY → FIRST SURPRISE → 02 METHOD → 03/04 신호 → ....
  * Compatibility Score·4축·tone 판정·Premium·Analytics 정의는 한 줄도 건드리지 않았다.
  */
+/** 260914 P2-6 — 특정 근거 없이도 누구에게나 할 수 있는 힌트 종류 */
+const GENERIC_HINT_KINDS: ReadonlySet<ApproachHint['kind']> = new Set(['activity', 'conversation']);
+
 export default function CompatibilityPage() {
   // v1.11 — CompatibilityView가 Revisit 판정(§11)을 위해 useSearchParams()를 쓴다.
   return (
@@ -150,6 +154,14 @@ function CompatibilityView() {
   const restFriction = result.frictionSignals.slice(1);
   const pastObservation = usePastObservation(topFriction?.key ?? null);
   const approachHints = useApproachHints();
+  /**
+   * 260914 P2-6 — 누구에게나 할 수 있는 제안(관심사 하나 · 근거 없는 질문)은 첫 카드가 되지 않는다.
+   * 상대 4축 근거에 기대는 힌트가 먼저 오고, generic 힌트는 compact 행으로만 남는다.
+   * ⚠️ 힌트 생성(`buildApproachHints`) · 개수는 그대로 — 순서와 위계만 바꾼다.
+   */
+  const orderedHints = [...approachHints].sort(
+    (a, b) => Number(GENERIC_HINT_KINDS.has(a.kind)) - Number(GENERIC_HINT_KINDS.has(b.kind)),
+  );
 
   /*
     v1.40 §37 — 관계 단계에 따라 **같은 사실을 무엇에 쓰는지**가 달라진다.
@@ -233,6 +245,7 @@ function CompatibilityView() {
   const [variant] = useState(() => resolvePriceVariant());
   /** v1.47 — UT에서는 Premium 표면이 flag와 무관하게 열린다(`resolvePremiumAccess`) */
   const utMode = useUtMode();
+  const premiumAccess = usePremiumAccess();
   const crossSourceInsights = useCrossSourceInsights();
   const premiumFeature = premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
     utMode,
@@ -393,11 +406,11 @@ function CompatibilityView() {
     ? RESULT_ANCHORS.compatibilityGood
     : RESULT_ANCHORS.compatibilityFriction;
   /** ⚠️ 사용자에게 의미 없는 내부 식별자(analysisId·fingerprint)는 넣지 않는다 */
-  const reportMeta = [
-    `관찰한 신호 ${result.totalCount}개`,
-    `비교한 신호 ${result.comparedCount}개`,
-    `${formatEntryDate(today.toISOString())} 작성`,
-  ];
+  /*
+    260914 P2-1 — `관찰한 신호 N개 · 비교한 신호 N개`를 뺐다. 입력 개수의 재진술이고, 같은 사실이
+    접힌 점수 근거(`이 점수는 어떻게 나왔어?`)에 이미 있다. 제목 바로 아래가 숫자 설명으로 차지 않게 한다.
+  */
+  const reportMeta = [`${formatEntryDate(today.toISOString())} 작성`];
 /**
    * 조건부로 빠지는 섹션이 있어도 번호가 건너뛰지 않도록 렌더되는 것만 센다.
    *
@@ -522,6 +535,7 @@ function CompatibilityView() {
                 ? ` 모름으로 남긴 ${result.unknownLabels.length}개(${result.unknownLabels.join(' · ')})는 계산에서 빼뒀어.`
                 : ''}{' '}
               항목별 근거는 아래 신호에서 볼 수 있어.
+              {job !== 'ended' ? ` ${jobCopy.scoreUse}` : ''}
             </ReportEvidenceBlock>
           ) : null}
         </div>
@@ -531,9 +545,16 @@ function CompatibilityView() {
           이 문장만 단계에 따라 달라진다. Hook(숫자)을 약화하지 않기 위해 점수와 결과
           한 문장 **뒤**에 둔다 — 기대한 것을 먼저 주고 그 다음에 다르게 해석한다.
         */}
-        <p className="px-1 text-caption keep-all leading-relaxed text-ink-sub">
-          {jobCopy.scoreUse}
-        </p>
+        {/*
+          260914 P2-1 — 점수 사용법 한 줄은 `연애 성공확률이 아니야`(SyncScore)와 같은 일을 해서 첫 viewport에서
+          면책이 두 번 겹쳤다. 접힌 점수 근거 안으로 옮기되, **ended는 그대로 보인다** — '끝난 이유를 설명하지
+          않는다'는 안전 framing이라 접으면 안 된다(Ended Safety).
+        */}
+        {job === 'ended' ? (
+          <p className="px-1 text-caption keep-all leading-relaxed text-ink-sub">
+            {jobCopy.scoreUse}
+          </p>
+        ) : null}
       </div>
 
       <div className="flex flex-col pt-1">
@@ -733,7 +754,16 @@ function CompatibilityView() {
           Paywall을 만들지 않는다"). Score Hero 바로 아래가 아니라 Friction을 다 본 다음이다.
         */}
         {hasFriction && topFriction ? (
-          <div className="mt-6">
+          <div className="mt-6 flex flex-col gap-3">
+          {/*
+            260914 P2-4 — FREE → Premium 전환 지점의 러비 한마디. 무료 본문과 Premium 진입 사이에
+            '여기까지가 무엇이었는지'를 캐릭터 목소리로 끊어준다. 진입 행이 안 보이는 상태면 그리지 않는다.
+          */}
+          {premiumAccess.surfaceEnabled ? (
+            <LovyMessage pose="note" size={36}>
+              여기까지는 답변끼리 나란히 놓고 본 차이야. 더 이어볼지는 네가 정하면 돼.
+            </LovyMessage>
+          ) : null}
           <PremiumEntryRow
             feature={premiumFeature}
             source="compatibility"
@@ -822,13 +852,14 @@ function CompatibilityView() {
               </div>
             ) : approachHints.length > 0 ? (
               <ul className="flex flex-col gap-2.5">
-                {approachHints.map((hint, index) => (
+                {orderedHints.map((hint, index) => (
                   <ApproachHintCard
                     key={hint.id}
                     hint={hint}
                     target={answers.target}
-                    /* §9 — 첫 힌트만 카드. 나머지는 divider 행으로 위계를 낮춘다 */
-                    density={index === 0 ? 'primary' : 'compact'}
+                    /* §9 — 첫 힌트만 카드. 나머지는 divider 행으로 위계를 낮춘다.
+                       260914 P2-6 — generic 힌트는 첫 자리여도 카드가 되지 않는다 */
+                    density={index === 0 && !GENERIC_HINT_KINDS.has(hint.kind) ? 'primary' : 'compact'}
                     onExpand={() => trackEvent('approach_hint_expand', { kind: hint.kind })}
                   />
                 ))}
@@ -1053,6 +1084,16 @@ function CompatibilityView() {
           </div>
 
         </ReportSection>
+
+        {/*
+          260914 P2-4 — 마지막 Next Move 뒤 러비 한마디. 질문 목록을 다 읽고 끝나는 대신, 하나만 골라 가져가라는
+          리듬을 준다. 상대를 향한 질문이 허용되는 단계에서만(`ended`·`none`은 이미 회고 안내가 있다).
+        */}
+        {showOutwardQuestions ? (
+          <LovyMessage pose="note" size={36} className="mt-5">
+            다 해볼 필요 없어. 위에서 하나만 골라 다음 대화에 가져가봐.
+          </LovyMessage>
+        ) : null}
 
         <ReportSection
           id={RESULT_ANCHORS.compatibilityLenses}
