@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 import { createClient } from '@supabase/supabase-js';
 
+import { STATUS_LABEL } from '@/data/labels';
 import { createLogicalRunRegistry } from '@/lib/logicalRun';
 import { createAnalysisRunRepository } from '@/lib/persistence/analysisRunRepository';
 import {
@@ -19,6 +20,7 @@ import {
   sanitizeCloudLinks,
   saveActiveRelationshipWith,
   saveRelationshipToCloud,
+  type CloudLinkState,
   type SavedRelationship,
 } from '@/lib/persistence/cloudLinks';
 import { CLOUD_WRITE_BUDGET, estimateUtf8Bytes, inspectCloudPayload } from '@/lib/persistence/cloudWriteBudget';
@@ -46,6 +48,11 @@ import { createProfileRepository } from '@/lib/persistence/profileRepository';
 import { createRelationshipEventRepository } from '@/lib/persistence/relationshipEventRepository';
 import { createRelationshipTargetRepository } from '@/lib/persistence/relationshipTargetRepository';
 import { SAVE_RELATIONSHIP_COPY, saveRelationshipStage } from '@/lib/persistence/saveRelationshipFlow';
+import {
+  hydrateSavedRelationship,
+  SAVED_RELATIONSHIPS_COPY,
+  savedRelationshipRows,
+} from '@/lib/persistence/savedRelationships';
 import { DEEP_REPORT_SNAPSHOT_KEYS, deepReportRunInput, validateSnapshot } from '@/lib/persistence/snapshotGuard';
 import { createSupabaseGateway } from '@/lib/persistence/supabaseGateway';
 import {
@@ -2160,6 +2167,229 @@ async function scenarioLinkRecovery(body: PersistenceTestRequest) {
   return c.checks;
 }
 
+/* ══════════════════════════════════════════════════════════════════ v1.47 — 저장한 관계 목록 · hydrate (SAVED) */
+
+async function scenarioSavedRelationships(body: PersistenceTestRequest) {
+  const c = checker();
+  const base = answersFrom(body.answers);
+  const db = createMemoryDatabase();
+  const gw = createMemoryGateway(db, USER_A);
+
+  const listRows = async (gateway: PersistenceGateway, current: string | null = null) => {
+    const listed = await createRelationshipTargetRepository(gateway).listSummaries();
+    return listed.ok ? savedRelationshipRows(listed.value, { currentCloudTargetId: current }) : null;
+  };
+
+  const zero = await listRows(gw);
+  c.check(
+    'SAVED-01 · 0개 — 빈 상태 문구(과장 없음)',
+    zero !== null &&
+      zero.length === 0 &&
+      SAVED_RELATIONSHIPS_COPY.emptyTitle === '아직 저장한 관계가 없어.' &&
+      SAVED_RELATIONSHIPS_COPY.emptyDetail === '관계를 저장하면 다음에 다시 볼 수 있어.',
+  );
+
+  const labels: (string | null)[] = ['민수', null, '아주 오래 알고 지낸 동아리 선배라서 별칭이 조금 긴 편인 사람'];
+  let links: CloudLinkState = createCloudLinks();
+  const saved: { cloudTargetId: string; registry: TargetRegistryState }[] = [];
+  for (let index = 0; index < 10; index += 1) {
+    const answers: SessionAnswers = { ...targetAnswers(base, index), status: index === 1 ? 'crush' : 'dating' };
+    const registry: TargetRegistryState = {
+      ...createTargetRegistry(),
+      activeLabel: index < labels.length ? labels[index]! : `관계 ${index + 1}`,
+    };
+    const result = await saveActiveRelationshipWith({ gateway: gw, userId: USER_A, answers, registry, links, now: NOW });
+    links = result.links;
+    saved.push({ cloudTargetId: linkOf(links, USER_A, registry.activeTargetId)?.cloudTargetId ?? '', registry });
+
+    if (index === 0) {
+      await recordAnalysisForRelationship({
+        gateway: gw,
+        decision: { save: true, cloudTargetId: saved[0]!.cloudTargetId },
+        run: deepReportRunInput({
+          targetId: null,
+          report: syntheticDeepReport([], []),
+          promptVersion: 'deep-report-v13-uncertainty-move',
+          model: 'gpt-5.4',
+          sourceFingerprint: 'dr_saved_list',
+          generationRequestId: RUN_IDS[0],
+        }),
+      });
+      const one = await listRows(gw);
+      c.check(
+        'SAVED-02 · 1개 — 별칭 · 관계 상태 · 최근 분석 날짜',
+        result.saved &&
+          one?.length === 1 &&
+          one[0]?.title === '민수' &&
+          one[0]?.statusLabel === STATUS_LABEL.dating &&
+          one[0]?.analysisLine === '최근 분석 9월 14일',
+        one,
+      );
+    }
+    if (index === 2) {
+      const three = await listRows(gw);
+      c.check(
+        'SAVED-03 · 3개 — 이름 없는 관계 · 긴 별칭(자르지 않음) · 분석 있는 관계가 위',
+        three?.length === 3 &&
+          three.some((row) => row.title === SAVED_RELATIONSHIPS_COPY.unnamed) &&
+          three.some((row) => row.title === labels[2]) &&
+          three.filter((row) => row.analysisLine === SAVED_RELATIONSHIPS_COPY.noAnalysis).length === 2 &&
+          three[0]?.title === '민수',
+        three,
+      );
+    }
+  }
+  const started = Date.now();
+  const ten = await listRows(gw, saved[0]!.cloudTargetId);
+  c.check(
+    'SAVED-04 · 10개 — 전부 · id 고유 · 보고 있는 관계 표시',
+    ten?.length === 10 &&
+      new Set(ten.map((row) => row.cloudTargetId)).size === 10 &&
+      ten.filter((row) => row.current).length === 1 &&
+      db.tables.relationship_targets.length === 10,
+    { count: ten?.length, ms: Date.now() - started },
+  );
+
+  const deviceAnswers = targetAnswers(base, 0);
+  const openTwo = await hydrateSavedRelationship({
+    gateway: gw,
+    userId: USER_A,
+    cloudTargetId: saved[2]!.cloudTargetId,
+    answers: deviceAnswers,
+    registry: saved[0]!.registry,
+    links,
+    now: NOW,
+    newAnalysisId: newUuid(),
+  });
+  c.check(
+    'SAVED-05 · 클릭 → 그 관계의 상대 · 사건 · 별칭으로 세션 hydrate · 지금 상대는 기기에 보관',
+    openTwo.ok &&
+      !openTwo.alreadyActive &&
+      eventsBelongTo(openTwo.answers.target.events, 2) &&
+      openTwo.answers.target.contact === targetAnswers(base, 2).target.contact &&
+      openTwo.registry.activeTargetId === saved[2]!.registry.activeTargetId &&
+      openTwo.registry.activeLabel === labels[2] &&
+      openTwo.registry.saved.some((item) => item.id === saved[0]!.registry.activeTargetId && eventsBelongTo(item.events, 0)) &&
+      openTwo.answers.currentAnalysisMeta?.funnelAnalysisId !== deviceAnswers.currentAnalysisMeta?.funnelAnalysisId,
+    openTwo.ok ? openTwo.answers.target.events.map((event) => event.description) : openTwo,
+  );
+
+  if (openTwo.ok) {
+    const common = { gateway: gw, userId: USER_A, now: NOW };
+    const toOne = await hydrateSavedRelationship({
+      ...common,
+      cloudTargetId: saved[1]!.cloudTargetId,
+      answers: openTwo.answers,
+      registry: openTwo.registry,
+      links: openTwo.links,
+      newAnalysisId: newUuid(),
+    });
+    const backTwo = toOne.ok
+      ? await hydrateSavedRelationship({
+          ...common,
+          cloudTargetId: saved[2]!.cloudTargetId,
+          answers: toOne.answers,
+          registry: toOne.registry,
+          links: toOne.links,
+          newAnalysisId: newUuid(),
+        })
+      : null;
+    const again = backTwo?.ok
+      ? await hydrateSavedRelationship({
+          ...common,
+          cloudTargetId: saved[2]!.cloudTargetId,
+          answers: backTwo.answers,
+          registry: backTwo.registry,
+          links: backTwo.links,
+          newAnalysisId: newUuid(),
+        })
+      : null;
+    c.check(
+      'SAVED-06 · A → B → A — 사건 · 상태가 섞이지 않고, 기기 목록에 중복 슬롯이 없다',
+      toOne.ok &&
+        eventsBelongTo(toOne.answers.target.events, 1) &&
+        toOne.answers.status === 'crush' &&
+        backTwo !== null &&
+        backTwo.ok &&
+        eventsBelongTo(backTwo.answers.target.events, 2) &&
+        backTwo.answers.status === 'dating' &&
+        JSON.stringify(backTwo.answers.target) === JSON.stringify(openTwo.answers.target) &&
+        new Set(backTwo.registry.saved.map((item) => item.id)).size === backTwo.registry.saved.length &&
+        !backTwo.registry.saved.some((item) => item.id === backTwo.registry.activeTargetId),
+      { toOne: toOne.ok ? toOne.answers.target.events.map((event) => event.description) : toOne },
+    );
+    c.check(
+      'SAVED-06 · 이미 보고 있는 관계를 다시 열면 세션을 바꾸지 않는다(저장 전 수정 보호)',
+      again !== null && again.ok && again.alreadyActive && backTwo !== null && backTwo.ok && again.answers === backTwo.answers,
+    );
+  }
+
+  gw.setUser(null);
+  const whileOut = await createRelationshipTargetRepository(gw).listSummaries();
+  gw.setUser(USER_A);
+  const afterLogin = await listRows(gw);
+  const freshDevice = await hydrateSavedRelationship({
+    gateway: gw,
+    userId: USER_A,
+    cloudTargetId: saved[0]!.cloudTargetId,
+    answers: createEmptyAnswers(),
+    registry: createTargetRegistry(),
+    links: createCloudLinks(),
+    now: NOW,
+    newAnalysisId: newUuid(),
+  });
+  c.check(
+    'SAVED-07 · logout → 목록 읽기 불가 · login → 같은 목록 · 새 기기에서도 사건 복원 + link 기록',
+    !whileOut.ok &&
+      whileOut.error.kind === 'unauthorized' &&
+      afterLogin?.length === 10 &&
+      freshDevice.ok &&
+      eventsBelongTo(freshDevice.answers.target.events, 0) &&
+      freshDevice.localTargetId === saved[0]!.cloudTargetId &&
+      linkOf(freshDevice.links, USER_A, freshDevice.localTargetId)?.cloudTargetId === saved[0]!.cloudTargetId,
+    freshDevice,
+  );
+  if (freshDevice.ok) {
+    const resave = await saveActiveRelationshipWith({
+      gateway: gw,
+      userId: USER_A,
+      answers: freshDevice.answers,
+      registry: freshDevice.registry,
+      links: freshDevice.links,
+      now: NOW,
+    });
+    c.check(
+      'SAVED-07 · 불러온 관계를 다시 저장해도 중복 행이 없다',
+      resave.saved &&
+        db.tables.relationship_targets.length === 10 &&
+        db.tables.relationship_events.filter((row) => row.target_id === saved[0]!.cloudTargetId).length === 2,
+      resave.report,
+    );
+  }
+
+  const gwB = createMemoryGateway(db, USER_B);
+  const bRows = await listRows(gwB);
+  const bOpensA = await hydrateSavedRelationship({
+    gateway: gwB,
+    userId: USER_B,
+    cloudTargetId: saved[0]!.cloudTargetId,
+    answers: createEmptyAnswers(),
+    registry: createTargetRegistry(),
+    links,
+    now: NOW,
+    newAnalysisId: newUuid(),
+  });
+  c.check(
+    'SAVED-08 · 다른 계정 — 목록 0 · A 관계를 열 수 없다 · link 자동 공유 없음',
+    bRows?.length === 0 &&
+      !bOpensA.ok &&
+      bOpensA.reason === 'not_found' &&
+      Object.keys(links.byUser).every((id) => id === USER_A),
+    { bRows, bOpensA },
+  );
+  return c.checks;
+}
+
 export async function POST(request: Request): Promise<Response> {
   if (process.env.NODE_ENV === 'production') {
     return Response.json({ ok: false, reason: 'NOT_FOUND' }, { status: 404 });
@@ -2208,6 +2438,8 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ ok: true, checks: await scenarioSaveRelationshipUi(body) });
     case 'analysis_run_flow':
       return Response.json({ ok: true, checks: await scenarioAnalysisRunFlow(body) });
+    case 'saved_relationships':
+      return Response.json({ ok: true, checks: await scenarioSavedRelationships(body) });
     case 'link_recovery':
       return Response.json({ ok: true, checks: await scenarioLinkRecovery(body) });
     default:

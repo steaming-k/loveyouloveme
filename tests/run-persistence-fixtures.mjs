@@ -365,6 +365,22 @@ async function sourceChecks() {
     /UUID_PATTERN\.test\(generationRequestId\)/.test(deepRoute) && !/generationRequestId:\s*requestId/.test(deepRoute),
   );
 
+  console.log('\n■ saved relationships (정적)');
+  check('SAVED · Home에 저장한 관계 섹션(새 화면 · 내비게이션 없음)', /<SavedRelationshipsSection/.test(codes.get('src/app/home/page.tsx') ?? ''));
+  const savedSection = codes.get('src/components/account/SavedRelationshipsSection.tsx') ?? '';
+  check("SAVED · 로그인한 사용자에게만 그린다(Guest 화면 불변)", /if \(account\.status !== 'signed_in'\) return null;/.test(savedSection));
+  const openCallers = [...codes].filter(([, text]) => /openSavedRelationship\(/.test(text)).map(([path]) => path).sort();
+  check('SAVED-05 · 관계 열기는 목록 클릭에서만', openCallers.join(',') === 'src/components/account/SavedRelationshipsSection.tsx', openCallers);
+  const sessionCode = read('src/state/SessionProvider.tsx');
+  const applyBody = sessionCode.slice(sessionCode.indexOf('const applySavedRelationship = useCallback'), sessionCode.indexOf('const clearSession = useCallback'));
+  check(
+    'SAVED-06 · 관계 전환 = 기기 목록 기록 + 분석 단위 상태(Premium intent · preview unlock) 비우기 + 세션 교체',
+    applyBody.includes('writeTargetRegistry(next.registry)') && applyBody.includes('clearPremiumIntents()') && applyBody.includes('clearPreviewUnlocks()') && applyBody.includes('setAnswers(next.answers)'),
+  );
+  const accountCode = codes.get('src/state/AccountProvider.tsx') ?? '';
+  const refreshBody = accountCode.slice(accountCode.indexOf('const refreshSavedRelationships = useCallback'), accountCode.indexOf('const openSavedRelationship = useCallback'));
+  check('SAVED · 목록 읽기는 select만(로그인만으로 cloud write 0)', /listSummaries\(\)/.test(refreshBody) && !/insertIfAbsent|updateAtRevision|createIfAbsent|migrate|saveActive/.test(refreshBody));
+
   console.log('\n■ analytics (정적)');
   const analytics = read('src/lib/analytics.ts');
   const forbiddenBlock = analytics.slice(analytics.indexOf('const EXTERNAL_FORBIDDEN_KEYS'), analytics.indexOf(']);', analytics.indexOf('const EXTERNAL_FORBIDDEN_KEYS')));
@@ -399,6 +415,7 @@ const SCENARIOS = [
   ['save_relationship_ui', 'save relationship flow · SAVE-UI-01~07'],
   ['analysis_run_flow', 'deep report snapshot 조건 · RUN-01~07'],
   ['link_recovery', 'cloud link 복구 audit · LINK-01~04'],
+  ['saved_relationships', 'saved relationships 목록 · hydrate · SAVED-01~08'],
   ['sync_conflict', 'sync-conflict'],
   ['migration_offline', 'failure/offline · migration'],
   ['failure_offline', 'failure/offline · supabase gateway'],
