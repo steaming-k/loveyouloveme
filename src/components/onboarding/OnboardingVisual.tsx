@@ -103,7 +103,7 @@ export function SignalPreview() {
 const EVIDENCE_ROWS = [
   { label: '내가 답한 내용', text: '"연락은 별로 중요하지 않아."' },
   { label: '관계 경험', text: '"연락이 줄어드는 게 가장 힘들었어."' },
-  { label: '내가 알려준 장면', text: '"답장 간격이 하루 정도 길어졌어."' },
+  { label: '내가 알려준 사건', text: '"답장 간격이 하루 정도 길어졌어."' },
 ] as const;
 
 export function EvidencePreview() {

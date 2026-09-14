@@ -300,7 +300,7 @@ function CandidateCard({
                 {linkedScenes.map((scene) => (
                   <li key={scene.id} className="flex flex-col gap-0.5">
                     <span className="text-[10.5px] font-semibold tracking-[0.04em] text-mint-ink">
-                      네가 알려준 장면 · {scene.typeLabel}
+                      네가 알려준 사건 · {scene.typeLabel}
                     </span>
                     <span className="text-[11.5px] keep-all leading-relaxed text-ink-sub">
                       {scene.fact}

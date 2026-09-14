@@ -20,7 +20,7 @@ export const SAVE_RELATIONSHIP_COPY = {
   cta: '이 관계 저장하기',
   authLead: '저장하려면 이메일로 로그인해줘. 로그인만 해서는 아무것도 올리지 않아.',
   consentQuestion: '이 기기에 입력한 정보를 이 계정에 저장할까?',
-  consentDetail: '내 답변, 이 상대 정보와 적어둔 장면, 이 관계의 분석 결과를 계정에 남겨. 사진은 올리지 않아.',
+  consentDetail: '내 답변, 이 상대 정보와 적어둔 사건, 이 관계의 분석 결과를 계정에 남겨. 사진은 올리지 않아.',
   consentConfirm: '저장하기',
   later: '나중에',
   saving: '저장하는 중',

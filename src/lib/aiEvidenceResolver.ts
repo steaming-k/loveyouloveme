@@ -73,7 +73,8 @@ export type EvidenceSourceLabel =
    * 이름을 쓰면 근거 목록에서 '고른 값'과 '기억해서 적어준 장면'이 한 출처로 보이고,
    * 그러면 `자료 N종`이 거짓이 된다(§39.9와 같은 규칙).
    */
-  | '내가 알려준 장면'
+  /* 260914 P2-7 — 입력 화면 용어와 같다('사건'). 온보딩 근거 칩도 같은 이름이다 */
+  | '내가 알려준 사건'
   | '정밀 관찰 추가 답변'
   /** v1.26 — 이미 계산된 동기화율 축 판정 */
   | '동기화율 비교'
@@ -601,7 +602,7 @@ export function resolveEvidenceRef(
       if (!event) return null;
       return {
         key: `user_reported_event:${ref.eventId}`,
-        sourceLabel: '내가 알려준 장면',
+        sourceLabel: '내가 알려준 사건',
         text: relationshipEventEvidenceText(event),
       };
     }

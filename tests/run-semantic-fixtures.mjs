@@ -405,7 +405,8 @@ console.log('\nSEM-07 · 첫 화면에 분석 메타 언어가 0개다');
   const USER_SOURCE_LABELS = new Set([
     '네가 말한 기준', '사진에서 보인 것', '예전 관계 경험', '지금 관계에서의 답변', '그때 관계에서의 답변',
     '상대에 대해 적은 내용', '상대와 비교한 답', '예전 기록', '성향 렌즈', '추가 질문에 답한 것',
-    '기억나는 장면', '심화 질문에 답한 것',
+    /* 260914 P2-7 — 입력 화면 용어('사건')와 맞췄다 */
+    '기억나는 사건', '심화 질문에 답한 것',
   ]);
   const alwaysVisible = (result) => [
     result.headerLine ?? '',
@@ -463,7 +464,7 @@ console.log('\nSEM-07 · 첫 화면에 분석 메타 언어가 0개다');
     const header = result.headerLine ?? '';
     const falseMention = [
       header.includes('예전 기록') && !groups.has('history'),
-      header.includes('기억나는 장면') && !(result.report.reportedScenes?.scenes?.length > 0),
+      header.includes('기억나는 사건') && !(result.report.reportedScenes?.scenes?.length > 0),
       header.includes('상대에 대해 적은 내용') && !groups.has('target') && !groups.has('compatibility'),
     ].some(Boolean);
     check(`META-05 · ${name} 헤더가 없는 source를 부르지 않는다`, !falseMention, { header, groups: [...groups] });

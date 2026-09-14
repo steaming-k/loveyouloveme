@@ -175,7 +175,7 @@ export const SYNC_CONFLICT_COPY = {
 
 export const MIGRATION_CONSENT_COPY = {
   question: '이 기기에 입력한 정보를 계정에 저장할까?',
-  detail: '내 답변, 지금 상대 정보와 적어둔 장면, 저장한 관찰 기록을 계정에 올려. 사진은 올리지 않아.',
+  detail: '내 답변, 지금 상대 정보와 적어둔 사건, 저장한 관찰 기록을 계정에 올려. 사진은 올리지 않아.',
   confirm: '계정에 저장하기',
   later: '나중에',
 } as const;

@@ -98,7 +98,8 @@ export function reportLookedAtLine(input: {
       parts.push(input.tense === 'former' ? '그때 관계에서의 답변' : '지금 관계에서의 답변');
     }
   }
-  if (input.hasScenes) parts.push('기억나는 장면');
+  /* 260914 P2-7 — 입력 화면과 같은 이름('기억나는 사건') */
+  if (input.hasScenes) parts.push('기억나는 사건');
   if (groups.has('history')) parts.push('예전 기록');
 
   if (parts.length === 0) return null;
