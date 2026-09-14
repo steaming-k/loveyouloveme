@@ -259,7 +259,7 @@ export function buildRelationshipProfile(
     {
       id: 'relationship',
       title: 'RELATIONSHIP ME',
-      caption: '이전 관계',
+      caption: '관계 경험',
       items: relationshipItems(experience),
     },
   ];

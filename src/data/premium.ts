@@ -408,7 +408,8 @@ export const PREMIUM_HOOK_COPY = {
  */
 export const PREMIUM_FIX_CTA = {
   target: '상대에 대해 아는 것 채우기',
-  experience: '이전 관계 경험 알려주기',
+  /* 260914 Relationship Language — 기능 이름은 '관계 경험'(docs/RELATIONSHIP_LANGUAGE.md) */
+  experience: '관계 경험 알려주기',
   mbti: 'MBTI 입력하기',
   birth: '생년월일 입력하기',
   photos: '사진 관찰 확인하기',

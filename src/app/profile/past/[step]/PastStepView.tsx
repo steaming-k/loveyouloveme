@@ -154,7 +154,8 @@ export function PastStepView({ step }: { step: PastStep }) {
           </Button>
           {step === 1 && experience.important.length === 0 ? (
             <Button variant="text" onClick={handleSkip}>
-              연애 경험이 없어 · 건너뛰기
+              {/* 모쏠 · 첫 연애 중인 커플/배우자 모두에게 맞는 말. '돌아볼 관계가 없네' 같은 결핍 표현은 쓰지 않는다 */}
+              이전 연애가 없어 · 건너뛰기
             </Button>
           ) : null}
         </div>
@@ -168,8 +169,17 @@ export function PastStepView({ step }: { step: PastStep }) {
               260914 UT 후속 P1 STEP 1 — S14 인트로('이번엔 네 기억을 조금 빌릴게')를 흡수했다.
               별도 화면 대신 첫 질문 위 한 줄로, 무엇을 몇 개 묻는지만 말한다.
             */}
+            {/*
+              260914 Relationship Language — 기능 이름은 '관계 경험'이다(`docs/RELATIONSHIP_LANGUAGE.md`).
+              ⚠️ 아래 질문 문장('이전 관계에서 …')은 그대로 둔다. 이 답은 분석에서 **과거 시점 근거**
+              (`evidenceScope: 'past'` · `이전 관계에서 …으로 선택`)로 쓰인다 — 지금 연인 · 배우자를 여기로
+              부르면 그 근거 문장이 거짓이 된다. 지금 관계는 결과의 '지금 관계 속의 나'(S30)가 받는다.
+            */}
             <LovyMessage pose="book" size={40}>
-              이제 이전 관계를 짧게 돌아볼게. 질문 3개고, 누구와 만났는지는 묻지 않아.
+              이제 관계 경험을 짧게 돌아볼게. 질문 3개고, 누구와 만났는지는 묻지 않아.
+              {answers.status === 'dating' || answers.status === 'married'
+                ? ' 지금 만나는 사람 이야기는 결과 화면의 ‘지금 관계 속의 나’에서 따로 알려줄 수 있어.'
+                : ''}
             </LovyMessage>
             <PageHeading
               lines={['이전 관계에서 생각보다 중요했던 건 뭐였어?']}

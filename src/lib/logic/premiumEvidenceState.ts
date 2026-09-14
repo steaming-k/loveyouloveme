@@ -76,7 +76,7 @@ export function resolvePremiumEvidenceState(input: {
   if (noExperience) {
     fills.push({
       state: 'missing_relationship_evidence',
-      label: '이전 관계 경험 알려주기',
+      label: '관계 경험 알려주기',
       href: ROUTES.pastIntro,
     });
   }

@@ -245,8 +245,9 @@ export const STATE_COPY = {
   },
   noExperience: {
     pose: 'mug' as LovyPose,
-    title: ['아직 관계 기록은 없네.', '지금의 너부터 관찰해둘게.'],
-    body: '과거 관계 질문은 건너뛸게. 대신 지금 생각하는 기준을 기록해두고, 나중에 실제 경험과 비교해보자.',
+    /* 260914 Relationship Language — '아직 관계 기록은 없네'(결핍 프레이밍)를 뺐다 */
+    title: ['지금의 너부터', '관찰해둘게.'],
+    body: '이전 연애 질문은 건너뛸게. 지금 생각하는 기준을 기록해두고, 관계 경험이 생기면 그때 비교해보자.',
   },
   /** S26 Mirror Teaser에서 experience.skipped인 사용자에게 보여주는 문구. Mirror CTA를 억지로 주지 않는다. */
   mirrorUnavailable: {
@@ -285,7 +286,8 @@ export const LOVY_LINES = {
 export const DATA_LAYERS = [
   { n: 1, title: 'Observed Me', caption: '사진에서 관찰되는 취향과 생활 방식' },
   { n: 2, title: 'Declared Me', caption: '네가 직접 답한 관계 성향과 기준' },
-  { n: 3, title: 'Relationship Me', caption: '이전 관계에서 실제로 나타난 너' },
+  /* 260914 Relationship Language — 이 레이어는 이전 관계 답 + 지금 관계 속의 나(S30)를 함께 담는다 */
+  { n: 3, title: 'Relationship Me', caption: '관계 경험에서 실제로 나타난 너' },
 ] as const;
 
 /** 동기화율 화면 문구 */

@@ -311,7 +311,8 @@ export const FIRST_CONTACT_ACTIONS: readonly {
 
 /** 관계 경험 기록이 없는 사용자에게 리포트 앞에 붙이는 문장 (§28) */
 export const NO_EXPERIENCE_FRAME =
-  '과거 관계에서 확인할 기록은 아직 없어. 그래서 이번에는 네가 지금 중요하게 생각하는 기준을 중심으로 볼게.';
+  /* 260914 Relationship Language — '아직 없어'로 시작하는 결핍 프레이밍을 뺐다. 무엇을 기준으로 봤는지만 말한다 */
+  '이번에는 네가 지금 중요하게 생각하는 기준을 중심으로 봤어. 관계 경험이 생기면 그때 이어서 비교할 수 있어.';
 
 /** 특정 상대가 있지만 아는 게 적을 때 리포트 앞에 붙이는 문장 (§32) */
 export const UNKNOWN_TARGET_FRAME =

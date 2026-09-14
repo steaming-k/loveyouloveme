@@ -266,7 +266,7 @@ function ProfileResultView() {
             }}
           />
           <FillDataRow
-            label="이전 관계 경험 고치기"
+            label="관계 경험 답변 고치기"
             actionLabel="이동"
             onClick={() => {
               if (revisit) trackEvent('result_edit_entry', { section: 'experience' });
