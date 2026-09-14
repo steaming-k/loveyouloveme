@@ -14,6 +14,7 @@
  * 실행: 터미널 A `npm run dev` → 터미널 B `npm run test:lifecycle`
  */
 
+import './_aiTestGuard.mjs';
 const BASE_URL = process.env.LYM_BASE_URL ?? 'http://localhost:3000';
 
 let pass = 0;

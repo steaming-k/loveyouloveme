@@ -24,6 +24,8 @@
     "test:ended": "node tests/run-ended-fixtures.mjs",
     "test:semantic": "node tests/run-semantic-fixtures.mjs",
     "test:action": "node tests/run-action-fixtures.mjs",
+    "test:ai-guard": "node tests/run-ai-guard-fixtures.mjs",
+    "test:ai:real": "node tests/run-provider-e2e.mjs",
     "test:ai:e2e": "node tests/run-provider-e2e.mjs"
   },
   "dependencies": {

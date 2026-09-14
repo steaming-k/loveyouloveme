@@ -16,6 +16,7 @@
  * 실행: 터미널 A `npm run dev` → 터미널 B `npm run test:action`
  */
 
+import './_aiTestGuard.mjs';
 import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';

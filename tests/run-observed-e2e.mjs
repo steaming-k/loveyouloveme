@@ -25,6 +25,7 @@
  *     요구하지 않는다.
  */
 
+import './_aiTestGuard.mjs';
 const BASE_URL = process.env.LYM_BASE_URL ?? 'http://localhost:3000';
 
 /**

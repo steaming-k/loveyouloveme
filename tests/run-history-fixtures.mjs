@@ -12,6 +12,7 @@
  * ⚠️ 새 테스트 프레임워크를 도입하지 않는다. `test:ai` / `test:observed`와 같은 방식이다.
  */
 
+import './_aiTestGuard.mjs';
 const BASE_URL = process.env.LYM_BASE_URL ?? 'http://localhost:3000';
 
 const failures = [];
