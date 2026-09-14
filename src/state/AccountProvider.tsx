@@ -23,12 +23,14 @@ import {
   writeCloudLinks,
 } from '@/lib/persistence/cloudLinks';
 import { persistDeepReportSnapshot as persistSnapshotWith } from '@/lib/persistence/deepReportSnapshot';
+import { hydrateSavedRelationship } from '@/lib/persistence/savedRelationships';
 import { hasMeaningfulSelfProfile, migrateLocalData, type MigrationReport } from '@/lib/persistence/localMigration';
 import { createProfileRepository } from '@/lib/persistence/profileRepository';
 import { createRelationshipTargetRepository } from '@/lib/persistence/relationshipTargetRepository';
 import { createSupabaseGateway } from '@/lib/persistence/supabaseGateway';
 import { ensureTargetRegistry, hasTargetContext, readTargetRegistry } from '@/lib/persistence/targetRegistry';
 import { getBrowserSupabase } from '@/lib/supabase/client';
+import type { SavedRelationshipSummary } from '@/lib/persistence/types';
 import { isSupabaseConfigured } from '@/lib/supabase/config';
 import type { AiMode, AiNarrativeStatus, DeepNarrativeBundle, RelationshipDeepReport } from '@/types';
 
@@ -75,6 +77,11 @@ interface AccountContextValue {
   hasDeviceData: boolean;
   /** 로그인한 사용자가 지금 보고 있는 관계를 저장했는가 */
   activeRelationshipSaved: boolean;
+  /** 지금 상대가 이 사용자의 어떤 cloud 관계인가(저장했을 때만) */
+  activeCloudTargetId: string | null;
+  /** 저장한 관계 요약. null = 아직 읽지 않음 */
+  savedRelationships: SavedRelationshipSummary[] | null;
+  savedRelationshipsStatus: 'idle' | 'loading' | 'ready' | 'failed';
   migrationRunning: boolean;
   migrationReport: MigrationReport | null;
   sendCode: (email: string) => Promise<AccountOutcome>;
@@ -83,6 +90,8 @@ interface AccountContextValue {
   saveDeviceData: () => Promise<MigrationReport | null>;
   saveActiveRelationship: () => Promise<AccountOutcome>;
   persistDeepReportSnapshot: (input: DeepReportSnapshotInput) => Promise<void>;
+  refreshSavedRelationships: () => Promise<void>;
+  openSavedRelationship: (cloudTargetId: string) => Promise<AccountOutcome>;
   deleteCloudData: () => Promise<AccountOutcome>;
 }
 
@@ -91,7 +100,7 @@ const AccountContext = createContext<AccountContextValue | null>(null);
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function AccountProvider({ children }: { children: ReactNode }) {
-  const { answers, hydrated } = useSession();
+  const { answers, hydrated, applySavedRelationship } = useSession();
   const { entries } = useHistory();
   const [status, setStatus] = useState<AccountStatus>(isSupabaseConfigured() ? 'loading' : 'disabled');
   const [user, setUser] = useState<{ id: string; email: string | null } | null>(null);
@@ -99,6 +108,9 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const [migrationReport, setMigrationReport] = useState<MigrationReport | null>(null);
   const [activeRelationshipSaved, setActiveRelationshipSaved] = useState(false);
   const [linksVersion, setLinksVersion] = useState(0);
+  const [activeCloudTargetId, setActiveCloudTargetId] = useState<string | null>(null);
+  const [savedRelationships, setSavedRelationships] = useState<SavedRelationshipSummary[] | null>(null);
+  const [savedRelationshipsStatus, setSavedRelationshipsStatus] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
   const userIdRef = useRef<string | null>(null);
   /** 상대가 바뀌면(새로운 사람 · 전환) 이 값이 바뀐다 — 저장 여부를 다시 본다 */
   const activeAnalysisKey = answers.currentAnalysisMeta?.funnelAnalysisId ?? null;
@@ -133,16 +145,20 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (status !== 'signed_in' || !hydrated || !user) {
       setActiveRelationshipSaved(false);
+      setActiveCloudTargetId(null);
       return;
     }
     let active = true;
     const localTargetId = ensureTargetRegistry().activeTargetId;
     const links = readCloudLinks();
-    if (linkOf(links, user.id, localTargetId)) {
+    const existing = linkOf(links, user.id, localTargetId);
+    if (existing) {
       setActiveRelationshipSaved(true);
+      setActiveCloudTargetId(existing.cloudTargetId);
       return;
     }
     setActiveRelationshipSaved(false);
+    setActiveCloudTargetId(null);
     const client = getBrowserSupabase();
     if (!client) return;
     void recoverCloudLink({
@@ -155,6 +171,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       if (!active || !result.recovered) return;
       writeCloudLinks(result.links);
       setActiveRelationshipSaved(true);
+      setActiveCloudTargetId(result.link?.cloudTargetId ?? null);
     });
     return () => {
       active = false;
@@ -264,6 +281,59 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     [answers.target.events, hydrated],
   );
 
+  /** 저장한 관계 목록 — 읽기만 한다(로그인만으로 쓰기 0) */
+  const refreshSavedRelationships = useCallback(async (): Promise<void> => {
+    const client = getBrowserSupabase();
+    if (!client || !userIdRef.current) {
+      setSavedRelationships(null);
+      setSavedRelationshipsStatus('idle');
+      return;
+    }
+    setSavedRelationshipsStatus('loading');
+    const listed = await createRelationshipTargetRepository(createSupabaseGateway(client)).listSummaries();
+    if (!listed.ok) {
+      setSavedRelationshipsStatus('failed');
+      return;
+    }
+    setSavedRelationships(listed.value);
+    setSavedRelationshipsStatus('ready');
+  }, []);
+
+  useEffect(() => {
+    if (status !== 'signed_in' || !user) {
+      setSavedRelationships(null);
+      setSavedRelationshipsStatus('idle');
+      return;
+    }
+    void refreshSavedRelationships();
+  }, [status, user, linksVersion, refreshSavedRelationships]);
+
+  /** 저장한 관계 열기 — 목록 클릭에서만 부른다. 지금 상대는 기기 목록에 보관된다 */
+  const openSavedRelationship = useCallback(
+    async (cloudTargetId: string): Promise<AccountOutcome> => {
+      const client = getBrowserSupabase();
+      const userId = userIdRef.current;
+      if (!client) return { ok: false, reason: 'disabled' };
+      if (!hydrated || !userId) return { ok: false, reason: 'failed' };
+      const result = await hydrateSavedRelationship({
+        gateway: createSupabaseGateway(client),
+        userId,
+        cloudTargetId,
+        answers,
+        registry: ensureTargetRegistry(),
+        links: readCloudLinks(),
+        now: new Date().toISOString(),
+        newAnalysisId: crypto.randomUUID(),
+      });
+      if (!result.ok) return { ok: false, reason: 'failed' };
+      writeCloudLinks(result.links);
+      if (!result.alreadyActive) applySavedRelationship({ answers: result.answers, registry: result.registry });
+      setLinksVersion((version) => version + 1);
+      return { ok: true };
+    },
+    [answers, hydrated, applySavedRelationship],
+  );
+
   /** 계정에 저장한 것만 지운다. 이 기기의 데이터는 그대로다 */
   const deleteCloudData = useCallback(async (): Promise<AccountOutcome> => {
     const client = getBrowserSupabase();
@@ -308,6 +378,9 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       email: user?.email ?? null,
       hasDeviceData,
       activeRelationshipSaved,
+      activeCloudTargetId,
+      savedRelationships,
+      savedRelationshipsStatus,
       migrationRunning,
       migrationReport,
       sendCode,
@@ -316,6 +389,8 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       saveDeviceData,
       saveActiveRelationship,
       persistDeepReportSnapshot,
+      refreshSavedRelationships,
+      openSavedRelationship,
       deleteCloudData,
     }),
     [
@@ -323,6 +398,9 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       user,
       hasDeviceData,
       activeRelationshipSaved,
+      activeCloudTargetId,
+      savedRelationships,
+      savedRelationshipsStatus,
       migrationRunning,
       migrationReport,
       sendCode,
@@ -331,6 +409,8 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       saveDeviceData,
       saveActiveRelationship,
       persistDeepReportSnapshot,
+      refreshSavedRelationships,
+      openSavedRelationship,
       deleteCloudData,
     ],
   );

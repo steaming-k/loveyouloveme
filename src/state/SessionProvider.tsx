@@ -40,6 +40,7 @@ import {
   ensureTargetRegistry,
   preserveActiveTarget,
   writeTargetRegistry,
+  type TargetRegistryState,
 } from '@/lib/persistence/targetRegistry';
 import { buildDemoObservedResult } from '@/services/ai/fallback';
 import type {
@@ -222,6 +223,8 @@ interface SessionContextValue {
    * 이미 본 Mirror 결과는 새 상대와 무관하게 여전히 유효하다.
    */
   resetTargetContext: () => void;
+  /** v1.47 — 저장한 관계 열기. 새 세션 · 기기 목록은 `hydrateSavedRelationship`(순수)이 만든다 */
+  applySavedRelationship: (next: { answers: SessionAnswers; registry: TargetRegistryState }) => void;
   loadSampleSession: () => void;
   reset: () => void;
   /** 사용자가 명시적으로 요청한 전체 삭제. reset()과 동작은 같지만 analytics 이벤트가 다르다. */
@@ -1115,6 +1118,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setAnswers(createSampleAnswers());
   }, []);
 
+  /**
+   * v1.47 — **저장한 관계 열기.** 새 세션 모양(이전 상대 보관 · cloud 상대 · 사건 · 현재 관계 근거)은
+   * `hydrateSavedRelationship`이 만든다. 여기서는 `resetTargetContext`와 같은 분석 단위 상태를 비우고 교체만 한다 —
+   * 이전 상대의 Premium intent · preview unlock이 새 상대에 남지 않게.
+   */
+  const applySavedRelationship = useCallback((next: { answers: SessionAnswers; registry: TargetRegistryState }) => {
+    writeTargetRegistry(next.registry);
+    clearPremiumIntents();
+    clearPreviewUnlocks();
+    setAnswers(next.answers);
+  }, []);
+
   const clearSession = useCallback(() => {
     setAnswers((prev) => {
       prev.photos.forEach((photo) => {
@@ -1186,6 +1201,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       markComplete,
       markResultViewed,
       resetTargetContext,
+      applySavedRelationship,
       loadSampleSession,
       reset,
       deleteAllData,
@@ -1235,6 +1251,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       markComplete,
       markResultViewed,
       resetTargetContext,
+      applySavedRelationship,
       loadSampleSession,
       reset,
       deleteAllData,

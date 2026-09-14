@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
+import { SavedRelationshipsSection } from '@/components/account/SavedRelationshipsSection';
 import { BottomNavigation } from '@/components/common/BottomNavigation';
 import { Button } from '@/components/common/Button';
 import { ConfirmModal } from '@/components/common/ConfirmModal';
@@ -424,6 +425,12 @@ export default function HomePage() {
               </ul>
             </section>
           ) : null}
+
+          {/*
+            v1.47 — 저장한 관계. '최근 분석'(지금 기기의 결과) 바로 아래 — 같은 '다시 보기' 맥락이다.
+            로그인한 사용자에게만 그린다(Guest · Supabase 미설정이면 아무것도 없다). 열면 궁합 결과로 간다.
+          */}
+          <SavedRelationshipsSection onOpened={() => router.push(revisitHref(ROUTES.compatibility, 'home'))} />
 
           {/* §27 — History 상태를 실제로 보여준다. COMING SOON은 제거됐다. */}
           <button
