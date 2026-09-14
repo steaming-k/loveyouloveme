@@ -29,6 +29,7 @@
     "test:model-routing": "node tests/run-model-routing-fixtures.mjs",
     "test:ai:deep-report-smoke": "node tests/run-deep-report-smoke.mjs",
     "test:persistence": "node tests/run-persistence-fixtures.mjs",
+    "test:ui-assets": "node tests/run-ui-asset-copy-fixtures.mjs",
     "test:ai:e2e": "node tests/run-provider-e2e.mjs"
   },
   "dependencies": {
