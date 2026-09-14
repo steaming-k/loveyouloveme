@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { PRIMARY_KEY, type PersistenceRows, type PersistenceTable } from '@/lib/supabase/types';
 
+import { rejectCloudPayload } from './cloudWriteBudget';
 import type { PersistenceGateway } from './gateway';
 import { fail, ok, type PersistenceErrorKind, type Result } from './types';
 
@@ -72,6 +73,9 @@ export function createSupabaseGateway(client: SupabaseClient): PersistenceGatewa
     },
 
     async insertIfAbsent(table, row) {
+      /* Storage Capacity Guard — 요청을 만들기 전에 멈춘다. 기존 행 · 로컬 데이터는 그대로다 */
+      const rejected = rejectCloudPayload(table, row);
+      if (rejected) return rejected;
       try {
         const key: string = PRIMARY_KEY[table];
         const { data, error } = await client
@@ -86,6 +90,8 @@ export function createSupabaseGateway(client: SupabaseClient): PersistenceGatewa
     },
 
     async updateAtRevision(table, key, expectedRevision, patch) {
+      const rejected = rejectCloudPayload(table, patch);
+      if (rejected) return rejected;
       try {
         const { data, error } = await client
           .from(table)

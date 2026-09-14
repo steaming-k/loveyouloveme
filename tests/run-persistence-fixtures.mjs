@@ -178,6 +178,7 @@ async function schemaChecks() {
     await Promise.all(migrations.map((name) => readFile(join(ROOT, 'supabase', 'migrations', name), 'utf8')))
   )
     .join('\n')
+    .replace(/\r\n/g, '\n')
     .replace(/--.*$/gm, '');
 
   const tables = ['user_profiles', 'relationship_targets', 'relationship_events', 'analysis_runs'];
@@ -212,6 +213,7 @@ async function schemaChecks() {
   check('사건은 target_json 배열이 아니라 테이블', /create table public\.relationship_events/.test(sql));
   check('analysis_runs — raw 응답 컬럼 없음', !/raw_response|provider_response|reasoning/.test(sql));
   check('SQL에 service_role 사용 없음', !/service_role/.test(sql));
+  check('Supabase Storage bucket · storage 스키마를 쓰지 않는다', !/storage\./i.test(sql));
 
   const env = await readFile(join(ROOT, '.env.example'), 'utf8');
   check('.env.example — NEXT_PUBLIC_SUPABASE_URL / ANON_KEY 빈 값', /^NEXT_PUBLIC_SUPABASE_URL=$/m.test(env) && /^NEXT_PUBLIC_SUPABASE_ANON_KEY=$/m.test(env));
@@ -223,7 +225,10 @@ async function schemaChecks() {
 
 async function sourceChecks() {
   const files = await listFiles(join(ROOT, 'src'));
-  const sources = new Map(await Promise.all(files.map(async (file) => [rel(file), await readFile(file, 'utf8')])));
+  /* 줄바꿈을 LF로 맞춘다 — Windows checkout(core.autocrlf)이면 작업본이 CRLF가 되어 '\n'이 든 검사가 흔들린다 */
+  const sources = new Map(
+    await Promise.all(files.map(async (file) => [rel(file), (await readFile(file, 'utf8')).replace(/\r\n/g, '\n')])),
+  );
   const read = (path) => sources.get(path) ?? '';
   const codes = new Map([...sources].map(([path, text]) => [path, codeOnly(text)]));
 
@@ -244,6 +249,14 @@ async function sourceChecks() {
   const directFrom = [...sources].filter(([, text]) => /\.from\((table|'|")/.test(text)).map(([path]) => path);
   check('UI에서 .from() 직접 호출 없음 — gateway 한 곳', directFrom.length === 1 && directFrom[0] === 'src/lib/persistence/supabaseGateway.ts', directFrom);
   check('deprecated auth-helpers 미사용', [...sources].every(([, text]) => !/auth-helpers/.test(text)));
+  check('Supabase Storage(bucket) API를 쓰지 않는다 — 사진 · 바이너리 저장 없음', [...codes].every(([, text]) => !/\.storage\s*\./.test(text)));
+  check(
+    '모든 cloud write 경로가 같은 guard를 먼저 부른다(insert · update)',
+    ['src/lib/persistence/supabaseGateway.ts', 'src/lib/persistence/memoryGateway.ts'].every(
+      (path) => (codes.get(path)?.match(/rejectCloudPayload\(table, (row|patch)\)/g) ?? []).length === 2,
+    ),
+  );
+  check('persistence mapper에 slice() 절단이 없다', !/\.slice\(/.test(codes.get('src/lib/persistence/mappers.ts') ?? ''));
   const provider = read('src/state/AccountProvider.tsx');
   const providerCode = codes.get('src/state/AccountProvider.tsx') ?? '';
   const providerRender = '  return <AccountContext.Provider value={value}>{children}</AccountContext.Provider>;';
@@ -317,6 +330,8 @@ const SCENARIOS = [
   ['migration_offline', 'failure/offline · migration'],
   ['failure_offline', 'failure/offline · supabase gateway'],
   ['auth_config', 'auth-session · config'],
+  ['storage', 'storage capacity guard · STORAGE-01~10 · payload bytes'],
+  ['storage_scale', 'storage capacity guard · 10 / 100 / 500 events'],
 ];
 
 async function routeChecks() {
@@ -325,6 +340,7 @@ async function routeChecks() {
     const json = await post('/api/dev/persistence-test', { scenario, answers: ANSWERS, history: HISTORY });
     check(`${scenario} — 라우트 응답`, json.ok === true && Array.isArray(json.checks) && json.checks.length > 0, json);
     for (const item of json.checks ?? []) check(item.label, item.pass, item.detail);
+    if (json.info) console.log(`  ℹ️  ${JSON.stringify(json.info)}`);
   }
 }
 

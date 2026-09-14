@@ -31,6 +31,8 @@ function migrationCopy(report: MigrationReport): string {
       return '계정에 저장했어. 다시 저장해도 같은 내용이 두 번 쌓이지 않아.';
     case 'completed_with_conflicts':
       return '계정에 저장했어. 계정에 이미 다른 내용이 있던 항목은 바꾸지 않았어.';
+    case 'completed_with_rejections':
+      return `계정에 저장했어. 너무 크거나 사진·파일 같은 내용이 섞인 항목 ${report.rejected.length}개는 올리지 않았어 — 이 기기에는 그대로 있어.`;
     case 'nothing_to_migrate':
       return '아직 계정에 옮길 정보가 없어.';
     case 'partial':

@@ -1,15 +1,30 @@
 import type { RelationshipEvent, RelationshipHistoryEntry, SessionAnswers } from '@/types';
 
 import { createAnalysisRunRepository } from './analysisRunRepository';
+import { estimateUtf8Bytes } from './cloudWriteBudget';
 import type { PersistenceGateway } from './gateway';
 import { cloudEventIdOf } from './ids';
-import { sameContent, selfProfileFromSession, targetContextFromSession } from './mappers';
+import {
+  eventRowOf,
+  profileRowOf,
+  runRowOf,
+  sameContent,
+  selfProfileFromSession,
+  targetContextFromSession,
+  targetRowOf,
+} from './mappers';
 import { createProfileRepository } from './profileRepository';
 import { createRelationshipEventRepository } from './relationshipEventRepository';
 import { createRelationshipTargetRepository } from './relationshipTargetRepository';
 import { historyEntryRunInput } from './snapshotGuard';
 import { hasTargetContext, type TargetRegistryState } from './targetRegistry';
-import type { PersistenceErrorKind, SelfProfileData, TargetContextData } from './types';
+import type {
+  CloudPayloadIssue,
+  PersistenceError,
+  PersistenceErrorKind,
+  SelfProfileData,
+  TargetContextData,
+} from './types';
 
 /**
  * v1.47 — **기기 → 계정** migration
@@ -18,9 +33,11 @@ import type { PersistenceErrorKind, SelfProfileData, TargetContextData } from '.
  * 동의 없으면        아무 요청도 보내지 않는다(consent_required) — 자동 silent upload 금지
  * 로컬 데이터         읽기만 한다. 지우거나 바꾸지 않는다
  * 대상               나 · 지금 상대 · 보관된 상대 · 상대별 사건 · History 스냅샷
- * 제외               사진 · 사진 관찰 결과 · AI 캐시 · analytics
+ * 제외               사진 · 사진 관찰 결과 · AI 캐시 · analytics (필드 단위 allowlist로 옮긴다)
+ * 단위               repository별 작은 write — 거대한 JSON 하나로 올리지 않는다
  * 멱등               stable id + insert-if-absent. 새로고침 · 재로그인 · 재시도해도 중복 없음
  * 이미 다른 값        덮어쓰지 않고 conflict로 보고한다
+ * 너무 큰 · 사진 섞인 항목  그 항목만 거부(rejected)하고 나머지는 계속한다. 잘라서 올리지 않는다
  * 중간 실패           멈추고 partial/offline — 재시도하면 남은 것만 들어간다
  * ```
  */
@@ -104,6 +121,11 @@ export interface MigrationCounts {
   analysisRuns: number;
 }
 
+/** Storage Capacity Guard §30 — 보내려고 만든 행의 UTF-8 바이트(거부된 것 포함). 크기 회귀 감지용 */
+export interface MigrationBytes extends MigrationCounts {
+  total: number;
+}
+
 export type MigrationStatus =
   | 'consent_required'
   | 'nothing_to_migrate'
@@ -111,6 +133,7 @@ export type MigrationStatus =
   | 'offline'
   | 'completed'
   | 'completed_with_conflicts'
+  | 'completed_with_rejections'
   | 'partial'
   | 'failed';
 
@@ -120,7 +143,10 @@ export interface MigrationReport {
   unchanged: MigrationCounts;
   /** 계정에 이미 **다른 값**이 있어 건드리지 않은 것 — id만 담는다(본문 없음) */
   conflicts: { entity: MigrationEntity; id: string }[];
+  /** 크기 · 사진 · 원문 복제 때문에 올리지 않은 것 — 어떤 칸이 왜인지만 담는다(값 없음). 로컬엔 그대로 있다 */
+  rejected: { entity: MigrationEntity; id: string; issues: CloudPayloadIssue[] }[];
   failures: { entity: MigrationEntity; id: string; kind: PersistenceErrorKind }[];
+  bytes: MigrationBytes;
 }
 
 function emptyCounts(): MigrationCounts {
@@ -128,7 +154,20 @@ function emptyCounts(): MigrationCounts {
 }
 
 function report(status: MigrationStatus): MigrationReport {
-  return { status, created: emptyCounts(), unchanged: emptyCounts(), conflicts: [], failures: [] };
+  return {
+    status,
+    created: emptyCounts(),
+    unchanged: emptyCounts(),
+    conflicts: [],
+    rejected: [],
+    failures: [],
+    bytes: { ...emptyCounts(), total: 0 },
+  };
+}
+
+/** 이 항목의 내용 때문에 쓰지 않은 것 — 네트워크 실패와 달리 다른 항목은 계속 올린다 */
+function isRejection(error: PersistenceError): boolean {
+  return error.kind === 'payload_rejected' || error.kind === 'invalid';
 }
 
 export async function migrateLocalData(input: {
@@ -156,14 +195,24 @@ export async function migrateLocalData(input: {
   const base = (input.now ?? new Date()).getTime();
   let stopped = false;
 
-  const failed = (entity: MigrationEntity, id: string, kind: PersistenceErrorKind) => {
-    result.failures.push({ entity, id, kind });
-    if (kind === 'offline' || kind === 'unauthorized') stopped = true;
+  const measure = (key: keyof MigrationCounts, row: unknown) => {
+    const bytes = estimateUtf8Bytes(row);
+    result.bytes[key] += bytes;
+    result.bytes.total += bytes;
+  };
+  const failed = (entity: MigrationEntity, id: string, error: PersistenceError) => {
+    if (isRejection(error)) {
+      result.rejected.push({ entity, id, issues: error.issues ?? [] });
+      return;
+    }
+    result.failures.push({ entity, id, kind: error.kind });
+    if (error.kind === 'offline' || error.kind === 'unauthorized') stopped = true;
   };
 
   if (plan.profile) {
+    measure('profile', profileRowOf(uid.value, plan.profile));
     const saved = await profiles.createIfAbsent(plan.profile);
-    if (!saved.ok) failed('profile', uid.value, saved.error.kind);
+    if (!saved.ok) failed('profile', uid.value, saved.error);
     else if (saved.value.created) result.created.profile += 1;
     else if (sameContent(saved.value.profile.data, plan.profile)) result.unchanged.profile += 1;
     else result.conflicts.push({ entity: 'profile', id: uid.value });
@@ -171,6 +220,7 @@ export async function migrateLocalData(input: {
 
   for (const target of plan.targets) {
     if (stopped) break;
+    measure('targets', targetRowOf(uid.value, target));
     const saved = await targets.createIfAbsent({
       id: target.id,
       label: target.label,
@@ -180,7 +230,8 @@ export async function migrateLocalData(input: {
     if (!saved.ok) {
       /* 같은 id가 계정에서 보이지 않는다 = 다른 계정이 이미 가진 id. 건드리지 않고 충돌로 보고한다 */
       if (saved.error.kind === 'conflict') result.conflicts.push({ entity: 'target', id: target.id });
-      else failed('target', target.id, saved.error.kind);
+      else failed('target', target.id, saved.error);
+      /* 상대가 올라가지 않았으면 그 상대의 사건도 올리지 않는다(FK · 섞임 방지) */
       continue;
     }
     if (saved.value.created) result.created.targets += 1;
@@ -199,13 +250,12 @@ export async function migrateLocalData(input: {
     for (const [index, event] of target.events.entries()) {
       if (stopped) break;
       const id = await cloudEventIdOf(target.id, event.id);
-      const stored = await events.createIfAbsent(target.id, event, {
-        id,
-        createdAt: new Date(base + index).toISOString(),
-      });
+      const createdAt = new Date(base + index).toISOString();
+      measure('events', eventRowOf(uid.value, target.id, id, event, createdAt));
+      const stored = await events.createIfAbsent(target.id, event, { id, createdAt });
       if (!stored.ok) {
         if (stored.error.kind === 'conflict') result.conflicts.push({ entity: 'event', id });
-        else failed('event', id, stored.error.kind);
+        else failed('event', id, stored.error);
         continue;
       }
       if (stored.value.created) result.created.events += 1;
@@ -221,13 +271,18 @@ export async function migrateLocalData(input: {
     }
   }
 
+  /* 사건 원문은 relationship_events 행에만 있다 — 분석 스냅샷에 다시 들어가면 거부한다 */
+  const sourceTexts = plan.targets.flatMap((target) =>
+    target.events.flatMap((event) => [event.description, event.myReaction ?? '']),
+  );
   for (const entry of plan.history) {
     if (stopped) break;
     const run = await historyEntryRunInput(entry);
-    const stored = await runs.record(run);
+    measure('analysisRuns', runRowOf(uid.value, run));
+    const stored = await runs.record({ ...run, forbiddenTexts: sourceTexts });
     if (!stored.ok) {
       if (stored.error.kind === 'conflict') result.conflicts.push({ entity: 'analysis_run', id: run.id });
-      else failed('analysis_run', run.id, stored.error.kind);
+      else failed('analysis_run', run.id, stored.error);
       continue;
     }
     if (stored.value.created) result.created.analysisRuns += 1;
@@ -240,6 +295,8 @@ export async function migrateLocalData(input: {
     result.status = createdAny ? 'partial' : result.failures.some((item) => item.kind === 'unauthorized') ? 'unauthorized' : 'offline';
   } else if (result.failures.length > 0) {
     result.status = createdAny ? 'partial' : 'failed';
+  } else if (result.rejected.length > 0) {
+    result.status = 'completed_with_rejections';
   } else if (result.conflicts.length > 0) {
     result.status = 'completed_with_conflicts';
   }

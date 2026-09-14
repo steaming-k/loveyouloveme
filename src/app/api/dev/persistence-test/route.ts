@@ -1,15 +1,27 @@
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
 import { createClient } from '@supabase/supabase-js';
 
 import { createAnalysisRunRepository } from '@/lib/persistence/analysisRunRepository';
+import { CLOUD_WRITE_BUDGET, estimateUtf8Bytes, inspectCloudPayload } from '@/lib/persistence/cloudWriteBudget';
 import type { PersistenceGateway } from '@/lib/persistence/gateway';
 import { newUuid } from '@/lib/persistence/ids';
 import { migrateLocalData, planLocalMigration, type LocalDataSnapshot } from '@/lib/persistence/localMigration';
-import { selfProfileFromSession, sessionWithCloudContext, targetContextFromSession } from '@/lib/persistence/mappers';
+import {
+  eventRowOf,
+  profileRowOf,
+  runRowOf,
+  selfProfileFromSession,
+  sessionWithCloudContext,
+  targetContextFromSession,
+  targetRowOf,
+} from '@/lib/persistence/mappers';
 import { createMemoryDatabase, createMemoryGateway, type MemoryDatabase } from '@/lib/persistence/memoryGateway';
 import { createProfileRepository } from '@/lib/persistence/profileRepository';
 import { createRelationshipEventRepository } from '@/lib/persistence/relationshipEventRepository';
 import { createRelationshipTargetRepository } from '@/lib/persistence/relationshipTargetRepository';
-import { validateSnapshot } from '@/lib/persistence/snapshotGuard';
+import { deepReportRunInput, validateSnapshot } from '@/lib/persistence/snapshotGuard';
 import { createSupabaseGateway } from '@/lib/persistence/supabaseGateway';
 import {
   createTargetRegistry,
@@ -18,11 +30,17 @@ import {
   switchToSavedTarget,
   type TargetRegistryState,
 } from '@/lib/persistence/targetRegistry';
-import { SYNC_CONFLICT_COPY } from '@/lib/persistence/types';
+import { SYNC_CONFLICT_COPY, type PersistenceError, type TargetContextData } from '@/lib/persistence/types';
 import { isSupabaseConfigured, supabaseConfigFrom } from '@/lib/supabase/config';
-import type { PersistenceTable } from '@/lib/supabase/types';
+import type { Json, PersistenceTable } from '@/lib/supabase/types';
 import { createEmptyAnswers, createEmptyTargetProfile } from '@/state/defaultAnswers';
-import type { RelationshipEvent, RelationshipHistoryEntry, SessionAnswers, TargetLevel } from '@/types';
+import type {
+  RelationshipDeepReport,
+  RelationshipEvent,
+  RelationshipHistoryEntry,
+  SessionAnswers,
+  TargetLevel,
+} from '@/types';
 
 /**
  * POST /api/dev/persistence-test — **개발 전용** v1.47 Persistence Fixture 실행기
@@ -288,8 +306,11 @@ async function scenarioRepositories() {
   const id2 = t2.value.target.id;
   c.check('target.create — 별칭은 정리되고 실명을 요구하지 않는다(null 허용)', t1.value.target.label === '민트 초코' && t2.value.target.label === null);
   const tooLong = await targets.createIfAbsent({ label: '가'.repeat(80), relationStatus: null, data: targetContextFromSession(createEmptyAnswers()) });
-  c.check('target.create — 별칭 40자 절단', tooLong.ok && tooLong.value.target.label?.length === 40);
-  if (tooLong.ok) await targets.remove(tooLong.value.target.id);
+  c.check(
+    'target.create — 40자를 넘는 별칭은 자르지 않고 거부(payload_rejected · label)',
+    !tooLong.ok && tooLong.error.kind === 'payload_rejected' && (tooLong.error.issues ?? []).some((issue) => issue.path === 'label'),
+    tooLong,
+  );
 
   const listed = await targets.list();
   c.check('target.list — 2개', listed.ok && listed.value.length === 2);
@@ -830,6 +851,458 @@ async function scenarioParity(body: PersistenceTestRequest) {
 
 /* ══════════════════════════════════════════════════════════════════ */
 
+/* ══════════════════════════════════════════════════════════════════ storage capacity guard */
+
+const TINY_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+const BASE64_BLOB = 'iVBORw0KGgo'.repeat(40);
+
+function reasonsOf(error: PersistenceError | undefined): string[] {
+  return (error?.issues ?? []).map((issue) => issue.reason);
+}
+
+/** 제품 리포트 중 스냅샷 builder가 읽는 칸만 채운 합성 리포트 — reportedScenes에 원문을 넣어 새는지 본다 */
+function syntheticDeepReport(eventIds: readonly string[], sceneTexts: readonly string[]): RelationshipDeepReport {
+  return {
+    candidates: [
+      {
+        id: 'cand_ch_declared_vs_shown',
+        verdict: 'GAP',
+        primaryAxis: 'contact',
+        headline: '연락 — 생각보다 크게 걸리는 자리',
+        soWhat: '연락이 적은 것보다, 흐름이 멈춘 채 다음을 모르는 순간이 더 걸릴 수 있어.',
+        whyItMatters: '같은 몇 시간이라도 다음이 안 보이면 더 길게 느껴질 수 있어.',
+        limitation: '네가 알려준 장면과 답만으로 본 거라 상대의 이유까지는 알 수 없어.',
+        soWhatSource: 'semantic_ai',
+        insightOperator: 'CONDITION_NARROWING',
+        evidenceRefs: [{ source: 'declared', field: 'contact' }],
+        relevantEventIds: [...eventIds],
+        semanticEventIds: eventIds.slice(0, 1),
+      },
+    ],
+    actionPlan: {
+      sourceCandidateId: 'cand_ch_declared_vs_shown',
+      title: '연락 — 생각보다 크게 걸리는 자리',
+      topic: '연락',
+      mode: 'plan',
+      source: 'semantic_ai',
+      lifecycle: 'current',
+      priorityReason: null,
+      sourceRank: 1,
+      nextMove: '말이 엇갈려 시간을 둘 때, 언제 다시 이야기할지도 같이 정해봐',
+      verificationQuestion: null,
+      verificationFrom: 'card',
+      observeSignal: '정한 때에 대화가 실제로 다시 이어지는지 봐',
+      decisionSignals: [],
+      unresolved: null,
+      usedEvidenceRefs: [{ source: 'declared', field: 'contact' }],
+      usedEventIds: [...eventIds],
+    },
+    reportedScenes: { scenes: sceneTexts.map((scene, index) => ({ id: eventIds[index] ?? `scene-${index}`, scene })) },
+  } as unknown as RelationshipDeepReport;
+}
+
+async function scenarioStorage(body: PersistenceTestRequest) {
+  const c = checker();
+  const db = createMemoryDatabase();
+  const gw = createMemoryGateway(db, USER_A);
+  const targets = createRelationshipTargetRepository(gw);
+  const events = createRelationshipEventRepository(gw);
+  const runs = createAnalysisRunRepository(gw);
+  const emptyContext = targetContextFromSession(createEmptyAnswers());
+  const base = await targets.createIfAbsent({ label: null, relationStatus: 'dating', data: emptyContext });
+  if (!base.ok) {
+    c.check('storage — 기준 상대 생성', false, base.error);
+    return { checks: c.checks };
+  }
+  const targetId = base.value.target.id;
+  const targetRow = (json: Record<string, unknown>) => ({
+    id: newUuid(),
+    user_id: USER_A,
+    label: null,
+    relation_status: null,
+    target_json: json as unknown as Json,
+    schema_version: 1,
+    archived_at: null,
+  });
+
+  /* STORAGE-01 */
+  const photoPayload = await gw.insertIfAbsent(
+    'relationship_targets',
+    targetRow({ profile: {}, photos: [{ id: 'p1' }], imageBase64: BASE64_BLOB }),
+  );
+  c.check(
+    'STORAGE-01 · 사진 · base64 필드가 든 payload는 cloud write 거부(payload_rejected · binary_field)',
+    !photoPayload.ok && photoPayload.error.kind === 'payload_rejected' && reasonsOf(photoPayload.error).includes('binary_field'),
+    photoPayload,
+  );
+  const base64Text = await gw.insertIfAbsent('relationship_targets', targetRow({ profile: { memo: BASE64_BLOB } }));
+  c.check(
+    'STORAGE-01 · 키 이름이 평범해도 긴 base64 문자열은 거부',
+    !base64Text.ok && reasonsOf(base64Text.error).includes('base64_like'),
+    base64Text,
+  );
+  const binary = inspectCloudPayload('relationship_targets', targetRow({ profile: { bytes: new Uint8Array(4) } }));
+  c.check('STORAGE-01 · ArrayBuffer/typed array 값은 거부', binary.some((issue) => issue.reason === 'binary_value'), binary);
+  c.check('STORAGE-01 · 거부된 write는 행을 만들지 않는다', db.tables.relationship_targets.length === 1);
+
+  /* STORAGE-02 */
+  const dataUrlEvent = await events.createIfAbsent(targetId, { type: 'other', description: TINY_PNG });
+  c.check(
+    'STORAGE-02 · data:image URL 거부',
+    !dataUrlEvent.ok && dataUrlEvent.error.kind === 'payload_rejected' && reasonsOf(dataUrlEvent.error).includes('data_url'),
+    dataUrlEvent,
+  );
+  const blobInterest = await gw.insertIfAbsent(
+    'relationship_targets',
+    targetRow({ profile: { preferences: { interests: [{ id: 'i1', category: 'custom', label: 'blob:http://localhost/abc' }] } } }),
+  );
+  c.check('STORAGE-02 · blob: URL 거부', !blobInterest.ok && reasonsOf(blobInterest.error).includes('blob_url'), blobInterest);
+  c.check('STORAGE-02 · 사건 행 0', db.tables.relationship_events.length === 0);
+
+  /* STORAGE-03 · 10 */
+  const scenes = ['얘기가 엇갈린 다음에 아무 답이 없던 날이 힘들었어', '같이 산책하면서 오래 이야기했어'];
+  const reaction = '먼저 연락하지 못하고 기다렸어';
+  const eventIds: string[] = [];
+  for (const scene of scenes) {
+    const saved = await events.createIfAbsent(targetId, { type: 'conflict', description: scene, myReaction: reaction });
+    if (saved.ok) eventIds.push(saved.value.event.id);
+  }
+  const duplicated = await runs.record({
+    id: newUuid(),
+    targetId,
+    type: 'deep_report',
+    snapshot: { candidates: [{ id: 'c1', soWhat: `네가 적은 "${scenes[0]}" 장면이 걸려` }] },
+    sourceFingerprint: null,
+    modelMeta: null,
+    forbiddenTexts: [...scenes, reaction],
+  });
+  c.check(
+    'STORAGE-03 · 사건 원문을 다시 담은 analysis snapshot은 거부',
+    !duplicated.ok && duplicated.error.message.startsWith('snapshot_duplicates_source_text'),
+    duplicated,
+  );
+  const deepRun = deepReportRunInput({
+    id: newUuid(),
+    targetId,
+    report: syntheticDeepReport(eventIds, scenes),
+    promptVersion: 'deep-report-v13-uncertainty-move',
+    mode: 'real',
+    sourceFingerprint: 'fp',
+  });
+  const deepJson = JSON.stringify(deepRun.snapshot);
+  c.check(
+    'STORAGE-10 · deep report snapshot = candidate id · refs · event id · 화면 문장. 장면 원문 · reportedScenes 없음',
+    scenes.every((scene) => !deepJson.includes(scene)) &&
+      !deepJson.includes(reaction) &&
+      !deepJson.includes('reportedScenes') &&
+      eventIds.every((id) => deepJson.includes(id)) &&
+      deepJson.includes('candidateIds'),
+    deepRun.snapshot,
+  );
+  const recorded = await runs.record({ ...deepRun, forbiddenTexts: [...scenes, reaction] });
+  c.check('STORAGE-10 · 그 snapshot은 원문 금지 목록을 통과해 저장된다', recorded.ok && recorded.value.created, recorded);
+  c.check(
+    'STORAGE-03 · analysis_runs 전체에 사건 원문 0',
+    scenes.every((scene) => !JSON.stringify(db.tables.analysis_runs).includes(scene)),
+  );
+
+  /* STORAGE-04 */
+  const leakedEvents = targetRowOf(USER_A, {
+    id: newUuid(),
+    label: null,
+    relationStatus: null,
+    data: {
+      ...emptyContext,
+      profile: { ...emptyContext.profile, events: [{ id: 'e', type: 'other', description: '장면' }] },
+    } as unknown as TargetContextData,
+  });
+  c.check(
+    'STORAGE-04 · target_json에는 사건 배열이 들어가지 않는다(mapper가 도메인 칸만 옮김)',
+    !JSON.stringify(leakedEvents.target_json).includes('"events"'),
+  );
+  const nested = await gw.insertIfAbsent('relationship_targets', targetRow({ profile: { events: [{ description: '장면' }] } }));
+  c.check('STORAGE-04 · 직접 넣어도 gateway가 거부(nested_events)', !nested.ok && reasonsOf(nested.error).includes('nested_events'), nested);
+
+  /* STORAGE-05 */
+  const rawTarget = await gw.insertIfAbsent('relationship_targets', targetRow({ profile: {}, rawResponse: { choices: [] } }));
+  const rawRun = await runs.record({
+    id: newUuid(),
+    targetId,
+    type: 'deep_report',
+    snapshot: { choices: [{ message: { content: '{}' } }] },
+    sourceFingerprint: null,
+    modelMeta: null,
+  });
+  const rawGatewayRun = await gw.insertIfAbsent('analysis_runs', {
+    id: newUuid(),
+    user_id: USER_A,
+    target_id: null,
+    analysis_type: 'deep_report',
+    result_snapshot: { prompt: 'system prompt' },
+    source_fingerprint: null,
+    app_version: null,
+    model_meta: null,
+  });
+  c.check(
+    'STORAGE-05 · Provider raw response는 target에도 analysis에도 저장 거부',
+    !rawTarget.ok && reasonsOf(rawTarget.error).includes('forbidden_key') && !rawRun.ok,
+    { rawTarget, rawRun },
+  );
+  c.check(
+    'STORAGE-05 · repository를 우회한 raw prompt도 gateway가 거부',
+    !rawGatewayRun.ok && rawGatewayRun.error.kind === 'payload_rejected',
+    rawGatewayRun,
+  );
+
+  /* STORAGE-06 */
+  const huge = '가'.repeat(CLOUD_WRITE_BUDGET.maxTextChars.eventText + 1000);
+  const localEvent: RelationshipEvent = { id: 'evt-huge', type: 'other', description: huge };
+  const localBefore = JSON.stringify(localEvent);
+  const hugeWrite = await events.createIfAbsent(targetId, localEvent);
+  c.check(
+    'STORAGE-06 · oversize 사건 → cloud write 실패 · 어떤 칸이 큰지 반환(값 없음)',
+    !hugeWrite.ok &&
+      hugeWrite.error.kind === 'payload_rejected' &&
+      (hugeWrite.error.issues ?? []).some((issue) => issue.path === 'description') &&
+      !JSON.stringify(hugeWrite.error).includes('가가가'),
+    hugeWrite.ok ? null : hugeWrite.error.issues,
+  );
+  c.check(
+    'STORAGE-06 · 잘라서 저장하지 않는다(행 없음) · 로컬 원본 그대로',
+    !db.tables.relationship_events.some((row) => row.description.startsWith('가가가')) && JSON.stringify(localEvent) === localBefore,
+  );
+  const migrationAnswers = answersFrom({
+    status: 'dating',
+    target: {
+      ...createEmptyTargetProfile(),
+      relation: 'talking',
+      events: [
+        { id: 'evt-ok-1', type: 'closer', description: '같이 산책하면서 오래 이야기했어' },
+        localEvent,
+        { id: 'evt-ok-2', type: 'meeting', description: '처음 만난 날 많이 긴장했어' },
+      ],
+    },
+  });
+  const migrationSnapshot: LocalDataSnapshot = { answers: migrationAnswers, history: [], registry: createTargetRegistry() };
+  const migrationBefore = JSON.stringify(migrationSnapshot);
+  const migrationDb = createMemoryDatabase();
+  const migrationGateway = createMemoryGateway(migrationDb, USER_A);
+  const migration = await migrateLocalData({ gateway: migrationGateway, snapshot: migrationSnapshot, consent: true });
+  c.check(
+    'STORAGE-06 · migration — 큰 사건 하나만 거부 · 나머지 저장 · completed_with_rejections',
+    migration.status === 'completed_with_rejections' &&
+      migration.rejected.length === 1 &&
+      migration.rejected[0]?.entity === 'event' &&
+      migration.created.events === 2,
+    migration,
+  );
+  c.check('STORAGE-06 · migration 뒤 로컬 데이터 불변', JSON.stringify(migrationSnapshot) === migrationBefore);
+  const migrationRetry = await migrateLocalData({ gateway: migrationGateway, snapshot: migrationSnapshot, consent: true });
+  c.check(
+    'STORAGE-06 · 재시도 — 같은 항목만 다시 거부 · 중복 없음',
+    migrationRetry.rejected.length === 1 && migrationDb.tables.relationship_events.length === 2,
+    migrationRetry,
+  );
+
+  /* STORAGE-07 */
+  const normal = await events.createIfAbsent(targetId, { type: 'closer', description: '보통 길이의 장면이야' });
+  if (normal.ok) {
+    const oversizeUpdate = await events.update(normal.value.event.id, { description: huge }, 1);
+    const row = db.tables.relationship_events.find((item) => item.id === normal.value.event.id);
+    c.check(
+      'STORAGE-07 · oversize 수정은 실패 · 기존 cloud row(본문 · revision) 손상 없음',
+      oversizeUpdate.status === 'failed' &&
+        oversizeUpdate.error.kind === 'payload_rejected' &&
+        row?.description === '보통 길이의 장면이야' &&
+        row.revision === 1,
+      oversizeUpdate,
+    );
+  } else {
+    c.check('STORAGE-07 · 기준 사건 생성', false, normal.error);
+  }
+  const bloated = await targets.update(
+    targetId,
+    {
+      data: {
+        ...emptyContext,
+        savedQuestions: Array.from({ length: 500 }, (_, index) => `contact_${index}`) as unknown as TargetContextData['savedQuestions'],
+      },
+    },
+    1,
+  );
+  const targetAfter = db.tables.relationship_targets.find((row) => row.id === targetId);
+  c.check(
+    'STORAGE-07 · 비정상적으로 큰 상대 수정도 실패 · 기존 target row 그대로',
+    bloated.status === 'failed' &&
+      bloated.error.kind === 'payload_rejected' &&
+      targetAfter?.revision === 1 &&
+      !JSON.stringify(targetAfter.target_json).includes('contact_499'),
+    bloated,
+  );
+
+  /* STORAGE-08 */
+  const longNormal = '오늘 있었던 일을 차근차근 길게 적어봤어. '.repeat(90).trim();
+  const normalWrite = await events.createIfAbsent(targetId, {
+    type: 'other',
+    description: longNormal,
+    myReaction: '적고 나니 조금 정리됐어',
+  });
+  const labelWrite = await targets.createIfAbsent({ label: '민트초코', relationStatus: 'dating', data: emptyContext });
+  c.check(
+    `STORAGE-08 · 정상 텍스트 write 통과(긴 사건 ${[...longNormal].length}자 포함)`,
+    normalWrite.ok && normalWrite.value.created && labelWrite.ok && labelWrite.value.created,
+    { normalWrite, labelWrite },
+  );
+
+  /* STORAGE-09 */
+  const photoAnswers = answersFrom({
+    status: 'dating',
+    photos: [{ id: 'photo-1', label: 'fixture', source: 'upload', objectUrl: 'blob:http://localhost/1' }] as unknown as SessionAnswers['photos'],
+    observedAnalysis: {
+      meta: { mode: 'real' },
+      traits: [{ id: 't1', evidence: [{ imageId: 'photo-1', description: 'x' }] }],
+    } as unknown as SessionAnswers['observedAnalysis'],
+    target: {
+      ...createEmptyTargetProfile(),
+      relation: 'talking',
+      photoUrl: TINY_PNG,
+      thumbnail: TINY_PNG,
+      events: [{ id: 'evt-photo', type: 'other', description: '사진을 같이 찍었던 날' }],
+    } as unknown as SessionAnswers['target'],
+  });
+  const photoDb = createMemoryDatabase();
+  const photoMigration = await migrateLocalData({
+    gateway: createMemoryGateway(photoDb, USER_A),
+    snapshot: { answers: photoAnswers, history: [], registry: createTargetRegistry() },
+    consent: true,
+  });
+  const photoStored = JSON.stringify(photoDb.tables);
+  c.check(
+    'STORAGE-09 · migration에서 사진 · 이미지 필드 제거(계정 행 어디에도 없음)',
+    photoMigration.status === 'completed' &&
+      !/data:image|blob:|base64|objectUrl|photoUrl|thumbnail|"photos"|observedAnalysis|imageId/i.test(photoStored) &&
+      photoDb.tables.relationship_events.length === 1,
+    { status: photoMigration.status, rejected: photoMigration.rejected },
+  );
+
+  /* 예산 ↔ SQL CHECK */
+  const sql = await readFile(
+    join(process.cwd(), 'supabase', 'migrations', '20260914000000_v147_persistence_foundation.sql'),
+    'utf8',
+  );
+  const sqlLimits = {
+    eventText: Number(/char_length\(description\) between 1 and (\d+)/.exec(sql)?.[1]),
+    label: Number(/char_length\(label\) between 1 and (\d+)/.exec(sql)?.[1]),
+    profileJson: Number(/pg_column_size\(profile_json\) <= (\d+)/.exec(sql)?.[1]),
+    targetJson: Number(/pg_column_size\(target_json\) <= (\d+)/.exec(sql)?.[1]),
+    snapshot: Number(/pg_column_size\(result_snapshot\) <= (\d+)/.exec(sql)?.[1]),
+  };
+  c.check(
+    'CLOUD_WRITE_BUDGET이 DB CHECK와 같거나 더 엄격하다(앱이 먼저 멈춰 이유를 말한다)',
+    CLOUD_WRITE_BUDGET.maxTextChars.eventText <= sqlLimits.eventText &&
+      CLOUD_WRITE_BUDGET.maxTextChars.label <= sqlLimits.label &&
+      CLOUD_WRITE_BUDGET.maxRowBytes.user_profiles <= sqlLimits.profileJson &&
+      CLOUD_WRITE_BUDGET.maxRowBytes.relationship_targets <= sqlLimits.targetJson &&
+      CLOUD_WRITE_BUDGET.maxRowBytes.analysis_runs <= sqlLimits.snapshot,
+    sqlLimits,
+  );
+
+  const sample = answersFrom(body.answers);
+  const sampleTargetId = newUuid();
+  const sampleEvent: RelationshipEvent = sample.target.events[0] ?? { id: 'evt-sample', type: 'other', description: scenes[0]! };
+  const bytesMigration = await migrateLocalData({
+    gateway: createMemoryGateway(createMemoryDatabase(), USER_A),
+    snapshot: { answers: sample, history: body.history ?? [], registry: createTargetRegistry(sampleTargetId) },
+    consent: true,
+  });
+  const info = {
+    profilePayloadBytes: estimateUtf8Bytes(profileRowOf(USER_A, selfProfileFromSession(sample))),
+    targetPayloadBytes: estimateUtf8Bytes(
+      targetRowOf(USER_A, { id: sampleTargetId, label: null, relationStatus: sample.status, data: targetContextFromSession(sample) }),
+    ),
+    eventPayloadBytes: estimateUtf8Bytes(eventRowOf(USER_A, sampleTargetId, newUuid(), sampleEvent)),
+    analysisPayloadBytes: estimateUtf8Bytes(runRowOf(USER_A, deepRun)),
+    migrationBatchBytes: bytesMigration.bytes,
+  };
+  c.check(
+    'bytes — 측정값이 채워지고 모두 행 예산 안이다',
+    info.profilePayloadBytes > 0 &&
+      info.profilePayloadBytes <= CLOUD_WRITE_BUDGET.maxRowBytes.user_profiles &&
+      info.targetPayloadBytes <= CLOUD_WRITE_BUDGET.maxRowBytes.relationship_targets &&
+      info.eventPayloadBytes <= CLOUD_WRITE_BUDGET.maxRowBytes.relationship_events &&
+      info.analysisPayloadBytes <= CLOUD_WRITE_BUDGET.maxRowBytes.analysis_runs &&
+      bytesMigration.bytes.total > 0,
+    info,
+  );
+  return { checks: c.checks, info };
+}
+
+async function scenarioStorageScale(body: PersistenceTestRequest) {
+  const c = checker();
+  const info: Record<string, Record<string, unknown>> = {};
+  const snapshotBytes: number[] = [];
+  const eventBytes: number[] = [];
+  for (const count of [10, 100, 500]) {
+    const scaled: RelationshipEvent[] = Array.from({ length: count }, (_, index) => ({
+      id: `evt-scale-${index}`,
+      type: 'conflict',
+      description: `장면 ${index}: 얘기가 엇갈린 다음에 한동안 답이 없던 날이 있었어`,
+      myReaction: `반응 ${index}: 먼저 연락하지 못하고 기다렸어`,
+    }));
+    const answers = answersFrom({ ...body.answers, target: { ...createEmptyTargetProfile(), relation: 'talking', events: scaled } });
+    const registry = createTargetRegistry();
+    const db = createMemoryDatabase();
+    const gw = createMemoryGateway(db, USER_A);
+    const migration = await migrateLocalData({
+      gateway: gw,
+      snapshot: { answers, history: body.history ?? [], registry },
+      consent: true,
+    });
+    const storedIds = db.tables.relationship_events.map((row) => row.id);
+    const run = deepReportRunInput({
+      id: newUuid(),
+      targetId: registry.activeTargetId,
+      report: syntheticDeepReport(storedIds.slice(0, 3), scaled.map((event) => event.description)),
+      promptVersion: 'deep-report-v13-uncertainty-move',
+      mode: 'real',
+      sourceFingerprint: null,
+    });
+    const recorded = await createAnalysisRunRepository(gw).record({
+      ...run,
+      forbiddenTexts: scaled.flatMap((event) => [event.description, event.myReaction ?? '']),
+    });
+    const runsJson = JSON.stringify(db.tables.analysis_runs);
+    const deepBytes = estimateUtf8Bytes(db.tables.analysis_runs.find((row) => row.id === run.id)?.result_snapshot);
+    snapshotBytes.push(deepBytes);
+    eventBytes.push(migration.bytes.events);
+    c.check(
+      `[${count} events] 사건 행 ${count} · migration completed`,
+      migration.status === 'completed' && db.tables.relationship_events.length === count,
+      migration.status,
+    );
+    c.check(
+      `[${count} events] analysis_runs에 사건 원문 · 반응 0`,
+      recorded.ok &&
+        scaled.every((event) => !runsJson.includes(event.description) && !runsJson.includes(event.myReaction ?? '∅')),
+      recorded.ok ? null : recorded.error,
+    );
+    info[`events_${count}`] = {
+      eventRowsBytes: migration.bytes.events,
+      historyRunsBytes: migration.bytes.analysisRuns,
+      deepReportSnapshotBytes: deepBytes,
+      migrationBatchBytes: migration.bytes.total,
+    };
+  }
+  c.check(
+    'analysis snapshot 크기는 사건 수에 비례해 늘지 않는다(10 → 500 증가 < 1KB)',
+    snapshotBytes[2]! - snapshotBytes[0]! < 1024,
+    snapshotBytes,
+  );
+  c.check('사건 저장량은 사건 행에서만 늘어난다(10 < 100 < 500)', eventBytes[0]! < eventBytes[1]! && eventBytes[1]! < eventBytes[2]!, eventBytes);
+  return { checks: c.checks, info };
+}
+
 export async function POST(request: Request): Promise<Response> {
   if (process.env.NODE_ENV === 'production') {
     return Response.json({ ok: false, reason: 'NOT_FOUND' }, { status: 404 });
@@ -860,6 +1333,10 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ ok: true, checks: await scenarioAuthConfig() });
     case 'parity':
       return Response.json({ ok: true, ...(await scenarioParity(body)) });
+    case 'storage':
+      return Response.json({ ok: true, ...(await scenarioStorage(body)) });
+    case 'storage_scale':
+      return Response.json({ ok: true, ...(await scenarioStorageScale(body)) });
     default:
       return Response.json({ ok: false, reason: 'UNKNOWN_SCENARIO' }, { status: 400 });
   }

@@ -1,5 +1,6 @@
-import type { RelationshipHistoryEntry } from '@/types';
+import type { RelationshipDeepReport, RelationshipHistoryEntry } from '@/types';
 
+import { BINARY_KEY_PATTERN } from './cloudWriteBudget';
 import { analysisRunIdOfHistoryEntry } from './ids';
 import { fail, ok, type AnalysisRun, type Result } from './types';
 
@@ -53,19 +54,37 @@ export function forbiddenSnapshotPaths(value: unknown, path = '$'): string[] {
   if (Array.isArray(value)) return value.flatMap((item, index) => forbiddenSnapshotPaths(item, `${path}[${index}]`));
   if (typeof value !== 'object' || value === null) return [];
   return Object.entries(value as Record<string, unknown>).flatMap(([key, item]) =>
-    FORBIDDEN_SNAPSHOT_KEYS.has(key)
+    FORBIDDEN_SNAPSHOT_KEYS.has(key) || BINARY_KEY_PATTERN.test(key)
       ? [`${path}.${key}`]
       : forbiddenSnapshotPaths(item, `${path}.${key}`),
   );
 }
 
-export function validateSnapshot(value: unknown): Result<Record<string, unknown>> {
+/** 이 길이 미만의 원문은 우연히 겹칠 수 있어 복제로 보지 않는다 */
+const DUPLICATE_TEXT_MIN_CHARS = 8;
+
+export function validateSnapshot(
+  value: unknown,
+  options: {
+    /**
+     * Storage Capacity Guard §3 — 스냅샷 안에 **다시 들어가면 안 되는 원문**(사건 본문 · 반응).
+     * 원문은 relationship_events 행에만 있고, 스냅샷은 event id로 참조한다.
+     */
+    forbiddenTexts?: readonly string[];
+  } = {},
+): Result<Record<string, unknown>> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return fail('invalid', 'snapshot_not_object');
   }
   const paths = forbiddenSnapshotPaths(value);
   if (paths.length > 0) return fail('invalid', `snapshot_forbidden_keys:${paths.slice(0, 5).join(',')}`);
-  const bytes = new TextEncoder().encode(JSON.stringify(value)).length;
+  const serialized = JSON.stringify(value);
+  const duplicated = (options.forbiddenTexts ?? [])
+    .map((text) => text.trim())
+    .filter((text) => text.length >= DUPLICATE_TEXT_MIN_CHARS)
+    .filter((text) => serialized.includes(JSON.stringify(text).slice(1, -1)));
+  if (duplicated.length > 0) return fail('invalid', `snapshot_duplicates_source_text:${duplicated.length}`);
+  const bytes = new TextEncoder().encode(serialized).length;
   if (bytes > SNAPSHOT_MAX_BYTES) return fail('invalid', 'snapshot_too_large');
   return ok(value as Record<string, unknown>);
 }
@@ -88,5 +107,72 @@ export async function historyEntryRunInput(
     sourceFingerprint: entry.analysisId,
     modelMeta: aiMeta ? { mode: aiMeta.mode, promptVersion: aiMeta.promptVersion, generatedAt: aiMeta.generatedAt } : null,
     createdAt: entry.createdAt,
+  };
+}
+
+/**
+ * Storage Capacity Guard §4 · §9 — Deep Report **렌더된 결과**를 '당시 결과'로 남길 최소 모양.
+ *
+ * ```
+ * 담는다   candidate id · 판정 · 화면 문장 · evidence ref · event id · actionPlan 문장 · 모델/버전
+ * 안 담는다 reportedScenes(사건 원문) · 렌즈 전체 · 챕터 전체 · Provider 원문 · 프롬프트
+ * ```
+ *
+ * ⚠️ 사건 수가 늘어도 이 스냅샷은 커지지 않는다 — 사건은 id로만 참조한다(fixture 10/100/500).
+ * ⚠️ 저장할 때는 `forbiddenTexts`에 사건 본문을 넘겨 한 번 더 확인한다(analysisRunRepository.record).
+ */
+export function deepReportRunInput(source: {
+  id: string;
+  targetId: string | null;
+  report: RelationshipDeepReport;
+  promptVersion: string | null;
+  mode: string | null;
+  sourceFingerprint: string | null;
+}): Omit<AnalysisRun, 'appVersion' | 'createdAt'> {
+  const candidates = source.report.candidates.map((candidate) => ({
+    id: candidate.id,
+    verdict: candidate.verdict,
+    primaryAxis: candidate.primaryAxis,
+    headline: candidate.headline,
+    soWhat: candidate.soWhat,
+    whyItMatters: candidate.whyItMatters,
+    limitation: candidate.limitation,
+    soWhatSource: candidate.soWhatSource,
+    operator: candidate.insightOperator,
+    evidenceRefs: candidate.evidenceRefs,
+    eventIds: [...new Set([...candidate.relevantEventIds, ...candidate.semanticEventIds])],
+  }));
+  const plan = source.report.actionPlan;
+  const actionPlan = plan
+    ? {
+        sourceCandidateId: plan.sourceCandidateId,
+        title: plan.title,
+        topic: plan.topic,
+        mode: plan.mode,
+        source: plan.source,
+        lifecycle: plan.lifecycle,
+        sourceRank: plan.sourceRank,
+        nextMove: plan.nextMove,
+        verificationQuestion: plan.verificationQuestion,
+        verificationFrom: plan.verificationFrom,
+        observeSignal: plan.observeSignal,
+        decisionSignals: plan.decisionSignals,
+        unresolved: plan.unresolved,
+        usedEvidenceRefs: plan.usedEvidenceRefs,
+        usedEventIds: plan.usedEventIds,
+      }
+    : null;
+  return {
+    id: source.id,
+    targetId: source.targetId,
+    type: 'deep_report',
+    snapshot: {
+      candidateIds: candidates.map((candidate) => candidate.id),
+      candidates,
+      actionPlan,
+      usedEventIds: [...new Set([...candidates.flatMap((candidate) => candidate.eventIds), ...(plan?.usedEventIds ?? [])])],
+    },
+    sourceFingerprint: source.sourceFingerprint,
+    modelMeta: { promptVersion: source.promptVersion, mode: source.mode },
   };
 }

@@ -101,11 +101,34 @@ export type PersistenceErrorKind =
   | 'conflict'
   | 'not_found'
   | 'invalid'
+  /** Storage Capacity Guard — 크기 · 사진 · 원문 복제 때문에 cloud write를 보내지 않았다(로컬은 그대로) */
+  | 'payload_rejected'
   | 'unknown';
+
+export type CloudPayloadIssueReason =
+  | 'binary_field'
+  | 'binary_value'
+  | 'data_url'
+  | 'blob_url'
+  | 'base64_like'
+  | 'forbidden_key'
+  | 'nested_events'
+  | 'string_too_large'
+  | 'text_too_long'
+  | 'array_too_large'
+  | 'too_deep'
+  | 'row_too_large';
+
+/** 어떤 칸이 왜 거부됐는지. **값은 담지 않는다** */
+export interface CloudPayloadIssue {
+  path: string;
+  reason: CloudPayloadIssueReason;
+}
 
 export interface PersistenceError {
   kind: PersistenceErrorKind;
   message: string;
+  issues?: CloudPayloadIssue[];
 }
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: PersistenceError };
@@ -136,6 +159,10 @@ export function ok<T>(value: T): Result<T> {
   return { ok: true, value };
 }
 
-export function fail<T = never>(kind: PersistenceErrorKind, message: string): Result<T> {
-  return { ok: false, error: { kind, message } };
+export function fail<T = never>(
+  kind: PersistenceErrorKind,
+  message: string,
+  issues?: CloudPayloadIssue[],
+): Result<T> {
+  return { ok: false, error: issues ? { kind, message, issues } : { kind, message } };
 }

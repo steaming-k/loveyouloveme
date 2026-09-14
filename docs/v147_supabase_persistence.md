@@ -160,6 +160,44 @@ rollback;
 - 클라우드 저장 ≠ AI Provider 처리. 계정 저장은 Provider 전송을 늘리지 않는다.
 - analytics 외부 전송 금지 키에 `target_label · targetLabel · email` 추가. 사건 본문 · 반응은 analytics.ts에 필드명 자체가 없고(SEM-06), 어떤 `trackEvent` 호출도 본문 · 반응 · 별칭 · 이메일 · 생년월일 property를 싣지 않는다(persistence fixture 정적 검사). persistence · 계정 코드는 analytics · console 로그를 쓰지 않는다. gateway 에러 메시지에 행 내용이 없다.
 
+## 9-1. Storage Capacity Guard (NextStep §1~§10 · §29~§32)
+
+**Supabase는 사진 저장소가 아니다.** 이번 버전은 Supabase Storage bucket을 쓰지 않고, 테이블에도 텍스트와 최소 메타데이터만 둔다.
+
+| 규칙 | 구현 |
+|---|---|
+| 모든 cloud write 직전 검사 | `src/lib/persistence/cloudWriteBudget.ts` — `rejectCloudPayload()`를 supabaseGateway · memoryGateway의 insert · update **맨 앞**에서 부른다(요청을 만들기 전) |
+| 상수는 한 파일 | `CLOUD_WRITE_BUDGET` — 행 바이트(profile 32KB · target 32KB · event 16KB · analysis 128KB) · 문자열 12KB · 사건 본문 4000자 · 별칭 40자 · 배열 200 · 깊이 12. SQL CHECK와 같거나 더 엄격(fixture가 SQL 숫자와 비교) |
+| 사진 · 바이너리 차단 | 필드 이름(photo · image · thumbnail · screenshot · objectUrl · dataUrl · base64 · blob · file · audio · video) · 값(`data:image/` · `;base64,` · `blob:` · 긴 base64 문자열 · ArrayBuffer/typed array) → `payload_rejected` |
+| Provider 원문 차단 | raw · choices · completion · reasoning · prompt · messages · aiContext · debug · trace 키 → 거부 |
+| 원문 한 곳에만 | 사건 본문 · 반응은 `relationship_events` 행에만. JSON 칸 안의 `events` · `description` · `myReaction` → 거부. `target_json`은 mapper가 도메인 칸만 옮긴다 |
+| 분석 스냅샷 | `deepReportRunInput()` — candidate id · 판정 · 화면 문장 · evidence ref · event id · actionPlan · 모델/버전만. `reportedScenes`(원문) 없음. 저장 시 `forbiddenTexts`(사건 본문)가 스냅샷에 다시 들어가면 거부 |
+| 몰래 자르지 않는다 | mapper의 `slice()` 절단 제거. 너무 크면 **write 실패 + 로컬 원본 유지 + 어떤 칸이 왜 문제인지(path · reason, 값 없음) 반환** |
+| 기존 행 보호 | 거부는 gateway 앞에서 멈춘다 — 기존 cloud row의 본문 · revision 그대로 |
+| migration | repository 단위 작은 write. 거부된 항목만 `rejected`(entity · id · issues)로 모으고 나머지는 계속 → `completed_with_rejections`. 상대가 거부되면 그 상대의 사건은 올리지 않는다. `bytes`(profile · targets · events · analysisRuns · total) 측정 |
+
+실측(`npm run test:persistence`, fixture 세션 기준):
+
+| payload | bytes |
+|---|---|
+| profile 행 | 518 |
+| target 행 | 736 |
+| event 행(사건 1개) | 315 |
+| deep report analysis 행 | 1,796 |
+| migration batch(나 · 상대 1 · 사건 3 · History 2) | 5,240 |
+
+| 사건 수 | 사건 행 합계 | Deep Report 스냅샷 | migration 합계 |
+|---|---|---|---|
+| 10 | 3,690 | 1,580 | 7,869 |
+| 100 | 37,080 | 1,580 | 41,259 |
+| 500 | 186,280 | 1,580 | 190,459 |
+
+→ 사건이 늘면 사건 행만 늘고, 분석 스냅샷은 커지지 않는다.
+
+## 9-2. 테스트는 실제 AI Provider를 부르지 않는다 (P0)
+
+`.env.local`이 `AI_MODE=real`이어도 `tests/run-*.mjs`는 모두 `tests/_aiTestGuard.mjs`를 import해 테스트 헤더를 붙이고, 서버는 그 요청을 mock으로 처리한다. 실제 호출은 `ALLOW_REAL_AI_TESTS=1`일 때만(`test:ai:real` · semantic provider QA). `npm run test:ai-guard`가 고정하고, `GET /api/dev/ai-guard`로 실제 호출 수를 본다.
+
 ## 10. Known limitations
 
 1. **실제 Supabase에 적용 · 검증되지 않음.** `docs/supabase-info.md`의 project(`tcltmqertkbbdpqtkola`)는 DNS NXDOMAIN(2026-09-14) — 삭제/일시정지/오기 가능성. dev/staging 여부도 미확인.
@@ -168,7 +206,8 @@ rollback;
 4. 클라우드 → 기기 불러오기(다른 기기에서 이어보기) UI 없음. `sessionWithCloudContext()`와 parity fixture까지만.
 5. 저장된 관계 목록 · 전환 UI 없음(service 수준까지).
 6. 같은 기기 데이터를 **두 번째 계정**에 저장하면 stable id가 첫 계정 행과 겹쳐 conflict로 남는다(첫 계정 데이터는 보호됨). 계정 전환 시 id 재발급 정책은 미결정.
-7. Deep Report 결과 자동 저장 없음(§6).
+7. Deep Report 결과 자동 저장 없음(§6). 저장 모양(`deepReportRunInput`)과 원문 복제 검사는 있으나 화면 흐름에 연결하지 않았다 — 저장 시점(렌더 확정 · entitlement)과 id 규칙 결정 필요.
+10. 이 branch는 Core Value 종료 전 WIP(`4cbefd8`) 위에 있다. P0 가드만 cherry-pick했고 Core Value Final Fix(`b6f2a2d`)는 없다 — 병합 전에 안정 base 위로 옮기는 계획이 필요하다(보고서 참고).
 8. Magic Link는 Supabase 대시보드의 Site URL / Redirect URL(`/auth/callback`) 설정이 필요하다. OTP 코드 입력은 이메일 템플릿에 `{{ .Token }}`이 있어야 한다.
 9. middleware 기반 세션 갱신은 넣지 않았다(서버 렌더에서 사용자 데이터를 읽는 곳이 아직 없다).
 

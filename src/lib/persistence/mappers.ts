@@ -1,5 +1,4 @@
 import { MIRROR_AXES } from '@/data/axes';
-import { TARGET_CUSTOM_INTEREST_MAX_LENGTH, TARGET_INTEREST_MAX } from '@/data/targetPreferences';
 import { createEmptyBirthProfile } from '@/lib/logic/birth';
 import { sanitizeRelationshipEvents } from '@/lib/logic/relationshipEvents';
 import {
@@ -52,6 +51,8 @@ import {
  *
  * ⚠️ 클라우드에서 읽은 JSON도 **로컬 세션 복원과 같은 sanitize를 통과한다.** 손상되거나 조작된
  *    행이 판정 경로로 흘러가지 않게 하는 규칙(v1.44 BUG-002)은 저장소가 바뀌어도 같다.
+ * ⚠️ **자르지 않는다**(Storage Capacity Guard §7). 너무 긴 값은 여기서 줄이지 않고 cloud write guard가
+ *    거부한다 — 몰래 잘라 저장하면 사용자 입력이 조용히 바뀐다.
  * ⚠️ 유효한 값은 **그대로** 돌아온다 — 그래서 로컬과 클라우드에서 점수 · Mirror · Top 3 ·
  *    사건 선택이 같다(fixture PARITY).
  */
@@ -71,7 +72,7 @@ function sanitizeMbti(value: unknown): MbtiType | null {
 }
 
 function optionalString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.slice(0, 120) : undefined;
+  return typeof value === 'string' && value.trim() ? value : undefined;
 }
 
 export function sanitizeBirthProfile(value: unknown): BirthProfile {
@@ -98,7 +99,7 @@ function sanitizeAdaptive(value: unknown): AdaptiveAnswer | null {
   const axes = new Set<string>(MIRROR_AXES.map((axis) => axis.key));
   if (typeof raw.axis !== 'string' || !axes.has(raw.axis)) return null;
   if (typeof raw.optionId !== 'string' || !raw.optionId) return null;
-  return { axis: raw.axis as AdaptiveAnswer['axis'], optionId: raw.optionId.slice(0, 80) };
+  return { axis: raw.axis as AdaptiveAnswer['axis'], optionId: raw.optionId };
 }
 
 function sanitizeInterests(value: unknown): TargetInterest[] {
@@ -107,23 +108,22 @@ function sanitizeInterests(value: unknown): TargetInterest[] {
   for (const item of value) {
     const raw = record(item);
     if (typeof raw.id !== 'string' || typeof raw.category !== 'string' || typeof raw.label !== 'string') continue;
-    const label = raw.label.trim().slice(0, TARGET_CUSTOM_INTEREST_MAX_LENGTH);
+    const label = raw.label.trim();
     if (!label) continue;
-    out.push({ id: raw.id.slice(0, 80), category: raw.category as TargetInterestCategory, label });
-    if (out.length >= TARGET_INTEREST_MAX) break;
+    out.push({ id: raw.id, category: raw.category as TargetInterestCategory, label });
   }
   return out;
 }
 
 function sanitizeSavedQuestions(value: unknown): ConversationQuestionId[] {
   if (!Array.isArray(value)) return [];
-  return [...new Set(value.filter((item): item is string => typeof item === 'string' && item.length <= 40))] as ConversationQuestionId[];
+  return [...new Set(value.filter((item): item is string => typeof item === 'string' && item.length > 0))] as ConversationQuestionId[];
 }
 
 /** 선택 별칭 — 줄바꿈 제거 · 40자. 비면 null(실명·별칭을 요구하지 않는다) */
 export function sanitizeLabel(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  const label = value.replace(/\s+/g, ' ').trim().slice(0, 40);
+  const label = value.replace(/\s+/g, ' ').trim();
   return label || null;
 }
 
@@ -227,7 +227,7 @@ function asJson(value: unknown): Json {
 }
 
 export function profileRowOf(userId: string, data: SelfProfileData): InsertRow<'user_profiles'> {
-  return { user_id: userId, profile_json: asJson(data), schema_version: PROFILE_SCHEMA_VERSION };
+  return { user_id: userId, profile_json: asJson(sanitizeSelfProfile(data)), schema_version: PROFILE_SCHEMA_VERSION };
 }
 
 export function profileFromRow(row: UserProfileRow): CloudProfile {
@@ -248,7 +248,8 @@ export function targetRowOf(
     user_id: userId,
     label: sanitizeLabel(input.label),
     relation_status: input.relationStatus,
-    target_json: asJson(input.data),
+    /* 도메인 칸만 옮긴다 — 섞여 들어온 사건 배열 · 사진 필드는 여기서 빠진다(STORAGE-04 · 09) */
+    target_json: asJson(sanitizeTargetContext(input.data)),
     schema_version: TARGET_SCHEMA_VERSION,
     archived_at: null,
   };
