@@ -2,7 +2,7 @@
 
 import { UtRatingCard } from '@/components/ut/UtRatingCard';
 import { SectionLabel } from '@/components/common/primitives';
-import { UT_MODE } from '@/lib/env';
+import { useUtMode } from '@/hooks/useUtMode';
 import { useSession } from '@/state/SessionProvider';
 
 /**
@@ -15,8 +15,9 @@ import { useSession } from '@/state/SessionProvider';
  */
 export function UtSummaryCard() {
   const { answers } = useSession();
+  const utMode = useUtMode();
 
-  if (!UT_MODE) return null;
+  if (!utMode) return null;
 
   const analysis = answers.observedAnalysis;
   const photoCount = analysis?.evidenceCoverage.imageCount ?? 0;

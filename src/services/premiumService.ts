@@ -3,6 +3,7 @@ import { withObjectParticle } from '@/lib/korean';
 import { PREMIUM_FEATURES, PREMIUM_FIX_CTA } from '@/data/premium';
 import { HISTORY_STATE_LABEL } from '@/data/copy';
 import { PREMIUM_FAKE_DOOR, SAJU_ENGINE_READY } from '@/lib/env';
+import { resolvePremiumAccess } from '@/lib/premiumAccess';
 import { buildPremiumLensBundle } from '@/lib/logic/premiumLens';
 import { buildSelfLevels } from '@/lib/logic/firstContact';
 /**
@@ -158,6 +159,12 @@ export function premiumFeatureState(
      * 조용히 생략할 수 있게 두지 않는다.**
      */
     allowsOutwardAction: boolean;
+    /**
+     * v1.47 Premium UT Visibility — **필수.** UT 탭이면 `NEXT_PUBLIC_PREMIUM_FAKE_DOOR`가 꺼져 있어도
+     * Premium 표면이 열린다(`resolvePremiumAccess`). 화면은 `useUtMode()`, 서버 fixture는 `false`를 넘긴다.
+     * 콘텐츠 근거(`deepReportAvailable` 등) 판정은 바꾸지 않는다.
+     */
+    utMode: boolean;
   },
 ): PremiumFeature {
   const def = PREMIUM_FEATURES[id];
@@ -174,7 +181,14 @@ export function premiumFeatureState(
     description: def.description,
     additions,
     price,
-    status: PREMIUM_FAKE_DOOR ? 'fake-door' : 'unavailable',
+    status: resolvePremiumAccess({
+      utMode: context.utMode,
+      fakeDoorEnabled: PREMIUM_FAKE_DOOR,
+      previewEnabled: false,
+      paymentConfirmed: false,
+    }).surfaceEnabled
+      ? 'fake-door'
+      : 'unavailable',
   };
 
   /**

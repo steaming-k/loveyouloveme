@@ -1,5 +1,6 @@
 'use client';
 
+import { useUtMode } from '@/hooks/useUtMode';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
@@ -148,6 +149,8 @@ export default function FirstContactPage() {
    * 사진이 없으면 여기도 열리지 않는다 — 그게 정직한 결과다.
    */
   const [priceVariant] = useState(() => resolvePriceVariant());
+  /** v1.47 — UT에서는 Premium 표면이 flag와 무관하게 열린다(`resolvePremiumAccess`) */
+  const utMode = useUtMode();
   const crossSourceInsights = useCrossSourceInsights();
   /**
    * v1.40.1 §38.3 — v1.40에서 이 호출부가 `allowsOutwardAction`을 넘기지 않았다.
@@ -161,6 +164,7 @@ export default function FirstContactPage() {
    * `additions`를 보여주기로 하면 그때 새어 나갈 자리이기 때문이다.
    */
   const premiumFeature = premiumFeatureState('relationship_deep_report', resolvePrice(priceVariant), {
+    utMode,
     /**
      * §2-1-A — **Experience/Target 유무로 Premium 자격을 막지 않는다.**
      * `hasDeepConnection`만 보면 관계 경험이 없는 사용자는 통과할 방법이

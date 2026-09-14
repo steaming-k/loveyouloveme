@@ -19,7 +19,7 @@ import { DeepReportSnapshotSaver } from '@/components/account/DeepReportSnapshot
 import { ReportHeader } from '@/components/report/ReportShell';
 import { DEEP_REPORT_COPY, PREMIUM_COPY, PREMIUM_FEATURES } from '@/data/premium';
 import { LENS_PAYWALL_COPY } from '@/data/premiumLens';
-import { PREMIUM_FAKE_DOOR, PREMIUM_PREVIEW, UT_MODE } from '@/lib/env';
+import { usePremiumAccess, useUtMode } from '@/hooks/useUtMode';
 import { UtRatingCard } from '@/components/ut/UtRatingCard';
 import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
@@ -246,9 +246,10 @@ function PremiumView() {
   const copy = isDeepReport ? DEEP_REPORT_COPY : PREMIUM_COPY;
 
   /* ── vNext Unlock stage ──────────────────────────────────────────────────
-     `?mode=ut`이면 UT 참여자 체험이다 — `/premium-preview/[feature]?mode=ut`와 같은 규칙을
-     쓴다. 새 Flag/Route 트리를 만들지 않고 기존 PREMIUM_PREVIEW 게이트에 쿼리만 얹는다. */
-  const isBetaUt = params.get('mode') === 'ut';
+     v1.47 — UT · flag · 결제 상태를 이 화면에서 따로 읽지 않는다. `usePremiumAccess()` 하나가 정한다
+     (`lib/premiumAccess.ts`). UT 탭이면 `NEXT_PUBLIC_PREMIUM_FAKE_DOOR`가 꺼져 있어도 Paywall · CTA · 리포트가 열리고,
+     쿼리 없이 들어와도(진입 행 · 새로고침 · 뒤로가기) UT가 유지된다(`lib/utMode.ts`). */
+  const access = usePremiumAccess();
   const [stage, setStage] = useState<UnlockStage>('paywall');
   const [unlockMode, setUnlockMode] = useState<PremiumAccessMode | null>(null);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -275,6 +276,7 @@ function PremiumView() {
   const feature = useMemo(
     () =>
       premiumFeatureState(featureId, price, {
+        utMode: access.utMode,
         mirrorAvailable: mirror.available,
         historyComparable: historyReport.comparable,
         mbtiAvailable: Boolean(mbtiLens),
@@ -314,6 +316,7 @@ function PremiumView() {
       mbtiLens,
       birth.couple,
       crossSourceInsights,
+      access.utMode,
     ],
   );
 
@@ -352,11 +355,7 @@ function PremiumView() {
    * 거짓 표시다. `demo_unlock`은 '결제 없이 열었다'를 화면에 명시한다
    * (`lib/premiumAccess.ts` · `UNLOCK_COPY.demoUnlock`).
    */
-  const unlockModeForCta: PremiumAccessMode = isBetaUt
-    ? 'beta_ut'
-    : PREMIUM_PREVIEW
-      ? 'preview'
-      : 'demo_unlock';
+  const unlockModeForCta: PremiumAccessMode = access.mode;
 
   const definition = PREMIUM_FEATURES[featureId];
   /**
@@ -385,8 +384,8 @@ function PremiumView() {
 
   // Flag OFF — Paywall에 머무르지 않는다.
   useEffect(() => {
-    if (!PREMIUM_FAKE_DOOR) navReplace(backHref);
-  }, [navReplace, backHref]);
+    if (!access.surfaceEnabled) navReplace(backHref);
+  }, [access.surfaceEnabled, navReplace, backHref]);
 
   useEffect(() => {
     setNotified(hasNotifyIntent(featureId));
@@ -400,7 +399,7 @@ function PremiumView() {
   const paywallViewSent = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!PREMIUM_FAKE_DOOR || feature.status !== 'fake-door') return;
+    if (!access.surfaceEnabled || feature.status !== 'fake-door') return;
     if (paywallViewSent.current === featureId) return;
     paywallViewSent.current = featureId;
     trackEvent('premium_paywall_view', {
@@ -411,7 +410,7 @@ function PremiumView() {
       ...(hookVariant ? { hook_variant: hookVariant } : {}),
       ...(funnelAnalysisId ? { funnel_analysis_id: funnelAnalysisId } : {}),
     });
-  }, [featureId, source, price, variant, feature.status, hookVariant, funnelAnalysisId]);
+  }, [access.surfaceEnabled, featureId, source, price, variant, feature.status, hookVariant, funnelAnalysisId]);
 
   /**
    * Preview Unlock이 열려 있는 분석이면(같은 탭에서 새로고침·뒤로가기) Paywall을 다시
@@ -505,7 +504,7 @@ function PremiumView() {
     stage === 'report',
   );
 
-  if (!PREMIUM_FAKE_DOOR) return null;
+  if (!access.surfaceEnabled) return null;
 
   /* 상세를 만들 근거가 없으면 Paywall을 띄우지 않는다 — 가격도 CTA도 보여주지 않는다(§40) */
   if (feature.status === 'unavailable') {
@@ -1113,7 +1112,8 @@ function PremiumWtpQuestion({
   choice: 'yes' | 'maybe' | 'no' | null;
   onSelect: (value: 'yes' | 'maybe' | 'no') => void;
 }) {
-  if (!UT_MODE) return null;
+  const utMode = useUtMode();
+  if (!utMode) return null;
 
   const options: { value: 'yes' | 'maybe' | 'no'; label: string }[] = [
     { value: 'yes', label: '실제로 결제할 의향이 있다' },

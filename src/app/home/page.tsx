@@ -1,5 +1,6 @@
 'use client';
 
+import { useUtMode } from '@/hooks/useUtMode';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
@@ -15,7 +16,6 @@ import { BRAND, HOME_COPY, LENS_COPY } from '@/data/copy';
 import { clearAiCache } from '@/services/ai/aiClient';
 import { trackEvent } from '@/lib/analytics';
 import { clearDeepReportUt } from '@/lib/deepReportUtStore';
-import { UT_MODE } from '@/lib/env';
 import { clearPreviewUnlocks, hasPreviewUnlock } from '@/lib/premiumAccess';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { hasPremiumEvidence } from '@/lib/logic/premiumChapters';
@@ -101,10 +101,13 @@ export default function HomePage() {
    */
   const crossSourceInsights = useCrossSourceInsights();
   const [priceVariant] = useState(() => resolvePriceVariant());
+  /** v1.47 — UT에서는 Premium 표면이 flag와 무관하게 열린다(`resolvePremiumAccess`) */
+  const utMode = useUtMode();
   const premiumBundleFeature = premiumFeatureState(
     'relationship_deep_report',
     resolvePrice(priceVariant),
     {
+      utMode,
       deepReportAvailable: hasPremiumEvidence({
         insights: crossSourceInsights,
         declared: answers.declared,
@@ -575,7 +578,7 @@ export default function HomePage() {
 
           {/* v1.12 §38~§39 — UT_MODE에서만. 개발자 콘솔 없이 참가자 URL 하나로 결과를
               회수하고, 다음 참가자를 위해 데이터를 비울 수 있어야 한다 */}
-          {UT_MODE ? (
+          {utMode ? (
             <div className="flex items-center justify-center gap-3 rounded-row border border-dashed border-line-strong bg-canvas-warm px-3 py-2.5">
               <button
                 type="button"

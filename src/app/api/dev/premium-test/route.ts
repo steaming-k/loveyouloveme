@@ -97,6 +97,8 @@ import type {
 export const runtime = 'nodejs';
 
 interface PremiumTestRequest {
+  /** v1.47 Premium UT Visibility — 화면의 `useUtMode()` 값. 생략하면 일반 사용자 */
+  utMode?: boolean;
   status?: RelationshipStatus | null;
   declared?: Partial<DeclaredPreference>;
   experience?: Partial<RelationshipExperience>;
@@ -435,6 +437,7 @@ export async function POST(request: Request): Promise<Response> {
     premiumEntry: (() => {
       const soloMode = soloModeOfTarget(answers.target);
       const feature = premiumFeatureState('relationship_deep_report', resolvePrice('A'), {
+        utMode: body.utMode === true,
         deepReportAvailable: hasPremiumEvidence({ insights, declared: answers.declared, mirror }),
         solo: soloMode === 'no_target',
         allowsOutwardAction: jobAllowsOutwardAction(job),
@@ -470,6 +473,7 @@ export async function POST(request: Request): Promise<Response> {
       ] as PremiumFeatureId[]
     ).map((id) => {
       const feature = premiumFeatureState(id, resolvePrice('A'), {
+        utMode: body.utMode === true,
         mirrorAvailable: mirror.available,
         historyComparable: historyReport.comparable,
         mbtiAvailable: mbtiLens !== null,

@@ -1,5 +1,6 @@
 'use client';
 
+import { useUtMode } from '@/hooks/useUtMode';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
@@ -92,6 +93,8 @@ function MirrorView() {
   const profile = useRelationshipProfile();
   const { saveEntry, entries } = useHistory();
   const [variant] = useState(() => resolvePriceVariant());
+  /** v1.47 — UT에서는 Premium 표면이 flag와 무관하게 열린다(`resolvePremiumAccess`) */
+  const utMode = useUtMode();
 
   const revisit = isRevisit(searchParams);
   const source = revisitSource(searchParams);
@@ -568,6 +571,7 @@ function MirrorView() {
           {gapInsights.length > 0 ? (
             <PremiumEntryRow
               feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
+                utMode,
                 mirrorAvailable: mirror.available,
                 /**
                  * §2-1-A — **Experience/Target 유무로 Premium 자격을 막지 않는다.**

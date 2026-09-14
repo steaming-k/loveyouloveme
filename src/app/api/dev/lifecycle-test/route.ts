@@ -590,6 +590,7 @@ export async function POST(request: Request): Promise<Response> {
        * fixture가 함께 훑는다.
        */
       premiumAdditions: premiumFeatureState('relationship_deep_report', resolvePrice('A'), {
+        utMode: false,
         deepReportAvailable: hasDeepConnection(insights),
         // UT-1 P0-A — 화면과 **같은 술어**를 쓴다. 여기서 `true`를 굳히면 fixture가
         // 화면과 다른 사용자를 검사하게 된다.

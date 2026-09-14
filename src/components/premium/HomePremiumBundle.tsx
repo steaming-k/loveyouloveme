@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { SectionLabel } from '@/components/common/primitives';
 import { LENS_ANCHOR, LENS_SHORT_LABEL, PREMIUM_BUNDLE_COPY } from '@/data/premiumLens';
 import { trackEvent } from '@/lib/analytics';
-import { PREMIUM_FAKE_DOOR } from '@/lib/env';
+import { usePremiumAccess } from '@/hooks/useUtMode';
 import {
   formatPrice,
   priceForScreenReader,
@@ -68,6 +68,8 @@ export function HomePremiumBundle({
   const router = useRouter();
   const { answers, hydrated } = useSession();
   const [variant] = useState(() => resolvePriceVariant());
+  /** v1.47 — env flag를 직접 읽지 않는다. UT에서는 flag가 꺼져 있어도 보인다(`resolvePremiumAccess`) */
+  const access = usePremiumAccess();
 
   const price = feature.price ?? resolvePrice(variant);
   const funnelAnalysisId = answers.currentAnalysisMeta?.funnelAnalysisId ?? null;
@@ -79,7 +81,7 @@ export function HomePremiumBundle({
   const viewSent = useRef(false);
 
   useEffect(() => {
-    if (!PREMIUM_FAKE_DOOR) return;
+    if (!access.surfaceEnabled) return;
     if (!hydrated || !funnelAnalysisId) return;
     if (viewSent.current) return;
     viewSent.current = true;
@@ -91,9 +93,9 @@ export function HomePremiumBundle({
       hook_variant: 'home_bundle',
       funnel_analysis_id: funnelAnalysisId,
     });
-  }, [feature.id, price, variant, hydrated, funnelAnalysisId]);
+  }, [access.surfaceEnabled, feature.id, price, variant, hydrated, funnelAnalysisId]);
 
-  if (!PREMIUM_FAKE_DOOR) return null;
+  if (!access.surfaceEnabled) return null;
 
   /**
    * ⚠️ `unavailable`이면 이 블록을 통째로 숨긴다.

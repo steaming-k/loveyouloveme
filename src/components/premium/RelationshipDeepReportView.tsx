@@ -15,7 +15,7 @@ import { Lovy } from '@/components/lovy/Lovy';
 import { DeepReportUtFlow } from '@/components/ut/DeepReportUtFlow';
 import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
-import { UT_MODE } from '@/lib/env';
+import { useUtMode } from '@/hooks/useUtMode';
 import { hasCompletedDeepReport, markDeepReportCompleted } from '@/lib/deepReportUtStore';
 import { LOVY_REPORT_POSE, LOVY_SIZE } from '@/lib/premiumLovy';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
@@ -151,6 +151,7 @@ export function RelationshipDeepReportView({
 
   const viewSent = useRef(false);
   const [utOpen, setUtOpen] = useState(false);
+  const utMode = useUtMode();
   const [completed, setCompleted] = useState(false);
   const scrollDepthSent = useRef<{ 50: boolean; 100: boolean }>({ 50: false, 100: false });
   const rootRef = useRef<HTMLDivElement>(null);
@@ -283,7 +284,7 @@ export function RelationshipDeepReportView({
       markDeepReportCompleted(analysisId);
     }
     setCompleted(true);
-    if (UT_MODE) setUtOpen(true);
+    if (utMode) setUtOpen(true);
   };
 
   return (
@@ -712,7 +713,7 @@ export function RelationshipDeepReportView({
         />
       ) : null}
 
-      {UT_MODE ? (
+      {utMode ? (
         <DeepReportUtFlow
           open={utOpen}
           onClose={() => setUtOpen(false)}

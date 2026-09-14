@@ -1,5 +1,6 @@
 'use client';
 
+import { useUtMode } from '@/hooks/useUtMode';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -58,6 +59,8 @@ function AstrologyLensView() {
   const { answers } = useSession();
   const [today] = useState(() => new Date());
   const [variant] = useState(() => resolvePriceVariant());
+  /** v1.47 — UT에서는 Premium 표면이 flag와 무관하게 열린다(`resolvePremiumAccess`) */
+  const utMode = useUtMode();
 
   const mine = answers.birthProfile;
   const theirs = answers.target.birthProfile;
@@ -239,6 +242,7 @@ function AstrologyLensView() {
             여전히 구분해야 한다(§31).
           */
           feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
+            utMode,
             allowsOutwardAction: jobAllowsOutwardAction(resolveRelationshipContext(answers).job),
             deepReportAvailable: hasPremiumEvidence({
               insights: crossSourceInsights,

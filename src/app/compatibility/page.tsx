@@ -1,5 +1,6 @@
 'use client';
 
+import { useUtMode } from '@/hooks/useUtMode';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
@@ -230,8 +231,11 @@ function CompatibilityView() {
   );
 
   const [variant] = useState(() => resolvePriceVariant());
+  /** v1.47 — UT에서는 Premium 표면이 flag와 무관하게 열린다(`resolvePremiumAccess`) */
+  const utMode = useUtMode();
   const crossSourceInsights = useCrossSourceInsights();
   const premiumFeature = premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
+    utMode,
     /**
      * §2-1-A — **Experience/Target 유무로 Premium 자격을 막지 않는다.**
      * `hasDeepConnection`만 보면 관계 경험이 없는 사용자는 통과할 방법이

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { SectionLabel } from '@/components/common/primitives';
 import { DEEP_REPORT_COPY, PREMIUM_COPY } from '@/data/premium';
-import { PREMIUM_FAKE_DOOR } from '@/lib/env';
+import { usePremiumAccess } from '@/hooks/useUtMode';
 import { trackEvent } from '@/lib/analytics';
 import { formatPrice, priceForScreenReader, resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { isRevisit, revisitSource } from '@/lib/resultView';
@@ -71,6 +71,8 @@ export function PremiumEntryRow({
   const searchParams = useSearchParams();
   const { answers, hydrated } = useSession();
   const [variant] = useState(() => resolvePriceVariant());
+  /** v1.47 — env flag를 직접 읽지 않는다. UT에서는 flag가 꺼져 있어도 보인다(`resolvePremiumAccess`) */
+  const access = usePremiumAccess();
 
   /**
    * v1.19 §29 — 지금 화면이 Revisit(v1.18 Bottom Navigation이 붙는 상태)이면 그 사실을
@@ -98,7 +100,7 @@ export function PremiumEntryRow({
   const viewSent = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!PREMIUM_FAKE_DOOR || !isFakeDoor) return;
+    if (!access.surfaceEnabled || !isFakeDoor) return;
     /**
      * v1.19 §3 + Release Gate — **`funnel_analysis_id`가 실제로 생긴 뒤에** 보낸다.
      *
@@ -124,9 +126,9 @@ export function PremiumEntryRow({
       funnel_analysis_id: funnelAnalysisId,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [feature.id, entrySource, price, variant, isFakeDoor, hook?.variant, funnelAnalysisId, hydrated]);
+  }, [access.surfaceEnabled, feature.id, entrySource, price, variant, isFakeDoor, hook?.variant, funnelAnalysisId, hydrated]);
 
-  if (!PREMIUM_FAKE_DOOR) return null;
+  if (!access.surfaceEnabled) return null;
 
   // 상세를 만들 근거가 없는 기능은 유료 CTA 없이 사실만 알린다.
   if (feature.status === 'unavailable') {

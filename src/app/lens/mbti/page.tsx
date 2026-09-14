@@ -1,5 +1,6 @@
 'use client';
 
+import { useUtMode } from '@/hooks/useUtMode';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 
@@ -107,6 +108,8 @@ function MbtiLensView() {
   /* v1.46 §27 — 보고서 섹션 scroll reveal (요소당 1회) */
   useRevealOnceInScreen();
   const [variant] = useState(() => resolvePriceVariant());
+  /** v1.47 — UT에서는 Premium 표면이 flag와 무관하게 열린다(`resolvePremiumAccess`) */
+  const utMode = useUtMode();
 
   const selfLens = useMemo(() => buildMbtiSelfLens(answers.mbti), [answers.mbti]);
   const targetLens = useMemo(() => buildMbtiSelfLens(answers.target.mbti), [answers.target.mbti]);
@@ -201,6 +204,7 @@ function MbtiLensView() {
             여전히 구분해야 한다(§31).
           */
           feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
+            utMode,
             allowsOutwardAction: jobAllowsOutwardAction(resolveRelationshipContext(answers).job),
             deepReportAvailable: hasPremiumEvidence({
               insights: crossSourceInsights,
