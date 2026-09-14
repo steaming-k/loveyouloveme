@@ -231,6 +231,12 @@ async function schemaChecks() {
   check('.env.example — NEXT_PUBLIC_SUPABASE_URL / ANON_KEY 빈 값', /^NEXT_PUBLIC_SUPABASE_URL=$/m.test(env) && /^NEXT_PUBLIC_SUPABASE_ANON_KEY=$/m.test(env));
   check('.env.example — service role 키 항목 없음', !/^[A-Z_]*SERVICE_ROLE[A-Z_]*=/m.test(env));
   check('.gitignore — .env*.local', (await readFile(join(ROOT, '.gitignore'), 'utf8')).includes('.env*.local'));
+  const supabaseInfo = await readFile(join(ROOT, 'docs', 'supabase-info.md'), 'utf8');
+  check(
+    'docs/supabase-info.md — 실제 연결값 없음(key · JWT · project host) · .env.local에서만 관리',
+    !/sb_(publishable|secret)_[A-Za-z0-9_-]{8,}|eyJ[A-Za-z0-9_-]{10,}\.|[a-z0-9]{20}\.supabase\.co/.test(supabaseInfo) &&
+      supabaseInfo.includes('.env.local'),
+  );
 }
 
 /* ══════════════════════════════════════════════════════════════════ guest · analytics · auth (정적) */

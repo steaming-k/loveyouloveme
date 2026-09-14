@@ -287,7 +287,7 @@ offer → (Guest) InlineAuth(이메일 코드 · 메일 링크, Privacy와 같�
 
 ## 10. Known limitations
 
-1. **실제 Supabase에 적용 · 검증되지 않음.** `docs/supabase-info.md`(project id · publishable key 있음 · 환경 표기 없음)의 host는 2026-09-14 재검증에서 로컬 ISP · Google(8.8.8.8) · Cloudflare(1.1.1.1) 세 resolver 모두 NXDOMAIN이고 `supabase.co` 자체는 해석된다 — 네트워크 문제가 아니라 **프로젝트가 없거나(삭제) project id가 다르다.** 일시정지 프로젝트는 보통 DNS가 남는다. dev/staging 표기도 없어 연결되더라도 migration 전에 확인이 필요하다. `.env.local`에는 반영하지 않았다(없는 host를 가리키면 계정 UI만 실패한다).
+1. **실제 Supabase에 적용 · 검증되지 않음.** 예전 `docs/supabase-info.md`에 있던 project(환경 표기 없음 · v1.47 Cleanup에서 문서에서 값 제거)의 host는 2026-09-14 재검증에서 로컬 ISP · Google(8.8.8.8) · Cloudflare(1.1.1.1) 세 resolver 모두 NXDOMAIN이고 `supabase.co` 자체는 해석된다 — 네트워크 문제가 아니라 **프로젝트가 없거나(삭제) project id가 다르다.** 일시정지 프로젝트는 보통 DNS가 남는다. dev/staging 표기도 없어 연결되더라도 migration 전에 확인이 필요하다. `.env.local`에는 반영하지 않았다(없는 host를 가리키면 계정 UI만 실패한다).
 2. RLS 교차 사용자 · auth smoke는 메모리 gateway + 정적 SQL 검사까지다.
 3. 로그인 후에도 **지속 동기화는 없다.** 저장은 사용자가 누른 시점의 스냅샷 migration이고, 이후 로컬 수정은 다시 저장해야 올라간다(같은 내용은 중복되지 않지만, 바뀐 내용은 conflict로 보고되고 덮어쓰지 않는다). revision 기반 update API는 있으나 UI에 연결하지 않았다.
 4. 클라우드 → 기기 불러오기(다른 기기에서 이어보기) UI 없음. `sessionWithCloudContext()`와 parity fixture까지만.

@@ -38,8 +38,8 @@
 
 - 코드: `@supabase/*` 의존성 없음, `SUPABASE_*`/`NEXT_PUBLIC_SUPABASE_*` env 참조 없음, auth 없음.
 - `.env.example` · `.env.local`: Supabase 키 없음.
-- `docs/supabase-info.md`: project id `tcltmqertkbbdpqtkola`와 publishable key가 적혀 있다.
-- **실측(2026-09-14)**: `tcltmqertkbbdpqtkola.supabase.co` DNS 조회가 **NXDOMAIN**. 프로젝트가 삭제·일시정지됐거나 id가 맞지 않다. dev/staging/production 구분도 문서에 없다.
+- `docs/supabase-info.md`: (당시) project id와 publishable key가 적혀 있었다. v1.47 Cleanup에서 값을 제거하고 규칙만 남겼다.
+- **실측(2026-09-14)**: 그 project host DNS 조회가 **NXDOMAIN**. 프로젝트가 삭제·일시정지됐거나 id가 맞지 않다. dev/staging/production 구분도 문서에 없다.
 - 결론: **연결 가능한 Supabase 프로젝트 없음** → §36 경로(scaffold까지, remote migration 없음).
 
 ## 5. v1.47 결정
