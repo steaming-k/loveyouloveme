@@ -15,6 +15,7 @@ import { Lovy } from '@/components/lovy/Lovy';
 import { DeepReportUtFlow } from '@/components/ut/DeepReportUtFlow';
 import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
+import { DEEP_REPORT_NARRATIVE_LOADING } from '@/data/premium';
 import { useUtMode } from '@/hooks/useUtMode';
 import { hasCompletedDeepReport, markDeepReportCompleted } from '@/lib/deepReportUtStore';
 import { LOVY_REPORT_POSE, LOVY_SIZE } from '@/lib/premiumLovy';
@@ -510,6 +511,7 @@ export function RelationshipDeepReportView({
             status={aiNarrative.status}
             reason={aiNarrative.reason}
             onRetry={aiNarrative.retry}
+            loadingCopy={DEEP_REPORT_NARRATIVE_LOADING}
           />
         </div>
       ) : null}

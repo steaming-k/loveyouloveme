@@ -74,10 +74,16 @@ export function AiNarrativeNotice({
   status,
   reason,
   onRetry,
+  loadingCopy,
 }: {
   task: AiTask;
   status: AiNarrativeStatus;
   reason: AiFailureReason | null;
+  /**
+   * v1.47 UT-2 — 긴 AI 대기(Deep Report 15~25초) 동안 보여줄 한 줄. 넘기지 않으면 예전처럼 아무것도 그리지 않는다.
+   * 진행률을 만들지 않는다 — 지금 무엇을 하는지만 말한다.
+   */
+  loadingCopy?: string;
   /**
    * v1.17 — Premium(₩1,900)처럼 사용자가 AI 설명 자체에 대가를 지불한 화면에서만 넘긴다.
    * 무료 화면(S22/S27/S28/F2)은 넘기지 않는다 — Core Result가 이미 보이고 있어 재시도를
@@ -94,6 +100,20 @@ export function AiNarrativeNotice({
     firedRef.current = true;
     trackEvent('ai_narrative_fallback_view', { task, reason });
   }, [status, reason, task]);
+
+  if (status === 'loading' && loadingCopy) {
+    return (
+      <p
+        role="status"
+        aria-live="polite"
+        data-testid="ai-narrative-loading"
+        className="flex items-center gap-2 text-[12px] keep-all text-ink-muted"
+      >
+        <span className="h-1.5 w-1.5 flex-none animate-pulse rounded-full bg-brand" aria-hidden />
+        {loadingCopy}
+      </p>
+    );
+  }
 
   if (status !== 'unavailable' || !reason) return null;
 
