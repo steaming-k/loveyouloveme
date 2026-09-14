@@ -292,7 +292,8 @@ function HistoryReportView() {
           hook={{
             variant: 'history_change',
             title: PREMIUM_HOOK_COPY.history_change.title,
-            description: '이전 관계와 비교하면 계속 유지된 기준과 달라진 기준을 나눠볼 수 있어.',
+            /* 260914 Relationship Language — History가 비교하는 건 '이전 관계'가 아니라 이전 관찰 기록이다(뜻 오류 수정) */
+            description: '이전 관찰 기록과 비교하면 계속 유지된 기준과 달라진 기준을 나눠볼 수 있어.',
             cta: PREMIUM_HOOK_COPY.history_change.cta,
           }}
         />
