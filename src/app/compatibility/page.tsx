@@ -187,6 +187,8 @@ function CompatibilityView() {
   const [showAllGood, setShowAllGood] = useState(false);
   const [showAllFriction, setShowAllFriction] = useState(false);
   const [showMoreQuestions, setShowMoreQuestions] = useState(false);
+  /** 260914 UT 후속 P0 — 점수 근거(입력 재진술)는 첫 viewport에서 접어둔다 */
+  const [showScoreBasis, setShowScoreBasis] = useState(false);
   const [questionTab, setQuestionTab] = useState<'recommended' | 'saved'>('recommended');
 
   const evidenceContext = useEvidenceContext();
@@ -496,14 +498,34 @@ function CompatibilityView() {
           ⚠️ `#why` anchor는 여기 유지한다 — Legacy Redirect(`/compatibility/why`)와
           `ResultSectionNav` 칩이 이 id로 이동한다.
         */}
+        {/*
+          260914 UT 후속 P0 — **기본 접힘.** 이 블록은 새 결론이 아니라 입력의 재진술(몇 개를
+          비교했는지)이다. UT에서 '결과가 보고서 같다 · 핵심이 묻힌다'는 반응이 나왔고, 점수 →
+          결과 한 문장 사이에 근거 문단이 끼면 첫 viewport가 설명으로 찬다. 정보는 지우지 않는다.
+        */}
         <div id={RESULT_ANCHORS.compatibilityWhy} className="scroll-mt-3">
-          <ReportEvidenceBlock>
-            비교 가능한 {result.comparedCount}개 관계 신호로 계산했어.
-            {result.unknownLabels.length > 0
-              ? ` 모름으로 남긴 ${result.unknownLabels.length}개(${result.unknownLabels.join(' · ')})는 계산에서 빼뒀어.`
-              : ''}{' '}
-            항목별 근거는 아래 신호에서 볼 수 있어.
-          </ReportEvidenceBlock>
+          <button
+            type="button"
+            aria-expanded={showScoreBasis}
+            onClick={() => {
+              const next = !showScoreBasis;
+              setShowScoreBasis(next);
+              if (next) trackEvent('result_section_expand', { section: 'why' });
+            }}
+            className="flex min-h-11 items-center gap-1 px-1 text-meta font-medium text-ink-sub"
+          >
+            {showScoreBasis ? '점수 근거 접기' : '이 점수는 어떻게 나왔어?'}
+            <span aria-hidden>{showScoreBasis ? '−' : '+'}</span>
+          </button>
+          {showScoreBasis ? (
+            <ReportEvidenceBlock>
+              비교 가능한 {result.comparedCount}개 관계 신호로 계산했어.
+              {result.unknownLabels.length > 0
+                ? ` 모름으로 남긴 ${result.unknownLabels.length}개(${result.unknownLabels.join(' · ')})는 계산에서 빼뒀어.`
+                : ''}{' '}
+              항목별 근거는 아래 신호에서 볼 수 있어.
+            </ReportEvidenceBlock>
+          ) : null}
         </div>
 
         {/*
@@ -710,9 +732,17 @@ function CompatibilityView() {
             source="compatibility"
             hook={{
               variant: 'friction_why',
-              title: PREMIUM_HOOK_COPY.friction_why.title,
-              // v1.26 — 이 축이 다른 관찰과 이어지는지를 약속한다(제거된 상황 섹션 대신).
-              description: `${topFriction.label}에서 보이는 이 차이가, 네가 따로 답했던 관계 경험·예전 기록과 어떻게 이어지는지 볼 수 있어.`,
+              /*
+                260914 UT 후속 P0 — FREE 첫 가치 → **아직 풀리지 않은 질문** → Premium이 연결해주는
+                가치 한 줄 순서. 예전 제목은 어느 결과에나 같은 문장이라 '또 긴 글'처럼 읽혔다.
+                질문은 방금 본 Friction 축에서 만든다. hook key(`friction_why`)는 그대로다(§19 Attribution).
+                ⚠️ ended에는 앞으로 확인할 행동을 약속하지 않는다(Action Layer가 만들지 않는다).
+              */
+              title: `${topFriction.label}, 실제로는 어떤 순간에 어긋날까?`,
+              description:
+                job === 'ended'
+                  ? `지금은 답변끼리 나란히 놓기만 했어. 네가 답한 관계 경험·기록과 이어서, 이 차이가 어떤 조건에서 생겼는지 볼 수 있어.`
+                  : `지금은 답변끼리 나란히 놓기만 했어. 네가 답한 관계 경험·기록과 이어서, 이 차이가 생기는 조건과 먼저 확인할 것 하나를 짚어줄게.`,
               cta: PREMIUM_HOOK_COPY.friction_why.cta,
             }}
           />
