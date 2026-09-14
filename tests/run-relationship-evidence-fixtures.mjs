@@ -1065,11 +1065,18 @@ async function main() {
        * 부수 효과가 의도한 것이다: `TASK_CONTRACT`가 선언만 하고 아무도 안 쓰는
        * 문서가 아니라 **캐시 키를 만드는 실제 코드 경로**가 된다(TC0이 그 표를 검사한다).
        */
+      /**
+       * ⚠️ v1.47 Model-Aware Cache — 키 모양이 `aiCacheKey.ts` 한 곳으로 옮겨졌다(모델 칸 추가).
+       * 계약은 그대로다: aiClient의 cacheKey가 그 함수를 부르고, 그 함수가 promptVersion을
+       * `TASK_CONTRACT`에서 읽어 키에 넣는다.
+       */
+      const keySrc = stripComments(readFileSync('src/services/ai/aiCacheKey.ts', 'utf-8'));
       check(
         'A14 — cacheKey가 promptVersion을 포함한다 (§40.12 · v1.43 계약에서 읽는다)',
-        /function cacheKey[\s\S]*?promptVersionOf\(task\)/.test(client) &&
-          /TASK_CONTRACT\[task\]\.promptVersion/.test(client),
-        'aiClient.cacheKey가 promptVersion을 TASK_CONTRACT에서 읽지 않는다',
+        /function cacheKey[\s\S]*?return aiCacheKey\(task,/.test(client) &&
+          /promptVersion: string = TASK_CONTRACT\[task\]\.promptVersion/.test(keySrc) &&
+          /`\$\{task\}::\$\{promptVersion\}::/.test(keySrc),
+        'aiClient.cacheKey → aiCacheKey가 promptVersion을 TASK_CONTRACT에서 읽지 않는다',
       );
     }
 
