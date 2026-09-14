@@ -255,15 +255,13 @@ function PremiumPreviewView() {
   if (!PREMIUM_PREVIEW || !featureId || !report) {
     return (
       <ScreenLayout
-        header={<ScreenHeader backHref={ROUTES.home} title="상세 미리보기" />}
+        header={<ScreenHeader backHref={ROUTES.home} title="상세 리포트" />}
         footer={<Button onClick={() => navReplace(ROUTES.home)}>홈으로</Button>}
       >
         <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
           <Lovy pose="laptop" size={110} decorative />
           <p className="text-sub keep-all text-ink-sub">
-            {PREMIUM_PREVIEW
-              ? '알 수 없는 상세 항목이야.'
-              : '이 미리보기는 개발용이라 지금은 열려 있지 않아.'}
+            {PREMIUM_PREVIEW ? '알 수 없는 상세 항목이야.' : '이 화면은 지금 열려 있지 않아.'}
           </p>
         </div>
       </ScreenLayout>
@@ -278,7 +276,7 @@ function PremiumPreviewView() {
       header={
         <ScreenHeader
           backHref={ROUTES.home}
-          action={<Tag tone="neutral">{isBetaUt ? 'BETA TEST' : 'PREVIEW'}</Tag>}
+          action={isBetaUt ? <Tag tone="neutral">BETA TEST</Tag> : undefined}
         />
       }
       footer={
@@ -302,13 +300,13 @@ function PremiumPreviewView() {
       <div className="flex flex-col gap-5">
         {isBetaUt ? (
           <NoticeBox>
-            테스트용 체험이야. 실제 결제 화면으로 이어지지 않아 — 정밀 리포트를 미리 경험해보고
+            결제 없이 먼저 보는 리포트야. 실제 결제 화면으로 이어지지 않아 — 정밀 리포트를 경험해보고
             마지막에 몇 가지만 물어볼게.
           </NoticeBox>
         ) : null}
         <PageHeading
           lines={[PREMIUM_FEATURES[featureId].title]}
-          caption={`개발용 미리보기 · ${PREMIUM_FEATURES[featureId].description}`}
+          caption={PREMIUM_FEATURES[featureId].description}
         />
         {featureId === 'astrology_detail' && !birth.couple ? null : null}
         {'overview' in report ? (

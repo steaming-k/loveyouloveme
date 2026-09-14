@@ -306,7 +306,7 @@ export const UNLOCK_COPY = {
     noteSuffix: '실제 결제는 아니야 · 정밀 관찰 리포트',
   },
   betaUt: {
-    status: '테스트용으로 리포트를 열었어',
+    status: '결제 없이 리포트를 열었어',
     noteSuffix: '실제 결제는 아니야 · 정밀 관찰 리포트',
   },
 

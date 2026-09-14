@@ -95,7 +95,7 @@ function DeepQuestionsView() {
         <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
           <Lovy pose="laptop" size={110} decorative />
           <p className="text-sub keep-all text-ink-sub">
-            이 화면은 개발용이라 지금은 열려 있지 않아.
+            이 화면은 지금 열려 있지 않아.
           </p>
         </div>
       </ScreenLayout>
