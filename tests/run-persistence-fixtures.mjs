@@ -17,6 +17,7 @@
  *   2) node tests/run-persistence-fixtures.mjs
  */
 
+import './_aiTestGuard.mjs';
 import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
