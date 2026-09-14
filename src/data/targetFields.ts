@@ -64,6 +64,8 @@ export const TARGET_FIELDS: readonly TargetField[] = [
 export const TARGET_RELATION_OPTIONS: readonly { value: TargetRelation; label: string }[] = [
   { value: 'crush', label: '알아가는 중' },
   { value: 'talking', label: '썸 타는 중' },
+  /* 260914 UT 후속 P1 — '커플' · '배우자'를 찾던 참가자를 위한 보기. 판정 · STAGE에는 들어가지 않는다 */
+  { value: 'partner', label: '연인 · 배우자' },
   { value: 'friend', label: '친구' },
   { value: 'work', label: '같이 일하는 사람' },
   { value: 'intro', label: '소개로 만남' },

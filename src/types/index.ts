@@ -631,7 +631,21 @@ export interface CurrentRelationshipEvidence {
  * ⚠️ 그래도 **동기화율·Mirror·History 판정에는 여전히 들어가지 않는다.** `ex`가 바꾸는
  * 것은 JOB(문장과 제안의 종류)뿐이고, 그건 `status: 'ended'`를 고른 사용자와 같은 경로다.
  */
-export type TargetRelation = 'crush' | 'talking' | 'friend' | 'work' | 'intro' | 'ex' | 'unsure';
+/*
+ * 260914 UT 후속 P1 STEP 3 — `partner`(연인 · 배우자)를 추가했다. 실제 배우자 · 연인을 떠올린
+ * 참가자가 고를 보기가 없었다. 기존 값 중 이 뜻을 가진 canonical이 없어서(`crush`는 '알아가는 중')
+ * 표시만 바꾸는 매핑으로는 거짓이 된다 — 값 하나만 늘리고 두 표시(연인 · 배우자)는 한 칩으로 묶었다.
+ * ⚠️ `ex`와 달리 STAGE를 바꾸지 않는다 — 연애 · 기혼 단계는 S05 `status`(dating · married)가 이미 말한다.
+ */
+export type TargetRelation =
+  | 'crush'
+  | 'talking'
+  | 'partner'
+  | 'friend'
+  | 'work'
+  | 'intro'
+  | 'ex'
+  | 'unsure';
 
 /** l / m / h, x = 잘 모르겠어요 (점수에 반영하지 않음) */
 export type TargetLevel = 'l' | 'm' | 'h' | 'x';
