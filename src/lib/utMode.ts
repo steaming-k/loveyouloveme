@@ -19,6 +19,17 @@ import { UT_MODE } from '@/lib/env';
  * ⚠️ 결제·자격 기록이 아니다. Premium 콘텐츠를 **볼 수 있게** 할 뿐, 결제 완료로 표시하지
  * 않는다(`premiumAccess.ts`의 `resolvePremiumAccess`).
  */
+/**
+ * UT 운영자 도구(`/ut` — Health Check · 결과 내보내기 · 참가자 초기화)를 열 수 있는 배포인가.
+ *
+ * ⚠️ **쿼리로는 열리지 않는다.** 개발 서버 또는 `NEXT_PUBLIC_UT_MODE=true` 배포에서만 열린다 —
+ * 일반 Production 사용자가 `?mode=ut`를 붙여도 운영자 화면은 404다.
+ */
+export const UT_OPERATOR_TOOLS_ENABLED = process.env.NODE_ENV !== 'production' || UT_MODE;
+
+/** UT 전용 배포(`NEXT_PUBLIC_UT_MODE=true`)인가 — 새 탭에서도 UT가 유지되는지 운영자 점검에 쓴다 */
+export const UT_MODE_DEPLOYMENT = UT_MODE;
+
 export const UT_MODE_QUERY = 'mode';
 export const UT_MODE_QUERY_VALUE = 'ut';
 const STORAGE_KEY = 'lym.ut-mode.v1';

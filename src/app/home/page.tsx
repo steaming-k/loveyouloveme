@@ -32,7 +32,6 @@ import {
 } from '@/lib/logic/relationshipStage';
 import { soloModeOf } from '@/lib/logic/soloMode';
 import { ROUTES } from '@/lib/routes';
-import { downloadUtExport } from '@/lib/utExport';
 import {
   useCompatibility,
   useHistoryReport,
@@ -50,7 +49,7 @@ import { useSession } from '@/state/SessionProvider';
  */
 export default function HomePage() {
   const router = useRouter();
-  const { answers, deleteAllData, resetTargetContext, reset } = useSession();
+  const { answers, deleteAllData, resetTargetContext } = useSession();
   const { showToast } = useToast();
   const mirror = useMirror();
   const compatibility = useCompatibility();
@@ -124,7 +123,6 @@ export default function HomePage() {
   );
 
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [utResetOpen, setUtResetOpen] = useState(false);
   /**
    * §30은 '전체 데이터 삭제 = Session + History'를 요구한다. 다만 축적된 관찰 기록을
    * 되돌릴 수 없게 지우는 건 무게가 다르므로, 기본값을 켠 상태로 두고 선택만 남겨뒀다.
@@ -576,32 +574,7 @@ export default function HomePage() {
             </button>
           </div>
 
-          {/* v1.12 §38~§39 — UT_MODE에서만. 개발자 콘솔 없이 참가자 URL 하나로 결과를
-              회수하고, 다음 참가자를 위해 데이터를 비울 수 있어야 한다 */}
-          {utMode ? (
-            <div className="flex items-center justify-center gap-3 rounded-row border border-dashed border-line-strong bg-canvas-warm px-3 py-2.5">
-              <button
-                type="button"
-                onClick={() => {
-                  downloadUtExport();
-                  showToast('UT 결과를 내려받았어');
-                }}
-                className="flex min-h-11 items-center justify-center text-meta text-ink-muted"
-              >
-                UT 결과 내보내기
-              </button>
-              <span className="text-ink-faint" aria-hidden>
-                ·
-              </span>
-              <button
-                type="button"
-                onClick={() => setUtResetOpen(true)}
-                className="flex min-h-11 items-center justify-center text-meta text-ink-muted"
-              >
-                다음 참가자를 위해 초기화
-              </button>
-            </div>
-          ) : null}
+          {/* v1.47 UT-2 — UT 결과 내보내기 · 다음 참가자 초기화는 참가자 화면이 아니라 운영자 화면(/ut)에 있다 */}
         </div>
       </div>
 
@@ -650,24 +623,6 @@ export default function HomePage() {
         ) : null}
       </ConfirmModal>
 
-      <ConfirmModal
-        open={utResetOpen}
-        title="다음 참가자를 위해 초기화할까?"
-        description="이 참가자의 세션·UT 응답·History를 모두 지워. 먼저 'UT 결과 내보내기'로 내려받아 뒀는지 확인해."
-        confirmLabel="초기화"
-        onCancel={() => setUtResetOpen(false)}
-        onConfirm={() => {
-          reset();
-          clearHistory();
-          clearDeepReportUt();
-          clearPremiumIntents();
-          clearPreviewUnlocks();
-          clearAiCache();
-          setUtResetOpen(false);
-          showToast('다음 참가자를 위해 초기화했어');
-          router.push(ROUTES.splash);
-        }}
-      />
     </div>
   );
 }
