@@ -547,13 +547,14 @@ export const SAJU_COPY = {
 export const ASTROLOGY_COPY = {
   badge: 'ENTERTAINMENT',
   title: ['별자리 렌즈'],
-  caption: '생년월일로 태양궁을 보고, 관계에서 이야기해볼 주제를 찾아볼게.',
+  caption: '생년월일로 태양궁을 보고, 관계에서 떠올려볼 질문을 하나 건넬게.',
   selfLabel: '나의 태양궁',
   targetLabel: '상대의 태양궁',
   coupleCta: '우리 별자리 함께 보기',
   similarLabel: '비슷하게 읽힐 수 있는 부분',
   differentLabel: '다르게 나타날 수 있는 부분',
-  promptLabel: '이야기해볼 주제',
+  /* 260914 P2-5 — '이야기해볼 주제'가 토론 · 조별과제처럼 느껴졌다(UT). 러비가 건네는 질문 하나로 */
+  promptLabel: '러비의 한 가지 질문',
   disclaimer: '점성술에서는 이렇게 이야기되기도 해. 실제 너희가 그런지는 둘이 이야기해봐.',
 } as const;
 
