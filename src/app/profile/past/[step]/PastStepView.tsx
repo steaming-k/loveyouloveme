@@ -40,14 +40,19 @@ export function PastStepView({ step }: { step: PastStep }) {
     setSelfGap,
     setPastNote,
     markComplete,
+    skipExperience,
+    resumeExperience,
   } = useSession();
   const [error, setError] = useState<string | null>(null);
 
   const experience = answers.experience;
   const adaptiveShown = experience.adaptive !== null;
+  const soloStatus = answers.status === 'solo_none' || answers.status === 'solo_exp';
+  /** 입력 완료 뒤의 첫 목적지 — P0와 같다(S18 결과 화면을 거치지 않는다) */
+  const afterProfileInput = soloStatus ? ROUTES.firstContact : ROUTES.target;
   const backHref =
     step === 1
-      ? ROUTES.pastIntro
+      ? ROUTES.declared(4)
       : step === 3 && adaptiveShown
         ? ROUTES.pastAdaptive
         : ROUTES.past(step - 1);
@@ -89,14 +94,14 @@ export function PastStepView({ step }: { step: PastStep }) {
       */
       markComplete('profile');
       trackEvent('profile_complete', { path: 'experience' });
-      const soloStatus = answers.status === 'solo_none' || answers.status === 'solo_exp';
       // v1.11 — Profile Revisit에서 '이전 관계 경험 고치기'로 들어온 거면 그대로
       // /profile/result?view=revisit로 돌려보낸다(§27).
-      router.push(
-        resolveReturnDestination(searchParams, soloStatus ? ROUTES.firstContact : ROUTES.target),
-      );
+      router.push(resolveReturnDestination(searchParams, afterProfileInput));
       return;
     }
+
+    // 예전에 '연애 경험이 없어'로 건너뛰었다가 돌아와 답하는 경우 — S14가 하던 일이다
+    if (step === 1 && experience.skipped) resumeExperience();
 
     // Adaptive Follow-up — 모순 후보(GAP) 축이 방금 감지됐고 아직 안 물어봤으면
     // 과거 관계 질문 3번째로 바로 넘어가지 않고 추가 질문 1개를 먼저 보여준다.
@@ -109,6 +114,23 @@ export function PastStepView({ step }: { step: PastStep }) {
     }
 
     router.push(withReturnTo(ROUTES.past(step + 1), searchParams));
+  };
+
+  /**
+   * 260914 UT 후속 P1 STEP 1 — '연애 경험이 없어'가 S14 인트로 화면에서 여기로 왔다.
+   *
+   * 예전 경로는 S14 → E4(`/profile/past/none`, 3 Layer 진행 상태 화면) → 다음이었다. 둘 다
+   * 입력 중간의 전환 화면이라, 건너뛰면 곧바로 다음 입력(상대) · First Contact로 간다.
+   * 완료 표시 · 이벤트는 E4가 하던 것과 같다(`path: 'no_experience'`).
+   *
+   * ⚠️ 이미 고른 요소가 있으면 버튼을 숨긴다 — 건너뛰기는 경험 답변을 비운다(`skipExperience`).
+   */
+  const handleSkip = () => {
+    skipExperience();
+    markComplete('experience');
+    markComplete('profile');
+    trackEvent('profile_complete', { path: 'no_experience' });
+    router.push(resolveReturnDestination(searchParams, afterProfileInput));
   };
 
   return (
@@ -130,6 +152,11 @@ export function PastStepView({ step }: { step: PastStep }) {
                 ? '관찰 기록 만들기'
                 : '다음'}
           </Button>
+          {step === 1 && experience.important.length === 0 ? (
+            <Button variant="text" onClick={handleSkip}>
+              연애 경험이 없어 · 건너뛰기
+            </Button>
+          ) : null}
         </div>
       }
       bodyClassName="pt-3 pb-3"
@@ -137,6 +164,13 @@ export function PastStepView({ step }: { step: PastStep }) {
       <div className="flex flex-col gap-[18px]">
         {step === 1 ? (
           <>
+            {/*
+              260914 UT 후속 P1 STEP 1 — S14 인트로('이번엔 네 기억을 조금 빌릴게')를 흡수했다.
+              별도 화면 대신 첫 질문 위 한 줄로, 무엇을 몇 개 묻는지만 말한다.
+            */}
+            <LovyMessage pose="book" size={40}>
+              이제 이전 관계를 짧게 돌아볼게. 질문 3개고, 누구와 만났는지는 묻지 않아.
+            </LovyMessage>
             <PageHeading
               lines={['이전 관계에서 생각보다 중요했던 건 뭐였어?']}
               caption={`여러 개 골라도 돼 · 최대 ${MAX_PAST_FACTORS}개`}

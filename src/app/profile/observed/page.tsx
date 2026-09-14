@@ -221,15 +221,19 @@ function ObservedResultView() {
           <ScreenHeader backHref={withReturnTo(ROUTES.photos, searchParams)} title="관찰 기록" />
         }
         footer={
+          /*
+            260914 UT 후속 P1 STEP 2 — 사진은 **입력 보강 신호**지 최종 결과가 아니다. 관찰할 게
+            없을 때 primary가 뒤로(사진 고르기) 가면 입력 흐름이 여기서 멈춘 것처럼 보인다.
+            앞으로 가는 길을 primary로 두고, 사진 다시 고르기는 보조로 남긴다.
+          */
           <div className="flex flex-col gap-0.5">
-            <Button onClick={() => router.push(withReturnTo(ROUTES.photos, searchParams))}>
-              사진 더 고르기
-            </Button>
             <Button
-              variant="text"
               onClick={() => router.push(resolveReturnDestination(searchParams, ROUTES.declared(1)))}
             >
               질문으로 계속하기
+            </Button>
+            <Button variant="text" onClick={() => router.push(withReturnTo(ROUTES.photos, searchParams))}>
+              사진 더 고르기
             </Button>
           </div>
         }
@@ -266,7 +270,7 @@ function ObservedResultView() {
         footer={
           <div className="flex flex-col gap-2">
             {error ? <InlineError message={error} /> : null}
-            <Button onClick={handleNext}>다음</Button>
+            <Button onClick={handleNext}>확인했어 · 질문으로 계속</Button>
           </div>
         }
         bodyClassName="pt-1.5 pb-3"
@@ -281,6 +285,11 @@ function ObservedResultView() {
                   ? '사진에서 이런 장면이 보였어.'
                   : '사진에서 이런 모습이 보였어.',
             ]}
+            /*
+              260914 UT 후속 P1 STEP 2 — 이 화면은 결과가 아니라 **입력 단계**다(counter 2/3).
+              무엇을 하면 다음으로 넘어가는지 먼저 말한다 — '결과가 끝났다'로 읽히지 않게.
+            */
+            caption="맞는지 하나만 알려주면 바로 다음 질문으로 넘어가. 틀린 건 고치거나 빼도 돼."
             eyebrow={
               <div className="flex flex-wrap items-center gap-1.5">
                 <Tag tone="brand">OBSERVED ME</Tag>

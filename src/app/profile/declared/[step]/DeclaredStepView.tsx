@@ -72,7 +72,8 @@ export function DeclaredStepView({ step }: { step: DeclaredStep }) {
       });
       // v1.11 — Profile Revisit에서 '관계 성향 답변 고치기'로 들어온 거면 Past Funnel로
       // 계속 밀지 않고 Profile Revisit으로 돌려보낸다(§27).
-      router.push(resolveReturnDestination(searchParams, ROUTES.pastIntro));
+      // 260914 UT 후속 P1 — 과거 관계 인트로 화면을 거치지 않고 첫 질문으로 간다(안내는 그 화면에 흡수)
+      router.push(resolveReturnDestination(searchParams, ROUTES.past(1)));
       return;
     }
 
