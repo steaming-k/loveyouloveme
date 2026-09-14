@@ -4,14 +4,34 @@ import { join } from 'node:path';
 import { createClient } from '@supabase/supabase-js';
 
 import { createAnalysisRunRepository } from '@/lib/persistence/analysisRunRepository';
+import {
+  analysisSaveDecision,
+  applyMigrationLinks,
+  cloudIdsForUser,
+  createCloudLinks,
+  forgetUser,
+  grantRelationshipSave,
+  linkOf,
+  loadSavedRelationship,
+  recordAnalysisForRelationship,
+  sanitizeCloudLinks,
+  saveRelationshipToCloud,
+  type SavedRelationship,
+} from '@/lib/persistence/cloudLinks';
 import { CLOUD_WRITE_BUDGET, estimateUtf8Bytes, inspectCloudPayload } from '@/lib/persistence/cloudWriteBudget';
 import type { PersistenceGateway } from '@/lib/persistence/gateway';
 import { cloudTargetIdOf, isUuid, newUuid } from '@/lib/persistence/ids';
-import { migrateLocalData, planLocalMigration, type LocalDataSnapshot } from '@/lib/persistence/localMigration';
+import {
+  migrateLocalData,
+  planLocalMigration,
+  type LocalDataSnapshot,
+  type PlannedTarget,
+} from '@/lib/persistence/localMigration';
 import {
   eventRowOf,
   profileRowOf,
   runRowOf,
+  sameContent,
   selfProfileFromSession,
   sessionWithCloudContext,
   targetContextFromSession,
@@ -1472,6 +1492,316 @@ async function scenarioAnalysisPolicy() {
   return c.checks;
 }
 
+/* ══════════════════════════════════════════════════════════════════ cross-account · local/cloud id (§12) */
+
+function activeTargetOf(snapshot: LocalDataSnapshot): PlannedTarget | null {
+  return planLocalMigration(snapshot).targets.find((item) => item.active) ?? null;
+}
+
+async function scenarioCrossAccount(body: PersistenceTestRequest) {
+  const c = checker();
+  const answers = answersFrom(body.answers);
+  const registry = createTargetRegistry();
+  const snapshot: LocalDataSnapshot = { answers, history: body.history ?? [], registry };
+  const localTargetId = registry.activeTargetId;
+  const localTarget = activeTargetOf(snapshot);
+  if (!localTarget) {
+    c.check('cross-account — 로컬 상대 준비', false);
+    return c.checks;
+  }
+  const db = createMemoryDatabase();
+  const gwA = createMemoryGateway(db, USER_A);
+  const gwB = createMemoryGateway(db, USER_B);
+  let links = createCloudLinks();
+
+  const guest = analysisSaveDecision({ userId: null, localTargetId, links });
+  c.check('Guest — 분석 결과는 local only(cloud 저장 결정 없음)', !guest.save && guest.reason === 'guest');
+  const beforeConsent = analysisSaveDecision({ userId: USER_A, localTargetId, links });
+  c.check(
+    '로그인만으로는 저장하지 않는다(관계 저장 동의 전 · 0행)',
+    !beforeConsent.save && beforeConsent.reason === 'relationship_not_saved' && totalRows(db) === 0,
+  );
+
+  const a = await migrateLocalData({
+    gateway: gwA,
+    snapshot,
+    consent: true,
+    existingCloudIds: cloudIdsForUser(links, USER_A),
+    expectedUserId: USER_A,
+  });
+  links = applyMigrationLinks(links, USER_A, a.links, NOW);
+  const linkA = linkOf(links, USER_A, localTargetId);
+  c.check(
+    'ACCOUNT-01 · User A — 동의 후 저장 · (userId, localTargetId) → cloudTargetId link 기록',
+    a.status === 'completed' && a.created.targets === 1 && linkA !== null && linkA.cloudTargetId !== localTargetId,
+    { status: a.status, links: a.links },
+  );
+  const rowsAfterA = JSON.stringify(rowCounts(db));
+
+  const decisionB = analysisSaveDecision({ userId: USER_B, localTargetId, links });
+  const noConsentB = await saveRelationshipToCloud({ gateway: gwB, userId: USER_B, links, target: localTarget });
+  c.check(
+    'ACCOUNT-05 · 같은 기기에서 User B 로그인 — A의 link를 쓰지 않고 자동 복사 · 자동 저장하지 않는다',
+    !decisionB.save &&
+      decisionB.reason === 'relationship_not_saved' &&
+      noConsentB.status === 'consent_required' &&
+      JSON.stringify(rowCounts(db)) === rowsAfterA,
+    { decisionB, status: noConsentB.status },
+  );
+  const wrongSession = await saveRelationshipToCloud({
+    gateway: gwA,
+    userId: USER_B,
+    links: (await grantRelationshipSave(links, USER_B, localTargetId, NOW)).state,
+    target: localTarget,
+  });
+  c.check(
+    'ACCOUNT-05 · B의 동의로 A 세션에 저장하려 하면 멈춘다(세션 사용자 불일치)',
+    wrongSession.status === 'unauthorized' && JSON.stringify(rowCounts(db)) === rowsAfterA,
+    wrongSession.status,
+  );
+
+  const granted = await grantRelationshipSave(links, USER_B, localTargetId, NOW);
+  links = granted.state;
+  const b = await saveRelationshipToCloud({ gateway: gwB, userId: USER_B, links, target: localTarget });
+  const linkB = linkOf(links, USER_B, localTargetId);
+  c.check(
+    'ACCOUNT-02 · User B — 명시 동의 뒤에만 새 cloud id로 저장',
+    granted.created && b.status === 'completed' && b.created.targets === 1 && b.created.events === localTarget.events.length,
+    { status: b.status, created: b.created },
+  );
+  c.check(
+    'ACCOUNT-03 · 같은 localTargetId라도 A · B cloud id가 다르다(사건 id도 겹치지 않는다)',
+    linkA !== null &&
+      linkB !== null &&
+      linkA.cloudTargetId !== linkB.cloudTargetId &&
+      db.tables.relationship_targets.find((row) => row.id === linkA.cloudTargetId)?.user_id === USER_A &&
+      db.tables.relationship_targets.find((row) => row.id === linkB.cloudTargetId)?.user_id === USER_B &&
+      new Set(db.tables.relationship_events.map((row) => row.id)).size === db.tables.relationship_events.length,
+    { linkA, linkB },
+  );
+
+  const bSees = await Promise.all(TABLES.map((table) => gwB.select(table, {})));
+  const aCloudId = linkA?.cloudTargetId ?? '';
+  const bLoadsA = await loadSavedRelationship(gwB, aCloudId);
+  const bRemovesA = await createRelationshipTargetRepository(gwB).remove(aCloudId);
+  const bUpdatesA = await gwB.updateAtRevision('relationship_targets', aCloudId, 1, { label: 'hijack' });
+  const aTargetRow = db.tables.relationship_targets.find((row) => row.id === aCloudId);
+  c.check(
+    'ACCOUNT-04 · A 데이터는 B에게 보이지 않고(SELECT · load) 수정 · 삭제도 되지 않는다',
+    bSees.every((rows) => rows.ok && (rows.value as { user_id: string }[]).every((row) => row.user_id === USER_B)) &&
+      bLoadsA.ok &&
+      bLoadsA.value === null &&
+      bRemovesA.ok &&
+      !bRemovesA.value.removed &&
+      bUpdatesA.ok &&
+      bUpdatesA.value === null &&
+      aTargetRow?.user_id === USER_A &&
+      aTargetRow.revision === 1 &&
+      aTargetRow.label !== 'hijack',
+    { bLoadsA, bRemovesA, bUpdatesA },
+  );
+
+  const forgotten = forgetUser(links, USER_B);
+  c.check(
+    '계정 저장분 삭제 뒤 — 그 사용자의 link만 지운다(A link 유지)',
+    linkOf(forgotten, USER_B, localTargetId) === null && linkOf(forgotten, USER_A, localTargetId) !== null,
+  );
+  const restored = sanitizeCloudLinks(JSON.parse(JSON.stringify(links)));
+  const corrupted = sanitizeCloudLinks({
+    version: 1,
+    byUser: { 'not-a-uuid': { x: { cloudTargetId: 'y', consentedAt: NOW } }, [USER_A]: { [localTargetId]: { cloudTargetId: 'bad' } } },
+  });
+  c.check(
+    'link 저장 형태 — 새로고침(직렬화) 뒤에도 같고, 손상된 값은 버린다',
+    JSON.stringify(restored) === JSON.stringify(links) && Object.keys(corrupted.byUser).length === 0,
+  );
+  return c.checks;
+}
+
+/* ══════════════════════════════════════════════════════════════════ saved relationship smoke (§15) */
+
+async function scenarioSavedRelationship(body: PersistenceTestRequest) {
+  const c = checker();
+  const answers = answersFrom(body.answers);
+  const registry = createTargetRegistry();
+  const snapshot: LocalDataSnapshot = { answers, history: [], registry };
+  const localBefore = JSON.stringify(snapshot);
+  const localTarget = activeTargetOf(snapshot);
+  if (!localTarget) {
+    c.check('saved relationship — 로컬 상대 준비', false);
+    return c.checks;
+  }
+  const events = localTarget.events;
+  const sceneTexts = events.flatMap((event) => [event.description, event.myReaction ?? '']);
+  const db = createMemoryDatabase();
+  const gw = createMemoryGateway(db, null);
+  let links = createCloudLinks();
+
+  c.check(
+    'SAVE-01 · Guest local data — 로그인 전에는 저장 결정도 요청도 없다',
+    !analysisSaveDecision({ userId: null, localTargetId: localTarget.id, links }).save && totalRows(db) === 0,
+  );
+
+  gw.setUser(USER_A);
+  const noConsent = await saveRelationshipToCloud({ gateway: gw, userId: USER_A, links, target: localTarget });
+  c.check('SAVE-02 · login만으로는 저장하지 않는다(consent_required · 0행)', noConsent.status === 'consent_required' && totalRows(db) === 0);
+
+  links = (await grantRelationshipSave(links, USER_A, localTarget.id, NOW)).state;
+  const saved = await saveRelationshipToCloud({ gateway: gw, userId: USER_A, links, target: localTarget });
+  const cloudTargetId = linkOf(links, USER_A, localTarget.id)?.cloudTargetId ?? '';
+  c.check(
+    'SAVE-03 · 명시 동의 → cloud save(상대 1 · 사건 전부)',
+    saved.status === 'completed' && saved.created.targets === 1 && saved.created.events === events.length,
+    saved,
+  );
+
+  const storedEventIds = db.tables.relationship_events.filter((row) => row.target_id === cloudTargetId).map((row) => row.id);
+  const decision = analysisSaveDecision({ userId: USER_A, localTargetId: localTarget.id, links });
+  const runOf = (generationRequestId: string) =>
+    deepReportRunInput({
+      targetId: null,
+      report: syntheticDeepReport(storedEventIds.slice(0, 2), events.map((event) => event.description)),
+      promptVersion: 'deep-report-v13-uncertainty-move',
+      model: 'gpt-5.4',
+      sourceFingerprint: 'dr_saved',
+      generationRequestId,
+    });
+  const firstRun = await recordAnalysisForRelationship({ gateway: gw, decision, run: runOf('gen-a'), forbiddenTexts: sceneTexts });
+  const secondRun = await recordAnalysisForRelationship({ gateway: gw, decision, run: runOf('gen-b'), forbiddenTexts: sceneTexts });
+  c.check(
+    'SAVE-04 · 저장한 관계의 성공한 분석은 다시 묻지 않고 그 관계에 snapshot(분석마다 새 행)',
+    decision.save &&
+      firstRun.status === 'recorded' &&
+      secondRun.status === 'recorded' &&
+      firstRun.run.id !== secondRun.run.id &&
+      db.tables.analysis_runs.length === 2 &&
+      db.tables.analysis_runs.every((row) => row.target_id === cloudTargetId),
+    { firstRun, secondRun },
+  );
+
+  gw.setUser(null);
+  const whileOut = await loadSavedRelationship(gw, cloudTargetId);
+  c.check(
+    'SAVE-05 · logout — 계정 데이터를 읽을 수 없다(unauthorized) · 로컬 데이터 불변',
+    !whileOut.ok && whileOut.error.kind === 'unauthorized' && JSON.stringify(snapshot) === localBefore,
+  );
+
+  gw.setUser(USER_A);
+  const listed = await createRelationshipTargetRepository(gw).listSummaries();
+  const loaded = await loadSavedRelationship(gw, cloudTargetId);
+  const value = loaded.ok ? loaded.value : null;
+  c.check(
+    'SAVE-06 · login → 저장한 관계가 목록에 보인다(마지막 분석 시각 포함)',
+    listed.ok && listed.value.length === 1 && listed.value[0]?.id === cloudTargetId && listed.value[0]?.lastAnalysisAt !== null,
+    listed,
+  );
+  c.check('SAVE-07 · load saved target — 상대 정보가 같다', value !== null && sameContent(value.target.data, localTarget.data), value?.target);
+  c.check(
+    'SAVE-08 · events preserved — 순서 · 종류 · 본문 · 반응',
+    value !== null &&
+      JSON.stringify(value.events.map((item) => [item.event.type, item.event.description, item.event.myReaction ?? null])) ===
+        JSON.stringify(events.map((event) => [event.type, event.description.trim(), event.myReaction?.trim() || null])),
+    value?.events.length,
+  );
+  const latest = value?.latestAnalysis ?? null;
+  c.check(
+    'SAVE-09 · analysis snapshot preserved — 최근 분석 = 마지막 저장 · 참조 event id가 저장된 사건',
+    latest !== null &&
+      secondRun.status === 'recorded' &&
+      latest.id === secondRun.run.id &&
+      sameContent(latest.snapshot, secondRun.run.snapshot) &&
+      (latest.snapshot.usedEventIds as string[]).every((id) => value?.events.some((item) => item.id === id)),
+    latest,
+  );
+  const rebuilt = value
+    ? sessionWithCloudContext(createEmptyAnswers(), { profile: null, target: value.target.data, events: value.events.map((item) => item.event) })
+    : null;
+  c.check('SAVE-10 · 불러온 관계로 세션을 다시 만들 수 있다(사건 수 동일)', rebuilt !== null && rebuilt.target.events.length === events.length);
+  return c.checks;
+}
+
+/* ══════════════════════════════════════════════════════════════════ A → B → A isolation (§16) */
+
+async function scenarioAccountSwitch(body: PersistenceTestRequest) {
+  const c = checker();
+  const db = createMemoryDatabase();
+  const gw = createMemoryGateway(db, USER_A);
+  /* 같은 기기 · 같은 로컬 상대 슬롯을 두 계정이 번갈아 쓴다 */
+  const registry = createTargetRegistry();
+  const base = answersFrom(body.answers);
+  let links = createCloudLinks();
+
+  const saveAs = async (userId: string, index: number) => {
+    gw.setUser(userId);
+    const target = activeTargetOf({ answers: targetAnswers(base, index), history: [], registry });
+    if (!target) return null;
+    links = (await grantRelationshipSave(links, userId, target.id, NOW)).state;
+    const saved = await saveRelationshipToCloud({ gateway: gw, userId, links, target });
+    const cloudTargetId = linkOf(links, userId, target.id)?.cloudTargetId ?? '';
+    const eventIds = db.tables.relationship_events.filter((row) => row.target_id === cloudTargetId).map((row) => row.id);
+    const run = await recordAnalysisForRelationship({
+      gateway: gw,
+      decision: analysisSaveDecision({ userId, localTargetId: target.id, links }),
+      run: deepReportRunInput({
+        targetId: null,
+        report: syntheticDeepReport(eventIds, []),
+        promptVersion: 'deep-report-v13-uncertainty-move',
+        model: 'gpt-5.4',
+        sourceFingerprint: `dr_${index}`,
+        generationRequestId: `gen-${index}`,
+      }),
+      forbiddenTexts: target.events.flatMap((event) => [event.description, event.myReaction ?? '']),
+    });
+    return { saved, cloudTargetId, runId: run.status === 'recorded' ? run.run.id : null };
+  };
+
+  const view = async (userId: string): Promise<(SavedRelationship | null)[]> => {
+    gw.setUser(userId);
+    const targets = await createRelationshipTargetRepository(gw).list();
+    const loaded = await Promise.all((targets.ok ? targets.value : []).map((target) => loadSavedRelationship(gw, target.id)));
+    return loaded.map((item) => (item.ok ? item.value : null));
+  };
+
+  const isolated = (relationships: readonly (SavedRelationship | null)[], index: number, runId: string | null, fingerprint: string) => {
+    const [only] = relationships;
+    return (
+      relationships.length === 1 &&
+      only !== null &&
+      only !== undefined &&
+      eventsBelongTo(only.events.map((item) => item.event), index) &&
+      runId !== null &&
+      only.latestAnalysis?.id === runId &&
+      only.latestAnalysis.sourceFingerprint === fingerprint
+    );
+  };
+
+  const a = await saveAs(USER_A, 0);
+  const aFirst = await view(USER_A);
+  const b = await saveAs(USER_B, 1);
+  const bView = await view(USER_B);
+  const aAgain = await view(USER_A);
+
+  c.check(
+    'A — Target · Events · Latest analysis가 A 것',
+    a !== null && a.saved.status === 'completed' && isolated(aFirst, 0, a.runId, 'dr_0'),
+    aFirst,
+  );
+  c.check(
+    'A → B — B는 자기 Target · Events · Latest analysis만 본다',
+    b !== null && b.saved.status === 'completed' && isolated(bView, 1, b.runId, 'dr_1'),
+    bView,
+  );
+  c.check(
+    'A → B → A — A의 Target · Events · Latest analysis가 처음과 같다(B 기록 섞임 0)',
+    a !== null && isolated(aAgain, 0, a.runId, 'dr_0') && JSON.stringify(aAgain) === JSON.stringify(aFirst),
+  );
+  c.check('같은 로컬 슬롯이라도 계정별 cloud id가 다르다', a !== null && b !== null && a.cloudTargetId !== b.cloudTargetId);
+  const aEvents = JSON.stringify(db.tables.relationship_events.filter((row) => row.user_id === USER_A));
+  const bEvents = JSON.stringify(db.tables.relationship_events.filter((row) => row.user_id === USER_B));
+  c.check('A 사건 행에 B 본문 없음 · B 사건 행에 A 본문 없음', !aEvents.includes('T1 ') && !bEvents.includes('T0 '));
+  return c.checks;
+}
+
 export async function POST(request: Request): Promise<Response> {
   if (process.env.NODE_ENV === 'production') {
     return Response.json({ ok: false, reason: 'NOT_FOUND' }, { status: 404 });
@@ -1508,6 +1838,12 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ ok: true, ...(await scenarioStorageScale(body)) });
     case 'analysis_policy':
       return Response.json({ ok: true, checks: await scenarioAnalysisPolicy() });
+    case 'cross_account':
+      return Response.json({ ok: true, checks: await scenarioCrossAccount(body) });
+    case 'saved_relationship':
+      return Response.json({ ok: true, checks: await scenarioSavedRelationship(body) });
+    case 'account_switch':
+      return Response.json({ ok: true, checks: await scenarioAccountSwitch(body) });
     default:
       return Response.json({ ok: false, reason: 'UNKNOWN_SCENARIO' }, { status: 400 });
   }
