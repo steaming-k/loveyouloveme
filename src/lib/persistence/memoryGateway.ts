@@ -6,6 +6,7 @@ import {
   type RelationshipTargetRow,
 } from '@/lib/supabase/types';
 
+import { rejectCloudPayload } from './cloudWriteBudget';
 import type { InsertRow, PersistenceGateway, SelectOptions } from './gateway';
 import { fail, ok, type Result } from './types';
 
@@ -135,6 +136,9 @@ export function createMemoryGateway(db: MemoryDatabase, initialUserId: string | 
     },
 
     async insertIfAbsent<T extends PersistenceTable>(table: T, row: InsertRow<T>) {
+      /* Storage Capacity Guard — 연결 상태와 무관하게 먼저 본다(supabaseGateway와 같은 순서) */
+      const rejected = rejectCloudPayload(table, row);
+      if (rejected) return rejected;
       const blocked = guard();
       if (blocked && !blocked.ok) return fail(blocked.error.kind, blocked.error.message);
       if ((row as { user_id: string }).user_id !== uid) return fail('forbidden', 'postgrest:42501');
@@ -155,6 +159,8 @@ export function createMemoryGateway(db: MemoryDatabase, initialUserId: string | 
     },
 
     async updateAtRevision(table, key, expectedRevision, patch) {
+      const rejected = rejectCloudPayload(table, patch);
+      if (rejected) return rejected;
       const blocked = guard();
       if (blocked && !blocked.ok) return fail(blocked.error.kind, blocked.error.message);
       const list = db.tables[table] as Array<PersistenceRows[typeof table]>;

@@ -24,9 +24,13 @@ export function createAnalysisRunRepository(gateway: PersistenceGateway) {
     get,
 
     async record(
-      input: Omit<AnalysisRun, 'appVersion' | 'createdAt'> & { createdAt?: string },
+      input: Omit<AnalysisRun, 'appVersion' | 'createdAt'> & {
+        createdAt?: string;
+        /** Storage Capacity Guard §3 — 스냅샷에 다시 들어가면 안 되는 원문(사건 본문 · 반응) */
+        forbiddenTexts?: readonly string[];
+      },
     ): Promise<Result<{ created: boolean; differs: boolean; run: AnalysisRun }>> {
-      const safe = validateSnapshot(input.snapshot);
+      const safe = validateSnapshot(input.snapshot, { forbiddenTexts: input.forbiddenTexts });
       if (!safe.ok) return safe;
       const uid = await gateway.currentUserId();
       if (!uid.ok) return uid;
