@@ -1,6 +1,8 @@
 'use client';
 
 import { Check, ChevronDown, ChevronUp } from 'lucide-react';
+
+import { ScaleHearts } from '@/components/common/ScaleHearts';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -171,7 +173,7 @@ export function MirrorComparisonRow({
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between text-[10.5px] text-ink-muted">
           <span>말한 나</span>
-          {insight.declaredHasScale ? <span className="tnum">{insight.declared}/5</span> : null}
+          {insight.declaredHasScale ? <ScaleHearts value={insight.declared} /> : null}
         </div>
         <div className="relative h-4" aria-hidden>
           <span className="absolute inset-x-0 top-[7px] h-1 rounded-sm bg-track" />
