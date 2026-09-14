@@ -1110,7 +1110,7 @@ console.log('\nLOVY-01~12 — 캐릭터 통합 · 러비 한마디 · 중간 메
   */
   check(
     'LOVY-11 · deepReport promptVersion이 고정돼 있다',
-    promptVersions.includes("deepReport: 'deep-report-v12-condition-context'"),
+    promptVersions.includes("deepReport: 'deep-report-v13-uncertainty-move'"),
   );
   const promptTemplates = await readFile(join(ROOT, 'src/services/ai/promptTemplates.ts'), 'utf8');
   const contextBuilders = await readFile(join(ROOT, 'src/services/ai/contextBuilders.ts'), 'utf8');
@@ -1531,7 +1531,7 @@ console.log('\nPOSTREV-01~18 — Eligibility 불변 · 체크포인트 · Self-o
   */
   check(
     'POSTREV-17 · deepReport promptVersion 불변',
-    promptVersions.includes("deepReport: 'deep-report-v12-condition-context'"),
+    promptVersions.includes("deepReport: 'deep-report-v13-uncertainty-move'"),
   );
   const envSource = await readFile(join(ROOT, 'src/lib/env.ts'), 'utf8');
   check(
@@ -1899,7 +1899,7 @@ console.log('\nPROD-UNLOCK-01~10 — Production Deep Report Unlock · payment �
   */
   check(
     'PROD-UNLOCK-09 · deepReport promptVersion이 고정돼 있다',
-    promptVersions.includes("deepReport: 'deep-report-v12-condition-context'"),
+    promptVersions.includes("deepReport: 'deep-report-v13-uncertainty-move'"),
   );
 
   /* ── PROD-UNLOCK-10 · Premium eligibility invariant 유지 ───────────────── */

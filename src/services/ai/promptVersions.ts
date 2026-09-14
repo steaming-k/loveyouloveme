@@ -205,7 +205,7 @@ export const PROMPT_VERSIONS = {
     v1.46.4 Core Value Closure — v12. 카드 semantic에 conditionContext(trigger/state/uncertainty)가 추가되고,
     actionPlan은 그 칸들을 유지해야 한다. v11 캐시에는 context가 없다.
   */
-  deepReport: 'deep-report-v12-condition-context',
+  deepReport: 'deep-report-v13-uncertainty-move',
   /**
    * v1.46 AI Lens §6 — **렌즈별 프롬프트 4개.**
    *

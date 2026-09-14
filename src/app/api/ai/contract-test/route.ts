@@ -90,6 +90,8 @@ interface ContractRequest {
   actionNarrowedCondition?: unknown;
   /** Core Value Closure fixture용 — 선택 카드의 conditionContext를 직접 준다(ConditionContext | null) */
   actionConditionContext?: unknown;
+  /** Core Value Final Fix fixture용 — 선택 카드의 verification을 직접 준다(string | null) */
+  actionCardVerification?: unknown;
   /**
    * v1.43 §46 — 근거 귀속 fixture용. `{ [axis|dimensionKey|insightId]: EvidenceRef[] }`.
    *
@@ -533,9 +535,16 @@ export async function POST(request: Request): Promise<Response> {
       'actionConditionContext' in body
         ? ((body.actionConditionContext ?? null) as ConditionContext | null)
         : (semanticGate.kept.find((item) => item.candidateId === actionAllowance?.candidateId)?.conditionContext ?? null);
+    const actionVerification =
+      'actionCardVerification' in body
+        ? typeof body.actionCardVerification === 'string'
+          ? body.actionCardVerification
+          : null
+        : (semanticGate.kept.find((item) => item.candidateId === actionAllowance?.candidateId)?.verification ?? null);
     const actionGate = gateActionPlan(parsedAction, actionAllowance, deepTense, {
       narrowedCondition: actionNarrowed,
       conditionContext: actionContext,
+      cardVerification: actionVerification,
     });
 
     return Response.json({

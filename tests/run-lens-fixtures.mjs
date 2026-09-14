@@ -1260,7 +1260,7 @@ console.log('\nAI-LENS-01 ~ AI-LENS-20 — 렌즈별 AI 해석 (v1.46 AI Lens)')
   */
   check(
     'AI-LENS-19 deep-report promptVersion이 고정돼 있다',
-    versions.includes("deepReport: 'deep-report-v12-condition-context'"),
+    versions.includes("deepReport: 'deep-report-v13-uncertainty-move'"),
   );
   check(
     'AI-LENS-19 기존 네 Task의 promptVersion이 전부 그대로다',

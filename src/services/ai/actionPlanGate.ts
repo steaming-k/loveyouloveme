@@ -83,6 +83,8 @@ export function gateActionPlan(
     narrowedCondition: string | null;
     /** Core Value Closure — 같은 카드 semantic의 conditionContext(게이트가 근거를 확인한 칸만) */
     conditionContext?: ConditionContext | null;
+    /** Core Value Final Fix — 같은 카드 semantic의 verification(게이트 통과분). VERIFY 복사 판정용 */
+    cardVerification?: string | null;
   } = { narrowedCondition: null },
 ): ActionPlanGateResult {
   const violations: string[] = [];
@@ -169,6 +171,7 @@ export function gateActionPlan(
     nextMove: parsed.nextMove,
     observeSignal: parsed.observeSignal,
     decisionSignals: parsed.decisionSignals,
+    cardVerification: anchor.cardVerification ?? null,
   });
   if (!alignment.aligned) {
     violations.push(`action_alignment_${alignment.reason.toLowerCase()}`);

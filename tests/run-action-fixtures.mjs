@@ -488,7 +488,7 @@ console.log('\nCTX · trigger / state / uncertainty가 근거에서 나오고 Ac
   const OPERATORS = ['CONDITION_NARROWING', 'DECLARED_VS_REACTION', 'CURRENT_VS_PAST', 'CONTEXT_DEPENDENT', 'SELF_VS_TARGET', 'UNRESOLVED_CORE'];
   const hedge = (text) => `${text}라는 가설을 더 볼 수 있어`;
 
-  async function ctxCall({ scenes, evidenceTexts = [], context, narrowed, soWhat, why, plan, tense = 'current' }) {
+  async function ctxCall({ scenes, evidenceTexts = [], context, narrowed, soWhat, why, plan, tense = 'current', extra = {} }) {
     const semantic = {
       candidateId: 'cand-1',
       operator: 'DECLARED_VS_REACTION',
@@ -517,6 +517,7 @@ console.log('\nCTX · trigger / state / uncertainty가 근거에서 나오고 Ac
       ],
       actionAllowance: allowanceFor('cand-1', { sceneTexts: scenes, canAskPartner: tense === 'current' }),
       tense,
+      ...extra,
     });
     return { card: result.semantic.items[0] ?? null, violations: result.semantic.violations, action: result.action };
   }
@@ -620,6 +621,77 @@ console.log('\nCTX · trigger / state / uncertainty가 근거에서 나오고 Ac
   );
   const none5 = await ctxCall({ ...card1, context: undefined });
   check('CTX-05 · context가 없으면 null이고 카드 문장은 그대로다', none5.card && none5.card.conditionContext === null, none5);
+
+  /* ═════════════════════════════════════════════════════════════════════════
+     UNC-01 ~ 06 — Core Value Final Fix: uncertainty가 있으면 Next Move는 그 모름을 줄이는 행동
+     ⚠️ 시나리오 · candidateId로 분기하지 않는다. 같은 규칙이 모든 카드에 걸린다.
+     ═════════════════════════════════════════════════════════════════════════ */
+  const cardU = {
+    scenes: scenes1,
+    context: {
+      trigger: '말이 엇갈린 뒤',
+      state: '대화가 멈춤',
+      uncertainty: '연락 횟수가 걸리는지, 대화가 멈춘 채 다음을 모르는 상태가 걸리는지 모름',
+    },
+    narrowed: '말이 엇갈린 뒤 대화가 멈춘 채 다음을 모르는 순간',
+    soWhat: card1.soWhat,
+    why: card1.why,
+  };
+  const COPY_VERIFY = '답이 늦어질 때 짧게라도 알려주면 편할까?';
+  const copiedMove = {
+    ...GOOD_CONTACT,
+    nextMove: '말이 엇갈린 뒤 답이 늦어질 때는 짧게라도 알려주면 편한지 맞춰봐',
+    observeSignal: '엇갈린 뒤 대화가 멈출 때 한마디가 실제로 오가는지 봐',
+    decisionSignals: [{ ifObserved: '멈춘 때에도 한마디가 와', interpretation: hedge('대화가 멈춘 채 다음을 모르는 상태가 더 걸렸다') }],
+  };
+  const addressingMove = {
+    ...GOOD_CONTACT,
+    nextMove: '말이 엇갈려 시간을 둘 때, 언제 다시 이야기할지도 같이 정해봐',
+    observeSignal: '정한 때에 대화가 실제로 다시 이어지는지 봐',
+    decisionSignals: [{ ifObserved: '정한 때에 대화가 다시 이어져', interpretation: hedge('연락 횟수보다 멈춘 뒤 다음을 모르는 상태가 더 걸렸다') }],
+  };
+
+  const unc1 = await ctxCall({ ...cardU, plan: copiedMove, extra: { actionCardVerification: COPY_VERIFY } });
+  check('UNC-01 · uncertainty를 다루지 않는 VERIFY를 옮긴 Next Move는 VERIFY_COPY', !unc1.action.kept && unc1.action.violations.includes('action_alignment_verify_copy'), unc1.action);
+  check('UNC-01 · 카드 context의 uncertainty는 근거로 확인돼 남아 있다', Boolean(unc1.card?.conditionContext?.uncertainty), unc1.card);
+
+  const unc2 = await ctxCall({ ...cardU, plan: copiedMove, extra: { actionCardVerification: null } });
+  check('UNC-02 · VERIFY가 없어도 모름을 다루지 않는 일반 연락 조언은 UNCERTAINTY_NOT_ADDRESSED', !unc2.action.kept && unc2.action.violations.includes('action_alignment_uncertainty_not_addressed'), unc2.action);
+
+  const unc3 = await ctxCall({ ...cardU, plan: addressingMove, extra: { actionCardVerification: COPY_VERIFY } });
+  check('UNC-03 · 멈춘 뒤 다시 이어갈 때를 정하는 Next Move는 통과(CONDITION_CONTEXT_REFLECTED)', unc3.action.kept && unc3.action.alignment?.reason === 'CONDITION_CONTEXT_REFLECTED', unc3.action);
+  check('UNC-03 · 화면 plan의 Next Move가 그 행동 그대로다', unc3.action.plan?.nextMove === addressingMove.nextMove || unc3.action.kept?.nextMove === addressingMove.nextMove, unc3.action);
+
+  const scenesReason = ['얘기가 엇갈린 다음에 아무 답이 없던 날이 힘들었어', '왜 그런지 이유를 몰라서 더 답답했어'];
+  const unc4 = await ctxCall({
+    scenes: scenesReason,
+    context: { trigger: '말이 엇갈린 뒤', state: '답이 없는 채 기다림', uncertainty: '답이 없던 이유를 모름' },
+    narrowed: '말이 엇갈린 뒤 답이 없는 이유를 모르는 순간',
+    soWhat: '답이 늦은 것보다, 말이 엇갈린 뒤 이유를 모른 채 기다리는 순간을 따로 봐야 할 수 있어.',
+    why: '이유를 알면 기다릴 수 있어도, 모르면 같은 시간도 더 길게 느껴질 수 있어.',
+    plan: {
+      ...GOOD_CONTACT,
+      nextMove: '말이 엇갈린 날엔 바로 풀지, 잠깐 시간을 둘지 미리 정해봐',
+      observeSignal: '엇갈린 뒤 기다리는 동안 답이 없는 시간이 실제로 줄어드는지 봐',
+      decisionSignals: [{ ifObserved: '엇갈린 뒤에도 기다림이 짧아져', interpretation: hedge('답이 없는 채 기다리는 순간이 더 걸렸다') }],
+    },
+  });
+  check('UNC-04 · trigger만 다루고 모름(이유)을 비껴간 Next Move는 UNCERTAINTY_NOT_ADDRESSED', !unc4.action.kept && unc4.action.violations.includes('action_alignment_uncertainty_not_addressed'), unc4);
+
+  const unc5 = await ctxCall({
+    ...cardU,
+    plan: { ...addressingMove, nextMove: '말이 엇갈려 멈추면 언제 다시 이야기할지 정해두자고 해봐' },
+    extra: { actionCardVerification: '말이 엇갈려 멈추면 언제 다시 이야기할지 정해두는 건 어때?' },
+  });
+  check('UNC-05 · VERIFY 자체가 모름을 다루면 그 질문을 행동으로 옮겨도 통과', unc5.action.kept && unc5.action.alignment?.reason === 'CONDITION_CONTEXT_REFLECTED', unc5.action);
+
+  const unc6 = await ctxCall({
+    ...card1,
+    context: { trigger: '말이 엇갈린 뒤', state: '대화가 멈춤', uncertainty: null },
+    plan: { ...addressingMove, nextMove: '말이 엇갈려 대화가 멈추면 다시 이어갈 때를 정해봐' },
+    extra: { actionCardVerification: '말이 엇갈려 대화가 멈추면 다시 이어갈 때를 정해볼까?' },
+  });
+  check('UNC-06 · uncertainty가 없으면 새 규칙은 적용되지 않는다(기존 판정 그대로)', unc6.action.kept && unc6.action.alignment?.reason === 'CONDITION_CONTEXT_REFLECTED', unc6.action);
   const inconsistent5 = await ctxCall({ ...card1, narrowed: '바쁜 주에 혼자 쉬는 시간이 밀리는 순간' });
   check('§24 · narrowedCondition이 context와 다른 조건이면 기록한다', inconsistent5.violations.includes('context_narrowed_inconsistent'), inconsistent5.violations);
 

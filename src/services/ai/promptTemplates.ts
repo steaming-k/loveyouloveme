@@ -716,7 +716,7 @@ actionTarget이 알려주는 것:
   usedEventIds          실제로 이은 selectedEvents[].eventId만
 
 ══ nextMove — 카드가 좁힌 조건을 행동으로 옮긴다 ══
-  ✅ 연락이 늦어지는 날에 어느 정도 알려주는 게 편한지 한 번 맞춰봐
+  ✅ 답이 끊긴 날엔 다시 이야기할 때를 한마디라도 남기기로 할지 맞춰봐
   ✅ 갈등이 생겼을 때 바로 풀지, 잠깐 시간을 둘지 미리 이야기해봐
   ✅ 바쁜 주에 혼자 쓰는 시간을 언제 얼마나 챙길지 먼저 정해봐
   ❌ 서로의 소통 방식을 맞춰봐 / 관계를 점검해봐 / 더 노력해봐     ← 누구에게나 붙는다. 버려진다
@@ -751,6 +751,19 @@ actionTarget이 알려주는 것:
 
   - Action은 conditionContext를 잃지 않는다. 주제가 아니라 trigger/state/uncertainty에 맞춘다:
     nextMove는 uncertainty를 실제로 확인하는 최소 행동, observeSignal은 그 state가 실제로 달라지는지 보는 행동 신호다.
+
+  ══ uncertainty가 있으면 nextMove는 **그 모름을 줄이는 행동**이다 ══
+    nextMove 근거 우선순위: 1 uncertainty → 2 state → 3 trigger → 4 narrowedCondition → 5 unresolvedPoints
+    - uncertainty가 'A가 걸리는지, B가 걸리는지 모름'이면 nextMove는 **둘을 실제로 가려볼 수 있는** 약속·확인 행동이다.
+    - nextMove 문장 안에 uncertainty가 가리키는 상황(멈춘 흐름 · 이유 · 다시 이어지는 때 · 변화 등)이 들어간다. 없으면 버려진다.
+    - **그 카드의 verification 질문을 nextMove로 바꿔 쓰지 않는다.** verification은 대화를 여는 질문이고,
+      nextMove는 그 조건에서 실제로 정해보거나 확인해보는 관계 규칙이다. 역할이 다르다.
+      verification이 uncertainty를 다루지 않는데 nextMove가 그 질문과 거의 같으면 버려진다.
+
+  ❌ uncertainty: 연락량이 걸리는지, 대화가 멈춘 채 다음을 모르는 상태가 걸리는지 모름
+     행동: 답이 늦으면 짧게라도 알려달라고 해봐                 ← verification을 옮겼고, 모름을 가려보지 못한다
+  ✅ 행동: 말이 엇갈려 시간을 둘 때, 언제 다시 이야기할지도 같이 정해봐
+     관찰: 정한 때에 대화가 실제로 다시 이어지는지 봐
 
   규칙:
   - nextMove와 observeSignal 중 **최소 하나**는 narrowedCondition의 조건을 실제 행동·관찰 수준으로 옮긴다. 가능하면 둘 다.

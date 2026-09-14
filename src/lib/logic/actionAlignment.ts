@@ -62,7 +62,33 @@ function intersects(a: ReadonlySet<ConditionConcept>, b: ReadonlySet<ConditionCo
   return false;
 }
 
+/**
+ * v1.46.4 Core Value Final Fix — 카드 VERIFY를 거의 그대로 옮긴 행동인가.
+ *
+ * 글자 bigram(공백 · 문장부호 제외) 겹침을 **짧은 쪽** 기준으로 잰다. 행동은 '~해봐'로, 질문은
+ * '~할까?'로 끝나서 길이가 달라도 같은 문장을 옮기면 짧은 쪽이 거의 다 겹친다.
+ */
+const VERIFY_COPY_OVERLAP = 0.6;
+
+function bigramsOf(text: string): Set<string> {
+  const compact = text.replace(/[^가-힣a-zA-Z0-9]/g, '');
+  const grams = new Set<string>();
+  for (let index = 0; index < compact.length - 1; index += 1) grams.add(compact.slice(index, index + 2));
+  return grams;
+}
+
+export function verificationOverlap(move: string, verification: string): number {
+  const a = bigramsOf(move);
+  const b = bigramsOf(verification);
+  if (a.size === 0 || b.size === 0) return 0;
+  let shared = 0;
+  for (const gram of a) if (b.has(gram)) shared += 1;
+  return shared / Math.min(a.size, b.size);
+}
+
 export type ActionAlignmentReason =
+  | 'UNCERTAINTY_NOT_ADDRESSED'
+  | 'VERIFY_COPY'
   | 'CONDITION_CONTEXT_REFLECTED'
   | 'CONTEXT_LOSS'
   | 'NARROWED_CONDITION_REFLECTED'
@@ -105,6 +131,11 @@ export function evaluateActionAlignment(input: {
   nextMove: string | null;
   observeSignal: string | null;
   decisionSignals: ReadonlyArray<{ ifObserved: string; interpretation: string }>;
+  /**
+   * Core Value Final Fix §20 — 같은 카드의 verification(게이트 통과분). VERIFY는 **대화를 여는 질문**이고
+   * Next Move는 **실제 확인 행동**이다. uncertainty를 다루지 않는 VERIFY를 거의 그대로 옮긴 행동은 버린다.
+   */
+  cardVerification?: string | null;
 }): ActionAlignmentResult {
   const narrowed = conditionSignatureOf(input.narrowedCondition);
   const unresolved = conditionSignatureOf(input.unresolvedPoints.join(' '));
@@ -112,6 +143,30 @@ export function evaluateActionAlignment(input: {
   const move = conditionSignatureOf(input.nextMove);
   const observe = conditionSignatureOf(input.observeSignal);
   const action = new Set([...move, ...observe]);
+
+  /**
+   * Core Value Final Fix §17 · §21 — **uncertainty가 있으면 Next Move는 그 모름을 줄이는 행동이다.**
+   *
+   * ```
+   * uncertainty 개념이 잡힌다   Next Move가 그 개념을 하나 이상 싣지 않으면 UNCERTAINTY_NOT_ADDRESSED
+   * + VERIFY와 거의 같다        그 VERIFY가 uncertainty를 다루지 않으면 VERIFY_COPY(더 구체적인 이유)
+   * uncertainty가 없거나 개념 밖  이 규칙은 적용하지 않는다(기존 규칙만)
+   * ```
+   *
+   * ⚠️ 다른 규칙이 **통과시킨 뒤에** 마지막으로 본다 — 기존 거부 이유(CONTEXT_LOSS · AXIS_ONLY …)는 그대로다.
+   */
+  const uncertainty = conditionSignatureOf(input.conditionContext?.uncertainty);
+  const uncertaintyFailure = (): ActionAlignmentReason | null => {
+    if (!input.nextMove || uncertainty.size === 0) return null;
+    if (
+      input.cardVerification &&
+      verificationOverlap(input.nextMove, input.cardVerification) >= VERIFY_COPY_OVERLAP &&
+      !intersects(conditionSignatureOf(input.cardVerification), uncertainty)
+    ) {
+      return 'VERIFY_COPY';
+    }
+    return intersects(move, uncertainty) ? null : 'UNCERTAINTY_NOT_ADDRESSED';
+  };
 
   const context = input.conditionContext;
   const fieldSignatures = context
@@ -141,6 +196,8 @@ export function evaluateActionAlignment(input: {
     }
     const matchedFields = fieldSignatures.filter((signature) => intersects(signature, reflected)).length;
     if (matchedFields < 2) return contextResult(false, 'CONTEXT_LOSS');
+    const contextUncertainty = uncertaintyFailure();
+    if (contextUncertainty) return contextResult(false, contextUncertainty);
     return contextResult(true, 'CONDITION_CONTEXT_REFLECTED');
   }
 
@@ -159,6 +216,8 @@ export function evaluateActionAlignment(input: {
   });
 
   if (!input.nextMove) return result(true, 'NO_CONDITION');
+  const fallbackUncertainty = uncertaintyFailure();
+  if (fallbackUncertainty) return result(false, fallbackUncertainty);
   if (anchor.size === 0) return result(true, 'NO_CONDITION');
 
   const carriers = new Set([...anchor, ...events]);

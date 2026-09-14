@@ -1100,6 +1100,7 @@ export async function runDeepReportTask(
     const actionGate = gateActionPlan(parsedAction, actionAllowance, request.tense, {
       narrowedCondition: actionSemantic?.narrowedCondition ?? null,
       conditionContext: actionSemantic?.conditionContext ?? null,
+      cardVerification: actionSemantic?.verification ?? null,
     });
 
     logAiFilter({
