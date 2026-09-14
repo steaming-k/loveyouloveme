@@ -269,15 +269,31 @@ offer → (Guest) InlineAuth(이메일 코드 · 메일 링크, Privacy와 같�
 - 스냅샷의 사건 id는 **cloud 사건 id**로 바꿔 저장한다. 원문 복제 검사 · idempotency key(§9-3) 그대로.
 - fixture: `logical_run`(GEN-01~06) · `save_relationship_ui`(SAVE-UI-01~07) · `analysis_run_flow`(RUN-01~07) · `link_recovery`(LINK-01~04) + 정적 배치 검사.
 
+## 9-7. 저장한 관계 (최소 UI)
+
+- 위치: **Home › '최근 분석' 바로 아래** `저장한 관계` 섹션(`SavedRelationshipsSection`). 새 화면 · 내비게이션 없음.
+  Profile 전용 화면이 없고, Home이 이미 '다시 보기' 맥락(최근 궁합 · Mirror)을 갖고 있어 같은 자리에 둔다.
+- 로그인한 사용자에게만 그린다. Guest · Supabase 미설정이면 Home 불변.
+- 행: `별칭 · 관계 상태` / `최근 분석 M월 D일`(Asia/Seoul). 별칭이 없으면 '이름 없는 관계'. 긴 별칭은 CSS 말줄임만(자르지 않음).
+  분석이 최근인 관계가 위. 지금 보는 관계는 '보는 중'.
+- 빈 상태: "아직 저장한 관계가 없어. / 관계를 저장하면 다음에 다시 볼 수 있어."
+- 목록 읽기는 `listSummaries()` select만 — 로그인만으로 cloud write 0.
+- 열기(`hydrateSavedRelationship` → `applySavedRelationship`):
+  cloud 상대 · 사건 → 세션. 지금 상대는 기기 목록에 보관. 현재 관계 근거 · 저장 질문 · 사건은 그 관계의 cloud 값으로 바뀌고,
+  Premium intent · preview unlock은 `resetTargetContext`와 같이 비운다. 이미 보는 관계를 다시 열면 세션을 바꾸지 않는다.
+  다른 기기에서 저장한 관계는 cloud id를 기기 슬롯 이름으로 쓰고 link를 남긴다 — 다시 저장해도 중복 없음.
+- fixture: `saved_relationships`(SAVED-01~08: 0 · 1 · 3 · 10개 · 클릭 hydrate · A→B→A · logout/login · 새 기기 · 다른 계정) + 정적 검사.
+- 레이아웃 미리보기(개발 전용 · 합성 데이터 · 네트워크 없음): `/dev/saved-relationships?count=0|1|3|10`. production 404.
+
 ## 10. Known limitations
 
-1. **실제 Supabase에 적용 · 검증되지 않음.** `docs/supabase-info.md`의 project(`tcltmqertkbbdpqtkola`)는 DNS NXDOMAIN(2026-09-14) — 삭제/일시정지/오기 가능성. dev/staging 여부도 미확인.
+1. **실제 Supabase에 적용 · 검증되지 않음.** `docs/supabase-info.md`(project id · publishable key 있음 · 환경 표기 없음)의 host는 2026-09-14 재검증에서 로컬 ISP · Google(8.8.8.8) · Cloudflare(1.1.1.1) 세 resolver 모두 NXDOMAIN이고 `supabase.co` 자체는 해석된다 — 네트워크 문제가 아니라 **프로젝트가 없거나(삭제) project id가 다르다.** 일시정지 프로젝트는 보통 DNS가 남는다. dev/staging 표기도 없어 연결되더라도 migration 전에 확인이 필요하다. `.env.local`에는 반영하지 않았다(없는 host를 가리키면 계정 UI만 실패한다).
 2. RLS 교차 사용자 · auth smoke는 메모리 gateway + 정적 SQL 검사까지다.
 3. 로그인 후에도 **지속 동기화는 없다.** 저장은 사용자가 누른 시점의 스냅샷 migration이고, 이후 로컬 수정은 다시 저장해야 올라간다(같은 내용은 중복되지 않지만, 바뀐 내용은 conflict로 보고되고 덮어쓰지 않는다). revision 기반 update API는 있으나 UI에 연결하지 않았다.
 4. 클라우드 → 기기 불러오기(다른 기기에서 이어보기) UI 없음. `sessionWithCloudContext()`와 parity fixture까지만.
 5. 저장된 관계 목록 · 전환 UI 없음(service 수준까지).
 6. ~~두 번째 계정 id 충돌~~ → 해결(§9-4). 같은 로컬 슬롯이라도 계정마다 cloud id가 다르다. link가 localStorage에서 사라져도 로그인 뒤 결정론 id로 읽기만 해서 복구한다(§9-6). 단 기기 상대 목록(`lym.targets.v1`)까지 사라지면 localTargetId가 바뀌어 복구할 수 없다 — 다시 저장하면 새 관계 행이 생긴다.
-7. '이 관계 저장하기' UI · 렌더 뒤 snapshot 저장은 연결했다(§9-6). 저장한 관계를 **다른 기기에서 목록으로 불러와 세션에 올리는 화면**은 아직 없다(`loadSavedRelationship` · `sessionWithCloudContext`까지). CTA는 Supabase 설정이 있을 때만 보이므로 실제 화면 확인은 dev 프로젝트 연결 후 가능하다.
+7. '이 관계 저장하기' · 렌더 뒤 snapshot 저장 · 저장한 관계 목록/열기를 연결했다(§9-6 · §9-7). CTA · 목록은 Supabase 설정 + 로그인이 있어야 보이므로 **실제 저장 → 로그아웃 → 로그인 → 복원 화면 확인은 dev 프로젝트 연결 후**다(지금은 메모리 gateway fixture와 레이아웃 미리보기까지).
 10. `feat/v147-supabase-persistence-clean`은 안정 base `b6f2a2d`(Core Value Final Fix) 위에 다시 쌓았다. 이전 `feat/v147-supabase-persistence`는 참고용으로 남겨 두었다(force push 없음).
 8. Magic Link는 Supabase 대시보드의 Site URL / Redirect URL(`/auth/callback`) 설정이 필요하다. OTP 코드 입력은 이메일 템플릿에 `{{ .Token }}`이 있어야 한다.
 9. middleware 기반 세션 갱신은 넣지 않았다(서버 렌더에서 사용자 데이터를 읽는 곳이 아직 없다).
