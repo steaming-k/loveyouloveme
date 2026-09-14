@@ -12,6 +12,7 @@ import { NoticeBox, PageHeading, Tag } from '@/components/common/primitives';
 import { useNarrativeViewEvent } from '@/components/ai/AiModeNotice';
 import { PremiumDetailView } from '@/components/premium/PremiumDetailView';
 import { RelationshipDeepReportView } from '@/components/premium/RelationshipDeepReportView';
+import { DeepReportSnapshotSaver } from '@/components/account/DeepReportSnapshotSaver';
 import { Lovy } from '@/components/lovy/Lovy';
 import { PREMIUM_FEATURES } from '@/data/premium';
 import { PREMIUM_PREVIEW } from '@/lib/env';
@@ -311,6 +312,7 @@ function PremiumPreviewView() {
         />
         {featureId === 'astrology_detail' && !birth.couple ? null : null}
         {'overview' in report ? (
+          <>
           <RelationshipDeepReportView
             report={report}
             analysisId={analysisId}
@@ -323,6 +325,9 @@ function PremiumPreviewView() {
               retry: deepNarrative.retry,
             }}
           />
+          {/* v1.47 Integration — 렌더된 뒤 저장한 관계에만 snapshot(조건은 lib/persistence/deepReportSnapshot) */}
+          <DeepReportSnapshotSaver report={report} narrative={deepNarrative} />
+          </>
         ) : (
           <PremiumDetailView report={report} />
         )}

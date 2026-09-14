@@ -15,6 +15,7 @@ import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { PremiumPreparingReport } from '@/components/premium/PremiumPreparingReport';
 import { PremiumUnlockSuccess } from '@/components/premium/PremiumUnlockSuccess';
 import { RelationshipDeepReportView } from '@/components/premium/RelationshipDeepReportView';
+import { DeepReportSnapshotSaver } from '@/components/account/DeepReportSnapshotSaver';
 import { ReportHeader } from '@/components/report/ReportShell';
 import { DEEP_REPORT_COPY, PREMIUM_COPY, PREMIUM_FEATURES } from '@/data/premium';
 import { LENS_PAYWALL_COPY } from '@/data/premiumLens';
@@ -661,6 +662,7 @@ function PremiumView() {
           연속성이 생긴다.
         */}
         {showReport ? (
+          <>
           <RelationshipDeepReportView
             report={deep.report}
             analysisId={deep.analysisId}
@@ -693,6 +695,9 @@ function PremiumView() {
              */
             lensAi={deep.lensAi}
           />
+          {/* v1.47 Integration — 렌더된 뒤 저장한 관계에만 snapshot(조건은 lib/persistence/deepReportSnapshot) */}
+          <DeepReportSnapshotSaver report={deep.report} narrative={deep.narrative} />
+          </>
         ) : showPreparing ? (
           /*
             PostReview §4-1 — Unlock 확인 → **관찰을 연결하는 장면** → 리포트.

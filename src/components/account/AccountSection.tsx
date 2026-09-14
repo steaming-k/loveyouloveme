@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 
+import { InlineAuth, ACCOUNT_REASON_COPY } from '@/components/account/InlineAuth';
 import { Button } from '@/components/common/Button';
 import { ConfirmModal } from '@/components/common/ConfirmModal';
 import { SectionLabel } from '@/components/common/primitives';
@@ -15,15 +16,8 @@ import { useAccount, type AccountOutcome } from '@/state/AccountProvider';
  * ⚠️ Supabase 설정이 없으면 **아무것도 그리지 않는다**(Guest 화면 불변).
  * ⚠️ 로그인해도 자동으로 올리지 않는다. `이 기기에 입력한 정보를 계정에 저장할까?`에 사용자가
  *    답해야 migration이 돈다.
+ * ⚠️ 로그인 폼은 '이 관계 저장하기'와 같은 `InlineAuth`다.
  */
-
-const REASON_COPY: Record<Exclude<AccountOutcome, { ok: true }>['reason'], string> = {
-  disabled: '지금은 계정 저장을 쓸 수 없어.',
-  invalid_email: '이메일 주소를 다시 확인해줘.',
-  invalid_code: '코드가 맞지 않거나 시간이 지났어. 새 코드를 받아줘.',
-  rate_limited: '요청이 많았어. 잠시 뒤에 다시 해줘.',
-  failed: '지금은 연결이 안 돼. 이 기기에 입력한 정보는 그대로 있어.',
-};
 
 function migrationCopy(report: MigrationReport): string {
   switch (report.status) {
@@ -47,14 +41,8 @@ function migrationCopy(report: MigrationReport): string {
   }
 }
 
-const INPUT_CLASS =
-  'h-[46px] w-full rounded-[12px] border border-line bg-sunken px-3.5 text-[13px] text-ink outline-none focus:border-line-strong';
-
 export function AccountSection() {
   const account = useAccount();
-  const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
-  const [codeSent, setCodeSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [consentDismissed, setConsentDismissed] = useState(false);
@@ -67,7 +55,7 @@ export function AccountSection() {
     setNotice(null);
     try {
       const outcome = await task();
-      setNotice(outcome.ok ? success : REASON_COPY[outcome.reason]);
+      setNotice(outcome.ok ? success : ACCOUNT_REASON_COPY[outcome.reason]);
       return outcome.ok;
     } finally {
       setBusy(false);
@@ -83,46 +71,7 @@ export function AccountSection() {
       ) : null}
 
       {account.status === 'signed_out' ? (
-        <>
-          <p className="text-[12.5px] keep-all leading-relaxed text-ink-sub">
-            로그인하지 않아도 모든 기능을 그대로 쓸 수 있어. 계정에 저장하면 관계 정보가 클라우드에 남아서
-            다른 기기에서도 이어볼 수 있어.
-          </p>
-          <input
-            type="email"
-            inputMode="email"
-            autoComplete="email"
-            placeholder="이메일"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            className={INPUT_CLASS}
-          />
-          {codeSent ? (
-            <input
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              placeholder="메일로 받은 코드"
-              value={code}
-              onChange={(event) => setCode(event.target.value)}
-              className={INPUT_CLASS}
-            />
-          ) : null}
-          <Button
-            variant="secondary"
-            className="h-[46px] text-[13px]"
-            disabled={busy}
-            onClick={async () => {
-              if (codeSent && code.trim()) {
-                await run(() => account.verifyCode(email, code), null);
-                return;
-              }
-              const sent = await run(() => account.sendCode(email), '메일로 로그인 코드를 보냈어. 메일 속 링크를 눌러도 돼.');
-              if (sent) setCodeSent(true);
-            }}
-          >
-            {codeSent && code.trim() ? '로그인' : codeSent ? '코드 다시 받기' : '로그인 코드 받기'}
-          </Button>
-        </>
+        <InlineAuth intro="로그인하지 않아도 모든 기능을 그대로 쓸 수 있어. 계정에 저장하면 관계 정보가 클라우드에 남아서 다른 기기에서도 이어볼 수 있어." />
       ) : null}
 
       {account.status === 'signed_in' ? (

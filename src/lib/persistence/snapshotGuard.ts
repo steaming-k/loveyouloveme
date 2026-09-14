@@ -141,7 +141,10 @@ export function deepReportRunInput(source: {
   model: string | null;
   sourceFingerprint: string | null;
   generationRequestId: string;
+  /** 로컬 사건 id → cloud 사건 id. 저장하는 스냅샷은 cloud 사건 행을 가리켜야 한다 */
+  eventIdOf?: (localEventId: string) => string;
 }): GeneratedAnalysisRun {
+  const mapEventId = source.eventIdOf ?? ((id: string) => id);
   const candidates = source.report.candidates.map((candidate) => ({
     id: candidate.id,
     verdict: candidate.verdict,
@@ -153,7 +156,7 @@ export function deepReportRunInput(source: {
     soWhatSource: candidate.soWhatSource,
     operator: candidate.insightOperator,
     evidenceRefs: candidate.evidenceRefs,
-    eventIds: [...new Set([...candidate.relevantEventIds, ...candidate.semanticEventIds])],
+    eventIds: [...new Set([...candidate.relevantEventIds, ...candidate.semanticEventIds].map(mapEventId))],
   }));
   const plan = source.report.actionPlan;
   const actionPlan = plan
@@ -172,7 +175,7 @@ export function deepReportRunInput(source: {
         decisionSignals: plan.decisionSignals,
         unresolved: plan.unresolved,
         usedEvidenceRefs: plan.usedEvidenceRefs,
-        usedEventIds: plan.usedEventIds,
+        usedEventIds: plan.usedEventIds.map(mapEventId),
       }
     : null;
   const refs: unknown[] = [...candidates.flatMap((candidate) => candidate.evidenceRefs), ...(plan?.usedEvidenceRefs ?? [])];
@@ -184,7 +187,7 @@ export function deepReportRunInput(source: {
       renderedResult: { candidates, actionPlan },
       candidateIds: candidates.map((candidate) => candidate.id),
       usedEvidenceRefs,
-      usedEventIds: [...new Set([...candidates.flatMap((candidate) => candidate.eventIds), ...(plan?.usedEventIds ?? [])])],
+      usedEventIds: [...new Set([...candidates.flatMap((candidate) => candidate.eventIds), ...(plan?.usedEventIds ?? []).map(mapEventId)])],
     },
     sourceFingerprint: source.sourceFingerprint,
     promptVersion: source.promptVersion,

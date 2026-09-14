@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
 
+import { SaveRelationshipCard } from '@/components/account/SaveRelationshipCard';
 import {
   AiNarrativeNotice,
   AiSourceLabel,
@@ -684,6 +685,13 @@ function CompatibilityView() {
           )}
 
         </ReportSection>
+
+        {/*
+          v1.47 Integration — '이 관계 저장하기'. 점수 · 결과 한 문장 · 잘 맞는/확인할 신호를 **본 뒤**에만 둔다
+          (첫 가치 전에 로그인시키지 않는다). Supabase 설정이 없으면 아무것도 그리지 않는다.
+          Premium 진입보다 앞 — 저장은 무료 가치의 연장이고, 결제 흐름과 섞지 않는다.
+        */}
+        <SaveRelationshipCard hasValue className="mt-6" />
 
         {/*
           v1.15 §4 Hook A — Friction 신호를 본 직후, '이 차이가 실제로는 어떻게 나타날까'라는

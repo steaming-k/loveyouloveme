@@ -12,7 +12,17 @@ import {
 } from 'react';
 
 import { createAnalysisRunRepository } from '@/lib/persistence/analysisRunRepository';
-import { applyMigrationLinks, cloudIdsForUser, forgetUser, readCloudLinks, writeCloudLinks } from '@/lib/persistence/cloudLinks';
+import {
+  applyMigrationLinks,
+  cloudIdsForUser,
+  forgetUser,
+  linkOf,
+  readCloudLinks,
+  recoverCloudLink,
+  saveActiveRelationshipWith,
+  writeCloudLinks,
+} from '@/lib/persistence/cloudLinks';
+import { persistDeepReportSnapshot as persistSnapshotWith } from '@/lib/persistence/deepReportSnapshot';
 import { hasMeaningfulSelfProfile, migrateLocalData, type MigrationReport } from '@/lib/persistence/localMigration';
 import { createProfileRepository } from '@/lib/persistence/profileRepository';
 import { createRelationshipTargetRepository } from '@/lib/persistence/relationshipTargetRepository';
@@ -20,6 +30,7 @@ import { createSupabaseGateway } from '@/lib/persistence/supabaseGateway';
 import { ensureTargetRegistry, hasTargetContext, readTargetRegistry } from '@/lib/persistence/targetRegistry';
 import { getBrowserSupabase } from '@/lib/supabase/client';
 import { isSupabaseConfigured } from '@/lib/supabase/config';
+import type { AiMode, AiNarrativeStatus, DeepNarrativeBundle, RelationshipDeepReport } from '@/types';
 
 import { useHistory } from './HistoryProvider';
 import { useSession } from './SessionProvider';
@@ -32,11 +43,15 @@ import { useSession } from './SessionProvider';
  * ```
  * 막지 않는다     children을 항상 즉시 렌더한다. 로그인·네트워크를 기다리는 화면은 없다
  * 비활성이 기본   Supabase 설정이 없으면 status='disabled'이고 아무 요청도 보내지 않는다
- * 조용히 올리지 않는다  로그인만으로는 업로드하지 않는다. saveDeviceData()는 사용자가
- *                 '계정에 저장하기'를 눌렀을 때만 부른다
+ * 조용히 올리지 않는다  로그인만으로는 업로드하지 않는다. saveDeviceData() · saveActiveRelationship()은
+ *                 사용자가 동의 버튼을 눌렀을 때만 부른다
  * 로컬을 지우지 않는다  로그아웃 · 저장 · 클라우드 삭제 어느 것도 기기 데이터를 바꾸지 않는다
  * 보내지 않는다   이 Provider는 analytics 이벤트를 만들지 않는다(이메일 · 본문 · 별칭 포함)
  * ```
+ *
+ * v1.47 Integration — 저장한 관계의 렌더된 Deep Report는 `persistDeepReportSnapshot`으로 남긴다
+ * (조건은 `lib/persistence/deepReportSnapshot.ts`). link를 잃어버린 기기는 로그인 뒤 **읽기만** 해서
+ * 같은 관계를 다시 잇는다(`recoverCloudLink`).
  */
 
 export type AccountStatus = 'disabled' | 'loading' | 'signed_out' | 'signed_in';
@@ -45,17 +60,29 @@ export type AccountOutcome =
   | { ok: true }
   | { ok: false; reason: 'disabled' | 'invalid_email' | 'invalid_code' | 'rate_limited' | 'failed' };
 
+export interface DeepReportSnapshotInput {
+  rendered: boolean;
+  status: AiNarrativeStatus;
+  mode: AiMode | null;
+  bundle: DeepNarrativeBundle | null;
+  report: RelationshipDeepReport | null;
+}
+
 interface AccountContextValue {
   status: AccountStatus;
   email: string | null;
   /** 이 기기에 계정으로 옮길 만한 입력이 있는가 */
   hasDeviceData: boolean;
+  /** 로그인한 사용자가 지금 보고 있는 관계를 저장했는가 */
+  activeRelationshipSaved: boolean;
   migrationRunning: boolean;
   migrationReport: MigrationReport | null;
   sendCode: (email: string) => Promise<AccountOutcome>;
   verifyCode: (email: string, code: string) => Promise<AccountOutcome>;
   signOut: () => Promise<void>;
   saveDeviceData: () => Promise<MigrationReport | null>;
+  saveActiveRelationship: () => Promise<AccountOutcome>;
+  persistDeepReportSnapshot: (input: DeepReportSnapshotInput) => Promise<void>;
   deleteCloudData: () => Promise<AccountOutcome>;
 }
 
@@ -70,7 +97,11 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<{ id: string; email: string | null } | null>(null);
   const [migrationRunning, setMigrationRunning] = useState(false);
   const [migrationReport, setMigrationReport] = useState<MigrationReport | null>(null);
+  const [activeRelationshipSaved, setActiveRelationshipSaved] = useState(false);
+  const [linksVersion, setLinksVersion] = useState(0);
   const userIdRef = useRef<string | null>(null);
+  /** 상대가 바뀌면(새로운 사람 · 전환) 이 값이 바뀐다 — 저장 여부를 다시 본다 */
+  const activeAnalysisKey = answers.currentAnalysisMeta?.funnelAnalysisId ?? null;
 
   useEffect(() => {
     const client = getBrowserSupabase();
@@ -97,6 +128,38 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       data.subscription.unsubscribe();
     };
   }, []);
+
+  /* 이 사용자 · 지금 상대의 저장 여부. link가 없으면 읽기만 해서 복구를 시도한다(업로드 없음) */
+  useEffect(() => {
+    if (status !== 'signed_in' || !hydrated || !user) {
+      setActiveRelationshipSaved(false);
+      return;
+    }
+    let active = true;
+    const localTargetId = ensureTargetRegistry().activeTargetId;
+    const links = readCloudLinks();
+    if (linkOf(links, user.id, localTargetId)) {
+      setActiveRelationshipSaved(true);
+      return;
+    }
+    setActiveRelationshipSaved(false);
+    const client = getBrowserSupabase();
+    if (!client) return;
+    void recoverCloudLink({
+      gateway: createSupabaseGateway(client),
+      userId: user.id,
+      localTargetId,
+      links,
+      now: new Date().toISOString(),
+    }).then((result) => {
+      if (!active || !result.recovered) return;
+      writeCloudLinks(result.links);
+      setActiveRelationshipSaved(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, [status, hydrated, user, linksVersion, activeAnalysisKey]);
 
   const sendCode = useCallback(async (email: string): Promise<AccountOutcome> => {
     const client = getBrowserSupabase();
@@ -156,12 +219,50 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       });
       /* 동의해서 계정에 들어간 상대마다 link — 이후 그 관계의 분석은 다시 묻지 않고 남길 수 있다 */
       writeCloudLinks(applyMigrationLinks(readCloudLinks(), userId, report.links, new Date().toISOString()));
+      setLinksVersion((version) => version + 1);
       setMigrationReport(report);
       return report;
     } finally {
       setMigrationRunning(false);
     }
   }, [answers, entries, hydrated]);
+
+  /** ⚠️ '이 관계 저장하기' 동의 버튼에서만 부른다 — 나 최소값 · 지금 상대 · 사건 · link */
+  const saveActiveRelationship = useCallback(async (): Promise<AccountOutcome> => {
+    const client = getBrowserSupabase();
+    const userId = userIdRef.current;
+    if (!client) return { ok: false, reason: 'disabled' };
+    if (!hydrated || !userId) return { ok: false, reason: 'failed' };
+    const result = await saveActiveRelationshipWith({
+      gateway: createSupabaseGateway(client),
+      userId,
+      answers,
+      registry: ensureTargetRegistry(),
+      links: readCloudLinks(),
+      now: new Date().toISOString(),
+    });
+    if (!result.saved) return { ok: false, reason: 'failed' };
+    writeCloudLinks(result.links);
+    setLinksVersion((version) => version + 1);
+    return { ok: true };
+  }, [answers, hydrated]);
+
+  /** 렌더된 Deep Report — 저장 조건은 lib 한 곳에서 판정한다. Guest는 요청 0 */
+  const persistDeepReportSnapshot = useCallback(
+    async (input: DeepReportSnapshotInput): Promise<void> => {
+      if (!hydrated) return;
+      const client = getBrowserSupabase();
+      await persistSnapshotWith({
+        ...input,
+        gateway: client ? createSupabaseGateway(client) : null,
+        userId: client ? userIdRef.current : null,
+        links: readCloudLinks(),
+        localTargetId: ensureTargetRegistry().activeTargetId,
+        events: answers.target.events,
+      });
+    },
+    [answers.target.events, hydrated],
+  );
 
   /** 계정에 저장한 것만 지운다. 이 기기의 데이터는 그대로다 */
   const deleteCloudData = useCallback(async (): Promise<AccountOutcome> => {
@@ -189,6 +290,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     /* 이 사용자의 link만 지운다 — 같은 기기의 다른 계정 link는 그대로 */
     const userId = userIdRef.current;
     if (userId) writeCloudLinks(forgetUser(readCloudLinks(), userId));
+    setLinksVersion((version) => version + 1);
     setMigrationReport(null);
     return { ok: true };
   }, []);
@@ -205,24 +307,30 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       status,
       email: user?.email ?? null,
       hasDeviceData,
+      activeRelationshipSaved,
       migrationRunning,
       migrationReport,
       sendCode,
       verifyCode,
       signOut,
       saveDeviceData,
+      saveActiveRelationship,
+      persistDeepReportSnapshot,
       deleteCloudData,
     }),
     [
       status,
       user,
       hasDeviceData,
+      activeRelationshipSaved,
       migrationRunning,
       migrationReport,
       sendCode,
       verifyCode,
       signOut,
       saveDeviceData,
+      saveActiveRelationship,
+      persistDeepReportSnapshot,
       deleteCloudData,
     ],
   );

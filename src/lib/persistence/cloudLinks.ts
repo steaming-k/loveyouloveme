@@ -1,3 +1,5 @@
+import type { SessionAnswers } from '@/types';
+
 import { createAnalysisRunRepository } from './analysisRunRepository';
 import type { PersistenceGateway } from './gateway';
 import { cloudTargetIdOf, isUuid } from './ids';
@@ -5,11 +7,13 @@ import {
   emptyMigrationReport,
   MIGRATION_EXCLUDED,
   migratePlan,
+  planLocalMigration,
   type MigrationReport,
   type PlannedTarget,
 } from './localMigration';
 import { createRelationshipEventRepository } from './relationshipEventRepository';
 import { createRelationshipTargetRepository } from './relationshipTargetRepository';
+import type { TargetRegistryState } from './targetRegistry';
 import {
   ok,
   type AnalysisRun,
@@ -18,6 +22,7 @@ import {
   type GeneratedAnalysisRun,
   type PersistenceError,
   type Result,
+  type SelfProfileData,
 } from './types';
 
 /**
@@ -127,13 +132,15 @@ export async function saveRelationshipToCloud(input: {
   userId: string;
   links: CloudLinkState;
   target: PlannedTarget;
+  /** 나 최소값(migration과 같은 allowlist) — 생략하면 올리지 않는다 */
+  profile?: SelfProfileData | null;
   now?: Date;
 }): Promise<MigrationReport> {
   const link = linkOf(input.links, input.userId, input.target.id);
   if (!link) return emptyMigrationReport('consent_required');
   return migratePlan({
     gateway: input.gateway,
-    plan: { profile: null, targets: [input.target], history: [], excluded: MIGRATION_EXCLUDED },
+    plan: { profile: input.profile ?? null, targets: [input.target], history: [], excluded: MIGRATION_EXCLUDED },
     now: input.now,
     existingCloudIds: { [input.target.id]: link.cloudTargetId },
     expectedUserId: input.userId,
@@ -182,6 +189,67 @@ export async function loadSavedRelationship(
   const latest = await createAnalysisRunRepository(gateway).latestForTarget(cloudTargetId);
   if (!latest.ok) return latest;
   return ok({ target: target.value, events: events.value, latestAnalysis: latest.value });
+}
+
+const SAVE_FAILURE_STATUSES: ReadonlySet<MigrationReport['status']> = new Set([
+  'consent_required',
+  'nothing_to_migrate',
+  'unauthorized',
+  'offline',
+  'partial',
+  'failed',
+]);
+
+/**
+ * v1.47 Integration — '이 관계 저장하기' 동의 뒤. 지금 상대 한 명(나 최소값 · 상대 · 사건)을 저장하고 link를 돌려준다.
+ *
+ * ⚠️ 저장이 실패하거나 상대가 계정에 들어가지 않았으면 link를 돌려주지 않는다('저장됨'으로 보이지 않게).
+ * ⚠️ 로컬 데이터는 읽기만 한다.
+ */
+export async function saveActiveRelationshipWith(input: {
+  gateway: PersistenceGateway;
+  userId: string;
+  answers: SessionAnswers;
+  registry: TargetRegistryState;
+  links: CloudLinkState;
+  now: string;
+}): Promise<{ saved: boolean; report: MigrationReport; links: CloudLinkState }> {
+  const plan = planLocalMigration({ answers: input.answers, history: [], registry: input.registry });
+  const target = plan.targets.find((item) => item.active);
+  if (!target) return { saved: false, report: emptyMigrationReport('nothing_to_migrate'), links: input.links };
+  const granted = await grantRelationshipSave(input.links, input.userId, target.id, input.now);
+  const report = await saveRelationshipToCloud({
+    gateway: input.gateway,
+    userId: input.userId,
+    links: granted.state,
+    target,
+    profile: plan.profile,
+  });
+  const saved = !SAVE_FAILURE_STATUSES.has(report.status) && report.links.some((item) => item.localTargetId === target.id);
+  return { saved, report, links: saved ? granted.state : input.links };
+}
+
+/**
+ * v1.47 Integration §28 — **link 복구.** localStorage link를 잃어버린 기기.
+ *
+ * cloud 상대 id는 (userId, localTargetId)의 결정론 UUID라, **읽기만 해서** 같은 관계를 다시 찾는다.
+ * ⚠️ 업로드하지 않는다. 다른 사용자의 행은 RLS 때문에 보이지 않으므로 복구되지 않는다.
+ * ⚠️ 기기의 상대 목록(lym.targets.v1)까지 사라져 localTargetId가 바뀌면 복구할 수 없다(알려진 한계).
+ */
+export async function recoverCloudLink(input: {
+  gateway: PersistenceGateway;
+  userId: string;
+  localTargetId: string;
+  links: CloudLinkState;
+  now: string;
+}): Promise<{ recovered: boolean; link: CloudLink | null; links: CloudLinkState }> {
+  const existing = linkOf(input.links, input.userId, input.localTargetId);
+  if (existing) return { recovered: false, link: existing, links: input.links };
+  const cloudTargetId = await cloudTargetIdOf(input.userId, input.localTargetId);
+  const target = await createRelationshipTargetRepository(input.gateway).get(cloudTargetId);
+  if (!target.ok || !target.value) return { recovered: false, link: null, links: input.links };
+  const link: CloudLink = { cloudTargetId, consentedAt: input.now };
+  return { recovered: true, link, links: withLink(input.links, input.userId, input.localTargetId, link) };
 }
 
 /* ───────────────────────────────────────────────────── 브라우저 저장 */
