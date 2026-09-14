@@ -1379,8 +1379,8 @@ console.log('\nSEM-ROUTE · Deep Report만 모델을 따로 고르고, 캐시가
       /isDev && devCapture === true/.test(routeSrc),
   );
   check(
-    'SEM-ROUTE · 제품 라우팅이 gpt-5.4다 (v1.47 — Deep Report만 · 공용 AI_MODEL 불변)',
-    /export const DEEP_REPORT_MODEL_ROUTE: 'inherit' \| string = 'gpt-5\.4';/.test(routingSrc),
+    'SEM-ROUTE · 제품 라우팅이 코드에 모델을 박지 않는다 (v1.47 Integration — env AI_MODEL_DEEP_REPORT)',
+    !/DEEP_REPORT_MODEL_ROUTE/.test(routingSrc) && !/['"`]gpt-[0-9]/.test(routingSrc),
   );
   check(
     'SEM-ROUTE · 모델은 지문이 아니라 캐시 키에 들어간다 (v1.47 Model-Aware Cache)',

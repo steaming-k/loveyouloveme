@@ -1,11 +1,11 @@
 /**
- * v1.47 — Model-Aware Cache · Deep Report Routing Fixture
+ * v1.47 — Model-Aware Cache · Env-based Deep Report Routing Fixture
  *
  * ```
- * CACHE-01~05   캐시 키 = promptVersion · 실제 모델 · bundle signature   (/api/dev/model-routing-test)
- * ROUTE-01~05   Deep Report만 gpt-5.4 · 렌즈 · 그 밖의 Task는 공용 AI_MODEL
- * ROUTE-06      Provider 호출 수 불변 (Deep Report 1 · 렌즈 3 · Cross-Lens 1 = 5)  (/api/dev/premium-test)
- * 정적          aiClient가 조회/저장 모두 같은 키 함수를 쓰는가 · 모델 인자를 받는 호출이 1곳인가
+ * CACHE-01~05     캐시 키 = promptVersion · 실제 모델 · bundle signature   (/api/dev/model-routing-test)
+ * ROUTE-ENV-01~07 Deep Report 모델은 env(AI_MODEL_DEEP_REPORT) · 없으면 공용 AI_MODEL · 렌즈는 공용
+ * ROUTE-06        Provider 호출 수 불변 (Deep Report 1 · 렌즈 3 · Cross-Lens 1 = 5)  (/api/dev/premium-test)
+ * 정적            코드에 모델 id가 박혀 있지 않은가 · aiClient 조회/저장 키 · 모델 인자 받는 호출 1곳
  * ```
  *
  * ⚠️ 이 스크립트는 **Provider를 부르지 않는다.** 앞뒤로 실제 호출 카운터를 읽어 0 증가를 확인한다.
@@ -43,10 +43,10 @@ async function guardCount() {
   return (await response.json()).realProviderCalls;
 }
 
-console.log('\nModel-Aware Cache · Deep Report Routing Fixture — v1.47\n');
+console.log('\nModel-Aware Cache · Env Routing Fixture — v1.47\n');
 const before = await guardCount();
 
-console.log('■ CACHE · ROUTE (제품 함수 그대로)');
+console.log('■ CACHE · ROUTE-ENV (제품 함수 그대로)');
 {
   const response = await fetch(`${BASE_URL}/api/dev/model-routing-test`, {
     method: 'POST',
@@ -83,9 +83,19 @@ console.log('\n■ ROUTE-06 · Provider 호출 수 불변');
   }
 }
 
-console.log('\n■ 정적 — 캐시 키 · 라우팅 배선');
+console.log('\n■ 정적 — 모델 하드코딩 · 캐시 키 · 라우팅 배선');
 {
   const src = async (path) => stripComments((await readFile(join(ROOT, path), 'utf8')).replace(/\r\n/g, '\n'));
+  const routing = await src('src/services/ai/modelRouting.ts');
+  const keySrc = await src('src/services/ai/aiCacheKey.ts');
+  check(
+    'P0 · 제품 라우팅 · 캐시 키 코드에 구체 모델 id가 없다(env로만 결정)',
+    !/['"`]gpt-[0-9]/.test(routing) && !/['"`]gpt-[0-9]/.test(keySrc) && !/DEEP_REPORT_MODEL_ROUTE/.test(routing + keySrc),
+  );
+  check(
+    'P0 · Deep Report 모델 = dev override → AI_MODEL_DEEP_REPORT → 공용 textModel',
+    /isPlausibleModelId\(fromEnv\)\) return fromEnv;\s*return input\.textModel;/.test(routing),
+  );
   const client = await src('src/services/ai/aiClient.ts');
   check(
     'aiClient — 조회 키 = aiCacheKey(task, models.expected(task), fingerprint)',
@@ -97,28 +107,23 @@ console.log('\n■ 정적 — 캐시 키 · 라우팅 배선');
   );
   check('aiClient — 조회 키로 저장하던 cache.set(key, …) 경로가 없다', !/cache\.set\(key,/.test(client));
   check(
-    'aiClient — get · clearEntry · call이 같은 cacheKey 헬퍼(3곳)',
-    (client.match(/cacheKey\(task, fingerprint\)/g) ?? []).length === 3,
-  );
-  const keySrc = await src('src/services/ai/aiCacheKey.ts');
-  check(
     'aiCacheKey — promptVersion · model · bundle signature를 모두 담는다',
     /`\$\{task\}::\$\{promptVersion\}::model=\$\{model\}::\$\{fingerprint\}`/.test(keySrc),
   );
   check('deepReportFingerprint — 모델을 넣지 않는다(입력만)', !/semanticModelId|modelRouting/.test(await src('src/lib/aiFingerprint.ts')));
   const handlers = await src('src/services/ai/handlers.ts');
   check(
-    'handlers — 모델 인자를 받는 resolveProvider는 Deep Report 1곳',
-    (handlers.match(/resolveProvider\(false,\s*\w+\)/g) ?? []).length === 1 && /resolveProvider\(false, deepModel\)/.test(handlers),
-  );
-  check(
-    'handlers — 나머지 텍스트 Task 5곳은 모델 인자 없음(공용 AI_MODEL)',
-    (handlers.match(/resolveProvider\(false\)/g) ?? []).length === 5,
+    'handlers — 모델 인자를 받는 resolveProvider는 Deep Report 1곳 · 나머지 5곳은 공용 모델',
+    (handlers.match(/resolveProvider\(false,\s*\w+\)/g) ?? []).length === 1 &&
+      /resolveProvider\(false, deepModel\)/.test(handlers) &&
+      (handlers.match(/resolveProvider\(false\)/g) ?? []).length === 5,
   );
   const envExample = await readFile(join(ROOT, '.env.example'), 'utf8');
   check(
-    '.env.example — AI_MODEL_DEEP_REPORT=gpt-5.4 · 공용 AI_MODEL=gpt-4o-mini 그대로',
-    /^AI_MODEL_DEEP_REPORT=gpt-5\.4\r?$/m.test(envExample) && /^AI_MODEL=gpt-4o-mini\r?$/m.test(envExample),
+    '.env.example — local/dev AI_MODEL_DEEP_REPORT=gpt-5.4 · 공용 AI_MODEL=gpt-4o-mini · production은 명시 설정',
+    /^AI_MODEL_DEEP_REPORT=gpt-5\.4\r?$/m.test(envExample) &&
+      /^AI_MODEL=gpt-4o-mini\r?$/m.test(envExample) &&
+      /production/.test(envExample.slice(Math.max(0, envExample.search(/^AI_MODEL_DEEP_REPORT=/m) - 600), envExample.search(/^AI_MODEL_DEEP_REPORT=/m))),
   );
 }
 

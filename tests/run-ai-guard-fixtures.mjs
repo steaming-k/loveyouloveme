@@ -63,6 +63,7 @@ check(`GUARD-01 · tests/run-*.mjs ${testFiles.length}개 전부 guard import`, 
 for (const [name, label] of [
   ['run-provider-e2e.mjs', 'Real Provider E2E'],
   ['run-semantic-provider-qa.mjs', 'Semantic Provider QA'],
+  ['run-deep-report-smoke.mjs', 'Deep Report Real Smoke'],
 ]) {
   const code = codeOnly(await readFile(join(ROOT, 'tests', name), 'utf8'));
   const assertAt = code.indexOf(`assertRealAiTestAllowed('${label}')`);
@@ -133,7 +134,7 @@ const observed = await (
 ).json();
 check('GUARD-06 · 테스트 요청 observed-profile 응답 mode가 real이 아니다', observed.ok === true && observed.data?.meta?.mode !== 'real', observed.data?.meta ?? observed);
 
-for (const script of ['run-provider-e2e.mjs', 'run-semantic-provider-qa.mjs']) {
+for (const script of ['run-provider-e2e.mjs', 'run-semantic-provider-qa.mjs', 'run-deep-report-smoke.mjs']) {
   const env = { ...process.env };
   delete env.ALLOW_REAL_AI_TESTS;
   const child = spawnSync(process.execPath, [join(ROOT, 'tests', script)], { env, encoding: 'utf8', timeout: 60_000 });
