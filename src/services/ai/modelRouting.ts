@@ -1,3 +1,5 @@
+import type { AiTask } from '@/types';
+
 /**
  * Task-level Model Routing — **Deep Report Semantic Task만** (v1.46.4 Model A/B · §8 · §31)
  *
@@ -21,8 +23,8 @@
  * ══ 이 파일이 비밀이 아닌 이유 ═════════════════════════════════════════════
  *
  * 모델 id는 API Key가 아니다. 이 파일은 `server-only`를 import하지 않는다 — **클라이언트
- * 지문(`deepReportFingerprint`)도 이 값을 읽어야** 모델이 바뀔 때 캐시가 갈린다(§31).
- * 서버만 아는 값으로 지문을 만들 수는 없다.
+ * 캐시 키(`aiCacheKey.ts`)도 이 값을 첫 추정치로 읽는다.** 실제 키는 서버 응답의 모델로
+ * 확정된다(v1.47 Model-Aware Cache).
  */
 
 /**
@@ -32,9 +34,12 @@
  * 글자 그대로 같다.
  *
  * ⚠️ A/B winner가 확정되고 **사용자가 승인한 뒤에만** 구체 모델 id로 바꾼다(§30 · §46).
- * 이 값이 바뀌면 지문이 바뀌고, 이전 모델이 만든 semantic 캐시는 재사용되지 않는다.
+ *
+ * v1.47 — **gpt-5.4 채택.** v1.46.4 R3 D Provider QA ×3 PASS 뒤 디렉팅으로 승인됐고 **Deep Report만**
+ * 바뀐다. 공용 `AI_MODEL`은 그대로다 — 렌즈 · Cross-Lens · 그 밖의 Task는 기존 모델을 쓴다.
+ * 캐시는 이 상수가 아니라 서버 응답의 `meta.model`을 따른다(`aiCacheKey.ts`).
  */
-export const DEEP_REPORT_MODEL_ROUTE: 'inherit' | string = 'inherit';
+export const DEEP_REPORT_MODEL_ROUTE: 'inherit' | string = 'gpt-5.4';
 
 /**
  * 모델 id 형식 검사. dev override·env 값이 **프롬프트 인젝션 통로가 되지 않게** 좁힌다.
@@ -75,4 +80,22 @@ export function deepReportModelFor(input: {
     return DEEP_REPORT_MODEL_ROUTE;
   }
   return input.textModel;
+}
+
+/**
+ * Task가 **실제로 부를** 텍스트 모델 (v1.47 — routing fixture · 감사용).
+ *
+ * ```
+ * deep-report-narrative   deepReportModelFor (env → 라우팅 표 → 공용)
+ * 그 밖의 텍스트 Task      공용 textModel(AI_MODEL) — resolveProvider(false)를 인자 없이 부른다
+ * ```
+ *
+ * ⚠️ dev override는 넣지 않는다 — A/B 하네스 요청 단위 값이라 '배포가 쓰는 모델'이 아니다.
+ */
+export function plannedTextModelFor(
+  task: AiTask,
+  input: { textModel: string; envOverride: string | undefined; nodeEnv: string | undefined },
+): string {
+  if (task !== 'deep-report-narrative') return input.textModel;
+  return deepReportModelFor({ ...input, devOverride: undefined });
 }

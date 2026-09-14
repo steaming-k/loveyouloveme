@@ -26,6 +26,7 @@
     "test:action": "node tests/run-action-fixtures.mjs",
     "test:ai-guard": "node tests/run-ai-guard-fixtures.mjs",
     "test:ai:real": "node tests/run-provider-e2e.mjs",
+    "test:model-routing": "node tests/run-model-routing-fixtures.mjs",
     "test:persistence": "node tests/run-persistence-fixtures.mjs",
     "test:ai:e2e": "node tests/run-provider-e2e.mjs"
   },

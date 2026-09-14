@@ -1379,12 +1379,12 @@ console.log('\nSEM-ROUTE · Deep Report만 모델을 따로 고르고, 캐시가
       /isDev && devCapture === true/.test(routeSrc),
   );
   check(
-    "SEM-ROUTE · 제품 라우팅이 아직 'inherit'이다 (승인 전 기본 모델 불변)",
-    /export const DEEP_REPORT_MODEL_ROUTE: 'inherit' \| string = 'inherit';/.test(routingSrc),
+    'SEM-ROUTE · 제품 라우팅이 gpt-5.4다 (v1.47 — Deep Report만 · 공용 AI_MODEL 불변)',
+    /export const DEEP_REPORT_MODEL_ROUTE: 'inherit' \| string = 'gpt-5\.4';/.test(routingSrc),
   );
   check(
-    'SEM-ROUTE · deepReportFingerprint가 모델 id를 digest에 넣는다',
-    /`model:\$\{semanticModelId\}`/.test(fingerprintSrc) && /input\.semanticModelId \?\? DEEP_REPORT_MODEL_ROUTE/.test(fingerprintSrc),
+    'SEM-ROUTE · 모델은 지문이 아니라 캐시 키에 들어간다 (v1.47 Model-Aware Cache)',
+    !/semanticModelId|DEEP_REPORT_MODEL_ROUTE/.test(fingerprintSrc) && /::model=\$\{model\}::/.test(stripComments(await readFile(join(ROOT, 'src/services/ai/aiCacheKey.ts'), 'utf8'))),
   );
   /*
     v1.46.4 Action Layer — 라우트가 카드 허용집합을 한 번 만들어 Action 허용집합에서도 재사용한다
