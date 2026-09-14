@@ -1026,6 +1026,8 @@ console.log('\nAI-LENS-01 ~ AI-LENS-20 — 렌즈별 AI 해석 (v1.46 AI Lens)')
   const versions = await readFile(join(ROOT, 'src/services/ai/promptVersions.ts'), 'utf8');
   const contract = await readFile(join(ROOT, 'src/services/ai/taskContract.ts'), 'utf8');
   const client = await readFile(join(ROOT, 'src/services/ai/aiClient.ts'), 'utf8');
+  /** v1.47 — 캐시 키 모양의 source of truth. aiClient는 이 함수만 부른다(9578926) */
+  const cacheKeySrc = await readFile(join(ROOT, 'src/services/ai/aiCacheKey.ts'), 'utf8');
 
   /* ── AI-LENS-01 ~ 06 · 렌즈 × mode 조합 6개가 전부 정의돼 있다 ────────── */
   const MODE_UNITS = {
@@ -1228,9 +1230,18 @@ console.log('\nAI-LENS-01 ~ AI-LENS-20 — 렌즈별 AI 해석 (v1.46 AI Lens)')
       (version) => versions.includes(`'${version}'`),
     ),
   );
+  /**
+   * ⚠️ 260914 P1 STEP 0 — 키 조립이 `aiCacheKey.ts`로 옮겨졌는데(v1.47 model-aware cache)
+   * 이 검사만 옛 위치(`aiClient.ts`의 인라인 템플릿)를 보고 있었다. 검사 대상은 그대로다 —
+   * task와 promptVersion이 키에 함께 들어가는가. 옮겨진 곳을 보고, 기본 promptVersion이
+   * 계약(TASK_CONTRACT)에서 오는지 · aiClient가 조회와 저장 모두 이 함수를 쓰는지까지 함께 본다.
+   */
   check(
     'AI-LENS-18 캐시 키가 task와 promptVersion을 함께 쓴다',
-    client.includes('${task}::${promptVersionOf(task)}::${fingerprint}'),
+    cacheKeySrc.includes('`${task}::${promptVersion}::model=${model}::${fingerprint}`') &&
+      /promptVersion: string = TASK_CONTRACT\[task\]\.promptVersion/.test(cacheKeySrc) &&
+      client.includes('return aiCacheKey(task, models.expected(task), fingerprint);') &&
+      client.includes('cache.set(aiCacheKey(task, model, fingerprint), data);'),
   );
 
   /* ── AI-LENS-19 · deep-report promptVersion 고정 ──────────────────────── */
