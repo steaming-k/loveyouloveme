@@ -14,6 +14,7 @@
  * Provider Key가 필요 없다. Provider를 호출하지 않는다.
  */
 
+import './_aiTestGuard.mjs';
 import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';

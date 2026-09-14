@@ -1,7 +1,8 @@
 import 'server-only';
 
 import { createMockProvider } from './mockProvider';
-import { canCallProvider, readAiConfig, type AiServerConfig } from './serverEnv';
+import { recordRealProviderCall } from './realCallCounter';
+import { canCallProvider, isRealProviderBlocked, readAiConfig, type AiServerConfig } from './serverEnv';
 import type { AiFailureReason, AiProviderTask } from '@/types';
 
 /**
@@ -98,6 +99,11 @@ function createOpenAiCompatibleProvider(
       }
 
       try {
+        /* P0 — 두 번째 방어선. 모드 강등을 거치지 않은 경로가 생겨도 opt-in 없는 테스트 요청은 여기서 멈춘다 */
+        if (isRealProviderBlocked()) {
+          throw new AiProviderError('CONFIG_ERROR', 'real provider blocked for test run without opt-in');
+        }
+        recordRealProviderCall();
         const response = await fetch(`${config.baseUrl}/chat/completions`, {
           method: 'POST',
           signal: controller.signal,

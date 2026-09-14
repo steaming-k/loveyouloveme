@@ -24,6 +24,7 @@
  * 실행: 터미널 A `npm run dev` → 터미널 B `npm run test:question`
  */
 
+import './_aiTestGuard.mjs';
 import {
   FIXTURE_A,
   FIXTURE_B,

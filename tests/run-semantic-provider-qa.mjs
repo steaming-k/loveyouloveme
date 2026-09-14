@@ -27,10 +27,14 @@
  *       LYM_QA_ONLY=R2:1,R5 · LYM_QA_SUFFIX=rerun
  */
 
+import { assertRealAiTestAllowed } from './_aiTestGuard.mjs';
 import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 
 import { SEMANTIC_QA_SCENARIOS } from './fixtures-v1464.mjs';
+
+/* P0 — 실제 유료 Provider 호출 스크립트다. ALLOW_REAL_AI_TESTS=1 없이는 요청 전에 멈춘다 */
+assertRealAiTestAllowed('Semantic Provider QA');
 
 const BASE_URL = process.env.LYM_BASE_URL ?? 'http://localhost:3000';
 const MODEL = process.env.LYM_QA_MODEL ?? 'gpt-5.4';
