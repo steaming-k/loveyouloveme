@@ -135,7 +135,7 @@ export function AccountSection() {
       <ConfirmModal
         open={deleteOpen}
         title="계정에 저장한 정보를 지울까?"
-        description="계정에 올린 내 답변, 상대 정보, 적어둔 장면, 분석 기록을 지워. 이 기기에 있는 정보는 지우지 않아. 되돌릴 수 없어."
+        description="계정에 올린 내 답변, 상대 정보, 적어둔 사건, 분석 기록을 지워. 이 기기에 있는 정보는 지우지 않아. 되돌릴 수 없어."
         confirmLabel="계정 저장분 삭제"
         onCancel={() => setDeleteOpen(false)}
         onConfirm={() => {

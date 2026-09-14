@@ -55,7 +55,7 @@ export const RELATIONSHIP_EVENT_PLACEHOLDER: Record<RelationshipEventType, strin
   distance: '예) 주말 약속을 미루게 됐어',
   care_received: '예) 아플 때 챙겨줬어',
   meeting: '예) 먼저 만나자고 제안했어',
-  other: '예) 기억에 남는 장면을 짧게 적어줘',
+  other: '예) 기억에 남는 일을 짧게 적어줘',
 };
 
 /**

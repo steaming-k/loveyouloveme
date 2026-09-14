@@ -82,7 +82,7 @@ export const ONBOARDING_SLIDES = [
     id: 2,
     title: ['점수만 보고', '끝나지 않아.'],
     caption: [
-      '네 답, 관계에서 겪은 일, 기억나는 장면을 연결해서',
+      '네 답, 관계에서 겪은 일, 기억나는 사건을 연결해서',
       '왜 이런 차이가 생기는지 같이 봐.',
     ],
     visual: 'evidence' as const,
