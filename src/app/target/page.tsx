@@ -73,7 +73,8 @@ export default function TargetPage() {
 
   return (
     <ScreenLayout
-      header={<ScreenHeader backHref={ROUTES.profileResult} progress={88} />}
+      /* 260914 UT 후속 P0 — 입력 흐름에서 S18을 건너뛰므로 직접 진입 fallback도 입력 단계로 둔다 */
+      header={<ScreenHeader backHref={ROUTES.pastIntro} progress={88} />}
       footer={
         <div className="flex flex-col gap-2">
           {error ? <InlineError message={error} /> : null}

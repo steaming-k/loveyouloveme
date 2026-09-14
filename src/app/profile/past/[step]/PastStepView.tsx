@@ -80,9 +80,21 @@ export function PastStepView({ step }: { step: PastStep }) {
         self_gap: experience.selfGap ?? '',
         has_note: experience.note.trim().length > 0,
       });
+      /*
+        260914 UT 후속 P0 — **입력 중간의 결과 화면(S18 `/profile/result`)을 건너뛴다.**
+        참가자가 '뚝뚝 끊긴다 · 결과가 먼저 나와야'라고 반복했다. 입력은 상대 정보까지 한 흐름으로
+        이어가고, 첫 결과는 궁합 점수부터 본다. S18은 Home 아바타 · 하단 '나' 탭에서 그대로 열린다.
+        프로필 완료 표시는 S18 도착이 아니라 입력 완료 시점에 한다(Home · 하단 메뉴가 이 값을 본다).
+        분기는 S18과 같다 — `soloModeOf`가 아니라 사용자가 답한 `answers.status`.
+      */
+      markComplete('profile');
+      trackEvent('profile_complete', { path: 'experience' });
+      const soloStatus = answers.status === 'solo_none' || answers.status === 'solo_exp';
       // v1.11 — Profile Revisit에서 '이전 관계 경험 고치기'로 들어온 거면 그대로
-      // /profile/result?view=revisit로 돌려보낸다(§27). 아니면 원래처럼 첫 완료 화면으로.
-      router.push(resolveReturnDestination(searchParams, ROUTES.profileResult));
+      // /profile/result?view=revisit로 돌려보낸다(§27).
+      router.push(
+        resolveReturnDestination(searchParams, soloStatus ? ROUTES.firstContact : ROUTES.target),
+      );
       return;
     }
 
