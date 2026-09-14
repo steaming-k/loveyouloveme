@@ -781,9 +781,18 @@ console.log('\nPREM-V2-15 — Production Guard (정적 guard)');
   check('Provider를 부르지 않는다', !route.includes('resolveProvider') && !route.includes('generateStructured'));
 
   const preview = await readFile(join(ROOT, 'src/app/premium-preview/[feature]/page.tsx'), 'utf8');
+  /*
+    v1.47 Premium UT Visibility — 게이트가 `resolvePremiumAccess` 계약으로 옮겨졌다. **일반 사용자에게는 여전히
+    PREMIUM_PREVIEW 게이트다**(UT 탭만 예외): 화면은 previewRouteOpen으로 막고, 훅이 env를 넘기고,
+    UT가 아니면 previewRouteOpen = previewEnabled다.
+  */
+  const accessHook = await readFile(join(ROOT, 'src/hooks/useUtMode.ts'), 'utf8');
+  const accessLib = await readFile(join(ROOT, 'src/lib/premiumAccess.ts'), 'utf8');
   check(
-    'Premium Preview는 여전히 PREMIUM_PREVIEW 게이트 뒤에 있다',
-    preview.includes('if (!PREMIUM_PREVIEW || !featureId || !report)'),
+    'Premium Preview는 여전히 PREMIUM_PREVIEW 게이트 뒤에 있다 (일반 사용자 · resolvePremiumAccess)',
+    preview.includes('if (!access.previewRouteOpen || !featureId || !report)') &&
+      accessHook.includes('previewEnabled: PREMIUM_PREVIEW') &&
+      /utMode: false,\s*surfaceEnabled: input\.fakeDoorEnabled,\s*previewRouteOpen: input\.previewEnabled,/.test(accessLib),
   );
   const env = await readFile(join(ROOT, 'src/lib/env.ts'), 'utf8');
   check(
@@ -1823,8 +1832,14 @@ console.log('\nPROD-UNLOCK-01~10 — Production Deep Report Unlock · payment �
   /* ── PROD-UNLOCK-05 · Production mock unlock에 payment-success 카피 0 ───── */
   check(
     'PROD-UNLOCK-05 · Production CTA는 payment mode를 쓰지 않는다',
+    // v1.47 — mode는 `usePremiumAccess()`가 정한다. PG가 없으므로 훅은 paymentConfirmed: false만 넘기고,
+    // UT가 아닌 사용자는 preview flag가 없으면 demo_unlock이다(`resolvePremiumAccess`).
     !/setUnlockMode\([^)]*'payment'[^)]*\)/.test(paywallSrc) &&
-      /unlockModeForCta[\s\S]{0,200}'demo_unlock'/.test(paywallSrc),
+      /const unlockModeForCta: PremiumAccessMode = access\.mode;/.test(paywallSrc) &&
+      (await readFile(join(ROOT, 'src/hooks/useUtMode.ts'), 'utf8')).includes('paymentConfirmed: false') &&
+      /mode: input\.paymentConfirmed \? 'payment' : input\.previewEnabled \? 'preview' : 'demo_unlock'/.test(
+        await readFile(join(ROOT, 'src/lib/premiumAccess.ts'), 'utf8'),
+      ),
     paywallSrc.match(/const unlockModeForCta[^;]*;/s)?.[0],
   );
   check(
