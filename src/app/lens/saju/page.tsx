@@ -13,6 +13,7 @@ import {
   BirthMissingBlock,
   BirthSummaryRows,
   EntertainmentNotice,
+  LensReportEyebrow,
   LimitationList,
 } from '@/components/lens/LensStateBlocks';
 import { LensCoreBridge } from '@/components/lens/LensCoreBridge';
@@ -160,7 +161,30 @@ function SajuLensView() {
       bodyClassName="pt-1.5 pb-4"
     >
       <div className="flex flex-col gap-5">
-        <PageHeading lines={SAJU_COPY.title} caption={SAJU_COPY.caption} />
+        {/*
+          ══ LENS INFORMATION HIERARCHY 260916 §9 · §10 ═══════════════════════
+
+          예전 첫 화면은 `ENTERTAINMENT` → `사주 렌즈` → `나의 일주 · 신축(辛丑)일`(21px)
+          순서였다. 393×852 실측에서 첫 viewport의 가장 큰 활자 두 개가 **렌즈 이름과 내
+          일주**였고, 관계 해석은 617px 아래에 있었다 — 럽유럽미가 아니라 사주 앱의 결과
+          페이지로 읽히는 구조였다.
+
+          그래서 제목의 **주어를 렌즈에서 두 사람으로 옮긴다.** MBTI 렌즈가 이미 쓰고 있던
+          문법(`러비 관찰 기록 · 렌즈` + `성향 렌즈로 본 두 사람`)을 그대로 따른다 — 세
+          렌즈가 같은 문법을 쓰게 하는 것이 목적이지 사주 화면을 더 사주답게 만드는 것이
+          아니다.
+
+          ⚠️ 상대 일주가 없으면 `두 사람`이라고 말하지 않는다(`relationNote`는 두 일주가
+             모두 계산됐을 때만 생긴다) — 없는 것을 봤다고 말하지 않는 규칙이 제목에도
+             그대로 적용된다.
+          ⚠️ `ENTERTAINMENT` 배지는 헤더에 그대로 둔다. 지우는 것이 아니라 **한 층
+             아래로** 내리는 것이 이번 작업이다.
+        */}
+        <PageHeading
+          lines={relationNote ? SAJU_COPY.coupleTitle : SAJU_COPY.title}
+          caption={SAJU_COPY.caption}
+          eyebrow={<LensReportEyebrow />}
+        />
 
         {/*
           Concept Continuity 260915 — 앞 화면까지 이어지던 러비의 관찰을 여기서 끊지 않는다.
@@ -171,24 +195,6 @@ function SajuLensView() {
 
         {!availability.self ? (
           <BirthMissingBlock lens="saju" missing={availability.missing === 'both' ? 'both' : 'self'} />
-        ) : null}
-
-        {mineSaju ? (
-          <section className="flex flex-col gap-2.5">
-            <SectionLabel>{SAJU_COPY.selfLabel}</SectionLabel>
-            <div className="flex flex-col gap-2 rounded-card border border-line bg-surface p-4">
-              <p className="text-[10.5px] font-semibold tracking-[0.06em] text-ink-muted">
-                DAY PILLAR
-              </p>
-              <p className="text-[21px] font-semibold tracking-[-0.5px]">
-                {pillarText(mineSaju.pillar)}
-              </p>
-              <p className="text-caption keep-all leading-relaxed text-ink-sub">
-                일간 {ELEMENT_LABEL_KO[mineSaju.pillar.stemElement]} ·{' '}
-                {DAY_STEM_ELEMENT_SELF[mineSaju.pillar.stemElement]}
-              </p>
-            </div>
-          </section>
         ) : null}
 
         {mineSaju && theirsSaju && relationNote ? (
@@ -224,11 +230,67 @@ function SajuLensView() {
           </section>
         ) : null}
 
+        {/*
+          ══ LENS INFORMATION HIERARCHY 260916 §13 · §14 — **삭제가 아니라 강등** ══
+
+          '나의 일주'는 이 렌즈가 딛고 선 근거라서 없애지 않는다. 바꾸는 것은 **역할**이다:
+          관계 해석 위에서 21px로 먼저 읽히던 Main Result가, 관계 해석 아래에서 15px
+          보조 카드(`이 렌즈의 기준`)로 읽힌다.
+
+          사용자가 먼저 갖게 될 문장이 '나는 신축일주구나'가 아니라 '이 관계를 보려고
+          이런 사주 값을 참고하는구나'가 되게 하는 것이 전부다.
+
+          ⚠️ 값 · 해석 문장은 한 글자도 바꾸지 않는다(`readSajuDay` 결과 그대로).
+             `DAY PILLAR` 영문 라벨만 뺐다 — 바로 위 '나의 일주'가 같은 말을 한다.
+        */}
+        {mineSaju ? (
+          <section className="flex flex-col gap-2.5">
+            <SectionLabel>{SAJU_COPY.basisLabel}</SectionLabel>
+            <div className="flex flex-col gap-1.5 rounded-card border border-line-soft bg-canvas-warm p-4">
+              <p className="text-[10.5px] font-semibold tracking-[0.06em] text-ink-muted">
+                {SAJU_COPY.selfLabel}
+              </p>
+              <p className="text-[15px] font-semibold tracking-[-0.2px]">
+                {pillarText(mineSaju.pillar)}
+              </p>
+              <p className="text-caption keep-all leading-relaxed text-ink-sub">
+                일간 {ELEMENT_LABEL_KO[mineSaju.pillar.stemElement]} ·{' '}
+                {DAY_STEM_ELEMENT_SELF[mineSaju.pillar.stemElement]}
+              </p>
+            </div>
+          </section>
+        ) : null}
+
         {availability.self && !theirsSaju ? <BirthMissingBlock lens="saju" missing="target" /> : null}
 
         <BirthSummaryRows mine={mine} theirs={theirs} />
 
         <LimitationList items={limitations} />
+
+        {/*
+          Concept Continuity 260915 — 렌즈에서 끝내지 않고 **Core 관계 신호로 되돌린다.**
+
+          MBTI 렌즈는 이미 `LENS → CORE`로 돌아가는 길이 있었는데(v1.24 §12) 사주·별자리에는
+          없어서, 이 두 화면만 '보고 끝'으로 닫혔다. 같은 컴포넌트를 그대로 쓴다 — 새 카피도
+          새 분기도 만들지 않는다. 노트 문장('이 렌즈에서는 이렇게 보여. 그런데 실제 관계에서는
+          어떨까?')이 렌즈 이름을 말하지 않아 세 화면에서 그대로 성립한다.
+
+          ⚠️ 궁합 결과가 아직 없으면 돌아갈 곳이 없으므로 그리지 않는다(MBTI와 같은 조건).
+
+          ══ LENS INFORMATION HIERARCHY 260916 §19 — **Bundle 앞으로 올렸다** ══════
+
+          예전에는 Premium Bundle 카드 뒤에 있어서, 렌즈의 결론이 '실제 관계로 돌아가기'가
+          아니라 '결제 카드 다음에 붙은 또 하나의 CTA'로 읽혔다. MBTI 렌즈는 이미
+          Surprise 직후에 이 길을 두고 있다(v1.38) — 같은 자리로 맞춘다.
+
+          ⚠️ Bundle을 없애거나 가격 · 상품 구조를 바꾸지 않는다. 순서만 바뀐다.
+        */}
+        {mineSaju && answers.completed.compatibility ? (
+          <LensCoreBridge
+            className="mt-2"
+            href={`${ROUTES.compatibility}#${RESULT_ANCHORS.compatibilityGood}`}
+          />
+        ) : null}
 
         {/*
           ══ 1차 UT 전체 Backlog P0-2 — **렌즈 화면은 자기 가격을 갖지 않는다** ══════
@@ -260,23 +322,6 @@ function SajuLensView() {
           )
         ) : null}
 
-
-        {/*
-          Concept Continuity 260915 — 렌즈에서 끝내지 않고 **Core 관계 신호로 되돌린다.**
-
-          MBTI 렌즈는 이미 `LENS → CORE`로 돌아가는 길이 있었는데(v1.24 §12) 사주·별자리에는
-          없어서, 이 두 화면만 '보고 끝'으로 닫혔다. 같은 컴포넌트를 그대로 쓴다 — 새 카피도
-          새 분기도 만들지 않는다. 노트 문장('이 렌즈에서는 이렇게 보여. 그런데 실제 관계에서는
-          어떨까?')이 렌즈 이름을 말하지 않아 세 화면에서 그대로 성립한다.
-
-          ⚠️ 궁합 결과가 아직 없으면 돌아갈 곳이 없으므로 그리지 않는다(MBTI와 같은 조건).
-        */}
-        {mineSaju && answers.completed.compatibility ? (
-          <LensCoreBridge
-            className="mt-2"
-            href={`${ROUTES.compatibility}#${RESULT_ANCHORS.compatibilityGood}`}
-          />
-        ) : null}
 
         <LovyMessage pose="book" size={52}>
           {SAJU_COPY.notPrediction}

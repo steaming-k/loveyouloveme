@@ -556,10 +556,25 @@ export const BIRTH_COPY = {
 } as const;
 
 /** X1-c 사주 Lens */
+/**
+ * 세 렌즈(MBTI · 사주 · 별자리) 공통 머리말 — LENS INFORMATION HIERARCHY 260916 §9
+ *
+ * 렌즈 화면의 **1차 정체성은 렌즈 이름이 아니라 '러비가 이어서 하고 있는 관찰'** 이다.
+ * MBTI 렌즈는 이미 이 줄을 갖고 있었고, 사주 · 별자리만 렌즈 이름부터 시작해서 각각
+ * 다른 서비스처럼 읽혔다. 문자열을 세 곳에 복사하지 않고 한 곳에서 읽는다.
+ */
+export const LENS_REPORT_EYEBROW = '러비 관찰 기록 · 렌즈';
+
 export const SAJU_COPY = {
   badge: 'ENTERTAINMENT',
+  /** 상대 정보가 없어 두 사람을 겹쳐볼 수 없을 때 — 이때만 렌즈 이름이 제목이 된다 */
   title: ['사주 렌즈'],
-  caption: '전통 해석 체계로 우리 둘을 한번 겹쳐보는 참고 렌즈야.',
+  /**
+   * LENS HIERARCHY 260916 §9 — **주어는 렌즈가 아니라 두 사람이다.**
+   * MBTI 렌즈의 `성향 렌즈로 본 두 사람`과 같은 문법을 쓴다(새 문법을 만들지 않는다).
+   */
+  coupleTitle: ['사주 렌즈로 본 두 사람'],
+  caption: '전통 해석 체계로 한번 겹쳐보는 참고 렌즈야.',
   notPrediction:
     '사주는 전통적인 해석 체계야. 실제 관계가 잘될 확률을 예측하는 결과로는 사용하지 않을게.',
   /**
@@ -568,16 +583,23 @@ export const SAJU_COPY = {
    */
   selfLabel: '나의 일주',
   coupleLabel: '우리 둘',
+  /** LENS HIERARCHY 260916 §13 — 일주 값은 주인공이 아니라 이 렌즈가 딛고 선 기준이다 */
+  basisLabel: '이 렌즈의 기준',
   readingLabel: '두 일간을 같이 놓으면',
 } as const;
 
 /** X1-b Astrology Lens */
 export const ASTROLOGY_COPY = {
   badge: 'ENTERTAINMENT',
+  /** 상대 정보가 없어 두 사람을 겹쳐볼 수 없을 때 — 이때만 렌즈 이름이 제목이 된다 */
   title: ['별자리 렌즈'],
-  caption: '생년월일로 태양궁을 보고, 관계에서 떠올려볼 질문을 하나 건넬게.',
+  /** LENS HIERARCHY 260916 §9 — 사주 렌즈 · MBTI 렌즈와 같은 문법 */
+  coupleTitle: ['별자리 렌즈로 본 두 사람'],
+  caption: '태양궁으로 한번 겹쳐보고, 관계에서 떠올려볼 질문을 하나 건넬게.',
   selfLabel: '나의 태양궁',
   targetLabel: '상대의 태양궁',
+  /** LENS HIERARCHY 260916 §13 — 태양궁은 주인공이 아니라 이 렌즈가 딛고 선 기준이다 */
+  basisLabel: '이 렌즈의 기준',
   coupleCta: '우리 별자리 함께 보기',
   similarLabel: '비슷하게 읽힐 수 있는 부분',
   differentLabel: '다르게 나타날 수 있는 부분',
@@ -618,7 +640,7 @@ export const LENS_HUB_COPY = {
 export const MBTI_LENS_COPY = {
   badge: 'SUPPORTING LENS',
   /** 관찰 문서 헤더 — 영어를 남발하지 않고 한국어로 읽히게 둔다 */
-  reportEyebrow: '러비 관찰 기록 · 렌즈',
+  reportEyebrow: LENS_REPORT_EYEBROW,
   reportTitle: '성향 렌즈로 본 두 사람',
   reportMetaLens: '렌즈 · MBTI',
   reportMetaScore: '동기화율에는 반영하지 않음',

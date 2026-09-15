@@ -7,7 +7,7 @@ import { Button } from '@/components/common/Button';
 import { NoticeBox, SectionLabel } from '@/components/common/primitives';
 import { Lovy } from '@/components/lovy/Lovy';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
-import { LENS_MISSING_COPY } from '@/data/copy';
+import { LENS_MISSING_COPY, LENS_REPORT_EYEBROW } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { formatBirthSummary } from '@/lib/logic/birth';
 import { ROUTES } from '@/lib/routes';
@@ -19,6 +19,24 @@ import type { BirthProfile, ConversationPrompt, EntertainmentLensType, LensAvail
  * 두 렌즈(사주·Astrology)가 같은 방식으로 '정보 부족'과 '한계'를 말하도록 한 곳에 모았다.
  * 원칙: 없는 정보를 채워 넣지 않고, 못 하는 것을 숨기지 않는다.
  */
+
+/**
+ * 렌즈 화면 머리말 — LENS INFORMATION HIERARCHY 260916 §9 · §10
+ *
+ * 제목 위 한 줄로 **지금 보고 있는 것이 러비의 같은 관찰**이라는 사실을 먼저 말한다.
+ * MBTI 렌즈(`ReportHeader`)의 eyebrow와 같은 문자열 · 같은 조판을 쓴다 — 렌즈를 옮겨도
+ * 같은 문서를 계속 읽는 것처럼 보이게 하는 것이 이 줄의 전부다.
+ *
+ * ⚠️ `ENTERTAINMENT` 배지를 대신하지 않는다. 배지는 그대로 헤더에 남아 있고(안전장치),
+ *    이 줄은 그 위 층위 — '무엇을 보는 화면인가' — 를 맡는다.
+ */
+export function LensReportEyebrow() {
+  return (
+    <p className="text-[10px] font-semibold tracking-[0.18em] text-ink-faint">
+      {LENS_REPORT_EYEBROW}
+    </p>
+  );
+}
 
 /** 출생정보가 부족할 때 (§26) — 무엇이 없는지에 따라 문구가 달라진다 */
 export function BirthMissingBlock({

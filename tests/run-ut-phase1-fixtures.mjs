@@ -580,6 +580,105 @@ check(
 );
 
 /*
+  ══ CONCEPT-07 / 08 / 09 — LENS INFORMATION HIERARCHY 260916 ════════════════
+
+  CONCEPT-05가 '세 렌즈가 같은 문법을 쓴다'를 고정했지만, **순서**는 고정하지 않았다.
+  그래서 사주 · 별자리 화면은 연속성 인트로를 갖고도 본문이 `나의 일주`(21px) ·
+  `나의 태양궁`(21px)으로 시작했고, 393×852 첫 viewport에서 관계 해석은 각각 617px ·
+  743px 아래에 있었다 — 첫인상이 관계 렌즈가 아니라 개인 운세였다.
+
+  여기서 고정하는 것은 **정보 위계**다(카피 스냅샷이 아니다):
+
+  ① 제목의 주어가 렌즈가 아니라 두 사람이다
+  ② 개인 렌즈 값은 관계 해석보다 **뒤**에, `이 렌즈의 기준`으로 남는다 (삭제 금지)
+  ③ 렌즈 결과가 없으면 관찰 framing도 기준 블록도 만들지 않는다
+*/
+const sajuSrc = LENS_PAGE_SRC.saju;
+const astroSrc = LENS_PAGE_SRC.astrology;
+const lensCopySrc = await src('src/data/copy.ts');
+
+/** 본문 순서 비교용 — 주석이 아니라 실제 JSX 위치를 본다 */
+const orderOf = (source, needle) => source.indexOf(needle);
+
+check(
+  'CONCEPT-07 사주 제목의 주어가 두 사람이다 (상대 일주가 있을 때만)',
+  /lines=\{relationNote \? SAJU_COPY\.coupleTitle : SAJU_COPY\.title\}/.test(sajuSrc) &&
+    /coupleTitle: \['사주 렌즈로 본 두 사람'\]/.test(lensCopySrc),
+);
+check(
+  'CONCEPT-07 사주 관계 해석이 개인 일주 블록보다 먼저 온다',
+  orderOf(sajuSrc, '{SAJU_COPY.coupleLabel}') < orderOf(sajuSrc, '{SAJU_COPY.basisLabel}'),
+);
+check(
+  'CONCEPT-07 나의 일주가 사라지지 않고 이 렌즈의 기준으로 남는다',
+  sajuSrc.includes('{SAJU_COPY.selfLabel}') &&
+    sajuSrc.includes('{SAJU_COPY.basisLabel}') &&
+    lensCopySrc.includes("selfLabel: '나의 일주'"),
+);
+
+check(
+  'CONCEPT-08 별자리 제목의 주어가 두 사람이다 (두 태양궁이 있을 때만)',
+  /lines=\{couple\.available \? ASTROLOGY_COPY\.coupleTitle : ASTROLOGY_COPY\.title\}/.test(
+    astroSrc,
+  ) && /coupleTitle: \['별자리 렌즈로 본 두 사람'\]/.test(lensCopySrc),
+);
+check(
+  'CONCEPT-08 별자리 관계 해석이 개인 태양궁 블록보다 먼저 온다',
+  orderOf(astroSrc, "<SectionLabel>우리 둘</SectionLabel>") <
+    orderOf(astroSrc, '{ASTROLOGY_COPY.basisLabel}'),
+);
+check(
+  'CONCEPT-08 나의 태양궁·상대의 태양궁이 사라지지 않고 이 렌즈의 기준으로 남는다',
+  astroSrc.includes('{ASTROLOGY_COPY.selfLabel}') &&
+    astroSrc.includes('{ASTROLOGY_COPY.targetLabel}') &&
+    astroSrc.includes('{ASTROLOGY_COPY.basisLabel}') &&
+    lensCopySrc.includes("selfLabel: '나의 태양궁'"),
+);
+
+/*
+  세 렌즈가 같은 머리말을 쓴다 — 문자열을 세 곳에 복사하지 않고 한 상수에서 읽는다.
+  ENTERTAINMENT 배지는 **지우지 않는다**(안전장치). 한 층 아래로 내릴 뿐이다.
+*/
+check(
+  'CONCEPT-09 세 렌즈가 같은 관찰 머리말 상수를 쓴다',
+  /export const LENS_REPORT_EYEBROW = '러비 관찰 기록 · 렌즈';/.test(lensCopySrc) &&
+    /reportEyebrow: LENS_REPORT_EYEBROW,/.test(lensCopySrc) &&
+    ['saju', 'astrology'].every((name) => LENS_PAGE_SRC[name].includes('<LensReportEyebrow />')),
+);
+check(
+  'CONCEPT-09 ENTERTAINMENT 배지가 두 렌즈에 그대로 남아 있다',
+  /badge: 'ENTERTAINMENT'/.test(lensCopySrc) &&
+    sajuSrc.includes('{SAJU_COPY.badge}') &&
+    astroSrc.includes('{ASTROLOGY_COPY.badge}'),
+);
+/*
+  ⚠️ 결과가 없는 세션에서 `이 렌즈의 기준` 블록이 나오면, 기준만 있고 본 것은 없는
+  화면이 된다. 인트로·bridge와 **같은 게이트**를 쓰는지 본다.
+*/
+check(
+  'CONCEPT-09 렌즈 값이 없으면 기준 블록도 그리지 않는다',
+  /\{mineSaju \? \(\s*<section className="flex flex-col gap-2\.5">\s*<SectionLabel>\{SAJU_COPY\.basisLabel\}/.test(
+    sajuSrc,
+  ) &&
+    /\{self\.available && self\.sunSign \? \(\s*<section className="flex flex-col gap-2\.5">\s*<SectionLabel>\{ASTROLOGY_COPY\.basisLabel\}/.test(
+      astroSrc,
+    ),
+);
+/*
+  렌즈의 결론은 결제 카드가 아니라 **실제 관계로 돌아가는 길**이다(§19).
+  Bundle을 없애지 않는다 — 순서만 고정한다.
+*/
+for (const [name, source] of [
+  ['사주', sajuSrc],
+  ['별자리', astroSrc],
+]) {
+  check(
+    `CONCEPT-09 ${name} 렌즈에서 LENS → CORE가 Premium Bundle보다 먼저 온다`,
+    orderOf(source, '<LensCoreBridge') < orderOf(source, '<PremiumBundleCard'),
+  );
+}
+
+/*
   CONCEPT-06 — **Action / 추천 질문이 해야 할 과제처럼 읽히지 않는다.**
   1차 UT의 '조별과제' · '갑자기 교수님이 나타난 느낌'이 돌아오지 않게 고정한다.
 */

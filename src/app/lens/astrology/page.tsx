@@ -14,6 +14,7 @@ import {
   BirthSummaryRows,
   ConversationPromptList,
   EntertainmentNotice,
+  LensReportEyebrow,
   LimitationList,
 } from '@/components/lens/LensStateBlocks';
 import { LensCoreBridge } from '@/components/lens/LensCoreBridge';
@@ -143,7 +144,24 @@ function AstrologyLensView() {
       bodyClassName="pt-1.5 pb-4"
     >
       <div className="flex flex-col gap-5">
-        <PageHeading lines={ASTROLOGY_COPY.title} caption={ASTROLOGY_COPY.caption} />
+        {/*
+          ══ LENS INFORMATION HIERARCHY 260916 §9 · §10 ═══════════════════════
+
+          393×852 실측에서 이 화면의 첫 viewport는 `나의 태양궁`(21px) · `상대의 태양궁`(21px)
+          두 장이 274~600px를 차지했고, 관계 해석(`비슷하게 읽힐 수 있는 부분`)은 743px에서야
+          시작했다 — 사주 화면보다 더 '개인 별자리 운세'로 읽히는 구조였다.
+
+          제목의 주어를 렌즈에서 두 사람으로 옮긴다. MBTI 렌즈(`성향 렌즈로 본 두 사람`) ·
+          사주 렌즈와 **같은 문법**이다.
+
+          ⚠️ 상대 태양궁이 없으면 `두 사람`이라고 말하지 않는다(`couple.available`).
+          ⚠️ `ENTERTAINMENT` 배지는 헤더에 그대로 둔다 — 지우는 것이 아니라 한 층 아래로.
+        */}
+        <PageHeading
+          lines={couple.available ? ASTROLOGY_COPY.coupleTitle : ASTROLOGY_COPY.title}
+          caption={ASTROLOGY_COPY.caption}
+          eyebrow={<LensReportEyebrow />}
+        />
 
         {/*
           Concept Continuity 260915 — 앞 화면까지 이어지던 러비의 관찰을 여기서 끊지 않는다.
@@ -158,38 +176,6 @@ function AstrologyLensView() {
             lens="astrology"
             missing={availability.missing === 'both' ? 'both' : 'self'}
           />
-        ) : null}
-
-        {/* Self Lens */}
-        {self.available && self.sunSign ? (
-          <section className="flex flex-col gap-2.5">
-            <SectionLabel>{ASTROLOGY_COPY.selfLabel}</SectionLabel>
-            <div className="flex flex-col gap-2 rounded-card border border-line bg-surface p-4">
-              <p className="text-[10.5px] font-semibold tracking-[0.06em] text-ink-muted">
-                SUN SIGN
-              </p>
-              <p className="text-[21px] font-semibold tracking-[-0.5px]">{self.sunSignLabel}</p>
-              <p className="text-caption keep-all leading-relaxed text-ink-sub">{self.trait}</p>
-            </div>
-          </section>
-        ) : null}
-
-        {/* Target Lens — 상대 정보가 있으면 Couple 여부와 무관하게 단독으로도 보여준다(§9/§10) */}
-        {availability.self && targetSelf.available && targetSelf.sunSign ? (
-          <section className="flex flex-col gap-2.5">
-            <SectionLabel>{ASTROLOGY_COPY.targetLabel}</SectionLabel>
-            <div className="flex flex-col gap-2 rounded-card border border-line bg-surface p-4">
-              <p className="text-[10.5px] font-semibold tracking-[0.06em] text-ink-muted">
-                SUN SIGN
-              </p>
-              <p className="text-[21px] font-semibold tracking-[-0.5px]">
-                {targetSelf.sunSignLabel}
-              </p>
-              <p className="text-caption keep-all leading-relaxed text-ink-sub">
-                {targetSelf.trait}
-              </p>
-            </div>
-          </section>
         ) : null}
 
         {/* Couple Lens — 둘 다 있어야만 만든다 */}
@@ -240,10 +226,54 @@ function AstrologyLensView() {
             <ConversationPromptList lens="astrology" prompts={couple.prompts} />
           </section>
         ) : availability.self && !availability.couple ? (
-          <>
-            <ConversationPromptList lens="astrology" prompts={self.prompts} />
-            <BirthMissingBlock lens="astrology" missing="target" />
-          </>
+          <ConversationPromptList lens="astrology" prompts={self.prompts} />
+        ) : null}
+
+        {/*
+          ══ LENS INFORMATION HIERARCHY 260916 §13 · §14 — **삭제가 아니라 강등** ══
+
+          '나의 태양궁' · '상대의 태양궁'은 이 렌즈가 딛고 선 근거라서 없애지 않는다.
+          바뀌는 것은 **역할**이다: 관계 해석 위에 21px 카드 두 장으로 먼저 읽히던
+          Main Result가, 관계 해석 아래 한 장짜리 보조 카드(`이 렌즈의 기준`)가 된다.
+
+          두 장을 한 장으로 합친 이유는 위계 조정이 설명 블록 수를 늘리면 안 되기
+          때문이다(§28) — 같은 정보를 더 적은 자리에 담는다.
+
+          ⚠️ 값 · 해설 문장은 `buildAstrologySelfLens` 결과 그대로다. `SUN SIGN` 영문
+             라벨만 뺐다 — 바로 위 '나의 태양궁'이 같은 말을 한다.
+        */}
+        {self.available && self.sunSign ? (
+          <section className="flex flex-col gap-2.5">
+            <SectionLabel>{ASTROLOGY_COPY.basisLabel}</SectionLabel>
+            <div className="flex flex-col gap-3 rounded-card border border-line-soft bg-canvas-warm p-4">
+              <div className="flex flex-col gap-1.5">
+                <p className="text-[10.5px] font-semibold tracking-[0.06em] text-ink-muted">
+                  {ASTROLOGY_COPY.selfLabel}
+                </p>
+                <p className="text-[15px] font-semibold tracking-[-0.2px]">{self.sunSignLabel}</p>
+                <p className="text-caption keep-all leading-relaxed text-ink-sub">{self.trait}</p>
+              </div>
+
+              {/* 상대 정보가 있으면 Couple 여부와 무관하게 이 렌즈의 기준으로 함께 보여준다(§9/§10) */}
+              {availability.self && targetSelf.available && targetSelf.sunSign ? (
+                <div className="flex flex-col gap-1.5 border-t border-line-soft pt-3">
+                  <p className="text-[10.5px] font-semibold tracking-[0.06em] text-ink-muted">
+                    {ASTROLOGY_COPY.targetLabel}
+                  </p>
+                  <p className="text-[15px] font-semibold tracking-[-0.2px]">
+                    {targetSelf.sunSignLabel}
+                  </p>
+                  <p className="text-caption keep-all leading-relaxed text-ink-sub">
+                    {targetSelf.trait}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
+        {availability.self && !availability.couple ? (
+          <BirthMissingBlock lens="astrology" missing="target" />
         ) : null}
 
         <BirthSummaryRows mine={mine} theirs={theirs} />
@@ -260,6 +290,31 @@ function AstrologyLensView() {
             예전에 직접 고른 별자리({ZODIAC_NOTES[answers.legacyZodiac].label})가 남아 있어. 이제는
             생년월일로 계산하니까, 위에 생년월일을 넣어주면 다시 볼 수 있어.
           </EntertainmentNotice>
+        ) : null}
+
+        {/*
+          Concept Continuity 260915 — 렌즈에서 끝내지 않고 **Core 관계 신호로 되돌린다.**
+
+          MBTI 렌즈는 이미 `LENS → CORE`로 돌아가는 길이 있었는데(v1.24 §12) 사주·별자리에는
+          없어서, 이 두 화면만 '보고 끝'으로 닫혔다. 같은 컴포넌트를 그대로 쓴다 — 새 카피도
+          새 분기도 만들지 않는다. 노트 문장('이 렌즈에서는 이렇게 보여. 그런데 실제 관계에서는
+          어떨까?')이 렌즈 이름을 말하지 않아 세 화면에서 그대로 성립한다.
+
+          ⚠️ 궁합 결과가 아직 없으면 돌아갈 곳이 없으므로 그리지 않는다(MBTI와 같은 조건).
+
+          ══ LENS INFORMATION HIERARCHY 260916 §19 — **Bundle 앞으로 올렸다** ══════
+
+          예전에는 Premium Bundle 카드 뒤에 있어서, 렌즈의 결론이 '실제 관계로 돌아가기'가
+          아니라 '결제 카드 다음에 붙은 또 하나의 CTA'로 읽혔다. MBTI 렌즈는 이미
+          Surprise 직후에 이 길을 두고 있다(v1.38) — 같은 자리로 맞춘다.
+
+          ⚠️ Bundle을 없애거나 가격 · 상품 구조를 바꾸지 않는다. 순서만 바뀐다.
+        */}
+        {availability.self && answers.completed.compatibility ? (
+          <LensCoreBridge
+            className="mt-2"
+            href={`${ROUTES.compatibility}#${RESULT_ANCHORS.compatibilityGood}`}
+          />
         ) : null}
 
         {/*
@@ -291,23 +346,6 @@ function AstrologyLensView() {
           />
         )}
 
-
-        {/*
-          Concept Continuity 260915 — 렌즈에서 끝내지 않고 **Core 관계 신호로 되돌린다.**
-
-          MBTI 렌즈는 이미 `LENS → CORE`로 돌아가는 길이 있었는데(v1.24 §12) 사주·별자리에는
-          없어서, 이 두 화면만 '보고 끝'으로 닫혔다. 같은 컴포넌트를 그대로 쓴다 — 새 카피도
-          새 분기도 만들지 않는다. 노트 문장('이 렌즈에서는 이렇게 보여. 그런데 실제 관계에서는
-          어떨까?')이 렌즈 이름을 말하지 않아 세 화면에서 그대로 성립한다.
-
-          ⚠️ 궁합 결과가 아직 없으면 돌아갈 곳이 없으므로 그리지 않는다(MBTI와 같은 조건).
-        */}
-        {availability.self && answers.completed.compatibility ? (
-          <LensCoreBridge
-            className="mt-2"
-            href={`${ROUTES.compatibility}#${RESULT_ANCHORS.compatibilityGood}`}
-          />
-        ) : null}
 
         <LovyMessage pose="crystal" size={52}>
           {ASTROLOGY_COPY.disclaimer}
