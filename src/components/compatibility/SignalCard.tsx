@@ -43,6 +43,7 @@ export function SignalCard({
   variant,
   footer,
   density = 'primary',
+  userCondition,
 }: {
   dimension: CompatibilityDimension;
   variant: 'good' | 'friction';
@@ -53,6 +54,17 @@ export function SignalCard({
    * AI 설명은 신호·근거 **뒤**에 오므로 위치도 여기가 맞다(§12).
    */
   footer?: ReactNode;
+  /**
+   * 260915 UT P1-1 §21 — 사용자가 **더 자세히 알려주기**에서 좁혀준 조건.
+   *
+   * 심화 입력이 결과를 실제로 더 구체적으로 만드는 **결정론 경로**다. AI 설명은
+   * 있을 수도 없을 수도 있으므로(demo · 실패 · Quality Gate), 그것만으로는
+   * '답한 만큼 결과가 달라진다'를 보장할 수 없다.
+   *
+   * ⚠️ 새 판정이 아니다. 사용자가 고른 보기를 그 축 카드에 되돌려 보여줄 뿐이고,
+   * 점수·차이 계산에는 들어가지 않는다.
+   */
+  userCondition?: string | null;
 }) {
   const gap =
     dimension.mineValue !== null && dimension.theirsValue !== null
@@ -114,6 +126,15 @@ export function SignalCard({
         >
           {dimension.scene}
         </p>
+        {/*
+          260915 UT P1-1 §21 — 답한 축에만 붙는다. 답하지 않았으면 이 줄은 없다.
+          '언제 그런지'는 우리가 만든 해석이 아니라 사용자가 고른 조건이라 그렇게 말한다.
+        */}
+        {userCondition ? (
+          <p className="rounded-[10px] bg-sunken px-3 py-2 text-[12px] keep-all leading-relaxed text-ink-sub">
+            <span className="font-semibold text-ink">네가 알려준 조건</span> · {userCondition}
+          </p>
+        ) : null}
       </div>
 
       {/*

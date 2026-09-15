@@ -155,6 +155,8 @@ const SOURCE_PHRASE: Record<EvidenceRef['source'], string> = {
   relationship: '예전 관계 경험',
   current_relationship: '지금 관계에서의 답변',
   adaptive: '추가 질문에 답한 것',
+  /* 260915 UT P1-1 — 사용자가 직접 열어서 더 답한 것 */
+  deep: '더 자세히 답한 것',
   observed: '사진에서 보인 것',
   history: '예전 기록',
   target: '상대에 대해 적은 내용',

@@ -99,6 +99,13 @@ const EVIDENCE_SOURCES = [
    */
   'current_relationship',
   'adaptive',
+  /**
+   * 260915 UT P1-1 — 사용자가 '더 자세히 알려주기'로 좁혀준 조건(`deepInputs`).
+   *
+   * 위 규칙 그대로다 — 이 목록은 `EvidenceRef` 타입과 **항상 같이 움직인다.**
+   * TC5가 그 어긋남을 직접 검사하고, 실제로 이 값을 빠뜨렸다가 거기서 잡혔다.
+   */
+  'deep',
   'observed',
   'history',
   'target',

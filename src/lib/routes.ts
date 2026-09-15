@@ -12,6 +12,8 @@ export const ROUTES = {
   pastIntro: '/profile/past/intro',
   past: (step: number) => `/profile/past/${step}`,
   pastAdaptive: '/profile/past/adaptive',
+  /** 260915 UT P1-1 — 선택형 심화 질문. 기본 흐름에는 없고 사용자가 열어야 도착한다 */
+  profileDeep: '/profile/deep',
   pastNone: '/profile/past/none',
   /**
    * S30 · Current Relationship Me (v1.41 · §39.5).
