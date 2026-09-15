@@ -470,6 +470,11 @@ export interface DeclaredPreference {
 /* -------------------------------------------------- Relationship Me (S15~S17) */
 
 export type PastFactor =
+  /**
+   * 260915 UT P1-2 — `other`는 **자유 입력을 여는 스위치**다. 라벨 자체는 분석 근거가
+   * 되지 않고(무엇이 중요했는지 모르므로), 실제 내용은 `importantOther`가 들고 있다.
+   */
+  | 'other'
   | 'talk'
   | 'contact'
   | 'conflict'
@@ -487,6 +492,23 @@ export type HardestMoment = 'contact_drop' | 'fight_silence' | 'no_time' | 'valu
 
 export type SelfGapAnswer = 'yes' | 'some' | 'no';
 
+/**
+ * Optional Deep Input — 사용자가 **직접 열어서** 답한 심화 질문 (260915 UT P1-1)
+ *
+ * ⚠️ `AdaptiveAnswer`와 다르다. 저쪽은 시스템이 모순 후보 축에서 먼저 묻는 1개이고,
+ * 이쪽은 '더 자세히 알려주기'를 누른 사용자만 답하는 최대 2개다.
+ *
+ * ⚠️ **점수에 들어가지 않는다.** 동기화율·Mirror 판정 공식은 이 값을 읽지 않는다.
+ * 바뀌는 것은 해석의 구체성뿐이다(조건 좁히기 · 확인할 지점 · 행동 제안).
+ */
+export interface DeepInputAnswer {
+  axis: MirrorAxisKey;
+  /** `DEEP_QUESTIONS`의 질문 id */
+  questionId: string;
+  /** 고른 보기 id. `unsure`도 저장한다 — '물어봤고 모른다고 답했다'는 사실이다 */
+  optionId: string;
+}
+
 /** Adaptive Follow-up (Progressive Profiling) — Declared와 Relationship 사이 모순 후보가
  * 발견된 축에 대해서만 1개 추가 질문을 던진다. 모든 사용자에게 묻지 않는다. */
 export interface AdaptiveAnswer {
@@ -498,6 +520,18 @@ export interface AdaptiveAnswer {
 export interface RelationshipExperience {
   /** 생각보다 중요했던 요소 (최대 `MAX_PAST_FACTORS`개) */
   important: PastFactor[];
+  /**
+   * '기타'를 고른 사용자가 직접 적은 것 — 최대 `MAX_PAST_OTHER_LENGTH`자 (260915 UT P1-2)
+   *
+   * 보기 12개로는 담기지 않는 것이 있다는 UT 요청에서 나왔다. **보기를 늘리는 대신**
+   * 한 칸을 열었다 — 보기를 늘리면 모든 사용자가 더 긴 목록을 읽어야 하지만, 이건
+   * 필요한 사람만 쓴다.
+   *
+   * ⚠️ 비어 있는 것이 정상이다. `important`에 `other`가 없으면 이 값도 쓰지 않는다.
+   * ⚠️ 자유서술 취급은 `note`와 **완전히 같다**(`sanitizeFreeText` · 지문은 길이만 ·
+   * 근거 라벨은 내용이 아니라 '적어준 것이 있다'는 사실만). 새 privacy 표면을 만들지 않는다.
+   */
+  importantOther: string;
   hardest: HardestMoment | null;
   /** 연애 전 생각한 나 vs 실제 연애 속 나 */
   selfGap: SelfGapAnswer | null;
@@ -1291,6 +1325,16 @@ export type EvidenceRef =
    */
   | { source: 'current_relationship'; field: string }
   | { source: 'adaptive'; field: string }
+  /**
+   * 260915 UT P1-1 — 사용자가 **직접 열어서** 답한 심화 질문(`deepInputs`). `field`는 축이다.
+   *
+   * ⚠️ `adaptive`와 같은 ref로 쓰지 않는다. 저쪽은 시스템이 먼저 물은 것이고 이쪽은
+   * 사용자가 더 말하겠다고 연 것이다 — 근거 목록에서 둘이 한 출처로 보이면 '자료 N종'이
+   * 거짓이 된다(v1.41 §39.9가 `relationship`과 `current_relationship`을 가른 것과 같은 이유).
+   *
+   * ⚠️ resolver가 돌려주는 것은 **사용자가 고른 조건 그대로**다. 원인·성향으로 번역하지 않는다.
+   */
+  | { source: 'deep'; field: string }
   | { source: 'observed'; traitId: string }
   | { source: 'history'; entryId: string; axis: string }
   /** v1.9 — 상대에 대해 사용자가 입력한 값(Target Person) */
@@ -1467,7 +1511,22 @@ export interface ObservedProfileResult {
  */
 export interface ValidatedObservation {
   original: AiObservedTrait;
-  status: 'unverified' | 'confirmed' | 'corrected' | 'excluded';
+  /**
+   * 260915 UT P0-1 — `rejected`를 추가했다.
+   *
+   * 예전에는 사용자가 '조금 달라'만 누르고 고쳐 쓰지 않으면 `unverified`가 됐다.
+   * `unverified`는 **아직 안 물어봤다**는 뜻이라 분석에 그대로 들어갔고, 그래서
+   * 사용자가 아니라고 말한 관찰이 Compatibility · Mirror · Premium 근거로 쓰였다.
+   *
+   * ```
+   * unverified  아직 확인 안 함        → 분석에 쓴다 (약한 근거로)
+   * confirmed   맞다고 확인함          → 분석에 쓴다
+   * corrected   고쳐 씀                → 고친 문장으로 분석에 쓴다
+   * rejected    아니라고 함            → 분석에 쓰지 않는다
+   * excluded    분석에서 빼달라고 함    → 분석에 쓰지 않는다
+   * ```
+   */
+  status: 'unverified' | 'confirmed' | 'corrected' | 'rejected' | 'excluded';
   userCorrection?: string;
 }
 
@@ -3225,6 +3284,14 @@ export interface SessionAnswers {
    * 기존 답변을 덮어쓰지 않는 별도 Evidence Source다(§11). insightId 기준으로 누적된다.
    */
   deepAnswers: DeepAnalysisAnswer[];
+  /**
+   * 260915 UT P1-1 — 선택형 심화 질문 응답. 비어 있는 것이 기본 상태다.
+   *
+   * 최상위에 둔 이유: 이 답은 '관계 경험'만의 것이 아니라 축(연락·갈등·개인 시간·
+   * 애정 표현·취미) 전체에 걸린다. `experience` 안에 넣으면 관계 경험을 건너뛴
+   * 사용자(E4)가 심화 입력을 할 수 없게 된다.
+   */
+  deepInputs: DeepInputAnswer[];
   /** v1.9 — Deep Insight 카드별 사용자 확인(§33). insight.id → feedback */
   deepInsightFeedback: Record<string, DeepInsightFeedback>;
   /**

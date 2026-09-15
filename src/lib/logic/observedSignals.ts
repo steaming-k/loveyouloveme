@@ -154,18 +154,101 @@ export function categorizeLabel(
   return null;
 }
 
-/** 사진 한 장의 모든 라벨 (scenes + activities + objects + environment) */
-function allLabels(observation: PhotoObservation): string[] {
-  const groups: (readonly ObservedLabel[] | undefined)[] = [
-    observation.scenes,
-    observation.activities,
-    observation.objects,
-    observation.environment,
+/** 라벨이 어느 칸에서 나왔는가 — 사물 하나와 장면/행위는 근거의 무게가 다르다 */
+type LabelGroup = 'scene' | 'activity' | 'object' | 'environment';
+
+interface LabelEntry {
+  label: string;
+  group: LabelGroup;
+  /** Provider가 준 값. 없을 수 있다(legacy 결과 · 모델이 생략) */
+  confidence?: number;
+}
+
+/** 사진 한 장의 모든 라벨을 **출처와 함께** (scenes + activities + objects + environment) */
+function labelEntries(observation: PhotoObservation): LabelEntry[] {
+  const groups: { group: LabelGroup; items: readonly ObservedLabel[] | undefined }[] = [
+    { group: 'scene', items: observation.scenes },
+    { group: 'activity', items: observation.activities },
+    { group: 'object', items: observation.objects },
+    { group: 'environment', items: observation.environment },
   ];
-  return groups
-    .flatMap((group) => group ?? [])
-    .map((entry) => entry.label.trim())
-    .filter((label) => label.length > 0);
+  return groups.flatMap(({ group, items }) =>
+    (items ?? [])
+      .map((entry) => ({ label: entry.label.trim(), group, confidence: entry.confidence }))
+      .filter((entry) => entry.label.length > 0),
+  );
+}
+
+/** 사진 한 장의 모든 라벨 (중복 사진 묶기처럼 출처가 필요 없는 곳에서 쓴다) */
+function allLabels(observation: PhotoObservation): string[] {
+  return labelEntries(observation).map((entry) => entry.label);
+}
+
+/* ------------------------------- 260915 UT — 잘못된 관찰의 의미 확장 차단 */
+
+/**
+ * **사람의 생활·관계를 주장하는 범주.**
+ *
+ * `반려동물과 함께` · `다른 사람과 함께`는 '사진에 무엇이 찍혔는가'가 아니라
+ * **'이 사람이 어떻게 사는가'** 를 말한다. 그래서 사물 라벨 하나로 만들면 안 된다.
+ *
+ * ══ 왜 생겼나 (260915 UT) ═══════════════════════════════════════════════
+ *
+ * 참가자 사진의 **스티치 인형**을 Vision이 `고양이`로 읽었고, 그 라벨 하나가
+ * `objects` 칸에서 곧장 `pet` 범주로 올라가 화면에 `반려동물과 함께`로 나왔다.
+ * 참가자의 반응은 "인형이 왜 '반려동물과 함께'에 포함되는 거임?"이었다.
+ *
+ * 문제는 객체 인식 실패 자체가 아니다. 인식은 원래 틀린다. 문제는 **틀린 라벨 하나가
+ * 사용자 확인 없이 생활 맥락 주장으로 승격된 것**이고, 그게 분석 전체의 신뢰를 깎았다.
+ *
+ * 그래서 이 범주들은 아래를 **모두** 만족할 때만 만든다.
+ *   ① 근거가 `scenes` 또는 `activities`에 있다 — 사물만으로는 만들지 않는다
+ *   ② 같은 사진에 소품으로 읽히는 라벨이 없다 (인형 · 피규어 · 포스터 …)
+ *   ③ Provider confidence가 있으면 `MIN_CONTEXT_CONFIDENCE` 이상이다
+ *
+ * ⚠️ **덜 세는 방향으로 틀린다.** 진짜 반려동물 사진인데 Vision이 `objects`에만
+ * `고양이`를 적으면 이 범주는 만들어지지 않는다. 그 손해를 택했다 — 반대 방향은
+ * 없는 생활 근거를 만들어내는 것이고, 이 제품에서 그건 더 큰 손해다(§5와 같은 원칙).
+ *
+ * ⚠️ 다른 범주(등산 · 카페 · 여행 …)는 **그대로다.** 그것들은 '사진에 그 장면이 있었다'
+ * 이상을 주장하지 않는다.
+ */
+const CONTEXT_CLAIMING_CATEGORIES: ReadonlySet<ObservedSignalCategory> = new Set([
+  'pet',
+  'social',
+]);
+
+/** 생활 맥락 주장을 뒷받침할 수 있는 칸 — 사물·환경은 여기 없다 */
+const CONTEXT_EVIDENCE_GROUPS: ReadonlySet<LabelGroup> = new Set(['scene', 'activity']);
+
+/** Provider confidence가 **있을 때만** 적용한다. 없으면 ①②로 판단한다 */
+const MIN_CONTEXT_CONFIDENCE = 0.6;
+
+/**
+ * 같은 사진에 이게 보이면 그 사진에서는 생활 맥락 범주를 만들지 않는다.
+ * 인형·피규어·포스터 속 동물이나 사람은 **그 사람의 생활이 아니다.**
+ */
+const CONTEXT_BLOCKER_KEYWORDS: readonly string[] = [
+  '인형', '봉제', '피규어', '장난감', '캐릭터', '키링', '쿠션', '모형',
+  '포스터', '액자', '그림', '일러스트', '벽화', '스티커', '이모티콘',
+  '화면', '모니터', '티비', 'tv', '스크린', '간판',
+  'doll', 'plush', 'plushie', 'figure', 'figurine', 'toy', 'character',
+  'cartoon', 'poster', 'painting', 'illustration', 'sticker', 'screen',
+];
+
+function hasContextBlocker(entries: readonly LabelEntry[]): boolean {
+  return entries.some((entry) =>
+    CONTEXT_BLOCKER_KEYWORDS.some((keyword) => normalize(entry.label).includes(normalize(keyword))),
+  );
+}
+
+/** 이 라벨이 생활 맥락 범주를 만들 자격이 있는가 (①③) */
+function canClaimContext(entry: LabelEntry): boolean {
+  if (!CONTEXT_EVIDENCE_GROUPS.has(entry.group)) return false;
+  if (typeof entry.confidence === 'number' && entry.confidence < MIN_CONTEXT_CONFIDENCE) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -180,15 +263,24 @@ function categoriesInPhoto(
   const result = new Map<ObservedSignalCategory, { label: string; evidence: string[] }>();
   if (!observation.usable) return result;
 
-  for (const raw of allLabels(observation)) {
-    const matched = categorizeLabel(raw);
+  const entries = labelEntries(observation);
+  /* 소품이 보이는 사진에서는 생활 맥락 범주를 아예 만들지 않는다(②) */
+  const blocked = hasContextBlocker(entries);
+
+  for (const entry of entries) {
+    const matched = categorizeLabel(entry.label);
     if (!matched) continue;
+
+    if (CONTEXT_CLAIMING_CATEGORIES.has(matched.category)) {
+      if (blocked) continue;
+      if (!canClaimContext(entry)) continue;
+    }
 
     const existing = result.get(matched.category);
     if (existing) {
-      if (!existing.evidence.includes(raw)) existing.evidence.push(raw);
+      if (!existing.evidence.includes(entry.label)) existing.evidence.push(entry.label);
     } else {
-      result.set(matched.category, { label: matched.label, evidence: [raw] });
+      result.set(matched.category, { label: matched.label, evidence: [entry.label] });
     }
   }
 

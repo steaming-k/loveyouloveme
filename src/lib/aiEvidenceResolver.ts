@@ -1,4 +1,5 @@
 import { adaptiveOptionLabel } from '@/data/adaptive';
+import { deepConditionForAxis } from '@/data/relationshipDeepInput';
 import { currentSignalLabel } from '@/data/currentRelationship';
 import {
   currentEvidenceLabel,
@@ -12,13 +13,14 @@ import {
   CONFLICT_LABEL,
   HARDEST_LABEL,
   HOBBY_LABEL,
-  PAST_FACTOR_LABEL,
+  pastFactorLabels,
   SELF_GAP_LABEL,
 } from '@/data/labels';
 import { formatEntryDate } from '@/lib/historyFormat';
 import { relationshipEventEvidenceText } from '@/lib/logic/relationshipEvents';
 import { soloSnapshotSignalText } from '@/lib/logic/soloHistory';
 import { withObjectParticle, withTopicParticle } from '@/lib/korean';
+import { isUserRefusedObservation } from '@/lib/logic/observationStatus';
 import type {
   CompatibilityResult,
   DeepAnalysisAnswer,
@@ -64,6 +66,11 @@ export type EvidenceSourceLabel =
    */
   | '그때 이 관계'
   | '추가 질문'
+  /**
+   * 260915 UT P1-1 — `추가 질문`(시스템이 먼저 물은 것)과 **다른 라벨**이다.
+   * 이쪽은 사용자가 '더 자세히 알려주기'를 눌러 스스로 연 답이다(§39.9와 같은 규칙).
+   */
+  | '더 자세히 답한 것'
   | '사진에서 관찰'
   | '사용자 수정'
   | '과거 관찰'
@@ -324,7 +331,8 @@ function resolveRelationship(field: string, answers: SessionAnswers): string | n
   switch (RELATIONSHIP_FIELD_ALIAS[field]) {
     case 'important': {
       if (experience.important.length === 0) return null;
-      const labels = experience.important.map((factor) => PAST_FACTOR_LABEL[factor]).join(' · ');
+      /* 260915 UT P1-2 — '기타'는 사용자가 적은 문장으로 (비어 있으면 빠진다) */
+      const labels = pastFactorLabels(experience).join(' · ');
       return `실제 관계에서 중요했던 것으로 ${withObjectParticle(labels)} 골랐어`;
     }
     case 'hardest':
@@ -362,8 +370,8 @@ function resolveObserved(
 ): ResolvedEvidence | null {
   const found = validated.find((item) => item.original.id === traitId);
   if (!found) return null;
-  // 사용자가 분석에서 제외한 관찰은 근거로 쓰지 않는다(§14).
-  if (found.status === 'excluded') return null;
+  // 사용자가 아니라고 했거나 분석에서 뺀 관찰은 근거로 쓰지 않는다(§14 · 260915 UT P0-1).
+  if (isUserRefusedObservation(found.status)) return null;
 
   const correction = found.userCorrection?.trim();
   if (correction) {
@@ -578,6 +586,20 @@ export function resolveEvidenceRef(
           }
         : null;
     }
+    /*
+      260915 UT P1-1 — 심화 입력. 조건이 빈 답(`잘 모르겠어`)은 `deepConditionForAxis`가
+      걸러서 null이 되고, 그러면 근거로 쓰이지 않는다 — 모른다는 답을 근거로 만들지 않는다.
+    */
+    case 'deep': {
+      const condition = deepConditionForAxis(
+        context.answers.deepInputs,
+        ref.field as MirrorAxisKey,
+      );
+      return condition
+        ? { key: `deep:${ref.field}`, sourceLabel: '더 자세히 답한 것', text: condition }
+        : null;
+    }
+
     case 'adaptive': {
       const text = resolveAdaptive(context.answers);
       return text ? { key: `adaptive:${ref.field}`, sourceLabel: '추가 질문', text } : null;

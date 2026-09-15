@@ -1,6 +1,7 @@
 import { MIRROR_AXES } from '@/data/axes';
 import { SELF_PAIR_RULES, SELF_VALUE_TEXT, type SelfLevel } from '@/data/firstContact';
 import { OBSERVED_CATEGORY_LABEL } from './observedSignals';
+import { isAcceptedObservation } from './observationStatus';
 import type {
   FirstContactReport,
   MirrorAxisKey,
@@ -93,8 +94,12 @@ export function buildSoloSnapshot(input: {
  * ⚠️ 사진·base64·AI 서술 원문은 옮기지 않는다. 이미 계산돼 있던 `ObservedSignal`의
  * `category`/`occurrenceCount`/`strength`만 읽는다 — 여기서 새 판정을 만들지 않는다.
  *
- * ⚠️ 사용자가 제외(`excluded`)한 관찰은 넣지 않는다. 화면에서 지운 근거가 기록에
- * 남아 다음 관찰과 비교되면, 사용자가 취소한 관찰이 되살아난다.
+ * ⚠️ 사용자가 받아들이지 않은 관찰은 넣지 않는다 — 제외(`excluded`)뿐 아니라 고쳐 쓰지 않고
+ * '아니야'라고만 한 것(`verdict 'no'`)도 포함이다(`isAcceptedObservation`). 화면에서 지운
+ * 근거가 기록에 남아 다음 관찰과 비교되면, 사용자가 취소한 관찰이 되살아난다.
+ *
+ * ⚠️ 260915 UT P0-1 — 예전에는 여기만 `excluded`를 봤고 프로필(`observedItems`)은 `verdict`까지
+ * 봤다. 같은 근거가 화면마다 다르게 취급되던 것을 한 판정 함수로 합쳤다.
  *
  * @returns 사진 근거가 없으면 `[]` — `undefined`(그때는 저장하지 않았음)와 구분한다.
  */
@@ -111,7 +116,7 @@ function currentObservedSnapshot(
   for (const trait of answers.observedAnalysis.traits) {
     const signal = trait.signal;
     if (!signal) continue;
-    if (answers.observations[trait.id]?.excluded) continue;
+    if (!isAcceptedObservation(answers.observations[trait.id])) continue;
     if (seen.has(signal.category)) continue;
     seen.add(signal.category);
     items.push({

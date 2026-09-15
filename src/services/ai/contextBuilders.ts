@@ -7,9 +7,12 @@ import {
   CONFLICT_LABEL,
   HARDEST_LABEL,
   HOBBY_LABEL,
-  PAST_FACTOR_LABEL,
+  MAX_PAST_OTHER_LENGTH,
+  pastFactorLabels,
 } from '@/data/labels';
 import { resolveEvidenceRef, type EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
+import { isUserRefusedObservation } from '@/lib/logic/observationStatus';
+import { deepConditionsOf } from '@/data/relationshipDeepInput';
 import { selectRelevantEvents } from '@/lib/logic/eventRelevance';
 import {
   eligibleOperatorsFor,
@@ -126,8 +129,24 @@ export interface RelationshipContext {
     selfGap: string | null;
     /** 사용자 자유서술 — 데이터 영역으로 감싸서 보낸다 */
     note: string | null;
+    /**
+     * 260915 UT P1-2 — '기타'를 고른 사용자가 직접 적은 것.
+     *
+     * ⚠️ `note`와 **같은 등급의 자유서술**이다. 적어준 범위 밖으로 나가지 않는다 —
+     * '답장이 늦으면 서운했다'는 '답장이 늦을 때 서운함이 커지는 편'까지고,
+     * '버림받을까 두려워한다' · '애착불안' 같은 진단은 만들지 않는다.
+     */
+    importantOther: string | null;
   };
   adaptive: { axis: string; reason: string } | null;
+  /**
+   * 260915 UT P1-1 — 사용자가 '더 자세히 알려주기'로 좁혀준 **조건**.
+   *
+   * ⚠️ 이건 원인도 성향도 아니다. '언제 그런가'일 뿐이다. 이 값을 근거로
+   * 심리 상태·애착·자존감을 만들지 않는다(SHARED_RULES 9번).
+   * ⚠️ 점수에 들어가지 않는다 — 해석을 좁히는 데만 쓴다.
+   */
+  deepConditions: { axis: string; condition: string }[];
   /** 사용자가 확인·수정한 관찰만. 제외한 항목은 보내지 않는다(§14) */
   observedValidated: Array<{ traitId: string; text: string; source: 'user' | 'ai' }>;
   /** 규칙이 이미 판정한 결과 — AI는 이걸 설명만 한다 */
@@ -159,14 +178,15 @@ function declaredForContext(declared: DeclaredPreference): Record<string, string
 }
 
 /**
- * 사용자 검증 우선순위(§14): USER CORRECTION > CONFIRMED AI > UNVERIFIED AI, excluded는 제거.
+ * 사용자 검증 우선순위(§14): USER CORRECTION > CONFIRMED AI > UNVERIFIED AI.
+ * 사용자가 거절(`rejected`)하거나 제외(`excluded`)한 관찰은 AI에게 아예 넘기지 않는다.
  * AI에게도 '무엇이 사용자 말이고 무엇이 AI 추측인지' 구분해 알려준다.
  */
 export function validatedObservationsForContext(
   observations: readonly ValidatedObservation[],
 ): RelationshipContext['observedValidated'] {
   const ranked = observations
-    .filter((item) => item.status !== 'excluded')
+    .filter((item) => !isUserRefusedObservation(item.status))
     .sort((a, b) => rankStatus(b.status) - rankStatus(a.status));
 
   return ranked.map((item) => {
@@ -212,10 +232,13 @@ export function buildRelationshipContext(input: {
     tense,
     declared: declaredForContext(answers.declared),
     relationship: {
-      importantFactors: experience.important.map((factor) => PAST_FACTOR_LABEL[factor]),
+      /* 260915 UT P1-2 — AI에게도 '기타'가 아니라 적어준 문장을 그대로 준다 */
+      importantFactors: pastFactorLabels(experience, MAX_PAST_OTHER_LENGTH),
       hardestMoment: experience.hardest ? HARDEST_LABEL[experience.hardest] : null,
       selfGap: experience.selfGap ? (SELF_GAP_LABEL[experience.selfGap] ?? null) : null,
       note: sanitizeFreeText(experience.note, 300),
+      /* 260915 UT P1-2 — '기타' 자유 입력. `note`와 같은 sanitize·상한을 쓴다 */
+      importantOther: sanitizeFreeText(experience.importantOther, 300),
     },
     adaptive: experience.adaptive
       ? {
@@ -223,6 +246,8 @@ export function buildRelationshipContext(input: {
           reason: adaptiveOptionLabel(experience.adaptive.axis, experience.adaptive.optionId),
         }
       : null,
+    /* 260915 UT P1-1 — '잘 모르겠어'는 여기 들어오지 않는다(`deepConditionsOf`가 거른다) */
+    deepConditions: deepConditionsOf(answers.deepInputs),
     observedValidated: validatedObservationsForContext(validated),
     ruleJudgements: mirror.insights.map((insight) => ({
       axis: insight.key,
