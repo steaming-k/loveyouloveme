@@ -525,6 +525,78 @@ check(
   lovyNotes.includes('headlineLabelsOf') && /!named\.has\(dimension\.label\)/.test(lovyNotes),
 );
 
+/* ═══════════════════════════ ANALYSIS CONCEPT CONTINUITY */
+
+console.log('\nCONCEPT — 분석 후반부에서도 관찰이 이어진다');
+
+/*
+  CONCEPT-05 — **세 렌즈가 같은 문법을 쓴다.**
+
+  MBTI 렌즈는 `러비 관찰 기록 · 렌즈` 헤더와 `그런데 실제 관계에서는?` · `LENS → CORE`로
+  관계로 되돌아오는데, 사주·별자리에는 그게 없어서 두 화면만 일반 운세 앱의 결과
+  페이지처럼 시작하고 '보고 끝'으로 닫혔다. 세 화면이 서로 다른 문법을 쓰면 렌즈를
+  옮길 때마다 다른 서비스로 넘어간 느낌이 난다.
+*/
+const LENS_PAGE_SRC = {};
+for (const name of ['saju', 'mbti', 'astrology']) {
+  LENS_PAGE_SRC[name] = await src(`src/app/lens/${name}/page.tsx`);
+}
+
+check(
+  'CONCEPT-05 세 렌즈 모두 Core 관계 신호로 돌아가는 길이 있다',
+  ['saju', 'mbti', 'astrology'].every((name) => LENS_PAGE_SRC[name].includes('<LensCoreBridge')),
+  ['saju', 'mbti', 'astrology'].filter((name) => !LENS_PAGE_SRC[name].includes('<LensCoreBridge')),
+);
+check(
+  'CONCEPT-05 사주·별자리에 관찰 연속성 인트로가 있다 (MBTI는 자체 헤더가 그 역할)',
+  ['saju', 'astrology'].every((name) => LENS_PAGE_SRC[name].includes('<LensObservationIntro')),
+);
+
+/*
+  ⚠️ **없는 결과를 봤다고 말하지 않는다.** 렌즈가 계산되지 않은 세션에서 인트로가
+  '한 번 더 볼게'라고 하거나 bridge가 '이 렌즈에서는 이렇게 보여'라고 하면, 화면에는
+  아무 결과도 없는데 본 것처럼 말하는 것이 된다(실측에서 정확히 그 상태가 나왔다).
+*/
+check(
+  'CONCEPT-05 사주 인트로·bridge가 일주 계산 여부로 게이트된다',
+  /\{mineSaju \? <LensObservationIntro/.test(LENS_PAGE_SRC.saju) &&
+    /\{mineSaju && answers\.completed\.compatibility \?/.test(LENS_PAGE_SRC.saju),
+);
+check(
+  'CONCEPT-05 별자리 인트로·bridge가 태양궁 계산 여부로 게이트된다',
+  /\{availability\.self \? <LensObservationIntro/.test(LENS_PAGE_SRC.astrology) &&
+    /\{availability\.self && answers\.completed\.compatibility \?/.test(LENS_PAGE_SRC.astrology),
+);
+
+/*
+  인트로는 **연결 문장 하나**여야 한다. 렌즈 결과·판정에 접근하면 계산을 거치지 않은
+  해석이 만들어지고, 큰 카드가 되면 렌즈 결과보다 캐릭터가 커진다.
+*/
+const lensIntro = await src('src/components/lens/LensObservationIntro.tsx');
+check(
+  'CONCEPT-05 렌즈 인트로가 해석을 만들지 않는다 (렌즈 이름만 받는다)',
+  /lens:\s*'사주'\s*\|\s*'별자리'/.test(lensIntro) &&
+    !/useSession|answers|report|insight|fetch/.test(lensIntro),
+);
+
+/*
+  CONCEPT-06 — **Action / 추천 질문이 해야 할 과제처럼 읽히지 않는다.**
+  1차 UT의 '조별과제' · '갑자기 교수님이 나타난 느낌'이 돌아오지 않게 고정한다.
+*/
+const MANDATORY = ['반드시', '꼭 물어보세요', '해야 합니다', '숙제', '과제를', '필수로'];
+const framingSources = [
+  await src('src/data/stageCopy.ts'),
+  await src('src/lib/logic/approachHints.ts'),
+  await src('src/lib/logic/conversationQuestions.ts'),
+].join('\n');
+for (const phrase of MANDATORY) {
+  check(`CONCEPT-06 과제형 표현이 없다 — "${phrase}"`, !framingSources.includes(phrase));
+}
+check(
+  'CONCEPT-06 추천 질문 라벨이 항목/과제가 아니라 권유형이다',
+  /가볍게 물어볼 수 있어/.test(framingSources) && !/확인해보면 좋은 항목/.test(framingSources),
+);
+
 /* ═══════════════════════════ 결과 */
 
 console.log(`\n${failures.length === 0 ? '✅' : '❌'} ut-phase1 — ${passed} passed, ${failures.length} failed`);
