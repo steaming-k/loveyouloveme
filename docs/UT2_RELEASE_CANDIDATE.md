@@ -13,7 +13,8 @@
 |---|---|
 | Branch | `feat/v147-supabase-persistence-clean` |
 | Preflight 시작 HEAD | `63d89a4` |
-| RC HEAD | *(아래 §11에 최종 commit 기록)* |
+| RC commits | `2fc4c5b` fix · `dfab9ef` test · `e83d6ad` docs (+ 이 표를 채운 commit) |
+| RC HEAD | `origin/feat/v147-supabase-persistence-clean` 의 tip |
 | 기준 버전 | v1.47 |
 | 동결일 | 2026-09-15 |
 | main merge | **금지** |
