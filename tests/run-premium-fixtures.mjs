@@ -2740,6 +2740,86 @@ console.log('\nEVT-01 ~ EVT-14 — 관계 사건 (User-reported Relationship Eve
   );
 }
 
+/* ═══ UT2-PREMIUM — 사진은 optional이다 ════════════════════════════════════
+
+   Browser QA에서 발견: 사진 없이 declared 5 · 관계경험 3 · 상대 4/4 · 사건 1 ·
+   MBTI 양쪽 · 생년월일 양쪽을 다 채워도 Premium이 열리지 않았다(렌즈는 3/3 열려
+   있었는데도). 원인은 `mirror.insights.length === 0`이라는 **세션 단위** 제외 조건이
+   cross-source의 `isFreeDuplicate`와 겹쳐, Mirror insight 하나로 두 경로가 동시에
+   닫힌 것이다. 빠져나갈 길이 `observed`(사진)뿐이라 사진이 사실상 진입 조건이 됐다.
+
+   ⚠️ 이 검사들이 지키는 것은 '사진 없이도 열린다'만이 아니다 — **열렸으면 실제로
+   내용이 있어야 한다**(chapters ≥ 1). 자격만 통과시키는 수정은 '결제는 되는데
+   리포트는 비어 있는' 상태를 되살린다. */
+{
+  const NO_PHOTO_RICH = {
+    ...FULL,
+    observedAnalysis: null,
+    observations: {},
+  };
+  const EMPTY_EXPERIENCE = { important: [], hardest: null, selfGap: null, skipped: true };
+  const EMPTY_CURRENT = { signals: {}, askedAt: null };
+
+  const A = await run(NO_PHOTO_RICH);
+  check(
+    'UT2-PREMIUM-01 · 사진 없이도 Premium 자격이 난다 (사진은 필수조건이 아니다)',
+    A.gate.eligible === true,
+    { eligible: A.gate.eligible, mirrorInsightCount: A.gate.mirrorInsightCount },
+  );
+  check(
+    'UT2-PREMIUM-02 · 사진 없는 자격은 **빈 리포트가 아니다** (Chapter ≥ 1)',
+    (A.chapters ?? []).length >= 1,
+    (A.chapters ?? []).map((chapter) => chapter.id),
+  );
+
+  const B = await run(FULL);
+  check(
+    'UT2-PREMIUM-04 · 사진은 분석을 **보강**한다 — 자격을 혼자 정의하지 않는다',
+    B.gate.eligible === true && (B.chapters ?? []).length >= (A.chapters ?? []).length,
+    { withPhoto: (B.chapters ?? []).length, withoutPhoto: (A.chapters ?? []).length },
+  );
+
+  /* 근거가 실제로 부족하면 기존 guard는 그대로다 — 게이트를 무력화한 게 아니다 */
+  const C = await run({
+    ...FULL,
+    declared: { contact: 3, conflict: null, alone: null, affection: null, hobby: null },
+    experience: EMPTY_EXPERIENCE,
+    currentRelationship: EMPTY_CURRENT,
+    target: NO_TARGET,
+    entries: [],
+    mbti: null,
+    observedAnalysis: null,
+    observations: {},
+  });
+  check(
+    'UT2-PREMIUM-03 · 근거가 부족하면 여전히 막는다 (충분성 guard 유지)',
+    C.gate.eligible === false && (C.chapters ?? []).length === 0,
+    { eligible: C.gate.eligible, chapters: (C.chapters ?? []).length },
+  );
+
+  /* Lens 입력 부족은 **그 Lens만** 막는다. Premium 전체를 막지 않는다 */
+  const D = await run({
+    ...NO_PHOTO_RICH,
+    mbti: null,
+    birthProfile: { calendarType: 'solar', date: null, time: null, location: null, timeUnknown: false },
+    target: {
+      ...FULL.target,
+      mbti: null,
+      birthProfile: { calendarType: 'solar', date: null, time: null, location: null, timeUnknown: false },
+    },
+  });
+  check(
+    'UT2-PREMIUM-05 · Lens 입력이 하나도 없어도 Premium 리포트는 열린다',
+    D.gate.eligible === true && (D.chapters ?? []).length >= 1,
+    { eligible: D.gate.eligible, chapters: (D.chapters ?? []).length },
+  );
+  check(
+    'UT2-PREMIUM-05 · 그리고 그때 Lens는 availability로만 꺼진다 (eligibility와 분리)',
+    (D.report?.lensBundle?.availableCount ?? 0) === 0,
+    D.report?.lensBundle?.lenses?.map((lens) => [lens.kind, lens.mode]),
+  );
+}
+
 /* ═══ 결과 ══════════════════════════════════════════════════════════════ */
 console.log('\n' + '─'.repeat(72));
 if (failures.length > 0) {
