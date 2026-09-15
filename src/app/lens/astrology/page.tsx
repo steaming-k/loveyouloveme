@@ -16,6 +16,8 @@ import {
   EntertainmentNotice,
   LimitationList,
 } from '@/components/lens/LensStateBlocks';
+import { LensCoreBridge } from '@/components/lens/LensCoreBridge';
+import { LensObservationIntro } from '@/components/lens/LensObservationIntro';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { PremiumBundleCard } from '@/components/premium/PremiumBundleCard';
 import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
@@ -30,7 +32,7 @@ import { hasPremiumEvidence } from '@/lib/logic/premiumChapters';
 import { soloModeOf } from '@/lib/logic/soloMode';
 import { useCrossSourceInsights } from '@/hooks/useAiNarrative';
 import { useMirror } from '@/hooks/useAnalysis';
-import { ROUTES } from '@/lib/routes';
+import { RESULT_ANCHORS, ROUTES } from '@/lib/routes';
 import {
   buildAstrologyCompatibility,
   buildAstrologySelfLens,
@@ -142,6 +144,13 @@ function AstrologyLensView() {
     >
       <div className="flex flex-col gap-5">
         <PageHeading lines={ASTROLOGY_COPY.title} caption={ASTROLOGY_COPY.caption} />
+
+        {/*
+          Concept Continuity 260915 — 앞 화면까지 이어지던 러비의 관찰을 여기서 끊지 않는다.
+          Premium 리포트의 렌즈 섹션에는 이미 같은 뜻의 문장이 있는데(`LENS_SECTION_COPY.intro`)
+          단독 렌즈 화면에만 없어서, 일반 운세 앱의 결과 페이지처럼 시작했다.
+        */}
+        {availability.self ? <LensObservationIntro lens="별자리" /> : null}
 
         {/* 내 정보조차 없으면 여기서 멈춘다 — 없는 결과를 만들지 않는다 */}
         {!availability.self ? (
@@ -281,6 +290,24 @@ function AstrologyLensView() {
             currentLens="zodiac"
           />
         )}
+
+
+        {/*
+          Concept Continuity 260915 — 렌즈에서 끝내지 않고 **Core 관계 신호로 되돌린다.**
+
+          MBTI 렌즈는 이미 `LENS → CORE`로 돌아가는 길이 있었는데(v1.24 §12) 사주·별자리에는
+          없어서, 이 두 화면만 '보고 끝'으로 닫혔다. 같은 컴포넌트를 그대로 쓴다 — 새 카피도
+          새 분기도 만들지 않는다. 노트 문장('이 렌즈에서는 이렇게 보여. 그런데 실제 관계에서는
+          어떨까?')이 렌즈 이름을 말하지 않아 세 화면에서 그대로 성립한다.
+
+          ⚠️ 궁합 결과가 아직 없으면 돌아갈 곳이 없으므로 그리지 않는다(MBTI와 같은 조건).
+        */}
+        {availability.self && answers.completed.compatibility ? (
+          <LensCoreBridge
+            className="mt-2"
+            href={`${ROUTES.compatibility}#${RESULT_ANCHORS.compatibilityGood}`}
+          />
+        ) : null}
 
         <LovyMessage pose="crystal" size={52}>
           {ASTROLOGY_COPY.disclaimer}
