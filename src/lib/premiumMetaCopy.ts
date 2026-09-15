@@ -59,16 +59,31 @@ export function userSourceGroupLabel(group: PremiumSourceGroup, tense: Relations
  * ⚠️ 나머지를 `외 N개`로 세지 않는다(개수 강조 금지). 전체 근거는 펼친 뒤 `왜 이렇게
  * 봤어?` 토글 안에 그대로 있다. 접힌 헤더는 393px에서 두 줄 안이어야 목록으로 읽힌다.
  */
+/**
+ * Chapter가 이은 source의 **사용자 라벨 목록** — 순서·중복 제거까지 끝난 값.
+ *
+ * ⚠️ 접힌 헤더 줄(`chapterSourceLine`)과 본문의 연결 구조(`EvidenceConnectionTrail`)가
+ * **같은 함수를 쓴다.** 두 곳이 각자 정렬하면 같은 근거가 다른 순서로 나와서, 읽는
+ * 사람에게는 서로 다른 목록 두 개로 보인다(실측에서 정확히 그렇게 나왔다).
+ *
+ * ⚠️ `slice`는 여기서 하지 않는다. 헤더는 줄 길이 때문에 3개까지만 부르지만, 본문의
+ * 연결 구조는 실제로 이은 것을 전부 보여줘야 한다 — 자르는 규칙은 호출부의 사정이다.
+ */
+export function chapterSourceLabels(
+  groups: readonly PremiumSourceGroup[],
+  tense: RelationshipTense,
+): string[] {
+  const ordered = [...new Set(groups)].sort(
+    (a, b) => GROUP_ORDER.indexOf(a) - GROUP_ORDER.indexOf(b),
+  );
+  return [...new Set(ordered.map((group) => userSourceGroupLabel(group, tense)))];
+}
+
 export function chapterSourceLine(
   groups: readonly PremiumSourceGroup[],
   tense: RelationshipTense,
 ): string {
-  const ordered = [...new Set(groups)].sort(
-    (a, b) => GROUP_ORDER.indexOf(a) - GROUP_ORDER.indexOf(b),
-  );
-  return [...new Set(ordered.map((group) => userSourceGroupLabel(group, tense)))]
-    .slice(0, CHAPTER_LINE_MAX)
-    .join(' · ');
+  return chapterSourceLabels(groups, tense).slice(0, CHAPTER_LINE_MAX).join(' · ');
 }
 
 /**

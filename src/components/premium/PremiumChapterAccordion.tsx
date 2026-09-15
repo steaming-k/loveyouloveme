@@ -3,6 +3,7 @@
 import { useState } from 'react';
 
 import { DeepInsightVerdict } from '@/components/premium/DeepInsightVerdict';
+import { EvidenceConnectionTrail } from '@/components/premium/EvidenceConnectionTrail';
 import { Lovy } from '@/components/lovy/Lovy';
 import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
@@ -349,6 +350,23 @@ function ChapterRow({
                   {soWhat.soWhat}
                 </p>
               </div>
+
+              {/*
+                ①-b Evidence → Connection (Concept Polish 260915)
+
+                결론 바로 다음은 사용자가 '그걸 어디서 봤는데?'라고 묻는 자리다. 여기에
+                **이미 헤더가 갖고 있던 provenance**(`sourceGroups`)를 구조로 한 번 더
+                보여준다 — 새 데이터가 아니라 같은 값의 다른 표현이다.
+
+                ⚠️ source가 2종 미만이면 컴포넌트가 스스로 아무것도 그리지 않는다.
+                파생 Chapter(next_check · closing)처럼 자기 근거가 없는 자리에서는
+                이 블록이 통째로 사라진다 — 없는 연결을 그리지 않는다.
+              */}
+              <EvidenceConnectionTrail
+                groups={chapter.sourceGroups}
+                tense={tense}
+                destination={chapter.eyebrow}
+              />
 
               {/*
                 ② WHY IT MATTERS — 결정론 문장이 먼저 있고, AI 문장은 그 **아래**에
