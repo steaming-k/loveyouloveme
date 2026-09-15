@@ -273,31 +273,31 @@ export default function HomePage() {
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-gutter pt-2 pb-6">
         <div className="flex flex-col gap-4">
+          {/*
+            ══ 260915 UT P2-2 — 헤더 아바타(`나`)를 **뺐다** ═══════════════════
+
+            UT-1(P1-A §2)에서 같은 목적지로 가는 진입점 3개 중 본문 행을 지웠고,
+            상시 chrome 2개(헤더 아바타 · 하단 `나` 탭)를 남겼다. 260915 UT에서
+            참가자가 그 2개를 다시 지목했다:
+
+            ```
+            "'나' 프로필 제거"
+            (진행자) "프로필 사진 저게 아래쪽 내비게이션 바에 있는 나랑 같은 거거든요"
+            ```
+
+            같은 화면(`/home`)에 하단 Navigation이 항상 떠 있고 그 안에 `나` 탭이 있다.
+            아바타는 그 탭과 **목적지도 인자도 문자 그대로 같았다.**
+
+            ⚠️ 지우기 전에 접근 경로를 확인했다(§36) — 아래 넷 모두 dead-end 0:
+            ```
+            내 관계 프로필      하단 `나` 탭 (Home · 결과 화면 전부에서 상시 노출)
+            프로필 수정        결과 수정 허브 (프로필 · Compatibility · Mirror 세 곳)
+            관계 경험 수정      같은 수정 허브
+            지금 관계 속의 나   Compatibility 결과 안 accordion
+            ```
+          */}
           <header className="flex items-center justify-between px-0.5">
             <h1 className="text-[19px] font-bold tracking-[-0.5px]">{BRAND.name}</h1>
-            <button
-              type="button"
-              onClick={() => {
-                if (!answers.completed.profile) {
-                  showToast('관찰 기록을 먼저 만들어야 볼 수 있어.', 'warning');
-                  return;
-                }
-                router.push(revisitHref(ROUTES.profileResult, 'home'));
-              }}
-              aria-label="내 프로필 보기"
-              /*
-                v1.36 A11y — 히트 영역만 44px로 올린다(§12.1 시각 높이와 터치 영역의 분리).
-                아바타 원은 안쪽 span이 그리므로 **시각 크기는 32px 그대로**다 — 실측 32px이었다.
-              */
-              className="-m-1.5 flex h-11 w-11 items-center justify-center rounded-full"
-            >
-              <span
-                aria-hidden
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-chip text-[11px] font-semibold text-ink-muted"
-              >
-                나
-              </span>
-            </button>
           </header>
 
           <section className="flex flex-col gap-3 rounded-card border border-line bg-surface px-4 py-[18px]">

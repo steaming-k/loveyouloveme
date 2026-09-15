@@ -7,6 +7,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { AiNarrativeNotice, useNarrativeViewEvent } from '@/components/ai/AiModeNotice';
 import { CoreInsightNarrativeView, MirrorAxisNarrative } from '@/components/ai/NarrativeViews';
 import { BottomNavigation } from '@/components/common/BottomNavigation';
+import { ResultEditSheet } from '@/components/result/ResultEditSheet';
 import { BottomSheet } from '@/components/common/BottomSheet';
 import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
@@ -153,6 +154,11 @@ function MirrorView() {
   );
 
   const [editOpen, setEditOpen] = useState(false);
+  /*
+    260915 UT P0-2 §11 — `editOpen`은 **핵심 관찰 문장 고치기**이고, 이건 **분석 입력
+    고치기**다. 둘을 한 시트에 합치지 않는다 — 고치는 대상이 다르다.
+  */
+  const [hubOpen, setHubOpen] = useState(false);
   const [draft, setDraft] = useState(answers.coreCorrection);
 
   // 한 번만 호출한다 — 구 S27/S28 두 곳에서 각각 부르던 것을 합쳤다(§32 AI 재호출 최소화).
@@ -405,18 +411,49 @@ function MirrorView() {
             backHref={revisit ? ROUTES.home : ROUTES.mirrorTeaser}
             centerLabel={revisit ? '최근 RELATIONSHIP MIRROR' : 'RELATIONSHIP MIRROR'}
             action={
-              <button
-                type="button"
-                onClick={() => router.push(ROUTES.shareMirror)}
-                className="flex h-11 items-center px-1 text-caption text-ink-sub"
-              >
-                공유
-              </button>
+              /* 260915 UT P0-2 §11 · P2-1 — 수정과 공유를 결과 화면 같은 자리에 둔다 */
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setHubOpen(true)}
+                  className="flex h-11 items-center px-1 text-caption text-ink-sub"
+                >
+                  수정
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push(ROUTES.shareMirror)}
+                  className="flex h-11 items-center px-1 text-caption text-ink-sub"
+                >
+                  공유
+                </button>
+              </div>
             }
           />
         }
         footer={<Button onClick={handleSave}>내 관찰 기록에 저장</Button>}
-        nav={revisit ? <BottomNavigation /> : undefined}
+        /*
+          260915 UT P0-2 — **결과 화면에서는 하단 Nav를 항상 보여준다.**
+
+          예전에는 `revisit`(Home·History에서 다시 열었을 때)일 때만 붙였다. 의도는
+          '첫 퍼널 진행 중에는 빠져나갈 길을 만들지 않는다'였는데, UT에서 그 의도가
+          정반대로 읽혔다:
+
+          ```
+          "분석에 네비게이션 바 보이게"
+          "뒤로가기가 헷갈림. 뒤에 페이지가 더 있을 것 같은 느낌임"
+          "이전 화면으로 가고 싶었던 거였는데 뭔가 다른 게 나왔다"
+          ```
+
+          결과 화면은 퍼널의 **중간이 아니라 끝**이다. 끝에 도착했는데 이동 수단이
+          상단 Back 하나뿐이면, 사용자는 그 Back을 '다음으로 가는 길'로 착각하거나
+          아직 남은 단계가 있다고 읽는다. 어떻게 도착했는지(퍼널/다시보기)는
+          **사용자의 문제가 아니라 우리 내부 구분**이다.
+
+          ⚠️ 입력 화면(프로필 질문 · 관계 경험 · Target)에는 여전히 붙이지 않는다 —
+          거기는 실제로 퍼널 중간이고, 중간 이탈이 곧 데이터 손실이다.
+        */
+        nav={<BottomNavigation />}
         bodyClassName="pt-1.5 pb-4"
       >
         <div className="flex flex-col gap-[18px]">
@@ -466,7 +503,16 @@ function MirrorView() {
                 네가 고친 문장이야. 러비의 원래 관찰도 기록에 함께 저장할게 — 아래 근거는
                 그대로야.
               </p>
-            ) : null}
+            ) : (
+              /*
+                260915 UT P1-3 — 핵심 관찰 직후 러비 한 줄 (§28 checkpoint).
+                사용자가 이미 문장을 고친 상태면 붙이지 않는다 — 그때 이 자리가 할 말은
+                '네가 고친 문장이야'이고, 두 줄을 겹치면 어느 쪽이 지금 상태인지 흐려진다.
+              */
+              <p className="text-[11.5px] leading-relaxed keep-all text-brand-pressed">
+                {LOVY_LINES.mirrorCoreNote}
+              </p>
+            )}
           </section>
 
           {/*
@@ -642,6 +688,8 @@ function MirrorView() {
           />
         </div>
       </ScreenLayout>
+
+      <ResultEditSheet open={hubOpen} onClose={() => setHubOpen(false)} origin="mirror" />
 
       <BottomSheet
         open={editOpen}

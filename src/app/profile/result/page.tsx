@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
 
 import { BottomNavigation } from '@/components/common/BottomNavigation';
-import { BottomSheet } from '@/components/common/BottomSheet';
+import { ResultEditSheet } from '@/components/result/ResultEditSheet';
 import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
@@ -16,7 +16,6 @@ import { ProfileLayerStack } from '@/components/profile/ProfileLayerStack';
 import { PRIVACY } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
-import { formatBirthSummary } from '@/lib/logic/birth';
 import { PROFILE_REVISIT_RETURN, RETURN_TO_PARAM } from '@/lib/returnTo';
 import { isRevisit, revisitHref, revisitSource } from '@/lib/resultView';
 import { ROUTES } from '@/lib/routes';
@@ -182,7 +181,28 @@ function ProfileResultView() {
             </div>
           )
         }
-        nav={revisit ? <BottomNavigation /> : undefined}
+        /*
+          260915 UT P0-2 — **결과 화면에서는 하단 Nav를 항상 보여준다.**
+
+          예전에는 `revisit`(Home·History에서 다시 열었을 때)일 때만 붙였다. 의도는
+          '첫 퍼널 진행 중에는 빠져나갈 길을 만들지 않는다'였는데, UT에서 그 의도가
+          정반대로 읽혔다:
+
+          ```
+          "분석에 네비게이션 바 보이게"
+          "뒤로가기가 헷갈림. 뒤에 페이지가 더 있을 것 같은 느낌임"
+          "이전 화면으로 가고 싶었던 거였는데 뭔가 다른 게 나왔다"
+          ```
+
+          결과 화면은 퍼널의 **중간이 아니라 끝**이다. 끝에 도착했는데 이동 수단이
+          상단 Back 하나뿐이면, 사용자는 그 Back을 '다음으로 가는 길'로 착각하거나
+          아직 남은 단계가 있다고 읽는다. 어떻게 도착했는지(퍼널/다시보기)는
+          **사용자의 문제가 아니라 우리 내부 구분**이다.
+
+          ⚠️ 입력 화면(프로필 질문 · 관계 경험 · Target)에는 여전히 붙이지 않는다 —
+          거기는 실제로 퍼널 중간이고, 중간 이탈이 곧 데이터 손실이다.
+        */
+        nav={<BottomNavigation />}
         bodyClassName="pt-1 pb-4"
       >
         <div className="flex flex-col gap-4">
@@ -234,67 +254,17 @@ function ProfileResultView() {
         </div>
       </ScreenLayout>
 
-      <BottomSheet
+      {/*
+        260915 UT P0-2 §11 — 이 시트를 `components/result/ResultEditSheet`로 옮겼다.
+        같은 것을 Compatibility · Mirror 결과 화면에서도 열기 때문이다. 목적지 Route는
+        하나도 바뀌지 않았고, `editHref`(Revisit 복귀 주소)도 그대로 넘긴다.
+      */}
+      <ResultEditSheet
         open={editOpen}
         onClose={() => setEditOpen(false)}
-        title="어디를 고칠까?"
-        description="사진을 바꾸면 Observed Me만 다시 분석돼. 관계 성향·이전 경험을 바꾸면 동기화율과 Relationship Mirror도 함께 다시 계산돼."
-      >
-        <div className="flex flex-col gap-2">
-          <FillDataRow
-            label="사진 추가·수정"
-            actionLabel="이동"
-            onClick={() => {
-              if (revisit) trackEvent('result_edit_entry', { section: 'photos' });
-              router.push(editHref(ROUTES.photos));
-            }}
-          />
-          <FillDataRow
-            label="사진 관찰 다시 보기"
-            actionLabel="이동"
-            onClick={() => {
-              if (revisit) trackEvent('result_edit_entry', { section: 'observed' });
-              router.push(editHref(ROUTES.observed));
-            }}
-          />
-          <FillDataRow
-            label="관계 성향 답변 고치기"
-            actionLabel="이동"
-            onClick={() => {
-              if (revisit) trackEvent('result_edit_entry', { section: 'declared' });
-              router.push(editHref(ROUTES.declared(1)));
-            }}
-          />
-          <FillDataRow
-            label="관계 경험 답변 고치기"
-            actionLabel="이동"
-            onClick={() => {
-              if (revisit) trackEvent('result_edit_entry', { section: 'experience' });
-              router.push(editHref(ROUTES.past(1)));
-            }}
-          />
-          {/*
-            v1.46.3 — 생년월일은 **한 번 넣으면 다시 보이지 않는 값**이었다.
-            입력 화면(`/lens/birth`)이 렌즈 목록 안쪽에 있어서, 오타를 고치거나
-            음력으로 잘못 넣은 걸 바꾸려면 그 경로를 기억하고 있어야 했다.
-            수정 허브에 현재 값과 함께 둔다 — 없으면 `입력 없음`이라고 말한다.
-
-            ⚠️ 이 값은 동기화율·Mirror 판정에 들어가지 않는다(렌즈 전용).
-            그래서 시트 설명의 '다시 계산돼' 문장에도 넣지 않았다.
-          */}
-          <FillDataRow
-            label={`생년월일 · ${formatBirthSummary(answers.birthProfile)}`}
-            actionLabel="이동"
-            onClick={() => {
-              if (revisit) trackEvent('result_edit_entry', { section: 'birth' });
-              router.push(ROUTES.lensBirth);
-            }}
-          />
-          <Button variant="secondary" className="mt-1.5" onClick={() => setEditOpen(false)}>
-            그대로 둘게
-          </Button>
-        </div>
-      </BottomSheet>
+        origin="profile"
+        hrefOf={editHref}
+      />
     </>
   );
 }

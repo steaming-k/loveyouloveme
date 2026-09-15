@@ -12,6 +12,8 @@ import {
 } from '@/components/ai/AiModeNotice';
 import { CompatibilityAxisNarrative } from '@/components/ai/NarrativeViews';
 import { BottomNavigation } from '@/components/common/BottomNavigation';
+import { deepConditionForAxis } from '@/data/relationshipDeepInput';
+import { ResultEditSheet } from '@/components/result/ResultEditSheet';
 import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
 import { NoticeBox, SectionLabel } from '@/components/common/primitives';
@@ -85,7 +87,7 @@ import {
   usePastObservation,
 } from '@/hooks/useAnalysis';
 import { useShare } from '@/hooks/useShare';
-import type { ApproachHint } from '@/types';
+import type { ApproachHint, MirrorAxisKey } from '@/types';
 import { useSession } from '@/state/SessionProvider';
 
 /**
@@ -195,6 +197,17 @@ function CompatibilityView() {
     job === 'ended' ? REFLECTION_QUESTIONS.ended : REFLECTION_QUESTIONS.none;
 
   const [showAllGood, setShowAllGood] = useState(false);
+  /* 260915 UT P0-2 §11 — 결과 화면의 수정 허브 */
+  const [editOpen, setEditOpen] = useState(false);
+
+  /*
+    260915 UT P1-1 §21 — 사용자가 심화 입력에서 좁혀준 조건을 축별로 꺼낸다.
+
+    ⚠️ 여기서 아무것도 계산하지 않는다. 점수·차이·축 판정은 그대로이고, 이 값은
+    카드에 한 줄을 **더 붙일지**만 정한다. 답하지 않은 축은 null이라 아무 변화가 없다.
+  */
+  const conditionFor = (axis: MirrorAxisKey) =>
+    deepConditionForAxis(answers.deepInputs, axis);
   const [showAllFriction, setShowAllFriction] = useState(false);
   const [showMoreQuestions, setShowMoreQuestions] = useState(false);
   /** 260914 UT 후속 P0 — 점수 근거(입력 재진술)는 첫 viewport에서 접어둔다 */
@@ -438,19 +451,35 @@ function CompatibilityView() {
   })();
 
   return (
+    <>
     <ScreenLayout
       header={
         <ScreenHeader
           backHref={revisit ? ROUTES.home : ROUTES.target}
           title={revisit ? '최근 궁합 결과' : undefined}
           action={
-            <button
-              type="button"
-              onClick={() => router.push(ROUTES.shareCompatibility)}
-              className="flex h-11 items-center px-1 text-caption text-ink-sub"
-            >
-              공유
-            </button>
+            /*
+              260915 UT P0-2 §11 — 결과 화면에서 '수정'이 **1회 탐색으로** 보여야 한다.
+              참가자의 첫 질문이 "분석 수정은 어떻게 하는 건지?"였다. 같은 자리에
+              '공유'도 함께 둔다 — 그것도 UT에서 "친구랑도 써보고 싶다"고 말한 뒤
+              끝까지 스스로 찾지 못한 기능이다(P2-1).
+            */
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setEditOpen(true)}
+                className="flex h-11 items-center px-1 text-caption text-ink-sub"
+              >
+                수정
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push(ROUTES.shareCompatibility)}
+                className="flex h-11 items-center px-1 text-caption text-ink-sub"
+              >
+                공유
+              </button>
+            </div>
           }
         />
       }
@@ -472,7 +501,28 @@ function CompatibilityView() {
           )}
         </div>
       }
-      nav={revisit ? <BottomNavigation /> : undefined}
+      /*
+        260915 UT P0-2 — **결과 화면에서는 하단 Nav를 항상 보여준다.**
+
+        예전에는 `revisit`(Home·History에서 다시 열었을 때)일 때만 붙였다. 의도는
+        '첫 퍼널 진행 중에는 빠져나갈 길을 만들지 않는다'였는데, UT에서 그 의도가
+        정반대로 읽혔다:
+
+        ```
+        "분석에 네비게이션 바 보이게"
+        "뒤로가기가 헷갈림. 뒤에 페이지가 더 있을 것 같은 느낌임"
+        "이전 화면으로 가고 싶었던 거였는데 뭔가 다른 게 나왔다"
+        ```
+
+        결과 화면은 퍼널의 **중간이 아니라 끝**이다. 끝에 도착했는데 이동 수단이
+        상단 Back 하나뿐이면, 사용자는 그 Back을 '다음으로 가는 길'로 착각하거나
+        아직 남은 단계가 있다고 읽는다. 어떻게 도착했는지(퍼널/다시보기)는
+        **사용자의 문제가 아니라 우리 내부 구분**이다.
+
+        ⚠️ 입력 화면(프로필 질문 · 관계 경험 · Target)에는 여전히 붙이지 않는다 —
+        거기는 실제로 퍼널 중간이고, 중간 이탈이 곧 데이터 손실이다.
+      */
+      nav={<BottomNavigation />}
       bodyClassName="pt-1.5 pb-4"
     >
       <ReportHeader title={REPORT_COPY.compatibilityTitle} meta={reportMeta} />
@@ -622,6 +672,7 @@ function CompatibilityView() {
               <SignalCard
                 dimension={topGood}
                 variant="good"
+                userCondition={conditionFor(topGood.key)}
                 footer={
                   <CompatibilityAxisNarrative
                     axis={topGood.key}
@@ -643,6 +694,7 @@ function CompatibilityView() {
                       dimension={dimension}
                       variant="good"
                       density="compact"
+                      userCondition={conditionFor(dimension.key)}
                       footer={
                         <CompatibilityAxisNarrative
                           axis={dimension.key}
@@ -684,6 +736,7 @@ function CompatibilityView() {
                 <SignalCard
                   dimension={topFriction}
                   variant="friction"
+                  userCondition={conditionFor(topFriction.key)}
                   footer={
                     <CompatibilityAxisNarrative
                       axis={topFriction.key}
@@ -1165,6 +1218,41 @@ function CompatibilityView() {
           </ul>
         </ReportSection>
 
+        {/*
+          ══ 260915 UT P2-1 — 공유를 **읽기를 마친 자리**에 둔다 ═══════════════
+
+          공유 기능은 v1.x부터 헤더 오른쪽에 있었다. 그런데 UT 참가자는 "친구랑도
+          써보고 싶다"고 말해놓고 끝까지 스스로 찾지 못했다. 헤더 텍스트 버튼은
+          **결과를 읽는 동안 쳐다보지 않는 자리**다.
+
+          그래서 헤더는 그대로 두고(이미 아는 사람의 경로), 결과를 다 읽은 지점에
+          한 줄을 더 놓는다. 이 자리는 §12('끝' 인식)도 함께 해결한다 — 본문이
+          끝났고 다음에 할 수 있는 일이 무엇인지 보인다.
+
+          ⚠️ **새 기능을 만들지 않았다.** 목적지는 기존 `/share/compatibility`이고,
+          거기서 하는 일도 그대로다(결과 카드 이미지 저장 · 요약 문구 공유).
+          ⚠️ 그래서 문구도 '친구에게 보내기'다. `상대의 답도 받아보기`처럼 쓰지 않는다 —
+          **상대 답을 받아 합치는 기능은 없다.** 없는 기능을 라벨로 약속하지 않는다.
+        */}
+        <button
+          type="button"
+          onClick={() => {
+            trackEvent('share_entry_click', { from: 'compatibility_result_end' });
+            router.push(ROUTES.shareCompatibility);
+          }}
+          className="mt-6 flex min-h-11 w-full items-center justify-between rounded-card border border-line bg-surface px-4 py-3.5 text-left active:bg-sunken"
+        >
+          <span className="flex flex-col gap-0.5">
+            <span className="text-[13.5px] font-medium keep-all">이 결과를 친구에게 보내기</span>
+            <span className="text-meta keep-all text-ink-muted">
+              결과 카드 이미지나 요약 문구로 보낼 수 있어
+            </span>
+          </span>
+          <span className="flex-none text-ink-faint" aria-hidden>
+            →
+          </span>
+        </button>
+
         <div className="mt-6 flex flex-col gap-2.5">
           <AiNarrativeNotice
             task="compatibility-narrative"
@@ -1175,6 +1263,8 @@ function CompatibilityView() {
         </div>
       </div>
     </ScreenLayout>
+    <ResultEditSheet open={editOpen} onClose={() => setEditOpen(false)} origin="compatibility" />
+    </>
   );
 }
 
