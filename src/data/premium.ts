@@ -270,7 +270,7 @@ export const DEEP_REPORT_COPY = {
   fakeDoorDismiss: '괜찮아',
 
   unavailableTitle: '아직 연결할 수 있는 신호가 부족해',
-  demoNotice: '이 리포트도 규칙 기반 데모 응답이야. 실제 AI 개인화 결과가 아니야.',
+  demoNotice: '이 리포트는 규칙 기반 응답이야. 실제 AI 개인화 결과가 아니야.',
 } as const;
 
 /**
@@ -305,7 +305,7 @@ export const UNLOCK_COPY = {
     noteSuffix: '아직 결제는 연결 전이야 · 이번 열람은 무료야',
   },
   preview: {
-    status: '미리보기로 리포트를 열었어',
+    status: '정밀 관찰 리포트를 열었어',
     noteSuffix: '실제 결제는 아니야 · 정밀 관찰 리포트',
   },
   /**

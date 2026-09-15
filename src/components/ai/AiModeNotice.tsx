@@ -58,7 +58,7 @@ export function AiSourceLabel({
   if (!hasNarrative) return null;
   if (mode === 'real') return <Tag tone="neutral" className={className}>AI 설명</Tag>;
   // 개발 전용 mock을 'AI 설명'으로 표시하지 않는다 — 실제 Provider 응답이 아니다(§5).
-  if (mode === 'mock') return <Tag tone="friction" className={className}>MOCK AI</Tag>;
+  if (mode === 'mock') return <Tag tone="friction" className={className}>규칙 기반</Tag>;
   return null;
 }
 

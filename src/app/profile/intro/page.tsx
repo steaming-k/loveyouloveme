@@ -10,12 +10,20 @@ import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { DATA_LAYERS, LOVY_LINES, PRIVACY } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { ROUTES } from '@/lib/routes';
-import { useSession } from '@/state/SessionProvider';
 
-/** S06 AI Profile Building 인트로 — 3 Data Layer를 먼저 설명한다 */
+/**
+ * S06 AI Profile Building 인트로 — 3 Data Layer를 먼저 설명한다
+ *
+ * ⚠️ v1.47 UT-2 — **'샘플 답변으로 결과부터 볼게' 바로가기를 참가자 화면에서 뺐다.**
+ * 두 가지 이유다:
+ *   ① 메타 문구 — 참가자에게 제품이 샘플/체험판으로 읽힌다(UT-2 RC 금지 문구).
+ *   ② 플로우 오염 — 누르면 입력 전 과정을 건너뛰고 미리 만들어 둔 세션의 결과를
+ *     자기 결과처럼 보게 된다. UT에서 관찰하려는 것이 바로 그 입력 과정이다.
+ * `loadSampleSession()` 자체는 그대로 있다 — dev 전용 `/dev/latency-session`과
+ * `PrototypePanel`이 쓰고, 둘 다 production에서 렌더되지 않는다.
+ */
 export default function ProfileIntroPage() {
   const router = useRouter();
-  const { loadSampleSession } = useSession();
 
   return (
     <ScreenLayout
@@ -31,15 +39,6 @@ export default function ProfileIntroPage() {
             관찰 시작
           </Button>
           <p className="text-center text-meta text-ink-muted">약 3분 · 중간에 저장돼</p>
-          <Button
-            variant="text"
-            onClick={() => {
-              loadSampleSession();
-              router.push(ROUTES.profileResult);
-            }}
-          >
-            샘플 답변으로 결과부터 볼게
-          </Button>
         </div>
       }
       bodyClassName="pt-1.5 pb-3"

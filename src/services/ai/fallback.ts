@@ -98,14 +98,14 @@ export function buildDemoObservedResult(input: {
 /**
  * **샘플 세션** 전용 관찰 결과 (v1.22)
  *
- * `createSampleAnswers()`만 이 함수를 쓴다. 그 함수의 진입점은 두 곳이다:
- *   1. 데스크톱 `PrototypePanel` '샘플 답변 채우기' — dev 전용(`NODE_ENV=production`에서 미렌더)
- *   2. **S06 `/profile/intro`의 '샘플 답변으로 결과부터 볼게'** — 일반 사용자에게도 보이며,
- *      게이팅이 없다(v1.0부터의 sample tour 기능).
+ * `createSampleAnswers()`만 이 함수를 쓴다. 그 함수의 진입점은 **dev 전용 두 곳뿐이다**:
+ *   1. 데스크톱 `PrototypePanel` '샘플 답변 채우기' — `NODE_ENV=production`에서 미렌더
+ *   2. `/dev/latency-session` — production에서 404
  *
- * ⚠️ 즉 이 고정 문장은 **Production에서도 2번을 통해 도달할 수 있다.** 다만 사용자가 그
- * 버튼을 직접 눌러 '샘플로 보겠다'고 선택한 경우뿐이고, 결과 mode는 `demo`이며 화면에
- * `DEMO AI` 배지와 아래 limitation이 함께 붙는다.
+ * ⚠️ v1.47 UT-2 — 예전에는 S06 `/profile/intro`의 '샘플 답변으로 결과부터 볼게' 버튼이
+ * 세 번째 진입점이었고, **게이팅 없이 Production 사용자에게도 보였다.** UT-2 RC에서 그
+ * 버튼을 뺐다 — 참가자가 입력 과정을 건너뛰고 고정 문장을 자기 결과로 읽게 되기 때문이다.
+ * 그래서 이 고정 문장은 이제 **참가자 화면에 도달하지 않는다.**
  *
  * **사용자가 자기 사진을 올린 경로에는 절대 섞이지 않는다** — 그 경로는
  * `buildDemoObservedResult`를 타고, 거기서는 아무 관찰도 만들지 않는다. v1.22가 고친

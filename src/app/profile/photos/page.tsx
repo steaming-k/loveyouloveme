@@ -38,8 +38,9 @@ import { useSession } from '@/state/SessionProvider';
  * 대신 선택 기능을 뺐고, 그 기능을 설명하기 위해서만 존재하던 UI(배지 · sampleCount ·
  * `샘플 타일 채우기` · 전용 validation 분기)도 함께 사라졌다.
  *
- * ⚠️ **'샘플 답변으로 결과부터 볼게'(`loadSampleSession()`)는 이것과 다른 기능이고 그대로다.**
- * 그건 S06에서 결과 화면으로 바로 가는 데모 세션이지 S07의 사진 입력이 아니다.
+ * ⚠️ v1.47 UT-2 — S06에 있던 '샘플 답변으로 결과부터 볼게'(`loadSampleSession()`)도 뺐다.
+ * 그건 결과 화면으로 바로 가는 별개 기능이었지 S07의 사진 입력이 아니었지만, 참가자가
+ * 입력 과정을 통째로 건너뛰는 경로라 UT-2 RC에서 함께 제거했다. 호출 함수는 dev 전용으로 남는다.
  */
 export default function PhotoInputPage() {
   // v1.16 — Profile Revisit(§27)에서 들어왔을 때 `from`을 잃지 않도록 PhotoInputView가

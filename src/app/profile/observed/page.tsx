@@ -21,19 +21,21 @@ import { photoFingerprint } from '@/services/ai/imagePrep';
 import { ROUTES } from '@/lib/routes';
 import { isObservedReviewComplete } from '@/lib/validation';
 import { useSession } from '@/state/SessionProvider';
-import type { AiMode, ObservedAnalysisState } from '@/types';
+import type { ObservedAnalysisState } from '@/types';
 
 /**
  * 관찰이 0개일 때의 문구 (v1.10 · §7 · §8).
  *
  * ⚠️ **네 가지를 절대 같은 말로 처리하지 않는다:**
  *   A. 분석은 됐는데 쓸 만한 장면이 없음  B. Provider 실패
- *   C. Demo/Mock 모드                    D. 사진이 부족함
- * 예전에는 A와 C가 같은 화면 문구를 썼고, 그래서 실제 분석이 붙어도 '데모야'라고 말했다.
+ *   C. 사진 내용을 읽지 않는 상태        D. 사진이 부족함
+ * 예전에는 A와 C가 같은 화면 문구를 썼고, 그래서 실제 분석이 붙어도 다른 상태라고 말했다.
+ *
+ * v1.47 UT-2 — C의 문구에서 내부 모드 이름을 뺐다. 상태(demo/mock)는 그대로 구분하되
+ * 참가자에게는 '무슨 모드인지'가 아니라 '무슨 일이 일어났는지'만 말한다.
  */
 function emptyStateCopy(
   state: ObservedAnalysisState | null,
-  mode: AiMode,
   photosGone: boolean,
   photosChanged: boolean,
 ): { title: string; body: string } {
@@ -83,7 +85,7 @@ function emptyStateCopy(
     case 'demo':
     case 'mock':
       return {
-        title: mode === 'mock' ? '지금은 개발용 MOCK 분석이야.' : '지금은 데모 분석을 사용 중이야.',
+        title: '지금은 사진 내용을 읽지 않는 상태야.',
         body: '실제 사진 내용을 분석하지 않았어. 그래서 관찰 결과도 만들지 않았어.',
       };
     default:
@@ -203,12 +205,7 @@ function ObservedResultView() {
    * 사진 분석이 약하다고 Core Funnel을 막지 않는다(§63) — 질문으로 계속할 길을 함께 준다.
    */
   if (traits.length === 0 || photosGone || photosChanged) {
-    const empty = emptyStateCopy(
-      analysis === null ? null : observedState,
-      mode,
-      photosGone,
-      photosChanged,
-    );
+    const empty = emptyStateCopy(analysis === null ? null : observedState, photosGone, photosChanged);
 
     return (
       <ScreenLayout
@@ -301,10 +298,13 @@ function ObservedResultView() {
                 )}
                 {/* 실제 분석이면 DEMO 배지를 붙이지 않는다. fallback은 사실대로 알린다(§39) */}
                 {mode === 'real' ? <Tag tone="neutral">AI OBSERVATION</Tag> : null}
-                {/* 개발 전용 mock을 실제 AI로 표시하지 않는다 (v1.7 §5) */}
-                {mode === 'mock' ? <Tag tone="friction">MOCK AI</Tag> : null}
-                {mode === 'demo' || mode === 'legacy-demo' ? (
-                  <Tag tone="neutral">DEMO AI</Tag>
+                {/*
+                  v1.47 UT-2 — mock/demo를 실제 AI로 표시하지 않는다(v1.7 §5). 다만 참가자
+                  화면에 내부 모드 이름(MOCK · DEMO)을 쓰지 않는다 — 제품을 임시 버전으로
+                  읽히게 하는 메타 문구다. 사실(규칙 기반)만 남긴다.
+                */}
+                {mode === 'mock' || mode === 'demo' || mode === 'legacy-demo' ? (
+                  <Tag tone="neutral">규칙 기반</Tag>
                 ) : null}
                 {mode === 'fallback' ? <Tag tone="friction">규칙 기반 대체</Tag> : null}
               </div>
@@ -386,13 +386,7 @@ function ObservedResultView() {
             실제로 일어난 일(서버 전송·관찰·미저장)만 말한다.
           */}
           {mode === 'real' ? <NoticeBox>{PRIVACY.photoTransfer}</NoticeBox> : null}
-          {mode === 'mock' ? (
-            <NoticeBox>
-              개발용 MOCK 모드야. 실제 AI Provider를 호출하지 않았고, 사진 내용을 읽은 결과가
-              아니야.
-            </NoticeBox>
-          ) : null}
-          {mode === 'demo' || mode === 'legacy-demo' ? (
+          {mode === 'mock' || mode === 'demo' || mode === 'legacy-demo' ? (
             <NoticeBox>{PRIVACY.demoAi}</NoticeBox>
           ) : null}
           {mode === 'fallback' ? (
