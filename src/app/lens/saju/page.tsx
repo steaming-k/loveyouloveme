@@ -16,6 +16,7 @@ import {
   LimitationList,
 } from '@/components/lens/LensStateBlocks';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
+import { PremiumBundleCard } from '@/components/premium/PremiumBundleCard';
 import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
 import { SAJU_COPY } from '@/data/copy';
 import { LENS_UNAVAILABLE_REASON } from '@/data/premiumLens';
@@ -43,6 +44,7 @@ import {
 import { soloModeOf } from '@/lib/logic/soloMode';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { ROUTES } from '@/lib/routes';
+import { hasPreviewUnlock } from '@/lib/premiumAccess';
 import { premiumFeatureState } from '@/services/premiumService';
 import { useSession } from '@/state/SessionProvider';
 
@@ -90,6 +92,31 @@ function SajuLensView() {
 
   const mineSaju = useMemo(() => readSajuDay(mine, today), [mine, today]);
   const theirsSaju = useMemo(() => readSajuDay(theirs, today), [theirs, today]);
+
+  /*
+    v1.46 PremiumLens §2 · §35 — 개별 렌즈 상세를 팔지 않는다. 별자리 · MBTI 화면과
+    같은 Bundle을 가리키고, `source`로만 지불 의향이 어디서 생겼는지 구분한다.
+    1차 UT 전체 Backlog P0-2 — 상태를 두 번 읽으므로 JSX 안에서 만들지 않는다.
+  */
+  const premiumBundleFeature = premiumFeatureState(
+    'relationship_deep_report',
+    resolvePrice(variant),
+    {
+      utMode,
+      allowsOutwardAction: jobAllowsOutwardAction(resolveRelationshipContext(answers).job),
+      deepReportAvailable: hasPremiumEvidence({
+        insights: crossSourceInsights,
+        declared: answers.declared,
+        mirror,
+      }),
+      solo: soloModeOf(answers) === 'no_target',
+    },
+  );
+  /** CTA 문구만 바꾼다('열기' ↔ '보기'). 접근 권한 자체는 Paywall이 판단한다 */
+  const bundleUnlocked = hasPreviewUnlock(
+    'relationship_deep_report',
+    answers.currentAnalysisMeta?.funnelAnalysisId ?? null,
+  );
   const lunarBlocked = isLunarBlocked(mine, today);
   const relationNote =
     mineSaju && theirsSaju
@@ -194,24 +221,34 @@ function SajuLensView() {
 
         <LimitationList items={limitations} />
 
+        {/*
+          ══ 1차 UT 전체 Backlog P0-2 — **렌즈 화면은 자기 가격을 갖지 않는다** ══════
+
+          예전에는 여기에 `PremiumEntryRow`가 있었고, 그 행은 **자기 가격 줄**을 갖는다.
+          렌즈를 셋 다 둘러본 사용자(0911 UT 참가자가 실제로 밟은 경로)에게는 ₩1,900이
+          세 번 찍혔고, 그건 세 개의 상품으로 읽힌다.
+
+          보조 문구 한 줄로 푸는 문제가 아니라 **정보 구조**의 문제였다. 그래서 Home이
+          이미 옳게 갖고 있던 Bundle 카드를 그대로 쓴다 — 가격은 헤더에 하나, 그 아래는
+          그 가격에 포함된 렌즈 목록이고, 렌즈 행에는 가격을 넣을 자리 자체가 마크업에
+          없다(§35).
+
+          ⚠️ `unavailable`은 Bundle로 바꾸지 않는다. 그 상태의 `PremiumEntryRow`는
+          **가격도 CTA도 붙이지 않고**(§40) 대신 보완 경로 버튼을 준다 — 없는 것을 팔지
+          않으면서 dead-end도 만들지 않는 자리라 그대로 둔다.
+        */}
         {mineSaju ? (
-          <PremiumEntryRow
-            /*
-              v1.46 PremiumLens §2 · §35 — 개별 렌즈 상세를 팔지 않는다. 별자리 · MBTI 화면과
-              같은 Bundle을 가리키고, `source`로만 지불 의향이 어디서 생겼는지 구분한다.
-            */
-            feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
-              utMode,
-              allowsOutwardAction: jobAllowsOutwardAction(resolveRelationshipContext(answers).job),
-              deepReportAvailable: hasPremiumEvidence({
-                insights: crossSourceInsights,
-                declared: answers.declared,
-                mirror,
-              }),
-              solo: soloModeOf(answers) === 'no_target',
-            })}
-            source="saju"
-          />
+          premiumBundleFeature.status === 'unavailable' && !utMode ? (
+            <PremiumEntryRow feature={premiumBundleFeature} source="saju" />
+          ) : (
+            <PremiumBundleCard
+              feature={premiumBundleFeature}
+              unlocked={bundleUnlocked}
+              source="saju"
+              hookVariant="lens_bundle"
+              currentLens="saju"
+            />
+          )
         ) : null}
 
         <LovyMessage pose="book" size={52}>

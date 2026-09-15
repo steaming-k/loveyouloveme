@@ -10,7 +10,7 @@ import { Button } from '@/components/common/Button';
 import { ConfirmModal } from '@/components/common/ConfirmModal';
 import { SectionLabel } from '@/components/common/primitives';
 import { useToast } from '@/components/common/ToastProvider';
-import { HomePremiumBundle } from '@/components/premium/HomePremiumBundle';
+import { PremiumBundleCard } from '@/components/premium/PremiumBundleCard';
 import { Lovy } from '@/components/lovy/Lovy';
 import { BRAND, HOME_COPY, LENS_COPY } from '@/data/copy';
 import { clearAiCache } from '@/services/ai/aiClient';
@@ -506,7 +506,11 @@ export default function HomePage() {
 
             ⚠️ Button이 아니라 카드다 — Home의 primary를 이기지 않는다(§33 Guardrail).
           */}
-          <HomePremiumBundle feature={premiumBundleFeature} unlocked={bundleUnlocked} />
+          <PremiumBundleCard
+            feature={premiumBundleFeature}
+            unlocked={bundleUnlocked}
+            returnTo="home"
+          />
 
           {/*
             새 분석 시작 — Revisit 기능이 생겼다고 이 CTA를 없애지 않는다(§46).

@@ -107,7 +107,14 @@ export const LENS_THEME_QUESTION: Record<PremiumLensTheme, string> = {
  * 다른 사람과의 다음이고 후자는 이 관계의 재개다.
  */
 export const LENS_THEME_QUESTION_FORMER: Record<PremiumLensTheme, string> = {
-  pace: '무언가를 정해야 했을 때 누가 먼저 말을 꺼내고 누가 며칠 두고 봤는지, 기억나는 장면 하나로 돌아봐.',
+  /*
+    1차 UT 전체 Backlog P1-3 — `기억나는 장면`에서 바꿨다. 입력 UI가 260914 UT 후속에서
+    전부 `사건`으로 통일됐는데(`RelationshipEventSection`), 여기만 `장면`이 남아 있었다.
+    용어 계약상 `장면`은 사진·서술 scene이고 사용자가 적는 relationship event는 `사건`이다.
+    이 문장은 입력이 아니라 회고라서 `사건`도 아니므로, 바로 아래 `expression` 줄이 이미
+    쓰고 있는 `순간`으로 맞춘다 — 두 예약어 어느 쪽과도 충돌하지 않는다.
+  */
+  pace: '무언가를 정해야 했을 때 누가 먼저 말을 꺼내고 누가 며칠 두고 봤는지, 기억에 남은 순간 하나로 돌아봐.',
   alone_time:
     '연락이 없는 하루가 지났을 때 너는 그걸 혼자 있는 시간으로 읽었는지 멀어진 걸로 읽었는지 돌아봐.',
   expression:
@@ -183,6 +190,14 @@ export const PREMIUM_BUNDLE_COPY = {
   lockedNote: '따로 파는 게 아니라 정밀 관찰 리포트와 같이 열려.',
   unlockedCta: '보기',
   lockedCta: '열기',
+  /** 렌즈 화면에서 '지금 보고 있는 렌즈' 행에 붙는다 */
+  currentLensBadge: '지금 보는 중',
+  /**
+   * 렌즈 화면 전용 부제 — 이 카드가 **지금 보고 있는 렌즈를 포함한 묶음**이라는 것을
+   * 첫 줄에서 말한다. Home에서는 쓰지 않는다(거기서는 아직 특정 렌즈 문맥이 없다).
+   */
+  lensContextDescription:
+    '사주 · MBTI · 별자리 관점까지 한 번에 보는 관계 리포트야. 지금 보고 있는 렌즈도 여기 들어 있어.',
 } as const;
 
 /**

@@ -17,6 +17,7 @@ import {
 } from '@/components/compatibility/MbtiLensPanel';
 import { LensCoreBridge } from '@/components/lens/LensCoreBridge';
 import { MbtiBridgeSection } from '@/components/lens/MbtiBridgeSection';
+import { PremiumBundleCard } from '@/components/premium/PremiumBundleCard';
 import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { LovyNote } from '@/components/lovy/LovyNote';
@@ -32,6 +33,7 @@ import { buildMbtiSelfLens } from '@/lib/logic/mbtiLens';
 import { hasPremiumEvidence } from '@/lib/logic/premiumChapters';
 import { soloModeOf } from '@/lib/logic/soloMode';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
+import { hasPreviewUnlock } from '@/lib/premiumAccess';
 import { premiumFeatureState } from '@/services/premiumService';
 import { RESULT_ANCHORS, ROUTES } from '@/lib/routes';
 import { useCrossSourceInsights } from '@/hooks/useAiNarrative';
@@ -117,6 +119,31 @@ function MbtiLensView() {
   /** 두 유형이 모두 있어 실제로 '비교'를 보여줄 수 있는 상태 */
   const couple = Boolean(report && targetLens);
 
+  /*
+    v1.40.1 §38.3 — `allowsOutwardAction`은 필수다. **`true`를 하드코딩하지 않는다** —
+    나중에 이 feature에 outward 약속이 추가되면 하드코딩한 곳만 조용히 샌다.
+    1차 UT 전체 Backlog P0-2 — 상태를 두 번 읽으므로 JSX 안에서 만들지 않는다.
+  */
+  const premiumBundleFeature = premiumFeatureState(
+    'relationship_deep_report',
+    resolvePrice(variant),
+    {
+      utMode,
+      allowsOutwardAction: jobAllowsOutwardAction(resolveRelationshipContext(answers).job),
+      deepReportAvailable: hasPremiumEvidence({
+        insights: crossSourceInsights,
+        declared: answers.declared,
+        mirror,
+      }),
+      solo: soloModeOf(answers) === 'no_target',
+    },
+  );
+  /** CTA 문구만 바꾼다('열기' ↔ '보기'). 접근 권한 자체는 Paywall이 판단한다 */
+  const bundleUnlocked = hasPreviewUnlock(
+    'relationship_deep_report',
+    answers.currentAnalysisMeta?.funnelAnalysisId ?? null,
+  );
+
   const viewSent = useRef(false);
   useEffect(() => {
     // StrictMode 이중 마운트로 두 번 세지 않게 mount 기준 1회만 보낸다.
@@ -184,37 +211,34 @@ function MbtiLensView() {
           />
         </section>
 
-        {/* MBTI를 강한 유료 Feature로 전면에 두지 않는다 — 상세 안의 한 항목일 뿐(§19) */}
-        <PremiumEntryRow
-          /*
-            v1.40.1 §38.3 — `allowsOutwardAction`이 필수가 됐다. `mbti_detail`의
-            `additions`에는 outward 항목이 없어서 지금은 결과가 같지만, **`true`를
-            하드코딩하지 않는다** — 나중에 이 feature에 outward 약속이 추가되면
-            하드코딩한 곳만 조용히 새기 때문이다. 실제 Job에서 도출한다.
-          */
-          /*
-            v1.46 PremiumLens §2 · §35 — **이 화면은 더 이상 자기 상세를 팔지 않는다.**
+        {/*
+          MBTI를 강한 유료 Feature로 전면에 두지 않는다 — 상세 안의 한 항목일 뿐(§19)
 
-            예전에는 여기서 `mbti_detail`·`astrology_detail`을 각각 ₩1,900에 팔았고,
-            그러면 렌즈를 둘러본 사용자에게는 같은 가격이 세 번 보였다 — 세 번 결제해야
-            하는 상품으로 읽힌다(§35 금지). 이제 세 렌즈가 전부 같은 Bundle을 가리키고,
-            그 Bundle 안에 이 렌즈의 **Pair/Self 결과가 실제로 들어 있다**(`logic/premiumLens.ts`).
+          ══ 1차 UT 전체 Backlog P0-2 — **렌즈 화면은 자기 가격을 갖지 않는다** ══════
 
-            ⚠️ `source`는 그대로 남긴다 — 상품은 하나지만 지불 의향이 어디서 생겼는지는
-            여전히 구분해야 한다(§31).
-          */
-          feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
-            utMode,
-            allowsOutwardAction: jobAllowsOutwardAction(resolveRelationshipContext(answers).job),
-            deepReportAvailable: hasPremiumEvidence({
-              insights: crossSourceInsights,
-              declared: answers.declared,
-              mirror,
-            }),
-            solo: soloModeOf(answers) === 'no_target',
-          })}
-          source="mbti"
-        />
+          v1.46 §35가 세 렌즈의 결제 대상을 하나로 모았지만, 여기 있던 `PremiumEntryRow`는
+          **자기 가격 줄**을 갖는다. 그래서 렌즈를 셋 다 둘러본 사용자(0911 UT 참가자가
+          실제로 밟은 경로)에게는 ₩1,900이 세 번 찍혔고, 그건 세 개의 상품으로 읽힌다.
+
+          보조 문구 한 줄로 푸는 문제가 아니라 **정보 구조**의 문제였다. Home이 이미 옳게
+          갖고 있던 Bundle 카드를 그대로 쓴다 — 가격은 헤더에 하나, 그 아래는 그 가격에
+          포함된 렌즈 목록이고, 렌즈 행에는 가격을 넣을 자리 자체가 마크업에 없다.
+
+          ⚠️ `unavailable`은 Bundle로 바꾸지 않는다. 그 상태의 `PremiumEntryRow`는
+          **가격도 CTA도 붙이지 않고**(§40) 대신 보완 경로 버튼을 준다 — 없는 것을 팔지
+          않으면서 dead-end도 만들지 않는 자리라 그대로 둔다.
+        */}
+        {premiumBundleFeature.status === 'unavailable' && !utMode ? (
+          <PremiumEntryRow feature={premiumBundleFeature} source="mbti" />
+        ) : (
+          <PremiumBundleCard
+            feature={premiumBundleFeature}
+            unlocked={bundleUnlocked}
+            source="mbti"
+            hookVariant="lens_bundle"
+            currentLens="mbti"
+          />
+        )}
 
         <NoticeBox>{MBTI_LENS_COPY.scoreNotice}</NoticeBox>
       </div>
