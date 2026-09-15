@@ -460,6 +460,71 @@ check(
   ungated,
 );
 
+/* ═══════════════════════════ CONCEPT POLISH */
+
+console.log('\nCONCEPT — 차별점이 장식으로 바뀌지 않게');
+
+/*
+  CONCEPT-01 / 02 — Evidence → Connection 시각화는 **이미 있는 provenance만** 쓴다.
+
+  이 블록이 위험한 이유: 보기 좋게 만들려고 node를 하나 더 넣거나, source가 하나뿐일 때
+  화살표를 그려버리면 그 순간 '근거처럼 보이는 장식'이 된다. 그건 이 제품이 가장 피해야
+  하는 종류의 거짓말이고, 화면만 보면 진짜 근거와 구분되지 않는다.
+
+  ⚠️ CONCEPT-03(번들 가격 1회)·CONCEPT-04(score-first)는 **새로 만들지 않았다** —
+  UT-ALL-P0-05 · UT-ALL-P0-10이 이미 같은 invariant를 검사한다.
+*/
+const trail = await src('src/components/premium/EvidenceConnectionTrail.tsx');
+
+check(
+  'CONCEPT-01 연결 시각화의 입력은 chapter.sourceGroups 하나뿐이다 (새 데이터 없음)',
+  /groups:\s*readonly PremiumSourceGroup\[\]/.test(trail) &&
+    !/fetch\(|useState|useEffect|Math\.random/.test(trail),
+);
+check(
+  'CONCEPT-01 라벨·순서를 자체 생성하지 않고 헤더와 같은 함수를 쓴다',
+  trail.includes('chapterSourceLabels') && !/GROUP_LABEL|sort\(/.test(trail),
+);
+check(
+  'CONCEPT-02 source가 2종 미만이면 아무것도 그리지 않는다 (가짜 연결 금지)',
+  /labels\.length < 2\)?\s*return null/.test(trail),
+);
+/*
+  호출부도 함께 본다 — 컴포넌트가 아무리 안전해도, 호출부가 sourceGroups 대신 다른 값을
+  만들어 넣으면 같은 결함이 돌아온다.
+*/
+const accordion = await src('src/components/premium/PremiumChapterAccordion.tsx');
+check(
+  'CONCEPT-02 호출부가 chapter.sourceGroups를 그대로 넘긴다',
+  /<EvidenceConnectionTrail[\s\S]{0,160}groups=\{chapter\.sourceGroups\}/.test(accordion),
+);
+
+/*
+  CONCEPT — 같은 의미를 연속으로 두 번 부르지 않는다.
+  다가가는 힌트의 카테고리 라벨이 kind마다 구분돼야 한다(같으면 제목이 두 번 보인다).
+*/
+const hintLabels = await src('src/lib/logic/approachHints.ts');
+const labelBlock = hintLabels.slice(
+  hintLabels.indexOf('APPROACH_HINT_KIND_LABEL'),
+  hintLabels.indexOf('APPROACH_HINT_KIND_LABEL') + 400,
+);
+const labelValues = [...labelBlock.matchAll(/:\s*'([^']+)'/g)].map((match) => match[1]);
+check(
+  'CONCEPT 다가가는 힌트 카테고리 라벨이 서로 다르다',
+  new Set(labelValues).size === labelValues.length,
+  labelValues,
+);
+
+/*
+  CONCEPT — YOUR SIGNAL은 핵심 한 문장이 이미 부른 축을 다시 부르지 않는다.
+  fallback으로 `frictionSignals[0]`를 다시 집으면 중복이 그대로 돌아온다.
+*/
+const lovyNotes = await src('src/data/lovyNotes.ts');
+check(
+  'CONCEPT YOUR SIGNAL이 핵심 문장에 없는 축을 고른다',
+  lovyNotes.includes('headlineLabelsOf') && /!named\.has\(dimension\.label\)/.test(lovyNotes),
+);
+
 /* ═══════════════════════════ 결과 */
 
 console.log(`\n${failures.length === 0 ? '✅' : '❌'} ut-phase1 — ${passed} passed, ${failures.length} failed`);
