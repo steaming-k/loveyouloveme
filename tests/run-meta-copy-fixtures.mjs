@@ -5,7 +5,7 @@
  * META-01  참가자 화면 '개발용' · '개발자용' · '개발 중' = 0
  * META-02  참가자 화면 '테스트용' · '테스트 화면' · 'BETA TEST' = 0
  * META-03  참가자 화면 '데모' · 'DEMO' = 0
- * META-04  참가자 화면 '미리보기' · '미리 보기' · 'PREVIEW' = 0 (Paywall 티저 라벨 1건만 예외)
+ * META-04  참가자 화면 '미리보기' · '미리 보기' · 'PREVIEW/preview' = 0 (예외 없음)
  * META-05  참가자 화면 'MOCK' · 'debug' · 'fixture' · 'fake door' · '샘플 분석/답변' = 0
  * META-06  Saju · Lens 화면 금지 메타 = 0
  * META-07  Premium · Deep Report 화면 금지 메타 = 0
@@ -90,11 +90,23 @@ const SINGLE = /'((?:[^'\\\n]|\\.)*)'/g;
 const DOUBLE = /"((?:[^"\\\n]|\\.)*)"/g;
 const BACKTICK = new RegExp('`((?:[^`\\\\]|\\\\.)*)`', 'g');
 
-/** ① 한글이 들어간 문자열 리터럴 — 사용자 문장은 전부 여기 있다 */
+/**
+ * ① 한글이 들어간 문자열 리터럴 — 사용자 문장은 전부 여기 있다
+ *
+ * ⚠️ 템플릿 리터럴의 `${...}`는 **걷어낸다.** 거기 들어가는 것은 식별자이지 렌더되는 글자가
+ * 아니다(`${previewSummaries.length}` · `${DEEP_REPORT_COPY.x}`). 남겨두면 변수 이름 때문에
+ * 멀쩡한 문장이 걸린다 — 실제로 `previewSummaries`가 META-04를 오탐으로 떨어뜨렸다.
+ * 그 변수가 담고 있는 값은 원래 리터럴에서 따로 검사되므로 놓치는 것은 없다.
+ */
+const INTERPOLATION = /\$\{[^}]*\}/g;
+
 function koreanLiterals(code) {
   const out = [];
   for (const pattern of [SINGLE, DOUBLE, BACKTICK]) {
-    for (const [, body] of code.matchAll(pattern)) if (HANGUL.test(body)) out.push(body);
+    for (const [, body] of code.matchAll(pattern)) {
+      const text = body.replace(INTERPOLATION, ' ');
+      if (HANGUL.test(text)) out.push(text);
+    }
   }
   return out;
 }
@@ -126,14 +138,17 @@ for (const file of participantFiles) {
   rendered.set(file, [...koreanLiterals(code), ...jsxText(code)]);
 }
 
-/** META-04가 설명하는 단 하나의 예외 — Paywall 티저 라벨 */
-const PAYWALL_TEASER_LABEL = '미리 보기 — 3가지만 살짝';
-
+/**
+ * ⚠️ v1.47 UT-2 RC Final — **예외가 하나도 없다.**
+ *
+ * 직전 RC는 Paywall 티저 라벨(`미리 보기 — 3가지만 살짝`) 한 줄을 '상품 설명이지 빌드 상태
+ * 설명이 아니다'라는 이유로 통과시켰다. 그 문구를 `먼저 볼 3가지`로 바꿔서 예외가 없어졌다.
+ * 여기에 예외를 다시 만들기 전에, 문구를 바꾸는 쪽이 먼저다.
+ */
 function scan(files, patterns) {
   const hits = [];
   for (const file of files) {
     for (const text of rendered.get(file) ?? []) {
-      if (text === PAYWALL_TEASER_LABEL) continue;
       for (const pattern of patterns) {
         if (pattern.test(text)) hits.push(`${file}: ${text.slice(0, 90)}`);
       }
@@ -156,24 +171,12 @@ const m03 = scan(participantFiles, [/데모/, /\bDEMO\b/]);
 check('META-03 참가자 화면 "데모" · "DEMO" = 0', m03.length === 0, m03);
 
 /**
- * ⚠️ 유일한 명시적 예외 — Paywall 티저 라벨(`PREMIUM_COPY.previewLabel`).
- *
- * `미리 보기 — 3가지만 살짝`은 **유료 리포트 중 3개를 먼저 보여준다**는 상품 설명이다.
- * `무료로 본 내용` · `이번 리포트에서 볼 수 있는 것`과 나란히 놓인 Paywall 구조의 일부이고,
- * 제품이 미완성/임시 빌드라는 뜻이 아니다. UT-2가 관찰하려는 결제 의향 화면 자체라
- * RC 동결 중에 문구를 바꾸지 않는다(§31 — blocker가 아닌 카피 수정 금지).
- *
- * 예외는 이 한 줄뿐이다. 다른 `미리 보기`가 생기면 여기서 걸린다 — 새로 추가하기 전에
- * '상품 설명인가, 빌드 상태 설명인가'를 먼저 판단한다.
+ * 띄어쓴 `미리 보기`까지 본다 — 직전 RC에서 Paywall 티저가 그 형태로 남아 있었다.
+ * 소문자 `preview`는 식별자(`premium-preview` 경로 · `previewLabel` · `previewRouteOpen`)로
+ * 널리 쓰이지만, 여기서 보는 것은 **렌더되는 텍스트뿐**이라 그 식별자들은 애초에 대상이 아니다.
  */
-const m04 = scan(participantFiles, [/미리보기/, /미리 보기/, /\bPREVIEW\b/]);
-check(
-  'META-04 참가자 화면 "미리보기" · "미리 보기" · "PREVIEW" = 0 (Paywall 티저 라벨 1건만 예외)',
-  m04.length === 0,
-  m04,
-);
-const teaserStillThere = (rendered.get('src/data/premium.ts') ?? []).includes(PAYWALL_TEASER_LABEL);
-check('META-04b 예외로 둔 Paywall 티저 라벨이 그대로 있다 (사라지면 예외도 지운다)', teaserStillThere);
+const m04 = scan(participantFiles, [/미리보기/, /미리 보기/, /preview/i]);
+check('META-04 참가자 화면 "미리보기" · "미리 보기" · "PREVIEW/preview" = 0 (예외 없음)', m04.length === 0, m04);
 
 const m05 = scan(participantFiles, [
   /\bMOCK\b/,
@@ -195,6 +198,7 @@ check(
 
 const ALL_META = [
   /미리 보기/,
+  /preview/i,
   /개발용/,
   /개발자용/,
   /개발 중/,

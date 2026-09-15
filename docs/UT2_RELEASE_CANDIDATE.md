@@ -175,18 +175,24 @@ UT 배포는 `AI_MODE=real`이라 위 분기 대부분이 애초에 렌더되지
 
 ### (3) Guard 강화
 
-- `tests/run-meta-copy-fixtures.mjs` **신규** — META-01~10 + META-04b. 렌더되는 텍스트(한글 리터럴 + JSX 텍스트 노드)만 보고, 내부 식별자(`mode === 'mock'` · `'beta_ut'` · `'fake-door'`)는 보지 않는다. `npm run test:meta-copy`
+- `tests/run-meta-copy-fixtures.mjs` **신규** — META-01~10. 렌더되는 텍스트(한글 리터럴 + JSX 텍스트 노드, 템플릿 리터럴의 `${...}`는 걷어낸다)만 보고, 내부 식별자(`mode === 'mock'` · `'beta_ut'` · `'fake-door'` · `previewLabel`)는 보지 않는다. `npm run test:meta-copy`
 - `tests/run-ui-asset-copy-fixtures.mjs` — **allowlist를 비웠다.** 예전에 '기능상 의미가 있다'는 이유로 통과시키던 6개 문구(`미리보기로 리포트를 열었어` · `샘플 답변으로 결과부터 볼게` · `데모 모드라…` 등)와 mock 전용 예외(`개발용 MOCK`)를 전부 없앴다.
 
-### (4) 남긴 예외 1건 — 판단이 필요한 곳
+### (4) Paywall 티저 라벨 — **해결됨 (예외 0)**
 
 ```
-src/data/premium.ts  previewLabel: '미리 보기 — 3가지만 살짝'
+src/data/premium.ts  previewLabel
+
+Before  미리 보기 — 3가지만 살짝
+After   먼저 볼 3가지
 ```
 
-Paywall에서 유료 리포트 중 3개를 먼저 보여주는 **상품 설명**이고, 제품이 미완성 빌드라는 뜻이 아니다.
-UT-2가 관찰하려는 결제 의향 화면 자체라 RC 동결 중에 바꾸지 않았다.
-META-04가 이 한 줄만 예외로 두고 다른 `미리 보기`는 전부 잡는다.
+첫 동결에서는 '유료 리포트 중 3개를 먼저 보여준다'는 **상품 설명**이라 예외로 남겼었다.
+UT-2의 기준이 '한 글자라도'인 이상, 참가자에게 **제품 자체가 미리보기 빌드**로 읽힐 위험을
+감수할 이유가 없다고 판단해 바꿨다. 보여주는 것(먼저 볼 3가지)은 그대로다.
+
+그래서 **META guard에 예외가 하나도 없다.** META-04는 `미리보기` · `미리 보기` · `PREVIEW/preview`를
+전부 0으로 요구한다(예외로 두었던 META-04b는 함께 삭제).
 
 ---
 
@@ -316,7 +322,6 @@ participant routes        전부 200
 ## 13. 이번에 기록만 하고 고치지 않은 개선 아이디어
 
 - S06 `/profile/intro`에서 샘플 경로를 없앴으므로, 결과를 먼저 보고 싶어 하는 사용자를 위한 **정직한** 대안(예: 입력 2개만으로 미완성 결과 보기)이 필요한지 UT-2에서 관찰한다.
-- Paywall 티저 라벨(`미리 보기 — 3가지만 살짝`)이 참가자에게 '제품이 미완성'으로 읽히는지 UT-2에서 확인한다. 읽힌다면 그때 바꾼다.
 - 상위 기능 용어 `관계 경험`의 실제 이해도는 다음 UT에서 UT2-H5로 검증한다([`UT2_followup_hypotheses.md`](./UT2_followup_hypotheses.md)).
 
 ---
