@@ -5,6 +5,7 @@
  */
 
 import type {
+  RelationshipExperience,
   AffectionStyle,
   ConflictStyle,
   HardestMoment,
@@ -59,6 +60,8 @@ export const PAST_FACTOR_LABEL: Record<PastFactor, string> = {
   future: '미래 계획',
   care: '배려',
   stable: '정서적 안정',
+  /* 260915 UT P1-2 — 라벨만으로는 아무 의미가 없다. 내용은 `experience.importantOther` */
+  other: '기타',
 };
 
 export const HARDEST_LABEL: Record<HardestMoment, string> = {
@@ -147,7 +150,39 @@ export const PAST_FACTOR_ORDER: PastFactor[] = [
   'future',
   'care',
   'stable',
+  /* 260915 UT P1-2 — 항상 **맨 끝**이다. 보기를 다 읽은 뒤에 '없네'라고 느끼는 자리다 */
+  'other',
 ];
+
+/**
+ * '기타' 자유 입력 상한 (260915 UT P1-2)
+ *
+ * UT 요청 그대로 300자다. `experience.note`와 같은 값이고, 같은 이유다 — 한 문단이면
+ * 충분하고, 그보다 길어지면 사용자도 우리도 그 안에서 무엇이 근거인지 알 수 없다.
+ */
+export const MAX_PAST_OTHER_LENGTH = 300;
+
+/**
+ * 관계 경험 '중요했던 요소'를 **화면·AI에 보여줄 라벨**로 편다 (260915 UT P1-2)
+ *
+ * `other`는 라벨이 `기타`인데, 그 세 글자는 아무 근거도 아니다. 그대로 흘리면
+ * `관계에서는 기타에 특히 신경 쓰는 모습을 보였어` 같은 문장이 만들어진다.
+ * 그래서 **사용자가 적은 문장으로 바꾸고, 비어 있으면 아예 뺀다.**
+ *
+ * @param maxOtherLength 칩·목록처럼 짧게 보여야 하는 자리에서 자를 길이.
+ *        AI 입력처럼 원문이 필요한 곳은 `MAX_PAST_OTHER_LENGTH`를 그대로 넘긴다.
+ */
+export function pastFactorLabels(
+  experience: Pick<RelationshipExperience, 'important' | 'importantOther'>,
+  maxOtherLength = 24,
+): string[] {
+  return experience.important.flatMap((factor) => {
+    if (factor !== 'other') return [PAST_FACTOR_LABEL[factor]];
+    const text = experience.importantOther.trim();
+    if (text.length === 0) return [];
+    return [text.length > maxOtherLength ? `${text.slice(0, maxOtherLength)}…` : text];
+  });
+}
 
 /**
  * '이전 관계에서 생각보다 중요했던 것' 최대 선택 수.

@@ -247,6 +247,12 @@ export const ANALYTICS_EVENTS = [
   'result_anchor_navigation',
   /** Profile Revisit에서 '수정' 진입점을 눌렀을 때. properties: section */
   'result_edit_entry',
+  /* 260915 UT P1-1 — 선택형 심화 입력 */
+  'deep_input_open',
+  'deep_input_answer',
+  'deep_input_skip',
+  /* 260915 UT P2-1 — 결과 끝의 공유 진입 */
+  'share_entry_click',
   /**
    * @deprecated v1.11 — 이번 버전에서는 발생시키지 않는다. Compatibility/Mirror 결과는
    * 세션에서 매번 다시 계산되는 순수 함수라 '재분석'이 버튼→로딩을 거치는 별도 프로세스가

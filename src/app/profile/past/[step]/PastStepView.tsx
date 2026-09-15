@@ -12,7 +12,12 @@ import { InlineError, NoticeBox, PageHeading, Tag } from '@/components/common/pr
 import { useToast } from '@/components/common/ToastProvider';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { LOVY_LINES, PRIVACY } from '@/data/copy';
-import { MAX_PAST_FACTORS, PAST_FACTOR_LABEL, PAST_FACTOR_ORDER } from '@/data/labels';
+import {
+  MAX_PAST_FACTORS,
+  MAX_PAST_OTHER_LENGTH,
+  PAST_FACTOR_LABEL,
+  PAST_FACTOR_ORDER,
+} from '@/data/labels';
 import {
   HARDEST_OPTIONS,
   PAST_NOTE_MAX,
@@ -39,6 +44,7 @@ export function PastStepView({ step }: { step: PastStep }) {
     setHardest,
     setSelfGap,
     setPastNote,
+    setPastImportantOther,
     markComplete,
     skipExperience,
     resumeExperience,
@@ -61,6 +67,18 @@ export function PastStepView({ step }: { step: PastStep }) {
     if (step === 1 && experience.important.length === 0) {
       return '하나라도 골라줘. 이게 관계 속의 너를 읽는 기준이 돼.';
     }
+    /*
+      260915 UT P1-2 — '기타'는 **자유 입력을 여는 스위치**라 라벨만으로는 아무 근거도
+      되지 않는다. 고르기만 하고 비워두면 다음 화면에서 '기타'라는 근거 없는 항목이
+      생긴다. 다른 보기를 함께 골랐더라도 마찬가지다 — 비운 '기타'는 저장하지 않는다.
+    */
+    if (
+      step === 1 &&
+      experience.important.includes('other') &&
+      experience.importantOther.trim().length === 0
+    ) {
+      return '‘기타’를 골랐으면 어떤 거였는지 한 줄만 적어줘.';
+    }
     if (step === 2 && experience.hardest === null) {
       return '가장 가까운 쪽을 하나 골라줘.';
     }
@@ -68,6 +86,24 @@ export function PastStepView({ step }: { step: PastStep }) {
       return '연애 전과 실제 연애 속 너가 어땠는지 골라줘.';
     }
     return null;
+  };
+
+  /**
+   * 260915 UT P1-1 — 심화 입력으로 간다.
+   *
+   * 마지막 단계의 필수 답(`selfGap`)은 먼저 받는다. 그래야 심화 질문을 고르는 규칙이
+   * 사용자의 최신 답을 볼 수 있고, 돌아왔을 때 다시 물어보지 않는다.
+   */
+  const handleDeepInput = () => {
+    const message = validate();
+    if (message) {
+      setError(message);
+      return;
+    }
+    markComplete('experience');
+    markComplete('profile');
+    trackEvent('deep_input_open', { from: 'past_last_step' });
+    router.push(withReturnTo(ROUTES.profileDeep, searchParams));
   };
 
   const handleNext = () => {
@@ -145,6 +181,21 @@ export function PastStepView({ step }: { step: PastStep }) {
       footer={
         <div className="flex flex-col gap-2">
           {error ? <InlineError message={error} /> : null}
+          {/*
+            260915 UT P1-1 — **마지막 질문에서만** 심화 입력을 연다.
+
+            "질문이 벌써 끝났어?"라는 반응이 나온 지점이 정확히 여기다. 기본 흐름을
+            늘리지 않으면서 '더 말하고 싶다'는 사람에게만 길을 준다. 누르지 않으면
+            존재하지 않는 화면이고, 결과도 그대로 나온다.
+
+            ⚠️ 여기서 `markComplete`를 하지 않는다 — 심화 화면을 나갈 때가 아니라
+            **이 단계를 통과할 때** 프로필이 완료된다는 규칙은 그대로다(`handleNext`).
+          */}
+          {step === PAST_TOTAL ? (
+            <Button variant="text" onClick={handleDeepInput}>
+              + 더 자세히 알려주기 (선택)
+            </Button>
+          ) : null}
           <Button onClick={handleNext}>
             {step === 1
               ? `다음 · ${experience.important.length}개 선택`
@@ -212,6 +263,43 @@ export function PastStepView({ step }: { step: PastStep }) {
                 );
               })}
             </div>
+
+            {/*
+              260915 UT P1-2 — 보기 12개로 담기지 않는 것을 위한 칸.
+
+              UT 요청: "이전 관계 선택지에 '기타'가 있어서 입력할 수 있게 했음 좋겠음(300자)"
+
+              ⚠️ **고른 사람에게만 보인다.** 항상 펼쳐두면 모든 사용자가 '뭔가 더 적어야
+              하나' 하고 멈춘다 — 이 입력은 선택이고, 비워도 되는 게 아니라 **고르지
+              않으면 존재하지도 않는다.**
+            */}
+            {experience.important.includes('other') ? (
+              <div className="flex flex-col gap-1.5">
+                <label className="sr-only" htmlFor="past-important-other">
+                  기타 — 어떤 것이 중요했는지
+                </label>
+                <textarea
+                  id="past-important-other"
+                  value={experience.importantOther}
+                  onChange={(event) => {
+                    setPastImportantOther(event.target.value);
+                    setError(null);
+                  }}
+                  maxLength={MAX_PAST_OTHER_LENGTH}
+                  rows={3}
+                  placeholder="예) 답장이 늦으면 서운했어"
+                  className="w-full resize-none rounded-row border border-line bg-surface p-3.5 text-sub leading-relaxed outline-none placeholder:text-ink-faint focus:border-brand"
+                />
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-meta text-ink-muted">
+                    적어준 그대로만 볼게. 여기서 성격을 판단하지 않아.
+                  </span>
+                  <span className="flex-none text-meta text-ink-muted tnum">
+                    {experience.importantOther.length}/{MAX_PAST_OTHER_LENGTH}
+                  </span>
+                </div>
+              </div>
+            ) : null}
 
             <NoticeBox>{PRIVACY.past}</NoticeBox>
           </>

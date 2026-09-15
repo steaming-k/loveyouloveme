@@ -160,8 +160,16 @@ export function sanitizeSelfProfile(value: unknown): SelfProfileData {
       affection: sanitizeAffection(declared.affection),
       hobby: sanitizeHobby(declared.hobby),
     },
+    /*
+      ⚠️ **키 순서를 `RelationshipExperience` 선언 순서와 맞춘다.** parity 검사가
+      `JSON.stringify` 비교라서, 같은 값이어도 순서가 다르면 '클라우드 왕복에서
+      값이 달라졌다'로 잡힌다(260915 UT P1-2에서 실제로 걸렸다).
+    */
     experience: {
       important: sanitizePastFactors(experience.important),
+      /* 260915 UT P1-2 — v1.47 이전 저장본에는 없다. 없으면 빈 문자열이 정상값이다 */
+      importantOther:
+        typeof experience.importantOther === 'string' ? experience.importantOther : '',
       hardest: sanitizeHardest(experience.hardest),
       selfGap: sanitizeSelfGap(experience.selfGap),
       note: typeof experience.note === 'string' ? experience.note : '',

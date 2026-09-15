@@ -243,6 +243,8 @@ export function relationshipNarrativeFingerprint(input: {
     experience.selfGap,
     // 자유서술은 원문이 아니라 길이만 — 지문에 사용자 문장을 남기지 않는다.
     experience.note.trim().length,
+    /* 260915 UT P1-2 — 내용이 아니라 길이만. `note`와 같은 이유다 */
+    experience.importantOther.trim().length,
     experience.skipped ? 'skip' : 'kept',
     experience.adaptive ? `${experience.adaptive.axis}:${experience.adaptive.optionId}` : null,
     focusAxis,

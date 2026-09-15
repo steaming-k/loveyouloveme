@@ -11,7 +11,9 @@ import {
 import { CURRENT_SIGNAL_VALUES } from '@/data/currentRelationship';
 import { TARGET_FIELDS } from '@/data/targetFields';
 import { MIRROR_AXES } from '@/data/axes';
+import { deepInputQuestionOf } from '@/data/relationshipDeepInput';
 import type {
+  DeepInputAnswer,
   AffectionStyle,
   ConflictStyle,
   CurrentSignalAnswer,
@@ -118,6 +120,31 @@ export function sanitizeTargetLevel(value: unknown): TargetLevel {
 }
 
 /** 배열이 아니면 통째로 버린다. 배열이면 유효한 factor만 남기고 중복도 제거한다 */
+/**
+ * 저장된 심화 입력 복원 (260915 UT P1-1)
+ *
+ * ⚠️ **id가 pool에 실제로 있는지 확인한다.** 질문이나 보기를 지운 배포 뒤에 예전 세션이
+ * 돌아오면, 확인하지 않는 한 존재하지 않는 id가 근거 조회에 들어간다. 모르는 항목은
+ * 조용히 버린다 — 근거가 아닌 것을 근거인 척 남겨두지 않는다.
+ */
+export function sanitizeDeepInputs(value: unknown): DeepInputAnswer[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const result: DeepInputAnswer[] = [];
+  for (const item of value) {
+    if (typeof item !== 'object' || item === null) continue;
+    const { axis, questionId, optionId } = item as Record<string, unknown>;
+    if (typeof questionId !== 'string' || typeof optionId !== 'string') continue;
+    if (seen.has(questionId)) continue;
+    const question = deepInputQuestionOf(questionId);
+    if (!question || question.axis !== axis) continue;
+    if (!question.options.some((option) => option.id === optionId)) continue;
+    seen.add(questionId);
+    result.push({ axis: question.axis, questionId, optionId });
+  }
+  return result;
+}
+
 export function sanitizePastFactors(value: unknown): PastFactor[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<PastFactor>();
