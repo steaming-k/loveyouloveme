@@ -406,6 +406,60 @@ check(
   populationHits,
 );
 
+/* ═══════════════════════════ UT-2 RC */
+
+console.log('\nUT-2 RC — 2차 UT를 막는 회귀');
+
+/*
+  RC-01 — **선택형 심화 입력은 새로고침을 견뎌야 한다.**
+
+  `DeepInputView`는 질문 목록을 마운트 시점에 한 번 고정한다(의도된 설계 — 답할 때마다
+  다시 고르면 방금 답한 질문이 목록에서 빠진다). 그래서 **복원이 끝난 뒤에** 첫 렌더가
+  일어나야 하고, 그걸 보장하는 게 `HydrationGate`다. 게이트가 없으면 새로고침·주소 직접
+  진입에서 빈 세션으로 질문을 고르고 그 빈 목록이 그대로 박힌다 — 세션에 답이 다 있는데도
+  '더 물어볼 건 관계 이야기가 쌓이면 그때 물어볼게'만 뜨는 dead-end가 된다.
+
+  2차 UT에서 이건 조용한 오염이다: 참가자가 심화 입력을 **안 쓴 것**으로 보이지만
+  실제로는 화면이 질문을 준 적이 없다 — H1이 재려는 바로 그 행동이 사라진다.
+*/
+const deepPage = await src('src/app/profile/deep/page.tsx');
+const deepView = await src('src/app/profile/deep/DeepInputView.tsx');
+check(
+  'RC-01 선택형 심화 입력 화면이 HydrationGate 안에 있다',
+  deepPage.includes('<HydrationGate>'),
+);
+check(
+  'RC-01 질문 목록 freeze는 그대로다 (복원 시점만 바뀐다)',
+  /useState\(\(\) => selectDeepInputQuestions\(answers\)\)/.test(deepView),
+);
+
+/*
+  RC-02 — **마운트에 파생값을 얼리는 화면은 반드시 게이트 안에 있어야 한다.**
+  같은 결함이 다른 입력 화면에 새로 생기면 똑같이 조용히 사라진다.
+*/
+const ungated = [];
+for (const dir of ['deep', 'past/adaptive', 'declared/[step]', 'past/[step]']) {
+  const pageSrc = await src(`src/app/profile/${dir}/page.tsx`);
+  let viewSrc = '';
+  for (const view of ['DeepInputView.tsx', 'PastStepView.tsx', 'DeclaredStepView.tsx']) {
+    try {
+      viewSrc += await src(`src/app/profile/${dir}/${view}`);
+    } catch {
+      /* 그 폴더에 없는 뷰는 건너뛴다 */
+    }
+  }
+  /* `answers`에서 파생된 값을 마운트에 얼리는가 — 단순 초기값(false/null/0 등)은 제외 */
+  const freezesDerived = /useState\(\(\) => (?!false|true|null|0\b|new Date|resolvePriceVariant)\w/.test(
+    pageSrc + viewSrc,
+  );
+  if (freezesDerived && !pageSrc.includes('<HydrationGate>')) ungated.push(dir);
+}
+check(
+  'RC-02 마운트에 파생값을 고정하는 입력 화면은 전부 HydrationGate 안에 있다',
+  ungated.length === 0,
+  ungated,
+);
+
 /* ═══════════════════════════ 결과 */
 
 console.log(`\n${failures.length === 0 ? '✅' : '❌'} ut-phase1 — ${passed} passed, ${failures.length} failed`);
