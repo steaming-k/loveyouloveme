@@ -1286,6 +1286,39 @@ function LowConfidenceView() {
   const { job: lowDataJob } = resolveRelationshipContext(answers);
   const showLowDataAction = jobAllowsOutwardAction(lowDataJob);
 
+  /*
+    ══ 1차 UT 전체 Backlog P0-1 — **E3에서 Premium이 통째로 사라지던 문제** ═══════
+
+    0911 UT에서 "프리미엄이 보여야 하는데 안 보임"이 나왔고, v1.46~v1.47에서
+    본문(`CompatibilityResultView`) 쪽만 막았다. 그런데 이 화면(E3 · 확신 낮음)에는
+    `PremiumEntryRow`가 **처음부터 한 번도 없었다** — 상대 정보를 3개 미만으로 답한
+    사용자는 결과 화면까지 왔는데도 Premium을 볼 방법이 없다. UT 참가자가 '모름'을
+    여러 개 고르는 것은 드문 경로가 아니라 실제로 관찰된 경로다(0915 UT-1).
+
+    ⚠️ **없는 것을 팔지 않는다는 규칙은 그대로다.** 여기서 하는 일은 판정을 우회하는
+    게 아니라 본문과 **같은 `premiumFeatureState`를 태우는 것**뿐이다. 근거가 없으면
+    `PremiumEntryRow`가 알아서 `unavailable` 카드(+ 보완 경로 버튼)로 바뀐다 —
+    동기화율을 못 낸 사실과 Premium 자격은 원래 다른 판정이다(§2-1-A).
+  */
+  const [lowDataVariant] = useState(() => resolvePriceVariant());
+  const lowDataUtMode = useUtMode();
+  const lowDataCrossSourceInsights = useCrossSourceInsights();
+  const lowDataMirror = useMirror();
+  const lowDataPremiumFeature = premiumFeatureState(
+    'relationship_deep_report',
+    resolvePrice(lowDataVariant),
+    {
+      utMode: lowDataUtMode,
+      deepReportAvailable: hasPremiumEvidence({
+        insights: lowDataCrossSourceInsights,
+        declared: answers.declared,
+        mirror: lowDataMirror,
+      }),
+      solo: soloModeOf(answers) === 'no_target',
+      allowsOutwardAction: showLowDataAction,
+    },
+  );
+
   useEffect(() => {
     // v1.11.1 §17~§20 — E3(확신 낮음)는 '0점'이 아니라 '계산 자체가 불가능한 상태'다.
     // 0으로 기록하면 실제 0점(4축 모두 최대 차이)과 Analytics에서 구분할 수 없다.
@@ -1379,6 +1412,15 @@ function LowConfidenceView() {
             </p>
           </section>
         ) : null}
+
+        {/*
+          1차 UT 전체 Backlog P0-1 — 본문과 **같은 진입 행**이다. 새 컴포넌트를 만들지
+          않는다. Hook 문구도 붙이지 않는다: 여기서는 아직 Friction을 계산하지 못했으므로
+          (`score === null`) 약속할 차이가 없다 — 본문의 `utMode` 분기와 같은 이유다.
+        */}
+        <div className="mt-2">
+          <PremiumEntryRow feature={lowDataPremiumFeature} source="compatibility" />
+        </div>
       </div>
     </ScreenLayout>
   );
