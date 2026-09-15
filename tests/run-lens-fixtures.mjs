@@ -229,7 +229,7 @@ console.log('\nLENS-01~02 · Premium Bundle 단일 상품');
     ),
   );
 
-  const bundle = await src('src/components/premium/HomePremiumBundle.tsx');
+  const bundle = await src('src/components/premium/PremiumBundleCard.tsx');
   /**
    * LENS-02 — 가격 렌더는 `formatPrice(price)` 한 번뿐이어야 한다.
    * 렌즈 버튼 3개에 가격이 들어가면 여기 개수가 늘어난다.

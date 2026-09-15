@@ -94,7 +94,7 @@ const chapters = findKey(utReport, 'chapters');
 
 const PREMIUM_SURFACES = [
   'src/components/premium/PremiumEntryRow.tsx',
-  'src/components/premium/HomePremiumBundle.tsx',
+  'src/components/premium/PremiumBundleCard.tsx',
   'src/app/premium/page.tsx',
   'src/app/premium-preview/[feature]/page.tsx',
   'src/app/premium-preview/deep-questions/page.tsx',
@@ -108,7 +108,7 @@ check(
     access.utFlagsOn.surfaceEnabled === true &&
     access.utFlagsOff.surfaceEnabled === true &&
     /if \(!access\.surfaceEnabled\) return null;/.test(src('src/components/premium/PremiumEntryRow.tsx')) &&
-    /if \(!access\.surfaceEnabled\) return null;/.test(src('src/components/premium/HomePremiumBundle.tsx')),
+    /if \(!access\.surfaceEnabled\) return null;/.test(src('src/components/premium/PremiumBundleCard.tsx')),
   { ut, utFlagsOff: access.utFlagsOff },
 );
 
