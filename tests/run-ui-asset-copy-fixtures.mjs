@@ -7,9 +7,9 @@
  * ASSET-03  캐릭터 에셋이 data:image · base64가 아니다 (정적 /lovy/*.png만)
  * ASSET-04  코드의 pose 리터럴 · /lovy/ 경로 · <img>가 전부 실제 에셋(또는 사용자 사진 blob)을 가리킨다
  * COPY-01   production 사용자 화면 '개발용 미리보기' = 0
- * COPY-02   production 사용자 화면 '개발용' · '테스트용' = 0 (mock 전용 분기만 예외 — production은 mock 불가)
+ * COPY-02   production 사용자 화면 '개발용' · '테스트용' = 0 (예외 없음)
  * COPY-03   예외로 뺀 dev 전용 화면이 실제로 production에서 막혀 있고, 사용자 화면이 /dev 경로를 참조하지 않는다
- * COPY-04   '미리보기' · '샘플' · '데모'는 기능상 의미가 있는 allowlist 문구만
+ * COPY-04   '미리보기' · '샘플' · '데모' = 0 (UT-2 RC — allowlist 비움)
  * ```
  *
  * ⚠️ 정적 검사만 한다. 서버 · Provider 호출 없음.
@@ -164,17 +164,19 @@ const userFacing = [...sources.keys()].filter(
 const devPreview = userFacing.filter((file) => /개발용\s*·?\s*미리보기/.test(sources.get(file).code));
 check('COPY-01 사용자 화면 "개발용 미리보기" 0', devPreview.length === 0, devPreview);
 
-/** mock 모드 전용 분기 — serverEnv가 production에서 mock을 demo로 내린다(COPY-03) */
-const MOCK_ONLY_FILES = new Set(['src/app/profile/observed/page.tsx']);
+/**
+ * ⚠️ v1.47 UT-2 RC — mock 전용 예외('개발용 MOCK')를 없앴다.
+ * mock은 production에서 demo로 내려가므로 렌더될 일이 없었지만, 참가자 화면 파일에 그
+ * 문구가 **남아 있다는 것 자체**가 설정 한 줄로 노출될 수 있는 상태였다.
+ */
 const devWords = [];
 for (const file of userFacing) {
   const { code } = sources.get(file);
   for (const match of code.matchAll(/[^\n]{0,16}(개발용|테스트용)[^\n]{0,16}/g)) {
-    const allowed = MOCK_ONLY_FILES.has(file) && /개발용 MOCK/.test(match[0]);
-    if (!allowed) devWords.push(`${file}: ${match[0].trim()}`);
+    devWords.push(`${file}: ${match[0].trim()}`);
   }
 }
-check('COPY-02 사용자 화면 "개발용" · "테스트용" 0 (mock 전용 "개발용 MOCK"만 예외)', devWords.length === 0, devWords);
+check('COPY-02 사용자 화면 "개발용" · "테스트용" 0 (예외 없음)', devWords.length === 0, devWords);
 
 const devPages = [...sources.keys()].filter((file) => /^src\/app\/dev\/[^/]+\/page\.tsx$/.test(file));
 const ungatedDevPages = devPages.filter((file) => {
@@ -204,19 +206,21 @@ check(
 );
 
 /**
- * 기능상 의미가 있어서 남긴 문구. 새 문구가 생기면 여기서 걸린다 — 실제 기능인지 먼저 판단한다.
- *   미리보기로 리포트를 열었어   결제 전 먼저 보는 리포트(Premium unlock · preview mode)
- *   샘플 답변으로 결과부터 볼게   사용자가 직접 고르는 체험 경로(S06) — 결과 화면에 DEMO 표시가 따라온다
- *   데모 모드 · 데모 분석 · 데모용 규칙 기반  AI Provider 미연결(demo) 상태를 사실대로 알리는 신뢰 문구
+ * ⚠️ v1.47 UT-2 RC — **allowlist를 비웠다.**
+ *
+ * 예전에는 여섯 문구를 '기능상 의미가 있다'는 이유로 통과시켰다:
+ *   미리보기로 리포트를 열었어 · 샘플 답변으로 결과부터 볼게 ·
+ *   데모 모드라 사진을 전송하지 않아 · 데모 분석을 사용 중이야 ·
+ *   데모용 규칙 기반 응답이야 · 규칙 기반 데모 응답이야
+ *
+ * UT-2에서는 참가자가 제품을 **실제 제품 경험**으로 봐야 한다. 위 문구는 전부 제품을
+ * 임시 버전으로 읽히게 하므로 허용하지 않는다. 사실(사진을 전송하지 않는다 · 규칙 기반이다)은
+ * 그대로 말하되 내부 모드 이름을 쓰지 않는 문구로 바꿨다.
+ *
+ * 렌더되는 텍스트 전수 검사는 `run-meta-copy-fixtures.mjs`(META-01~10)가 한다.
+ * 여기에 예외를 다시 추가하기 전에 그쪽 기준을 먼저 본다.
  */
-const FUNCTIONAL = [
-  /미리보기로 리포트를 열었어/,
-  /샘플 답변으로 결과부터 볼게/,
-  /데모 모드라 사진을 전송하지 않아/,
-  /데모 분석을 사용 중이야/,
-  /데모용 규칙 기반 응답이야/,
-  /규칙 기반 데모 응답이야/,
-];
+const FUNCTIONAL = [];
 const metaWords = [];
 for (const file of userFacing) {
   const { code } = sources.get(file);

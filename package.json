@@ -30,6 +30,7 @@
     "test:ai:deep-report-smoke": "node tests/run-deep-report-smoke.mjs",
     "test:persistence": "node tests/run-persistence-fixtures.mjs",
     "test:ui-assets": "node tests/run-ui-asset-copy-fixtures.mjs",
+    "test:meta-copy": "node tests/run-meta-copy-fixtures.mjs",
     "test:ut-premium": "node tests/run-ut-premium-fixtures.mjs",
     "test:ut-stability": "node tests/run-ut-stability-fixtures.mjs",
     "test:ut-followup": "node tests/run-ut-followup-fixtures.mjs",
