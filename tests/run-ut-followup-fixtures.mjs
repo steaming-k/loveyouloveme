@@ -454,6 +454,8 @@ console.log('\nREL-LANG — 관계 언어 체계');
 const langFiles = {
   pastStep: await src('src/app/profile/past/[step]/PastStepView.tsx'),
   profileResult: await src('src/app/profile/result/page.tsx'),
+  /* 260915 UT P0-2 §11 — 수정 허브가 여기로 옮겨왔다(결과 화면 3곳이 공유) */
+  resultEditSheet: await src('src/components/result/ResultEditSheet.tsx'),
   historyReport: await src('src/app/history/report/page.tsx'),
   historyPage: await src('src/app/history/page.tsx'),
   home: await src('src/app/home/page.tsx'),
@@ -475,7 +477,7 @@ check(
   "REL-LANG-01 상위 기능 이름에 '이전 관계' 0 — 도입 · 수정 허브 · Premium 보완 CTA · 레이어 caption · History 비교 문구",
   featureLabelHits.length === 0 &&
     /이제 관계 경험을 짧게 돌아볼게/.test(langFiles.pastStep) &&
-    /label="관계 경험 답변 고치기"/.test(langFiles.profileResult) &&
+    /label: '관계 경험 답변 고치기'/.test(langFiles.resultEditSheet) &&
     /experience: '관계 경험 알려주기',/.test(langFiles.premiumData) &&
     /label: '관계 경험 알려주기',/.test(langFiles.evidenceState) &&
     /이전 관찰 기록과 비교하면/.test(langFiles.historyReport),

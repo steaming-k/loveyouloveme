@@ -1435,11 +1435,19 @@ console.log('\nFIX-05 ~ FIX-09 — 볼 수 없는 렌즈에서 채우러 가는 
     cardBlock.includes('ROUTES.lensBirth') && cardBlock.includes('ROUTES.declared(4)'),
   );
 
+  /*
+    260915 UT P0-2 §11 — 수정 허브가 `components/result/ResultEditSheet`로 옮겨갔다.
+    Compatibility · Mirror 결과 화면에서도 같은 것을 열기 때문이다. 검사 대상은 옮겼지만
+    **불변식은 그대로**다: 생년월일 행이 있고, 현재 값을 함께 보여주고, 입력 화면으로 간다.
+    옮긴 덕분에 검사가 더 강해졌다 — 이제 세 화면 모두가 이 행을 갖는다.
+  */
+  const editSheet = await src('src/components/result/ResultEditSheet.tsx');
   const profileResult = await src('src/app/profile/result/page.tsx');
   check(
     'FIX-08 프로필 수정에 생년월일 행이 있고 현재 값을 함께 보여준다',
-    profileResult.includes('formatBirthSummary(answers.birthProfile)') &&
-      profileResult.includes('ROUTES.lensBirth'),
+    editSheet.includes('formatBirthSummary(answers.birthProfile)') &&
+      editSheet.includes('ROUTES.lensBirth') &&
+      profileResult.includes('<ResultEditSheet'),
   );
 
   const birth = await src('src/app/lens/birth/page.tsx');

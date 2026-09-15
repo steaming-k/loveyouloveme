@@ -34,6 +34,7 @@
     "test:ut-premium": "node tests/run-ut-premium-fixtures.mjs",
     "test:ut-stability": "node tests/run-ut-stability-fixtures.mjs",
     "test:ut-followup": "node tests/run-ut-followup-fixtures.mjs",
+    "test:ut15": "node tests/run-ut15-followup-fixtures.mjs",
     "test:ai:e2e": "node tests/run-provider-e2e.mjs"
   },
   "dependencies": {

@@ -340,12 +340,29 @@ async function main() {
   {
     const home = noComments(await src('app/home/page.tsx'));
 
-    /* ── IA-01 · Home에서 같은 프로필 목적지가 중복되지 않는다 ───────────── */
+    /* ── IA-01 · Home에서 같은 프로필 목적지가 중복되지 않는다 ─────────────
+
+       260915 UT P2-2 — **기대값을 1에서 0으로 내렸다.**
+
+       UT-1에서 본문 행을 지우고 헤더 아바타 1개를 남겼는데, 260915 UT에서 참가자가
+       그 아바타를 다시 지목했다("'나' 프로필 제거"). 같은 화면에 하단 Navigation이
+       항상 떠 있고 그 안의 `나` 탭과 **목적지도 인자도 같았다.**
+
+       검사하는 규칙은 그대로다 — '같은 목적지로 가는 길이 중복되지 않는다'. 달라진
+       것은 그 길을 어디에 두느냐이고, 이제 상시 chrome은 하단 Nav 하나뿐이다. */
     const profileEntries = (home.match(/revisitHref\(ROUTES\.profileResult, 'home'\)/g) ?? []).length;
     check(
-      'IA-01 Home 본문에 프로필 중복 진입점이 없다 (헤더 아바타 1개만)',
-      profileEntries === 1,
+      'IA-01 Home에 프로필 진입점이 따로 없다 (하단 나 탭이 유일한 상시 경로)',
+      profileEntries === 0 && !home.includes('aria-label="내 프로필 보기"'),
       { profileEntries },
+    );
+    check(
+      'IA-01 그래도 프로필로 가는 길은 남아 있다 (하단 Nav · dead-end 0)',
+      home.includes('<BottomNavigation') &&
+        noComments(await src('components/common/BottomNavigation.tsx')).includes(
+          'ROUTES.profileResult',
+        ),
+      null,
     );
     check(
       'IA-01 프로필 행 문구가 Home에 남아 있지 않다',
