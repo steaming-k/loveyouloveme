@@ -46,7 +46,7 @@ export default function ShareCompatibilityPage() {
   const shareText = [
     `동기화율 ${result.score ?? '?'}`,
     headline.join(' '),
-    '입력된 정보 기준 비교 결과 · 연애 성공확률이 아니야',
+    '입력된 정보 기준 비교 결과 · 관계의 결과를 예측하는 점수는 아니야',
   ].join('\n');
 
   return (
@@ -65,7 +65,7 @@ export default function ShareCompatibilityPage() {
                   bigValue: String(result.score ?? '?'),
                   bigValueCaption: '동기화율',
                   headlineLines: headline,
-                  footnote: '입력된 정보 기준 비교 결과 · 연애 성공확률이 아니야',
+                  footnote: '입력된 정보 기준 비교 결과 · 관계의 결과를 예측하는 점수는 아니야',
                   items,
                   lovyPose: 'cool',
                 },
@@ -147,7 +147,7 @@ export default function ShareCompatibilityPage() {
           <div className="flex items-center gap-2.5 border-t border-white/25 pt-3.5">
             <Lovy pose="cool" size={34} decorative />
             <p className="text-[11px] leading-relaxed opacity-80">
-              입력된 정보 기준 비교 결과 · 연애 성공확률이 아니야
+              입력된 정보 기준 비교 결과 · 관계의 결과를 예측하는 점수는 아니야
             </p>
           </div>
         </section>

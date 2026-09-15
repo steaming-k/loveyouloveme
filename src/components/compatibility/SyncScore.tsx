@@ -4,7 +4,9 @@ import { COMPATIBILITY_COPY } from '@/data/copy';
  * Compatibility Hero 의 동기화율 (S21)
  *
  * 숫자는 요약일 뿐이라는 것이 화면에서도 읽혀야 하므로,
- * 점수 아래에 '연애 성공확률이 아니야' 고지를 **항상** 붙인다.
+ * 점수 아래에 '관계의 결과를 예측하는 점수는 아니야' 고지를 **항상** 붙인다.
+ * (260915 UT P0-3 — 예전 문구 '연애 성공확률이 아니야'는 연인·배우자에게 성립하지 않았다.
+ *  문구 결정 근거는 `COMPATIBILITY_COPY.notice` 주석에 있다.)
  *
  * v1.23 §3 — LEVEL 1을 첫 viewport 안에 넣기 위해 두 가지를 줄였다.
  *   ① 점수 96px → **76px.** 96px는 `giant headline`(§20 금지)에 가깝고, 이 화면에서
