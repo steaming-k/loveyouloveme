@@ -28,10 +28,13 @@ export function ReportHeader({
   meta: readonly string[];
   /**
    * 보고서 종류 라벨. 기본은 무료 관찰 보고서(`LOVY OBSERVATION REPORT`)다.
-   * Premium Deep Report는 `PRECISION REPORT`를 넘겨서, Paywall 헤더 Tag → Unlock Success →
-   * 이 헤더까지 **같은 문자열이 같은 자리에** 남게 한다(layout continuity).
+   *
+   * ⚠️ v1.48.1 — `null`이면 **그리지 않는다.** Premium Deep Report처럼 화면 헤더
+   * (`ScreenHeader`의 `ScreenMarker`)가 이미 같은 라벨을 들고 있는 자리에서는 이 줄이
+   * 같은 문자열을 한 번 더 찍어 첫 viewport에 marker가 두 번 보였다(실측). 라벨의
+   * 자리 연속성(Paywall → Unlock → Report)은 헤더 쪽 marker가 이미 맡고 있다.
    */
-  eyebrow?: string;
+  eyebrow?: string | null;
 }) {
   return (
     <header className="flex flex-col gap-2 px-1 pt-2">
@@ -40,12 +43,14 @@ export function ReportHeader({
         History의 `RELATIONSHIP HISTORY`와 같은 형태(rule + 넓은 자간)를 쓴다 —
         화면마다 다른 모양의 라벨이 있으면 그건 시스템이 아니다.
       */}
-      <p className="flex items-center gap-2.5">
-        <span className="h-px w-4 flex-none bg-rule-ink" aria-hidden />
-        <span className="text-[10px] font-semibold tracking-[0.18em] text-ink-muted">
-          {eyebrow}
-        </span>
-      </p>
+      {eyebrow ? (
+        <p className="flex items-center gap-2.5">
+          <span className="h-px w-4 flex-none bg-rule-ink" aria-hidden />
+          <span className="text-[10px] font-semibold tracking-[0.18em] text-ink-muted">
+            {eyebrow}
+          </span>
+        </p>
+      ) : null}
       <h1 className="text-[24px] font-semibold leading-[1.34] tracking-[-0.7px] keep-all">
         {title}
       </h1>

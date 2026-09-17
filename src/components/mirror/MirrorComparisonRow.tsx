@@ -8,7 +8,7 @@ import type { ReactNode } from 'react';
 
 import { cn } from '@/lib/cn';
 import { ALREADY_KNOWN_LINE, isAlreadyKnown } from '@/lib/resultPriority';
-import { displayStateOf, valueToPercent } from '@/lib/logic/mirror';
+import { displayStateOf } from '@/lib/logic/mirror';
 import {
   hasTemporalComparison,
   scopeLabelOf,
@@ -17,9 +17,8 @@ import {
 import type { MirrorInsight, MirrorState } from '@/types';
 
 /**
- * ⚠️ 색 이름은 v1.47 그대로다(테스트가 `STATE_TAG[shownState]`를 찾는다). 바뀐 것은
- * 배지의 **형태**뿐이다: 알약(pill)에서 각진 evidence 표식으로. 상태는 더 이상
- * 색 tag 하나가 혼자 짊어지지 않는다 — 아래 `MirrorLink`가 같은 판정을 형태로 그린다.
+ * ⚠️ 색 이름은 v1.47 그대로다(테스트가 `STATE_TAG[shownState]`를 찾는다).
+ * 배지의 **형태**만 각진 evidence 표식이다 — 알약이 아니다.
  */
 const STATE_TAG: Record<MirrorState, string> = {
   MATCH: 'bg-mint-tint text-mint-deep',
@@ -35,12 +34,19 @@ const STATE_DOT: Record<MirrorState, string> = {
   UNKNOWN: 'bg-ink-faint',
 };
 
-/** 연결선의 색 — 배지와 같은 판정을 같은 색으로 말한다 */
-const STATE_STROKE: Record<MirrorState, string> = {
-  MATCH: 'var(--color-mint)',
-  GAP: 'var(--color-brand)',
-  CHANGE: 'var(--color-friction)',
-  UNKNOWN: 'var(--color-rule-mid)',
+/** 두 자아 사이 구분선의 색 — 배지와 같은 판정을 같은 색으로 말한다 */
+const STATE_RULE: Record<MirrorState, string> = {
+  MATCH: 'bg-mint',
+  GAP: 'bg-brand-soft',
+  CHANGE: 'bg-friction',
+  UNKNOWN: 'bg-rule-hair',
+};
+
+const STATE_INK: Record<MirrorState, string> = {
+  MATCH: 'text-mint-deep',
+  GAP: 'text-brand-pressed',
+  CHANGE: 'text-friction-text',
+  UNKNOWN: 'text-ink-muted',
 };
 
 /** 상태를 색만으로 구분하지 않기 위한 한국어 설명 */
@@ -52,7 +58,7 @@ const STATE_TEXT: Record<MirrorState, string> = {
 };
 
 /**
- * v1.41 §39.11 — 근거가 **지금 관계**에서 온 행의 스크린리더 문구.
+ * v1.41 §39.11 — 근거가 **지금 관계**에서 온 행의 문구.
  *
  * 위 표의 CHANGE는 `경험 후 낮아짐`인데, 그건 근거가 과거 경험일 때만 맞는 말이다.
  * 화면 본문(`insight.note`)은 이미 시점을 갈랐으므로 **보이지 않는 문구만 남으면
@@ -63,7 +69,7 @@ const CURRENT_STATE_TEXT: Partial<Record<MirrorState, string>> = {
 };
 
 /**
- * v1.44 NEW-003 — 비교할 관계 근거가 **아예 없는** 행의 스크린리더 문구.
+ * v1.44 NEW-003 — 비교할 관계 근거가 **아예 없는** 행의 문구.
  *
  * v1.41은 위 `'current'` 갈래만 만들었고 `'none'`은 `STATE_TEXT`의 `경험 후 낮아짐`으로
  * 떨어졌다. 그 행의 근거 칸은 `이전 관계에서 …꼽지는 않았어`라고 말하고 있으므로,
@@ -85,107 +91,46 @@ function stateTextOf(insight: MirrorInsight): string {
 }
 
 /**
- * ══ 두 자아를 잇는 선 (v1.48 · Signature) ═══════════════════════════════════
- *
- * 이 제품의 Core Value는 한 문장이다: **내가 생각한 나 vs 관계에서 나타난 너.**
- * 그런데 화면에서는 그 둘이 그냥 위아래로 놓인 텍스트 두 덩어리였고, 관계는
- * `GAP` 같은 **색 tag 하나**가 전부 짊어지고 있었다.
- *
- * 여기서 두 정보가 실제 판정에 맞는 **형태**를 갖는다:
- *
- * ```
- *  말한 나      ───────────●            ← 정확한 위치
- *                          ╲
- *                           ╲  벌어짐    ← GAP  : 오른쪽 아래로 벌어진다
- *  관계에서     ──────────────●
- *
- *  말한 나      ───────────●
- *                          │  겹침      ← MATCH : 같은 자리로 곧게 내려온다
- *  관계에서     ───────────●
- *
- *  말한 나      ───────────●
- *                         ╱
- *                        ╱    낮아짐     ← CHANGE: 왼쪽 아래로 물러난다
- *  관계에서     ──────●
- * ```
- *
- * ══ ⚠️ 없는 정밀도를 만들지 않는다 ═══════════════════════════════════════════
- *
- * 선의 **시작점만** 정확하다 — 그건 `insight.declared`(1~5로 직접 답한 값)의 위치다.
- * 도착점은 위치가 아니라 **방향**이다. Relationship Me는 1~5로 수집된 값이 아니므로
- * (이 파일이 v1.20부터 지켜온 규칙), 도착점을 정확한 좌표처럼 찍으면 그 순간 이
- * 그림은 거짓말이 된다. 방향은 이미 배지·화살표가 말하던 것과 **같은 판정**이고,
- * 여기서는 그것을 선의 기울기로 한 번 더 말할 뿐이다.
- *
- * UNKNOWN은 점선이고, 아래까지 내려가지 않고 도중에 끊긴다 — '아직 이어지지 않았다'가
- * 그림 그대로다.
- */
-function MirrorLink({ state, declared }: { state: MirrorState; declared: number }) {
-  /** 시작 x — 위 트랙의 '말한 나' 점과 같은 위치. 문자열 `NN%`에서 숫자만 꺼낸다 */
-  const startX = Number.parseFloat(valueToPercent(declared));
-  const drift = state === 'GAP' ? 22 : state === 'CHANGE' ? -22 : 0;
-  const endX = Math.min(94, Math.max(6, startX + drift));
-
-  const dashed = state === 'UNKNOWN';
-  const endY = dashed ? 17 : 28;
-
-  return (
-    /*
-      ⚠️ SVG는 `preserveAspectRatio="none"`로 가로로 늘어난다 — 선은 `non-scaling-stroke`가
-      두께를 지켜주지만 **fill 도형은 타원으로 찌그러진다.** 그래서 도달 표식은
-      SVG 안이 아니라 HTML로 그리고, 같은 x(%) 위에 얹는다.
-    */
-    <div className="relative h-7 w-full">
-      <svg
-        viewBox="0 0 100 28"
-        preserveAspectRatio="none"
-        className="h-full w-full"
-        aria-hidden
-        focusable="false"
-      >
-        <path
-          d={`M ${startX} 0 C ${startX} 14, ${endX} 14, ${endX} ${endY}`}
-          fill="none"
-          stroke={STATE_STROKE[state]}
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeDasharray={dashed ? '3 4' : undefined}
-          vectorEffect="non-scaling-stroke"
-        />
-      </svg>
-
-      {/*
-        선은 허공에서 끝나지 않고 **도달한 자리에 표식을 남긴다.** 그 표식
-        바로 아래에 관계 근거가 오므로 '여기에서 이것을 봤다'가 이어진다.
-        UNKNOWN은 아직 도달하지 않았으니 표식도 찍지 않는다.
-      */}
-      {dashed ? null : (
-        <span
-          aria-hidden
-          className="absolute bottom-0 -ml-[3px] h-[6px] w-[6px] rounded-full"
-          style={{ left: `${endX}%`, backgroundColor: STATE_STROKE[state] }}
-        />
-      )}
-    </div>
-  );
-}
-
-/**
  * Mirror Gap Map — 항목별 대조 행 (S27)
  *
- * ══ v1.48 — 카드에서 **편집 행**으로 ════════════════════════════════════════
+ * ══ v1.48.1 — pseudo-chart를 **걷어냈다** ═══════════════════════════════════
  *
- * 예전에는 `rounded-row border bg-surface` 카드가 축 개수만큼 세로로 쌓였다. 네 개의
- * 똑같은 흰 카드가 오른쪽 위 색 tag 하나로만 갈리는 화면이었고, 그건 이 제품의 가장
- * 중요한 순간을 '설문 결과 목록'처럼 보이게 했다.
+ * v1.48이 이 자리에 두 가지를 그렸다: ① `말한 나`의 1~5 값을 트랙 위 점 하나로 찍고,
+ * ② 그 점에서 아래로 곡선(`MirrorLink`)을 뻗어 기울기로 GAP/MATCH/CHANGE를 표현했다.
+ * 실제 화면에서 이건 FAIL이었다:
  *
- * 지금은 카드가 없다. 위쪽 얇은 rule로 행을 열고, 그 안에서
- * **말한 나(트랙) → 연결선(판정) → 관계에서(근거)** 가 하나의 구성으로 읽힌다.
+ * ```
+ *   ① 점 하나만 있는 트랙은 차트가 아니다 — 옆의 하트와 `2/5`가 같은 값을 이미
+ *      더 정확하게 말하고 있어서, 트랙은 정보를 더하지 않고 해석 부담만 더했다
+ *   ② 곡선은 허공에서 끝났고, '변화 / 이동 / 시계열 / 거리'처럼 읽혔다
+ *   ③ 도착점은 좌표가 아니라 방향이었는데, 그림은 좌표처럼 보였다 —
+ *      **시각적 정밀도가 데이터 정밀도를 넘었다**
+ *   ④ 그래서 `말한 나(정확한 위치) · 관계 경험 신호(방향)` 사용 설명 범례가 필요했다.
+ *      시각화에 사용법이 필요하면 그 시각화는 실패한 것이다
+ * ```
  *
- * ⚠️ 트랙 위에는 '말한 나'(Declared) 점 하나만 정확한 위치로 찍는다. Relationship Me는
- * 과거 관계 질문에서 1~5 척도로 직접 수집된 값이 아니므로, 두 번째 점을 정밀한 위치에
- * 찍으면 실제보다 더 정밀하게 측정된 것처럼 보이는 착시가 생긴다. 대신 '관계 경험에서
- * 발견한 신호'는 방향(▲ 더 크게 반응 / ▼ 낮아짐 / ✓ 비슷함)과 근거 문장으로만 말한다.
+ * ══ 지금 구조 ═══════════════════════════════════════════════════════════════
+ *
+ * Mirror는 **차트가 아니라 editorial observation**이다. 대조는 typography ·
+ * alignment · spacing · rule로만 만든다.
+ *
+ * ```
+ * 연락                                        GAP
+ *   말한 나                          ♥♥♡♡♡ 2/5
+ *   연락은 크게 중요하지 않은 편
+ *   ──────── 관계에서 더 크게 ────────
+ *     관계에서 나타난 나                    ← GAP은 한 칸 들여쓴다(분리감)
+ *     ▲ 이전 관계에서 연락 감소가 가장 힘들었음으로 선택
+ * 중요하지 않다고 생각했지만 관계에서는 생각보다 크게 반응했어.
+ * ```
+ *
+ * ⚠️ **좌표·거리·막대·퍼센트·축이 하나도 없다.** 정확한 값은 `말한 나` 쪽에만 있고,
+ * 그건 실제로 1~5로 직접 수집한 값이라 하트와 숫자로 그대로 적는다(`ScaleHearts`).
+ * `관계에서 나타난 나`는 숫자가 아니라 문장이므로 문장으로만 말한다 — 이 비대칭이
+ * 데이터의 비대칭 그대로다.
+ *
+ * ⚠️ 판정 문구(`stateTextOf`)는 **새로 지은 카피가 아니다.** v1.41부터 있던 문구이고
+ * 예전에는 스크린리더에만 읽혔다. 곡선이 하던 일을 이 문구가 대신한다.
  */
 export function MirrorComparisonRow({
   insight,
@@ -213,7 +158,7 @@ export function MirrorComparisonRow({
   /**
    * ⚠️ v1.44 R-9 — **배지·점·아이콘은 표시용 이름을 쓴다.** `insight.state`는 내부
    * 판정이라 언제나 `CHANGE`이고, 비교 근거가 없으면 그것을 `CHANGE`라고 **부르지**
-   * 않는다(`displayStateOf`). 스크린리더 문구는 `stateTextOf`가 따로 정한다.
+   * 않는다(`displayStateOf`). 문구는 `stateTextOf`가 따로 정한다.
    */
   const shownState = displayStateOf(insight.state, insight.evidenceScope);
 
@@ -224,17 +169,24 @@ export function MirrorComparisonRow({
   const [open, setOpen] = useState(false);
   const detailVisible = !compact || open;
 
+  /**
+   * §8 — 상태를 **composition으로** 말한다. 좌표가 아니라 간격과 정렬이다.
+   *
+   *   MATCH   두 블록이 붙어 있고 왼쪽 끝이 맞는다 (정렬 · 가까움)
+   *   GAP     간격이 벌어지고 관계 쪽이 한 칸 들여쓰인다 (분리감)
+   *   CHANGE  간격이 벌어지지만 들여쓰지 않는다 — 방향은 아이콘이 이미 말한다
+   *   UNKNOWN 강한 표현을 만들지 않는다 (기본 간격 · 들여쓰기 없음)
+   */
+  const separated = shownState === 'GAP' || shownState === 'CHANGE';
+  const indented = shownState === 'GAP';
+
   return (
     <li
-      className="reveal-up flex flex-col gap-2.5 border-t border-[color:var(--color-rule-hair)] px-1 pt-4 pb-1"
+      className="reveal-up flex flex-col gap-3 border-t border-[color:var(--color-rule-hair)] px-1 pt-4 pb-1"
       style={{ animationDelay: `${index * 80}ms` }}
     >
       <div className="flex items-center justify-between gap-2.5">
         <h3 className="text-[15px] font-semibold tracking-[-0.3px]">{insight.label}</h3>
-        {/*
-          배지는 각진 evidence 표식이다(radius 3px) — 알약이 아니다. 같은 판정을
-          아래 연결선이 형태로 한 번 더 말하므로, 여기서는 이름만 조용히 붙인다.
-        */}
         <span
           className={cn(
             'flex-none rounded-[3px] px-[7px] py-[3px] text-label tracking-[0.08em]',
@@ -248,12 +200,12 @@ export function MirrorComparisonRow({
       {/*
         ══ v1.46.4 §13 — 이미 알고 있던 기준(`MATCH`)은 한 줄로 접는다 ═══════
 
-        실측에서 고데이터 세션의 네 축 중 셋이 MATCH였고, 그 세 행이 각각 눈금 ·
-        근거 문장 · 해석 문장까지 전부 펼쳐진 채 화면 위쪽을 차지했다. 사용자가 처음
-        읽는 세 문단이 전부 '네가 말한 대로였어'였다는 뜻이다(UT-1: 이미 아는 내용).
+        실측에서 고데이터 세션의 네 축 중 셋이 MATCH였고, 그 세 행이 각각 근거 문장 ·
+        해석 문장까지 전부 펼쳐진 채 화면 위쪽을 차지했다. 사용자가 처음 읽는 세
+        문단이 전부 '네가 말한 대로였어'였다는 뜻이다(UT-1: 이미 아는 내용).
 
-        ⚠️ **판정을 숨기지 않는다.** 배지(MATCH)와 축 이름은 그대로 보이고, 눈금 ·
-        근거 · 해석은 `자세히` 안에 전부 있다. 순서도 `resultPriority`가 GAP → CHANGE →
+        ⚠️ **판정을 숨기지 않는다.** 배지(MATCH)와 축 이름은 그대로 보이고, 두 자아의
+        대조는 `자세히` 안에 전부 있다. 순서도 `resultPriority`가 GAP → CHANGE →
         MATCH로 바꿔서, 새로 알게 되는 것이 먼저 온다.
       */}
       {compact ? (
@@ -281,58 +233,61 @@ export function MirrorComparisonRow({
         </>
       ) : null}
 
-      {/* ── 위: 말한 나 ─────────────────────────────────────────────────── */}
       {detailVisible ? (
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-center justify-between">
-            <span className="evidence-source">말한 나</span>
-            {insight.declaredHasScale ? <ScaleHearts value={insight.declared} /> : null}
-          </div>
-          <div className="relative h-4" aria-hidden>
-            <span className="absolute inset-x-0 top-[7px] h-px bg-rule-hair" />
-            <span
-              className="absolute top-1 -ml-[7px] h-3 w-3 rounded-full border-2 border-ink-faint bg-surface"
-              style={{ left: valueToPercent(insight.declared) }}
-            />
-          </div>
-        </div>
-      ) : null}
-
-      {/* ── 사이: 두 자아를 잇는 선. 판정이 형태가 되는 자리다 ───────────── */}
-      {detailVisible ? (
-        /*
-          ⚠️ 선 옆에 상태 단어를 또 적지 않는다. 이름은 위의 배지가 이미 말했고,
-          이 자리가 하는 일은 그 판정을 **형태로** 한 번 더 말하는 것이다 —
-          같은 말을 글자로 두 번 쓰면 그건 위계가 아니라 중복이다.
-        */
-        <MirrorLink state={shownState} declared={insight.declared} />
-      ) : null}
-
-      {/* ── 아래: 관계에서 나타난 나 (근거) ──────────────────────────────── */}
-      {detailVisible ? (
-        <div className="surf-evidence flex flex-col gap-1.5">
-          {/*
-            v1.41 — 근거의 **시점**을 근거 문장 위에 한 조각으로 붙인다.
-            `relationshipSignal` 문장에도 시점이 들어 있지만(`지금 관계에서 …`), 다섯 행을
-            훑을 때 어느 행이 어느 시점인지 한눈에 보이는 것이 이 화면의 정직성이다.
-          */}
-          <span className="evidence-source">{scopeLabelOf(insight.evidenceScope, tense)}</span>
-          <div className="flex items-start gap-2">
-            <span
-              className={cn(
-                'mt-0.5 flex h-4 w-4 flex-none items-center justify-center rounded-full text-white',
-                STATE_DOT[shownState],
-              )}
-              aria-hidden
-            >
-              {shownState === 'GAP' ? <ChevronUp size={11} strokeWidth={3} /> : null}
-              {/* 아래 화살표는 '낮아짐'이라는 방향 주장이다 — 근거가 없으면 붙이지 않는다 */}
-              {shownState === 'CHANGE' ? <ChevronDown size={11} strokeWidth={3} /> : null}
-              {shownState === 'MATCH' ? <Check size={10} strokeWidth={3} /> : null}
-            </span>
-            <p className="text-[12.5px] keep-all leading-relaxed text-[#555]">
-              {insight.relationshipSignal}
+        <div className={cn('flex flex-col', separated ? 'gap-4' : 'gap-2.5')}>
+          {/* ── 위: 내가 생각한 나 ──────────────────────────────────────── */}
+          <div className="flex flex-col gap-1">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="evidence-source">말한 나</span>
+              {insight.declaredHasScale ? (
+                <ScaleHearts value={insight.declared} className="text-[11px] text-ink-sub" />
+              ) : null}
+            </div>
+            {/*
+              ⚠️ 트랙 위의 점을 이 문장이 대신한다. `declaredPhrase`는 사용자가 고른
+              보기를 그대로 부르는 말이라(계산이 아니다), 점 위치보다 정확하고 바로 읽힌다.
+            */}
+            <p className="text-[13.5px] keep-all leading-relaxed text-ink">
+              {insight.declaredPhrase}
             </p>
+          </div>
+
+          {/* ── 사이: 판정. 곡선이 하던 일을 rule과 문구가 한다 ──────────── */}
+          <div className="flex items-center gap-2.5" aria-hidden>
+            <span className={cn('h-px w-5 flex-none', STATE_RULE[shownState])} />
+            <span className={cn('flex-none text-[11px] font-semibold', STATE_INK[shownState])}>
+              {stateTextOf(insight)}
+            </span>
+            <span className={cn('h-px min-w-0 flex-1', STATE_RULE[shownState])} />
+          </div>
+
+          {/* ── 아래: 관계에서 나타난 나 ────────────────────────────────── */}
+          <div className={cn('flex flex-col gap-1.5', indented && 'pl-3.5')}>
+            <span className="evidence-source">관계에서 나타난 나</span>
+            <div className="flex items-start gap-2">
+              <span
+                className={cn(
+                  'mt-0.5 flex h-4 w-4 flex-none items-center justify-center rounded-full text-white',
+                  STATE_DOT[shownState],
+                )}
+                aria-hidden
+              >
+                {shownState === 'GAP' ? <ChevronUp size={11} strokeWidth={3} /> : null}
+                {/* 아래 화살표는 '낮아짐'이라는 방향 주장이다 — 근거가 없으면 붙이지 않는다 */}
+                {shownState === 'CHANGE' ? <ChevronDown size={11} strokeWidth={3} /> : null}
+                {shownState === 'MATCH' ? <Check size={10} strokeWidth={3} /> : null}
+              </span>
+              <p className="text-[13px] keep-all leading-relaxed text-ink">
+                {insight.relationshipSignal}
+              </p>
+            </div>
+            {/*
+              v1.41 — 근거의 **시점**을 근거 문장 아래 한 조각으로 붙인다. 다섯 행을
+              훑을 때 어느 행이 어느 시점인지 한눈에 보이는 것이 이 화면의 정직성이다.
+            */}
+            <span className="pl-6 text-[10.5px] text-ink-muted">
+              {scopeLabelOf(insight.evidenceScope, tense)}
+            </span>
           </div>
         </div>
       ) : null}
@@ -347,38 +302,12 @@ export function MirrorComparisonRow({
         {scopeLabelOf(insight.evidenceScope, tense)}.
       </p>
 
+      {/* 러비의 해석 — 두 자아를 다 읽은 뒤에 온다 */}
       {detailVisible ? (
         <p className="text-[12.5px] keep-all leading-relaxed text-[#555]">{insight.note}</p>
       ) : null}
 
       {detailVisible ? footer : null}
     </li>
-  );
-}
-
-/** 범례 — '말한 나'만 정확한 위치, 관계 경험 신호는 방향으로만 말한다는 것을 알려준다 */
-/**
- * ⚠️ v1.36 — `항목별 대조`를 `h2`로 올렸다.
- *
- * 이 legend가 감싼 섹션에는 heading이 없었고, 안의 축 행들은 `h3`였다. 그래서
- * `/mirror`의 heading 순서가 **H1 → H3 → … → H2**로 역전됐다(실측). 이 문구가
- * 이미 그 섹션의 이름이므로 새 제목을 만들지 않고 level만 맞춘다.
- */
-export function MirrorLegend() {
-  return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-1">
-      <h2 className="text-meta font-semibold text-ink-muted">항목별 대조</h2>
-      <span className="flex items-center gap-1.5">
-        <span
-          className="h-[11px] w-[11px] rounded-full border-2 border-ink-faint bg-surface"
-          aria-hidden
-        />
-        <span className="text-[11px] text-ink-muted">말한 나(정확한 위치)</span>
-      </span>
-      <span className="flex items-center gap-1.5">
-        <ChevronUp size={12} className="text-brand" aria-hidden />
-        <span className="text-[11px] text-ink-muted">관계 경험 신호(방향)</span>
-      </span>
-    </div>
   );
 }

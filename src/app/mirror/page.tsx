@@ -14,14 +14,13 @@ import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { EmptyStateView, FillDataRow } from '@/components/common/StateScreens';
-import { EvidenceList, PageHeading } from '@/components/common/primitives';
+import { EvidenceList, PageHeading, SectionLabel } from '@/components/common/primitives';
 import { Lovy } from '@/components/lovy/Lovy';
 import { useToast } from '@/components/common/ToastProvider';
 import { RepeatedSignalNotice } from '@/components/history/PastObservationNote';
-import { MirrorComparisonRow, MirrorLegend } from '@/components/mirror/MirrorComparisonRow';
+import { MirrorComparisonRow } from '@/components/mirror/MirrorComparisonRow';
 import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
 import { CurrentRelationshipInline } from '@/components/profile/CurrentRelationshipInline';
-import { UtRatingCard } from '@/components/ut/UtRatingCard';
 import { LOVY_LINES } from '@/data/copy';
 import { PREMIUM_HOOK_COPY } from '@/data/premium';
 import { useAnchorScroll } from '@/hooks/useAnchorScroll';
@@ -578,9 +577,21 @@ function MirrorView() {
             openQuestion={openQuestionFor(freeCandidates[0])}
           />
 
+          {/*
+            v1.48.1 — **그래프 사용 설명 범례를 걷어냈다.**
+
+            예전 `MirrorLegend`에는 섹션 제목(`항목별 대조`)과 함께
+            `○ 말한 나(정확한 위치)` · `⌃ 관찰 경험 신호(방향)`라는 범례가 있었다.
+            그 범례는 pseudo-chart를 읽는 방법을 설명하는 줄이었고, 차트가 사라진
+            지금은 설명할 것도 없다 — 시각화에 사용법이 필요하면 그 시각화가 실패한
+            것이라는 판단이 이번 QA의 결론이다.
+
+            ⚠️ 제목은 남긴다. v1.36에서 이 섹션에 heading이 없어 `/mirror`의 순서가
+            H1 → H3 → H2로 역전됐던 문제를 되살리지 않는다.
+          */}
           <section className="flex flex-col gap-2.5">
-            <MirrorLegend />
-            <ul className="flex flex-col gap-2.5">
+            <SectionLabel>항목별 대조</SectionLabel>
+            <ul className="flex flex-col">
               {/*
                 §14 — **판정이 아니라 순서만** 바꾼다(`lib/resultPriority.ts`).
                 GAP → CHANGE → MATCH. 같은 등급 안에서는 엔진이 준 순서 그대로다.
@@ -712,14 +723,17 @@ function MirrorView() {
             reason={narrative.reason}
           />
 
-          {/* §45 — UT Mode에서만. 근거 이해도는 이 화면에서 묻는 게 맞다 */}
-          <UtRatingCard
-            question="왜 이런 결과가 나왔는지 근거가 이해됐어?"
-            event="ut_evidence_clarity_rate"
-            properties={{ task: 'relationship', mode: narrative.mode ?? 'none' }}
-            lowLabel="전혀 모르겠어"
-            highLabel="충분히 이해됐어"
-          />
+          {/*
+            v1.48.1 — **UT 근거 이해도 평가 카드를 참가자 화면에서 뺐다.**
+
+            `UT` 배지 + 1~5 척도는 제품 기능이 아니라 연구 계측이다. 실제 화면에
+            남아 있으면 제품이 프로토타입으로 읽히고, 무엇보다 결과를 읽던 사용자가
+            갑자기 설문 응답자가 된다.
+
+            ⚠️ 문항과 이벤트(`ut_evidence_clarity_rate`)는 **사라지지 않았다.**
+            260914 P1 Final이 S09 유사도 문항에 쓴 방법과 같이 운영자 화면(`/ut`)의
+            '진행자 기록 · 인터뷰 문항'으로 옮겼다 — 진행자가 구두로 묻고 기록한다.
+          */}
         </div>
       </ScreenLayout>
 
