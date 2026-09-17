@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/common/Button';
+import { withLensReturn } from '@/lib/returnTo';
 import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
@@ -203,7 +204,7 @@ function MbtiLensView() {
           <FillDataRow
             label={`내 MBTI${answers.mbti ? ` · ${answers.mbti}` : ' · 없음'}`}
             actionLabel="수정"
-            onClick={() => router.push(ROUTES.declared(4))}
+            onClick={() => router.push(withLensReturn(ROUTES.declared(4)))}
           />
           <FillDataRow
             label={`상대 MBTI${answers.target.mbti ? ` · ${answers.target.mbti}` : ' · 없음'}`}
@@ -505,7 +506,7 @@ function EmptyLensView({ hasTarget }: { hasTarget: boolean }) {
         <LovyMessage pose="question" size={52}>
           {hasTarget ? MBTI_LENS_COPY.targetOnlyBody : MBTI_LENS_COPY.noSelfBody}
         </LovyMessage>
-        <Button onClick={() => router.push(ROUTES.declared(4))}>
+        <Button onClick={() => router.push(withLensReturn(ROUTES.declared(4)))}>
           {hasTarget ? MBTI_LENS_COPY.targetOnlyCta : MBTI_LENS_COPY.noSelfCta}
         </Button>
         <NoticeBox>{MBTI_LENS_COPY.emptyReassurance}</NoticeBox>

@@ -18,6 +18,7 @@ import { EMPTY_PREMIUM_LENS_AI, lensAiStateOf, type PremiumLensAi } from '@/hook
 import { trackEvent } from '@/lib/analytics';
 import { readOpenState, writeOpenState } from '@/lib/openState';
 import { ROUTES } from '@/lib/routes';
+import { withLensReturn } from '@/lib/returnTo';
 import { cn } from '@/lib/cn';
 import type {
   AiNarrativeState,
@@ -388,7 +389,9 @@ function UnavailableCard({ lens }: { lens: Extract<PremiumLensEntry, { mode: 'un
       <button
         type="button"
         onClick={() =>
-          router.push(lens.fix === 'birth' ? ROUTES.lensBirth : ROUTES.declared(4))
+          router.push(
+            lens.fix === 'birth' ? ROUTES.lensBirth : withLensReturn(ROUTES.declared(4)),
+          )
         }
         className="mt-1.5 flex min-h-11 w-full items-center justify-between rounded-row border border-line bg-surface px-3.5 text-left active:bg-sunken"
       >

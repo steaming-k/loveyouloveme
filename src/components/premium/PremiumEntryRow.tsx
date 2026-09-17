@@ -10,6 +10,7 @@ import { trackEvent } from '@/lib/analytics';
 import { formatPrice, priceForScreenReader, resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { isRevisit, revisitSource } from '@/lib/resultView';
 import { ROUTES } from '@/lib/routes';
+import { withLensReturn } from '@/lib/returnTo';
 import { useSession } from '@/state/SessionProvider';
 import type { PremiumFeature, PremiumFeatureFixKind, PremiumSource } from '@/types';
 
@@ -22,8 +23,13 @@ import type { PremiumFeature, PremiumFeatureFixKind, PremiumSource } from '@/typ
 const PREMIUM_FIX_ROUTE: Record<PremiumFeatureFixKind, string> = {
   target: ROUTES.target,
   experience: ROUTES.pastIntro,
-  /** 내 MBTI를 묻는 자리는 Declared 4단계다 — 관계 렌즈 카드와 같은 목적지 */
-  mbti: ROUTES.declared(4),
+  /**
+   * 내 MBTI를 묻는 자리는 Declared 4단계다 — 관계 렌즈 카드와 같은 목적지.
+   * ⚠️ v1.48.3 — 그 화면은 퍼널의 마지막 스텝이라 제출하면 과거 관계 질문으로
+   * 넘어간다. 여기서 들어온 사용자는 **MBTI 한 칸만** 채우러 온 것이므로
+   * 복귀 표시를 붙여 들어온 화면으로 돌아가게 한다.
+   */
+  mbti: withLensReturn(ROUTES.declared(4)),
   birth: ROUTES.lensBirth,
   photos: ROUTES.photos,
 };

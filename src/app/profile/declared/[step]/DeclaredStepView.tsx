@@ -18,7 +18,8 @@ import {
 } from '@/data/declaredQuestions';
 import { MBTI_TYPES } from '@/data/mbti';
 import { trackEvent } from '@/lib/analytics';
-import { resolveReturnDestination, withReturnTo } from '@/lib/returnTo';
+import { isLensReturn, resolveReturnDestination, withReturnTo } from '@/lib/returnTo';
+import { useContextualBack } from '@/hooks/useContextualBack';
 import { ROUTES } from '@/lib/routes';
 import { isDeclaredStepComplete } from '@/lib/validation';
 import { useSession } from '@/state/SessionProvider';
@@ -41,6 +42,12 @@ export function DeclaredStepView({ step }: { step: DeclaredStep }) {
   const declared = answers.declared;
 
   const backHref = step === 1 ? ROUTES.observed : ROUTES.declared(step - 1);
+
+  /**
+   * v1.48.3 — 렌즈·리포트에서 MBTI만 채우러 들어온 경우의 복귀.
+   * 돌아갈 주소를 여기서 정하지 않고 **들어온 화면으로** 돌아간다(Contextual Back).
+   */
+  const goBackToEntry = useContextualBack(ROUTES.lens);
 
   const handleNext = () => {
     if (!isDeclaredStepComplete(declared, step)) {
@@ -73,6 +80,18 @@ export function DeclaredStepView({ step }: { step: DeclaredStep }) {
       // v1.11 — Profile Revisit에서 '관계 성향 답변 고치기'로 들어온 거면 Past Funnel로
       // 계속 밀지 않고 Profile Revisit으로 돌려보낸다(§27).
       // 260914 UT 후속 P1 — 과거 관계 인트로 화면을 거치지 않고 첫 질문으로 간다(안내는 그 화면에 흡수)
+      /*
+        ⚠️ v1.48.3 — **렌즈에서 잠깐 들어온 경우엔 퍼널을 계속 밀지 않는다.**
+
+        이 화면은 Declared 퍼널의 마지막 스텝이라 제출하면 과거 관계 질문으로 넘어간다.
+        그게 기본 동작이고 그대로 둔다 — 다만 `다른 렌즈`의 `MBTI 정보 입력하기`처럼
+        **MBTI 한 칸만 채우러** 들어온 사용자에게는 그 이동이 '질문 리스트로 튕겨나감'이
+        된다(실제 신고된 증상). 그 경우에만 들어온 화면으로 돌려보낸다.
+      */
+      if (isLensReturn(searchParams)) {
+        goBackToEntry();
+        return;
+      }
       router.push(resolveReturnDestination(searchParams, ROUTES.past(1)));
       return;
     }

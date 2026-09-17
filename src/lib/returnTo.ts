@@ -12,6 +12,39 @@
 export const RETURN_TO_PARAM = 'from';
 export const PROFILE_REVISIT_RETURN = 'profile-revisit';
 
+/**
+ * 렌즈·Premium 리포트에서 입력 화면으로 **잠깐 다녀오는** 경우 (v1.48.3)
+ *
+ * ══ 왜 필요했나 ═══════════════════════════════════════════════════════════
+ *
+ * `다른 렌즈` 화면의 `MBTI Lens · 정보 입력하기`는 전용 입력 화면이 없어서 퍼널
+ * 스텝(`/profile/declared/4`)을 그대로 빌려 쓴다. 그런데 그 화면은 자기가 퍼널의
+ * 마지막 스텝이라 제출하면 다음 퍼널(`/profile/past/1`)로 밀고 나간다 — 렌즈를
+ * 보려던 사용자가 **과거 관계 질문 리스트로 튕겨 나갔다.**
+ *
+ * 사주·별자리는 전용 화면(`/lens/birth`)이 있고 그 화면이 Contextual Back으로
+ * 들어온 곳에 돌려보내기 때문에 같은 문제가 없었다. MBTI만 빌려 쓰는 구조였다.
+ *
+ * ══ 왜 목적지를 여기 적지 않나 ════════════════════════════════════════════
+ *
+ * `profile-revisit`처럼 돌아갈 주소를 이 파일에 하나 더 박아두지 않는다. 이 입구는
+ * `다른 렌즈` 말고도 Premium 리포트 카드 · MBTI 렌즈 본문 등 여러 곳이고, v1.46.3이
+ * 같은 상황에서 내린 결론이 **'앱 안에서 왔으면 직전 화면으로 돌아간다'**였다
+ * (`hooks/useContextualBack.ts`). 그래서 이 값은 목적지가 아니라 **'퍼널을 계속
+ * 진행하지 말라'는 표시**이고, 실제 복귀는 Contextual Back이 맡는다.
+ */
+export const LENS_RETURN = 'lens';
+
+export function isLensReturn(searchParams: URLSearchParams | null | undefined): boolean {
+  return searchParams?.get(RETURN_TO_PARAM) === LENS_RETURN;
+}
+
+/** 입력 화면으로 보낼 때 붙인다. 목적지 Route는 호출부가 그대로 고른다 */
+export function withLensReturn(href: string): string {
+  const separator = href.includes('?') ? '&' : '?';
+  return `${href}${separator}${RETURN_TO_PARAM}=${LENS_RETURN}`;
+}
+
 export function isProfileRevisitReturn(searchParams: URLSearchParams | null | undefined): boolean {
   return searchParams?.get(RETURN_TO_PARAM) === PROFILE_REVISIT_RETURN;
 }
