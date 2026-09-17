@@ -154,6 +154,66 @@
   --motion-enter: 220ms;
   --motion-normal: 300ms;
   --motion-slow: 400ms;
+
+  /* ------------------------------------------------------------------------
+     LOVY FIELD NOTES — Art Direction tokens (v1.48)
+
+     Editorial Field Notes × Alien Observation Lab.
+
+     ⚠️ 이 블록은 **색을 새로 만들지 않는다.** Purple(분석)·Mint(러비)·Neutral의
+     역할 구분은 §4 그대로다. 여기서 새로 정의하는 것은 '관찰의 흔적'을 그리는 데
+     필요한 **선·마커·형태**의 어휘다 — 장식이 아니라 근거의 구조를 그리는 도구다.
+
+     ⚠️ 우주·별·HUD를 쓰지 않는다. Observation Lab의 뜻은 SF 장식이 아니라
+     '관찰한 자국이 화면에 남아 있다'는 것이다.
+     ------------------------------------------------------------------------ */
+
+  /* Rule — 편집 규칙선 3단계. 카드 테두리(--color-line)와 **역할이 다르다**:
+     테두리는 무언가를 담고, rule은 무언가를 나눈다. */
+  --color-rule-hair: #eceae5;
+  --color-rule-mid: #d9d5cd;
+  --color-rule-ink: #b9b4aa;
+
+  /* Marker — 관찰 점·연결선. Mint는 러비가 본 것, Purple은 분석이 이은 것 */
+  --color-marker-observe: #7fcdb4;
+  --color-marker-connect: #a48cf3;
+
+  /* Highlight field — 문장 일부에만 까는 강조. 형광펜이 아니라 밑줄에 가깝다 */
+  --color-highlight-brand: #e6dcfd;
+  --color-highlight-mint: #cdeee2;
+
+  /* Radius — **값이 아니라 역할로 고른다.**
+     기존 tag/chip/row/btn/card/hero는 그대로 두고(호출부가 전부 쓰고 있다),
+     Field Notes 표면은 아래 4개만 쓴다.
+
+       control   누를 수 있는 것.        둥글다  (기존 --radius-btn과 같은 값)
+       note      러비가 적어둔 관찰.      둥글다  (말랑한 메모)
+       evidence  담긴 근거.              거의 각짐 (종이 조각)
+       editorial 읽는 본문.              각짐    (편집면은 모서리를 갖지 않는다)
+
+     같은 화면에서 이 넷이 섞여 있으면 '무엇을 누를 수 있고 무엇이 근거인지'가
+     색이 아니라 **형태로** 먼저 읽힌다. */
+  --radius-control: 15px;
+  --radius-note: 14px;
+  --radius-evidence: 3px;
+  --radius-editorial: 0px;
+
+  /* Editorial type — 기존 scale을 지우지 않는다. 위계의 **양 끝**만 벌린다.
+     모든 제목이 19~24px semibold로 반복되던 문제는 새 폰트가 아니라
+     scale 대비로 푼다(§8). */
+  --text-figure: 64px;
+  --text-figure--line-height: 1;
+  --text-figure--letter-spacing: -3.5px;
+  --text-figure--font-weight: 600;
+
+  --text-feature: 21px;
+  --text-feature--line-height: 1.44;
+  --text-feature--letter-spacing: -0.55px;
+  --text-feature--font-weight: 600;
+
+  --text-annotation: 11.5px;
+  --text-annotation--line-height: 1.55;
+  --text-annotation--letter-spacing: 0;
 }
 
 /* --------------------------------------------------------------------------
@@ -760,4 +820,208 @@
   .animate-lovy-blink {
     display: none !important;
   }
+}
+
+/* ==========================================================================
+   LOVY FIELD NOTES — Surface System (v1.48)
+
+   화면은 네 종류의 면으로만 이루어진다. 카드가 기본값이 아니다.
+
+     ① Canvas             기본 페이지. 콘텐츠가 배경 위에 직접 놓인다
+     ② Observation Surface 러비가 적어둔 짧은 관찰. 작은 마크 + 옅은 mint
+     ③ Evidence Surface    사용자가 실제로 준 근거. 카드가 아니라 좌측 rule + 출처 마커
+     ④ Insight Surface     가장 중요한 발견. 다른 카드와 **같은 크기로 만들지 않는다**
+
+   ⚠️ 이 클래스들은 전부 **표현**만 만든다. 어떤 것도 조건 분기·계산·문구를 갖지 않는다.
+   ⚠️ 새 색을 만들지 않는다. 위 @theme 토큰만 조합한다.
+   ========================================================================== */
+
+/* -------------------------------------------------------------- ① rule / 편집선 */
+
+/**
+ * 편집 규칙선. `border`와 역할이 다르다 — 이건 담는 선이 아니라 **나누는 선**이다.
+ * 섹션 divider를 카드 사이 간격 대신 쓰면 카드 개수가 그대로 줄어든다.
+ */
+.field-rule {
+  height: 1px;
+  background-color: var(--color-rule-hair);
+}
+
+.field-rule-mid {
+  height: 1px;
+  background-color: var(--color-rule-mid);
+}
+
+/** 편집면 상단의 굵은 rule — 섹션의 시작을 카드 없이 선언한다 */
+.field-rule-open {
+  height: 2px;
+  background-color: var(--color-ink);
+}
+
+/* ------------------------------------------------- ② Observation Surface / 관찰 */
+
+/**
+ * 러비가 적어둔 관찰. 카드가 아니라 **메모**다.
+ *   - 좌측에 관찰 마크(작은 안테나 점) 자리를 비워둔다
+ *   - 배경은 아주 옅은 mint, 테두리는 없다 — 담는 게 아니라 얹혀 있는 것
+ *   - radius는 note(14px): 이 면은 말랑하다
+ */
+.surf-observation {
+  position: relative;
+  border-radius: var(--radius-note);
+  background-color: color-mix(in srgb, var(--color-mint-tint) 62%, #ffffff);
+  padding: 13px 15px 13px 15px;
+}
+
+/** 관찰 마크 — 러비의 안테나 끝이 남긴 점. 장식이 아니라 '여기를 봤다'는 표식 */
+.obs-dot {
+  display: inline-block;
+  height: 5px;
+  width: 5px;
+  flex: none;
+  border-radius: 9999px;
+  background-color: var(--color-marker-observe);
+}
+
+/** 관찰 번호 — 몇 번째로 본 것인지. tabular라 세로로 쌓아도 자리가 흔들리지 않는다 */
+.obs-index {
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--color-ink-faint);
+}
+
+/* ----------------------------------------------------- ③ Evidence Surface / 근거 */
+
+/**
+ * 사용자가 실제로 준 근거. **카드로 감싸지 않는다.**
+ * 좌측 rule 하나 + 촘촘한 타이포. 종이에서 인용문을 표시하는 방식 그대로다.
+ *
+ * ⚠️ 배경을 깔지 않는다. 배경을 깔면 그 순간 카드가 되고, 그러면 근거와 본문이
+ * 같은 무게로 보인다 — 이 화면에서 본문은 해석이고 근거는 출처다.
+ */
+.surf-evidence {
+  border-left: 2px solid var(--color-rule-mid);
+  border-radius: var(--radius-evidence);
+  padding-left: 13px;
+}
+
+/** 근거가 어디서 왔는지 — 출처 마커. 텍스트 앞에 붙는 작은 각진 표식 */
+.evidence-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--color-ink-muted);
+}
+
+.evidence-source::before {
+  content: '';
+  display: block;
+  height: 6px;
+  width: 6px;
+  flex: none;
+  border-radius: 1px;
+  background-color: var(--color-rule-ink);
+}
+
+/* ------------------------------------------------- ④ Insight Surface / 핵심 발견 */
+
+/**
+ * 가장 중요한 발견. **다른 카드와 같은 크기로 만들지 않는다.**
+ *
+ * 카드가 아니라 편집면이다: 위쪽에 굵은 rule, 넓은 타이포 블록, 배경 없음.
+ * 카드 안에 넣으면 '여러 카드 중 하나'가 되는데, 이 면은 화면에서 하나뿐이어야 한다.
+ */
+.surf-insight {
+  border-radius: var(--radius-editorial);
+  border-top: 2px solid var(--color-ink);
+  padding-top: 15px;
+}
+
+/**
+ * 문장 **일부에만** 까는 강조. 형광펜 블록이 아니라 밑에서 올라온 색 띠다 —
+ * 글자 아랫부분만 덮어서 읽는 흐름을 끊지 않는다.
+ */
+.mark-brand {
+  background-image: linear-gradient(
+    to top,
+    var(--color-highlight-brand) 0,
+    var(--color-highlight-brand) 38%,
+    transparent 38%
+  );
+  padding: 0 1px;
+}
+
+.mark-mint {
+  background-image: linear-gradient(
+    to top,
+    var(--color-highlight-mint) 0,
+    var(--color-highlight-mint) 38%,
+    transparent 38%
+  );
+  padding: 0 1px;
+}
+
+/* ------------------------------------------------------------ 연결 / connection */
+
+/**
+ * 연결선 draw (§20 — 의미 있는 motion만).
+ *
+ * Evidence → Connection → Insight가 '이미 이어진 그림'이 아니라 **이어지는 과정**으로
+ * 보이게 한다. stroke만 움직이므로 끝나면 최종 상태가 그대로 남는다 — 위 전역
+ * prefers-reduced-motion 블록에서 꺼져도 선은 전부 그려진 채로 보인다.
+ */
+@keyframes connect-draw {
+  from {
+    stroke-dashoffset: var(--connect-length, 200);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.connect-draw {
+  stroke-dasharray: var(--connect-length, 200);
+  animation: connect-draw var(--motion-slow) var(--ease-observe) both;
+}
+
+/**
+ * 관찰 마커 등장 — 점이 찍히는 순간.
+ * ⚠️ `infinite`가 아니다(§28). 한 번 나타나고 끝난다.
+ */
+@keyframes marker-in {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.marker-in {
+  animation: marker-in var(--motion-enter) var(--ease-observe) both;
+}
+
+/**
+ * Mirror 겹침 reveal — '말한 나'와 '관계에서 나타난 나'가 벌어지는 순간.
+ * 두 면이 같은 자리에서 시작해 각자의 자리로 간다. translate만 쓰고 opacity는
+ * 0에서 시작하지 않는다 — 꺼졌을 때 아무것도 안 보이면 안 되기 때문이다.
+ */
+@keyframes overlap-split {
+  from {
+    transform: translateY(var(--split-from, 0));
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.overlap-split {
+  animation: overlap-split var(--motion-slow) var(--ease-observe) both;
 }
