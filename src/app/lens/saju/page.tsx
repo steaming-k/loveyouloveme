@@ -1,6 +1,7 @@
 'use client';
 
 import { useUtMode } from '@/hooks/useUtMode';
+import { ScreenMarker } from '@/components/common/fieldNotes';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -8,7 +9,7 @@ import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
-import { PageHeading, SectionLabel, Tag } from '@/components/common/primitives';
+import { PageHeading, SectionLabel } from '@/components/common/primitives';
 import {
   BirthMissingBlock,
   BirthSummaryRows,
@@ -151,7 +152,7 @@ function SajuLensView() {
   return (
     <ScreenLayout
       header={
-        <ScreenHeader backHref={ROUTES.lens} action={<Tag tone="neutral">{SAJU_COPY.badge}</Tag>} />
+        <ScreenHeader backHref={ROUTES.lens} action={<ScreenMarker>{SAJU_COPY.badge}</ScreenMarker>} />
       }
       footer={
         <Button variant="secondary" onClick={() => router.push(ROUTES.lens)}>

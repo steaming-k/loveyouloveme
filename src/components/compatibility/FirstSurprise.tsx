@@ -44,7 +44,12 @@ export function FirstSurprise({
   }, [funnelAnalysisId, surprise.variant]);
 
   return (
-    <aside className="flex flex-col gap-3 rounded-card bg-mint-tint px-4 py-4">
+    /*
+      v1.48 — 러비가 알아챈 것이므로 **Observation Surface**를 쓴다(globals.css).
+      카드(18px)와 다른 radius(14px)라, 같은 화면 안에서 '러비의 관찰'과
+      '보고서의 본문'이 형태로 갈린다.
+    */
+    <aside className="surf-observation flex flex-col gap-3">
       <div className="flex items-start gap-2.5">
         <Lovy pose="question" size={38} decorative className="-mt-0.5" />
         <p className="text-[15px] font-semibold leading-[1.5] keep-all text-mint-ink">

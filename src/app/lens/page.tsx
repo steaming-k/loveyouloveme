@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { ScreenMarker } from '@/components/common/fieldNotes';
 import { useState } from 'react';
 
 import { HydrationGate } from '@/components/common/HydrationGate';
@@ -89,7 +90,7 @@ function LensView() {
   return (
     <ScreenLayout
       header={
-        <ScreenHeader backHref={ROUTES.target} action={<Tag tone="neutral">{LENS_COPY.badge}</Tag>} />
+        <ScreenHeader backHref={ROUTES.target} action={<ScreenMarker>{LENS_COPY.badge}</ScreenMarker>} />
       }
       /*
         UT-1 P1-A §5 — **본문 `돌아가기`를 뺐다.**

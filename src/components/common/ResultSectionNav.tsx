@@ -34,7 +34,8 @@ export function ResultSectionNav({
   return (
     <nav
       aria-label="결과 섹션 바로가기"
-      className="-mx-1 flex flex-wrap gap-1.5 px-1 pb-0.5"
+      /* 목차 — 얇은 rule 위에 놓아 '여기부터 본문'을 만든다 */
+      className="-mx-1 flex flex-wrap items-center gap-x-4 gap-y-0 border-t border-[color:var(--color-rule-hair)] px-1 pt-0.5"
       /* hit area가 세로로 넘치므로 부모가 잘라내지 않게 한다 */
       style={{ overflow: 'visible' }}
     >
@@ -45,13 +46,24 @@ export function ResultSectionNav({
           onClick={() => trackEvent(event, { section: item.id })}
           className={cn(
             /*
-              v1.36 A11y — 실측 32px이었다. 시각 높이는 그대로 두고 히트 영역만
-              44px로 올린다(§12.1) — `min-h-11`과 세로 패딩으로 영역만 넓히고
-              칩의 시각적 크기(글자·테두리)는 건드리지 않는다.
+              ══ v1.48 — 필터 칩에서 **보고서 목차**로 ═══════════════════════════
+
+              예전에는 `rounded-full border bg-surface` 알약 5개였다. 그 형태는
+              '거르는 것'을 뜻하는데(필터 칩), 이건 거르지 않는다 — 같은 보고서 안의
+              자리로 데려다주는 링크다. 게다가 흰 알약 5개가 두 줄로 쌓여 결과
+              본문보다 먼저 눈에 들어왔다.
+
+              지금은 밑줄 링크 묶음이다: 인쇄물의 목차와 같은 형태이고, 알약 5개와
+              테두리 5개가 화면에서 사라진다.
+
+              ⚠️ **히트 영역은 그대로 44px이다**(§18 · §32). 시각적으로 작아졌지만
+              누를 수 있는 면적은 줄지 않았다 — `min-h-11`과 투명 `::after`가 예전과
+              같은 일을 한다.
+              ⚠️ anchor · 이벤트 · 라벨 · 순서는 건드리지 않았다.
             */
-            'relative flex min-h-11 flex-none items-center rounded-full border border-line bg-surface px-3 py-1.5',
-            'text-[12px] font-medium text-ink-sub active:bg-sunken',
-            // 보이는 높이 32px · 실제 터치 타깃 44px (§18 · §32)
+            'relative flex min-h-11 flex-none items-center px-1',
+            'text-[12.5px] font-medium text-brand-pressed underline decoration-brand-soft decoration-1 underline-offset-[5px]',
+            'active:decoration-brand',
             "after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']",
           )}
         >

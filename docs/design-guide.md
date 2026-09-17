@@ -209,6 +209,120 @@ State, 실제 정보 구조, Lovy Character 반영
 주의 : Illustration, Decorative Graphic, Character Animation 때문에 UX 구조가
 가려지면 안 된다.
 
+
+------------------------------------------------------------------------
+
+## 13. LOVY FIELD NOTES (v1.48 Art Direction)
+
+§3의 전체 무드(Cute Alien × Editorial Relationship Intelligence × Modern Consumer AI)는
+그대로 유지한다. 이 절은 그 무드를 **화면에서 실제로 만드는 방법**을 정한다.
+
+내부 이름 : `LOVY FIELD NOTES`
+정의 : Editorial Field Notes × Alien Observation Lab
+
+**가장 중요한 원칙**
+
+> 브랜드 차별화는 장식이 아니라 **관찰 흔적의 시각화**에서 만든다.
+
+러비를 더 많이 그리는 것이 차별화가 아니다. 러비가 무엇을 보고, 무엇을 근거로 삼고,
+무엇과 무엇을 이었는지가 **화면의 형태로 남아 있는 것**이 차별화다.
+
+주의 : `Alien Observation Lab`은 SF 장식을 뜻하지 않는다. 우주 배경 · 별 · 행성 ·
+네온 · HUD · SF dashboard를 추가하지 않는다. 핵심은 '관찰의 흔적'이다.
+
+### 13.1 Visual Grammar — 다섯 단계
+
+모든 결과 화면은 이 문법을 따른다. 각 단계는 **서로 다른 형태**를 갖는다.
+
+| 단계 | 무엇인가 | 형태 |
+|---|---|---|
+| Observation | 러비가 알아챈 것 | 옅은 mint 메모 · 관찰 마크 · radius 14 |
+| Evidence | 사용자가 실제로 준 근거 | 좌측 rule · 출처 마커 · 배경 없음 · radius 3 |
+| Connection | 따로 있던 것들이 모이는 지점 | 합류선 + 합류점 하나 · 모서리 없는 밴드 |
+| Insight | 가장 중요한 발견 | 굵은 ink rule + 넓은 활자 블록 · 배경 없음 · radius 0 |
+| Next Observation | 다음에 확인할 것 | 인라인 질문 · 저장 가능한 한 줄 |
+
+이 다섯 단계가 **전부 같은 rounded card**로 그려지면 정보는 정확해도 위계가 사라진다.
+그것이 v1.47까지의 결과 화면이 'AI로 빠르게 만든 화면'으로 읽힌 이유다.
+
+### 13.2 Surface System — 화면은 네 종류의 면으로만 이루어진다
+
+카드는 **기본값이 아니다.** 기능적 containment가 필요한 곳에서만 쓴다.
+
+1. **Canvas** — 기본 지면. 제목 · 질문 · 본문은 배경 위에 직접 놓는다
+2. **Observation Surface**(`.surf-observation`) — 러비의 짧은 관찰. 작은 마크 + 옅은 mint
+3. **Evidence Surface**(`.surf-evidence`) — 사용자가 준 근거. 좌측 rule + 출처 마커.
+   ⚠️ 배경을 깔지 않는다 — 깔면 그 순간 카드가 되고, 근거와 해석이 같은 무게가 된다
+4. **Insight Surface**(`.surf-insight`) — 가장 중요한 발견. **다른 카드와 같은 크기로
+   만들지 않는다.** 굵은 상단 rule + 넓은 typographic block. 화면에 하나뿐이어야 한다
+
+### 13.3 Radius — 값이 아니라 역할로 고른다
+
+| 역할 | 토큰 | 값 | 형태의 뜻 |
+|---|---|---|---|
+| interactive control | `--radius-control` | 15px | 누를 수 있는 것은 둥글다 |
+| observation note | `--radius-note` | 14px | 러비의 메모는 말랑하다 |
+| contained evidence | `--radius-evidence` | 3px | 담긴 근거는 종이 조각이다 |
+| editorial content | `--radius-editorial` | 0px | 편집면은 모서리를 갖지 않는다 |
+
+같은 화면에서 이 넷이 섞여 있으면 '무엇을 누를 수 있고 무엇이 근거인지'가 색이 아니라
+**형태로** 먼저 읽힌다. 기존 `tag/chip/row/btn/card/hero`는 호출부가 쓰고 있으므로 지우지
+않되, 새 표면은 위 네 개만 쓴다.
+
+### 13.4 Visual Vocabulary
+
+사용한다 : 관찰 점 · 연결선 · 얇은 rule · 관찰 번호 · 출처 마커 · evidence trail ·
+합류점 · 강조 underline(`.mark-brand` / `.mark-mint`) · 점선 leader · 작은 Lovy mark
+
+쓰지 않는다 : glassmorphism · strong gradient · generic dashboard graph · 3D blob ·
+floating gradient orb · 과도한 shadow · generic AI sparkle icon · 모든 곳의 rounded card ·
+radar chart · fake graph
+
+### 13.5 Typography — 새 폰트를 추가하지 않는다
+
+Pretendard의 body readability를 유지하고, 위계는 **scale 대비**로 만든다. 모든 제목을
+19~24px semibold로 반복하지 않는다.
+
+| 역할 | 크기 |
+|---|---|
+| 수치(동기화율) | `--text-figure` 64px |
+| Insight | 21~23px |
+| 섹션 제목 | 19px |
+| feature 본문 | 15.5~16px |
+| 본문 | 13~15px |
+| 근거 | 12.5px |
+| technical meta | 9.5~10px · tracking 0.18~0.2em |
+
+Technical meta(`SUMMARY` 같은 tiny uppercase)는 **실제로 필요한 곳에만** 둔다. 모든
+섹션이 `tiny uppercase → title → caption` 3단으로 반복되면 그건 보고서가 아니라 양식이다.
+보고서 섹션은 번호를 큰 활자로 왼쪽에 세우고 technical code를 그 아래 작게 붙인다.
+
+### 13.6 정직성 — 그림이 근거보다 커지지 않는다
+
+Field Notes의 시각 어휘는 모두 **이미 계산된 값**에서만 나온다. 아래는 규칙이 아니라
+금지사항이다.
+
+- 두 사람의 신호는 **떨어져 있는 두 점**으로 그린다. 채워지는 막대(성공확률)로 그리지 않고,
+  4축 다각형(radar)으로 그리지 않는다 — 없는 정밀도를 만든다
+- 한쪽 값이 없으면 선을 그리지 않는다. 모르는 것을 가운데 점으로 찍으면 측정이 아니라 추측이다
+- Mirror의 연결선은 **시작점만** 정확하다(직접 답한 1~5 값). 도착점은 위치가 아니라 방향이다
+- 연결(Connection)은 이을 것이 **둘 이상**일 때만 그린다. 합류점은 하나다
+- 색 tag 하나로 상태를 끝내지 않는다. 판정은 composition에도 반영한다
+
+### 13.7 Desktop
+
+제품은 mobile-first를 유지한다. 데스크톱 전용 앱을 만들지 않는다.
+
+데스크톱에서 모바일 프레임이 보일 때 **'회색 배경 한가운데 아이폰'을 만들지 않는다** —
+기기 베젤 · drop shadow · 목업 템플릿 없이, 따뜻한 지면 위에 얇은 rule 한 겹으로 두고
+왼쪽 위에 브랜드 marker를 남긴다. 개발용 패널(`PrototypePanel`)은 production에 노출하지 않는다.
+
+### 13.8 Motion
+
+§9의 원칙을 유지하고, 새 duration/easing을 만들지 않는다(`globals.css` Motion System).
+추가하는 motion은 **의미가 있는 것만**이다 : connection line draw · mirror overlap reveal ·
+observation marker appear.
+
 ------------------------------------------------------------------------
 
 ## 요약 원칙

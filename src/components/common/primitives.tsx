@@ -175,17 +175,35 @@ export function ConfidenceLabel({
 
 /* --------------------------------------------------------------- Evidence */
 
+/**
+ * 근거 한 줄 (v1.48 — 카드에서 **인용문**으로)
+ *
+ * 예전에는 `rounded-chip border bg-surface` 카드였고, 근거가 세 개면 똑같은 카드가
+ * 세 개 쌓였다. 근거는 본문이 아니라 출처이므로 본문과 같은 규격의 면을 가질 이유가
+ * 없다 — 번호 + 얇은 divider만으로 '이건 목록이고 순서가 있다'가 충분히 읽힌다.
+ *
+ * ⚠️ 정보는 그대로다. 번호(`item.n`)와 문장(`item.text`) 둘 다 남는다.
+ */
 export function EvidenceRow({ item, className }: { item: EvidenceItem; className?: string }) {
   return (
-    <li className={cn('flex gap-3 rounded-chip border border-line bg-surface p-3.5', className)}>
-      <span className="flex-none pt-0.5 text-[11px] font-semibold text-brand-pressed tnum">
-        {item.n}
+    <li
+      className={cn(
+        'flex gap-3 border-t border-[color:var(--color-rule-hair)] px-1 py-2.5',
+        className,
+      )}
+    >
+      <span className="flex-none pt-px text-[11px] font-semibold text-brand-pressed tnum">
+        {String(item.n).padStart(2, '0')}
       </span>
       <span className="text-caption keep-all text-[#555]">{item.text}</span>
     </li>
   );
 }
 
+/**
+ * 근거 목록 — 관찰의 흔적(evidence trail).
+ * 좌측 rule 하나가 목록 전체를 묶어 '여기부터 여기까지가 근거'를 만든다.
+ */
 export function EvidenceList({
   items,
   label = '이렇게 본 근거',
@@ -194,9 +212,9 @@ export function EvidenceList({
   label?: string;
 }) {
   return (
-    <section className="flex flex-col gap-2">
+    <section className="flex flex-col gap-1.5">
       <SectionLabel>{label}</SectionLabel>
-      <ul className="flex flex-col gap-2">
+      <ul className="surf-evidence flex flex-col border-t-0 pl-3">
         {items.map((item) => (
           <EvidenceRow key={item.n} item={item} />
         ))}

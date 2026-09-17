@@ -19,7 +19,7 @@ import type { MbtiAxisBridge, MbtiBridgeReport, MbtiBridgeState } from '@/types'
 
 function StateChip({ state }: { state: MbtiBridgeState }) {
   return (
-    <span className="flex-none rounded-[5px] bg-chip px-1.5 py-0.5 text-[10px] font-semibold text-ink-muted">
+    <span className="flex-none rounded-[3px] bg-chip px-1.5 py-0.5 text-[10px] font-semibold text-ink-muted">
       {MBTI_LENS_COPY.bridgeState[state]}
     </span>
   );

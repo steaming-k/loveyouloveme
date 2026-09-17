@@ -1,6 +1,7 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
+import { ScreenMarker } from '@/components/common/fieldNotes';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BottomSheet } from '@/components/common/BottomSheet';
@@ -8,7 +9,7 @@ import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
-import { NoticeBox, PageHeading, SectionLabel, Tag } from '@/components/common/primitives';
+import { NoticeBox, PageHeading, SectionLabel } from '@/components/common/primitives';
 import { useToast } from '@/components/common/ToastProvider';
 import { Lovy } from '@/components/lovy/Lovy';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
@@ -531,7 +532,7 @@ function PremiumView() {
     return (
       <ScreenLayout
         header={
-          <ScreenHeader backHref={backHref} action={<Tag tone="brand">{copy.entryLabel}</Tag>} />
+          <ScreenHeader backHref={backHref} action={<ScreenMarker>{copy.entryLabel}</ScreenMarker>} />
         }
         footer={
           <div className="flex flex-col gap-2">
@@ -646,7 +647,7 @@ function PremiumView() {
         header={
           <ScreenHeader
             backHref={backHref}
-            action={<Tag tone="brand">{isDeepReport ? copy.entryLabel : PREMIUM_COPY.badge}</Tag>}
+            action={<ScreenMarker>{isDeepReport ? copy.entryLabel : PREMIUM_COPY.badge}</ScreenMarker>}
           />
         }
         footer={

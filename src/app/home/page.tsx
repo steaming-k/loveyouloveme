@@ -300,42 +300,68 @@ export default function HomePage() {
             <h1 className="text-[19px] font-bold tracking-[-0.5px]">{BRAND.name}</h1>
           </header>
 
-          <section className="flex flex-col gap-3 rounded-card border border-line bg-surface px-4 py-[18px]">
+          {/*
+            ══ v1.48 — Home Hero도 **Insight Surface**다 ═════════════════════════
+
+            '지금 러비가 알고 있는 나'는 Mirror의 핵심 관찰 · History의 최근 관찰과
+            **같은 성격의 정보**(이 사용자에 대한 지금 가장 중요한 한 문장)다. 그런데
+            화면마다 다른 모양이었다: 여기선 테두리 있는 흰 카드, Mirror에선 보라 카드.
+            같은 것을 같은 형태로 말하지 않으면 그건 디자인 시스템이 아니다.
+
+            그리고 아래 집계 알약 3개는 **알약일 이유가 없다** — 분류가 아니라
+            '무엇을 몇 개 모았는지'라는 수치다. 점 마커 + 숫자 한 줄로 내린다.
+            ⚠️ 숫자·라벨·계산은 그대로다.
+          */}
+          <section className="surf-insight flex flex-col gap-3 px-1">
             <div className="flex items-start justify-between gap-3">
               <div className="flex min-w-0 flex-col gap-2.5">
                 <p className="text-[11px] font-semibold tracking-[0.06em] text-ink-muted">
                   {HOME_COPY.heroLabel}
                 </p>
-                <p className="text-[18px] font-semibold leading-[1.5] tracking-[-0.4px] keep-all">
+                <p className="text-[19px] font-semibold leading-[1.48] tracking-[-0.45px] keep-all">
                   {summary}
                 </p>
               </div>
               <Lovy pose="heart" size={56} decorative />
             </div>
 
-            <ul className="flex flex-wrap gap-1.5 border-t border-line-soft pt-3">
-              <li className="rounded-[6px] bg-mint-tint px-2.5 py-1.5 text-[11px] font-semibold text-mint-text">
-                사진 {answers.photos.length}장
+            <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[color:var(--color-rule-hair)] pt-3 text-[11px] text-ink-muted">
+              <li className="flex items-center gap-1.5">
+                <span className="h-[5px] w-[5px] flex-none rounded-full bg-mint" aria-hidden />
+                사진 <span className="font-semibold text-ink tnum">{answers.photos.length}</span>장
               </li>
-              <li className="rounded-[6px] bg-brand-tint px-2.5 py-1.5 text-[11px] font-semibold text-brand-pressed">
-                질문 {answeredDeclared}개
+              <li className="flex items-center gap-1.5">
+                <span className="h-[5px] w-[5px] flex-none rounded-full bg-brand" aria-hidden />
+                질문 <span className="font-semibold text-ink tnum">{answeredDeclared}</span>개
               </li>
-              <li className="rounded-[6px] bg-brand-tint px-2.5 py-1.5 text-[11px] font-semibold text-brand-pressed">
-                관계 경험 {experienceCount}
+              <li className="flex items-center gap-1.5">
+                <span className="h-[5px] w-[5px] flex-none rounded-full bg-brand" aria-hidden />
+                관계 경험 <span className="font-semibold text-ink tnum">{experienceCount}</span>
               </li>
             </ul>
           </section>
 
           <section className="flex flex-col gap-2.5">
             <SectionLabel>{HOME_COPY.recentLabel}</SectionLabel>
-            <ul className="flex flex-col gap-2.5">
+            {/*
+              v1.48 — 똑같은 흰 카드 3개에서 **관찰 대장**으로. 축 이름과 지금 신호가
+              좌우로 갈리고 사이를 rule이 나눈다. History의 반복 신호 목록과 같은
+              형태다 — 같은 종류의 '목록'이 화면마다 다른 모양이면 안 된다.
+            */}
+            <ul className="flex flex-col px-1">
               {highlights.map((item) => (
                 <li
                   key={item.key}
-                  className="flex items-center justify-between gap-3 rounded-chip border border-line bg-surface px-[15px] py-3.5"
+                  className="flex items-baseline justify-between gap-3 border-t border-[color:var(--color-rule-hair)] py-3"
                 >
                   <span className="flex-none text-sub font-medium">{item.key}</span>
-                  <span className="text-right text-caption keep-all text-ink-sub">{item.value}</span>
+                  <span
+                    aria-hidden
+                    className="min-w-4 flex-1 translate-y-[-3px] border-b border-dotted border-rule-mid"
+                  />
+                  <span className="flex-none text-right text-caption keep-all text-ink-sub">
+                    {item.value}
+                  </span>
                 </li>
               ))}
             </ul>

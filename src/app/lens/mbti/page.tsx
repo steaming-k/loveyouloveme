@@ -1,6 +1,7 @@
 'use client';
 
 import { useUtMode } from '@/hooks/useUtMode';
+import { ScreenMarker } from '@/components/common/fieldNotes';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 
@@ -9,7 +10,7 @@ import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { FillDataRow } from '@/components/common/StateScreens';
-import { NoticeBox, PageHeading, SectionLabel, Tag } from '@/components/common/primitives';
+import { NoticeBox, PageHeading, SectionLabel } from '@/components/common/primitives';
 import {
   MbtiAxisField,
   MbtiAxisSummary,
@@ -174,7 +175,7 @@ function MbtiLensView() {
 
   return (
     <ScreenLayout
-      header={<ScreenHeader backHref={ROUTES.lens} action={<Tag tone="neutral">{MBTI_LENS_COPY.badge}</Tag>} />}
+      header={<ScreenHeader backHref={ROUTES.lens} action={<ScreenMarker>{MBTI_LENS_COPY.badge}</ScreenMarker>} />}
       footer={
         <Button variant="secondary" onClick={() => router.push(ROUTES.lens)}>
           렌즈 목록으로

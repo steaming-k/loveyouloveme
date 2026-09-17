@@ -8,7 +8,8 @@ import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
-import { Lines, PageHeading, SectionLabel, Tag } from '@/components/common/primitives';
+import { Lines, PageHeading, SectionLabel } from '@/components/common/primitives';
+import { ScreenMarker } from '@/components/common/fieldNotes';
 import { HistoryChangeRow } from '@/components/history/HistoryChangeRow';
 import { RepeatedSignalNotice } from '@/components/history/PastObservationNote';
 import { Lovy } from '@/components/lovy/Lovy';
@@ -139,7 +140,11 @@ function HistoryView() {
       header={
         <ScreenHeader
           backHref={ROUTES.home}
-          action={<Tag tone="brand">{HISTORY_COPY.badge}</Tag>}
+          /*
+            v1.48 — 알약에서 **편집 marker**로. 이 라벨은 분류 태그가 아니라 이 화면이
+            무엇인지 말하는 제목 옆 표식이므로, 배경을 깔지 않고 rule + 자간으로만 세운다.
+          */
+          action={<ScreenMarker>{HISTORY_COPY.badge}</ScreenMarker>}
         />
       }
       /*
@@ -169,16 +174,21 @@ function HistoryView() {
 
         {/* ① 현재 Insight */}
         {latestInsight ? (
-          <section className="flex flex-col gap-2.5 rounded-card bg-brand-tint px-[18px] py-5">
+          /*
+            v1.48 Insight Surface — Mirror의 핵심 관찰과 **같은 표면**을 쓴다.
+            같은 성격의 정보(이 사람에 대해 지금 가장 중요한 한 문장)가 화면마다
+            다른 모양이면 그건 시스템이 아니라 화면별 장식이다.
+          */
+          <section className="surf-insight flex flex-col gap-2.5 px-1">
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10.5px] font-semibold tracking-[0.1em] text-brand-pressed">
                 {HISTORY_COPY.nowLabel} · 가장 최근 관찰
               </p>
-              <span className="flex-none text-[11px] tnum text-brand-pressed">
+              <span className="flex-none text-[11px] tnum text-ink-muted">
                 {formatEntryDate(latest!.createdAt)}
               </span>
             </div>
-            <p className="text-[18px] font-semibold leading-[1.5] tracking-[-0.4px] keep-all text-brand-ink">
+            <p className="text-[20px] font-semibold leading-[1.48] tracking-[-0.5px] keep-all text-brand-ink">
               {latestInsight}
             </p>
           </section>
@@ -243,24 +253,43 @@ function HistoryView() {
           <ol className="relative flex flex-col pl-[22px]">
             <span className="absolute top-2 bottom-3.5 left-[5px] w-px bg-rule" aria-hidden />
 
-            {[...entries].reverse().map((entry) => {
+            {/*
+              v1.48 — 카드 목록에서 **관찰 기록 archive**로.
+
+              예전에는 항목마다 `rounded-row border bg-surface` 카드가 있었고, 왼쪽
+              timeline 선 옆에 흰 카드가 줄줄이 붙었다. 기록은 '보관된 것'이라 담는
+              면이 필요하지 않다 — 관찰 번호 + 날짜 + 문장, 그리고 항목을 나누는
+              얇은 rule이면 그게 archive의 문법이다.
+
+              ⚠️ 관찰 번호는 **새 데이터가 아니다.** 저장된 기록의 시간순 순서를
+              그대로 쓴다(`entries`는 오래된 것부터 들어 있고, 화면은 최신부터
+              보여주므로 번호는 역순으로 내려간다).
+              ⚠️ 항목 전체가 계속 버튼이다 — hit area를 줄이지 않는다.
+            */}
+            {[...entries].reverse().map((entry, reverseIndex) => {
               const insight =
                 entry.coreInsight.userCorrection?.trim() || entry.coreInsight.original;
+              const observationNo = entries.length - reverseIndex;
 
               return (
                 <li key={entry.id} className="relative pb-[18px] last:pb-0">
                   <span
-                    className="absolute top-[7px] -left-[22px] h-[11px] w-[11px] rounded-full bg-brand"
+                    className="absolute top-[9px] -left-[22px] h-[9px] w-[9px] rounded-full bg-brand"
                     aria-hidden
                   />
                   <button
                     type="button"
                     onClick={() => router.push(ROUTES.historyEntry(entry.id))}
-                    className="flex w-full flex-col gap-1.5 rounded-row border border-line bg-surface p-3.5 text-left active:bg-sunken"
+                    className="flex w-full flex-col gap-1.5 border-t border-[color:var(--color-rule-hair)] px-1 pt-2.5 pb-1 text-left"
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] tnum text-ink-muted">
-                        {formatEntryDate(entry.createdAt)} · {historyKindLabel(entry)}
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="flex items-baseline gap-2">
+                        <span className="obs-index">
+                          {String(observationNo).padStart(2, '0')}
+                        </span>
+                        <span className="text-[11px] tnum text-ink-muted">
+                          {formatEntryDate(entry.createdAt)} · {historyKindLabel(entry)}
+                        </span>
                       </span>
                       <span className="flex-none text-[13px] text-ink-faint" aria-hidden>
                         →
