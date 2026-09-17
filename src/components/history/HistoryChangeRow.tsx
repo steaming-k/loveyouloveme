@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { ScaleHearts } from '@/components/common/ScaleHearts';
+import { TRACK, trackTop } from '@/components/common/fieldNotes';
 import { HISTORY_COPY, HISTORY_STATE_LABEL } from '@/data/copy';
 import { cn } from '@/lib/cn';
 import { valueToPercent } from '@/lib/logic/mirror';
@@ -15,6 +16,13 @@ import type { HistoryAxisChange, HistoryChangeState } from '@/types';
  * - STABLE/SHIFT는 좋음·나쁨이 아니다. 색으로 우열을 만들지 않는다
  */
 
+/**
+ * PAST/NOW 트랙의 rail과 점. **둘 다 홀수**라 공통 중심(`TRACK.center` 7.5)에서
+ * 정수 top이 나온다 — 짝수를 쓰면 그 요소만 반픽셀에 놓여 선에서 빗나가 보인다.
+ */
+const HISTORY_RAIL = 3;
+const HISTORY_DOT = 9;
+
 const STATE_CLASS: Record<HistoryChangeState, string> = {
   STABLE: 'bg-mint-tint text-mint-text',
   SHIFT: 'bg-brand-tint text-brand-pressed',
@@ -22,16 +30,36 @@ const STATE_CLASS: Record<HistoryChangeState, string> = {
   INSUFFICIENT: 'bg-sunken text-ink-muted',
 };
 
+/**
+ * ⚠️ v1.48.2 — 선과 점이 `fieldNotes`의 **공통 중심축**(`TRACK` · `trackTop`)을 쓴다.
+ *
+ * 예전에는 3px짜리 rail 자체가 컨테이너였고 점은 `top-1/2` + `-translate-y-1/2`로
+ * 얹혀 있었다. 홀수 높이 부모에 `50%`를 곱하는 조합이라 중심이 반픽셀에 걸렸고,
+ * 그 위상은 부모가 놓인 소수 좌표에 따라 매번 달라졌다. 지금은 rail도 점도
+ * 같은 중심에서 **정수 top**을 받는다 — `SignalTrack`과 같은 규칙이다.
+ *
+ * ⚠️ `valueToPercent`(가로 위치)는 그대로다. 이 수정은 **세로 정렬만** 바꾼다.
+ */
 function ScaleTrack({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex items-center gap-2.5">
       <span className="w-[34px] flex-none text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
         {label}
       </span>
-      <div className="relative h-[3px] min-w-0 flex-1 rounded-sm bg-track">
+      <div className="relative min-w-0 flex-1" style={{ height: TRACK.height }}>
         <span
-          className="absolute top-1/2 h-[9px] w-[9px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-brand"
-          style={{ left: valueToPercent(value) }}
+          className="absolute inset-x-0 rounded-sm bg-track"
+          style={{ top: trackTop(HISTORY_RAIL), height: HISTORY_RAIL }}
+          aria-hidden
+        />
+        <span
+          className="absolute -translate-x-1/2 rounded-full bg-brand"
+          style={{
+            top: trackTop(HISTORY_DOT),
+            height: HISTORY_DOT,
+            width: HISTORY_DOT,
+            left: valueToPercent(value),
+          }}
           aria-hidden
         />
       </div>

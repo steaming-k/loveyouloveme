@@ -26,6 +26,15 @@ import { useSession } from '@/state/SessionProvider';
 import type { RelationshipHistoryEntry } from '@/types';
 
 /**
+ * 관찰 기록 timeline의 레일 기하.
+ *
+ * `TIMELINE_DOT`이 레일 칸의 폭이자 점의 지름이다 — 선과 점이 이 값 하나에서
+ * 같은 중심을 얻는다. `TIMELINE_GUTTER`는 본문이 레일 옆으로 물러나는 거리다.
+ */
+const TIMELINE_DOT = 9;
+const TIMELINE_GUTTER = 22;
+
+/**
  * F1 Relationship History — 실제 기능 (v1.3에서 정적 mock 제거)
  *
  * 시각적 우선순위(§11): ① 현재 Insight ② 의미 있는 변화 ③ 과거 관찰 ④ Timeline
@@ -250,8 +259,25 @@ function HistoryView() {
         {/* ④ Timeline — Insight 중심, 날짜로만 구분 */}
         <section className="flex flex-col gap-2.5">
           <SectionLabel>관찰 기록</SectionLabel>
-          <ol className="relative flex flex-col pl-[22px]">
-            <span className="absolute top-2 bottom-3.5 left-[5px] w-px bg-rule" aria-hidden />
+          <ol className="relative flex flex-col" style={{ paddingLeft: TIMELINE_GUTTER }}>
+            {/*
+              ══ v1.48.2 — 레일 칸 하나가 선과 점의 중심을 **함께** 정한다 ═════════
+
+              예전에는 세로선이 `left-[5px]`(중심 5.5), 관찰 점이 9px에 `-left-[22px]`
+              (중심 4.5)로 **각각 따로** 배치돼 있었다. 실측에서 정확히 1px 어긋났다 —
+              subpixel이 아니라 진짜 어긋남이라 어떤 화면에서도 보였다.
+
+              지금은 이 칸의 폭이 점의 지름(`TIMELINE_DOT`)이고, 선은 칸의 가운데,
+              점은 칸을 꽉 채운다. 그래서 **둘의 중심이 구조적으로 같은 값**이 된다 —
+              점 크기를 바꿔도 선이 따라온다.
+            */}
+            <span
+              className="pointer-events-none absolute inset-y-0 left-0"
+              style={{ width: TIMELINE_DOT }}
+              aria-hidden
+            >
+              <span className="absolute top-2 bottom-3.5 left-1/2 w-px -translate-x-1/2 bg-rule" />
+            </span>
 
             {/*
               v1.48 — 카드 목록에서 **관찰 기록 archive**로.
@@ -273,8 +299,10 @@ function HistoryView() {
 
               return (
                 <li key={entry.id} className="relative pb-[18px] last:pb-0">
+                  {/* 레일 칸을 꽉 채운다 → 칸의 중심 = 선의 중심 = 점의 중심 */}
                   <span
-                    className="absolute top-[9px] -left-[22px] h-[9px] w-[9px] rounded-full bg-brand"
+                    className="absolute top-[9px] rounded-full bg-brand"
+                    style={{ left: -TIMELINE_GUTTER, width: TIMELINE_DOT, height: TIMELINE_DOT }}
                     aria-hidden
                   />
                   <button

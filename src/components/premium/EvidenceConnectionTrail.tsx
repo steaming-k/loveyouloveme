@@ -84,9 +84,24 @@ export function EvidenceConnectionTrail({
   /* ⚠️ 이을 것이 둘 미만이면 연결이 아니다. 그릴 것이 없으면 그리지 않는다 */
   if (labels.length < 2) return null;
 
-  /** 한 줄 높이(px). 합류선의 위/아래 끝을 첫 줄·마지막 줄의 **중심**에 맞추는 데 쓴다 */
+  /**
+   * ══ 합류 기하 — 선과 점이 **한 중심값**에서 나온다 (v1.48.2) ═══════════════
+   *
+   * 예전에는 tick은 `items-center`로, 합류점과 가로 구간은 `top: 50%`로 각각 따로
+   * 놓였다. 행 높이가 짝수(28)라 1px tick의 중심이 반픽셀에 걸렸고, 컨테이너
+   * 50%는 그 tick 중심과 0.5px 어긋났다 — 실측에서 가로 연결선이 합류점보다
+   * 정확히 0.5px 아래였다.
+   *
+   * 지금은 `TICK_CENTER` 하나가 tick · 세로선 · 합류점 · 가로 구간의 y를 전부
+   * 정한다. 반정수 중심이라 **1px 선과 홀수 지름 점이 모두 정수 top**에 놓인다.
+   */
   const ROW = 28;
-  const half = ROW / 2;
+  /** 행 안에서 tick이 놓이는 중심. 1px 선이 정수 top(13)에 떨어지는 반정수다 */
+  const TICK_CENTER = 13.5;
+  /** 합류점 지름. **홀수**여야 중심에서 정수 top이 나온다 */
+  const NODE = 9;
+  /** 합류점의 y — 첫 tick과 마지막 tick의 한가운데다(컨테이너 50%가 아니다) */
+  const nodeCenter = ((labels.length - 1) / 2) * ROW + TICK_CENTER;
 
   return (
     <section
@@ -113,11 +128,16 @@ export function EvidenceConnectionTrail({
       <div className="relative pr-11">
         <ul className="flex flex-col">
           {labels.map((label) => (
-            <li key={label} className="flex items-center" style={{ height: ROW }}>
+            <li key={label} className="relative flex items-center" style={{ height: ROW }}>
               <span className="min-w-0 flex-1 text-right text-[12.5px] keep-all text-brand-ink">
                 {label}
               </span>
-              <span className="ml-2.5 h-px w-4 flex-none bg-brand-soft" aria-hidden />
+              {/* tick도 같은 중심을 쓴다 — `items-center`에 맡기지 않는다 */}
+              <span
+                className="absolute right-11 ml-2.5 h-px w-4 bg-brand-soft"
+                style={{ top: TICK_CENTER - 0.5, marginRight: -16 }}
+                aria-hidden
+              />
             </li>
           ))}
         </ul>
@@ -126,14 +146,19 @@ export function EvidenceConnectionTrail({
         <span
           aria-hidden
           className="absolute right-11 w-px bg-brand-soft"
-          style={{ top: half, bottom: half }}
+          style={{ top: TICK_CENTER, height: (labels.length - 1) * ROW }}
         />
 
         {/* 합류점 — 여기서 하나가 된다. 이 페이지에서 이 점은 Chapter마다 하나뿐이다 */}
         <span
           aria-hidden
-          className="absolute right-11 -mr-[4px] h-[9px] w-[9px] rounded-full border-2 border-brand bg-canvas"
-          style={{ top: '50%', marginTop: -4.5 }}
+          className="absolute right-11 box-border rounded-full border-2 border-brand bg-canvas"
+          style={{
+            top: nodeCenter - NODE / 2,
+            height: NODE,
+            width: NODE,
+            marginRight: -((NODE - 1) / 2),
+          }}
         />
 
         {/* 합류점에서 아래로 — 도착지를 향해 내려가는 선 */}
@@ -144,12 +169,12 @@ export function EvidenceConnectionTrail({
             <span
               aria-hidden
               className="absolute right-4 h-px w-7 bg-brand-soft"
-              style={{ top: '50%' }}
+              style={{ top: nodeCenter - 0.5 }}
             />
             <span
               aria-hidden
               className="absolute right-4 bottom-0 w-px bg-brand-soft"
-              style={{ top: '50%' }}
+              style={{ top: nodeCenter - 0.5 }}
             />
           </>
         ) : null}

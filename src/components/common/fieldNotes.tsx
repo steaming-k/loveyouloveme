@@ -214,6 +214,59 @@ export function InsightFeature({
   );
 }
 
+/* ------------------------------------------------- 트랙 기하 / Track geometry */
+
+/**
+ * ══ 선과 점의 **공통 중심축** (v1.48.2) ══════════════════════════════════════
+ *
+ * 선·점·링을 각각 따로 정렬하지 않는다. 트랙 한 칸 안의 모든 요소가 **하나의
+ * 중심값**에서 자기 `top`을 유도한다. 그래서 어떤 요소의 크기를 바꿔도 정렬이
+ * 저절로 유지된다 — 눈으로 맞춘 magic number가 없다.
+ *
+ * ══ 왜 지름이 전부 홀수인가 ══════════════════════════════════════════════════
+ *
+ * 1px 선은 정수 `top`에 놓일 때만 device pixel 한 줄을 꽉 채운다. 그래서 선의
+ * 중심은 **반정수**(여기서는 7.5)일 수밖에 없다. 그 중심에 원을 맞추려면
+ *
+ * ```
+ * top = 7.5 - 지름/2   →  정수가 되려면 지름이 홀수여야 한다
+ * ```
+ *
+ * v1.48.1까지 이 규칙이 깨져 있었다. 중심 6.5에 **7px 점(top 3 · 정수)** 과
+ * **12px 링(top 0.5 · 반픽셀)** 이 같이 있었고, 둘의 subpixel 위상이 달라서
+ * 부모가 소수 좌표에 놓일 때마다 링이 점에서 미세하게 빗나가 보였다. 값이 같은
+ * 행(`일치`)이 정확히 그 조합이라, 사용자가 지적한 행도 그 두 개였다.
+ *
+ * ⚠️ 그래서 **새 지름을 추가할 때는 반드시 홀수**여야 한다. `trackTop()`이
+ * 정수를 돌려주지 않으면 그 크기는 이 트랙에 쓸 수 없다.
+ * ⚠️ 가로(x) 위치는 실제 1~5 데이터에서 나오므로 소수일 수 있다. 이 규칙은
+ * **세로 정렬만** 보장한다 — 데이터 매핑은 건드리지 않는다.
+ */
+export const TRACK = {
+  /** 트랙 칸 높이. 짝수라 행 높이가 소수로 번지지 않는다 */
+  height: 14,
+  /** 모든 선·점·링이 공유하는 중심 y. 1px 선이 정수 top에 놓이는 반정수다 */
+  center: 7.5,
+  /** 1~5 전체 범위를 알리는 바탕선 */
+  rail: 1,
+  /** 두 점 사이 — 이 선의 길이가 거리다 */
+  link: 3,
+  /** 나 / 상대 점 */
+  dot: 7,
+  /** 두 값이 같을 때 겹침을 보이게 하는 바깥 링 */
+  ring: 11,
+} as const;
+
+/**
+ * 공통 중심에서 유도한 `top`(px).
+ *
+ * ⚠️ 홀수 지름에서만 정수가 나온다(위 주석). 정수가 아니면 그 요소는 반픽셀에
+ * 놓여 흐려지므로, 크기를 고를 때 이 함수가 판정 기준이다.
+ */
+export function trackTop(size: number): number {
+  return TRACK.center - size / 2;
+}
+
 /* -------------------------------------------------------- 신호 구조 / Signal */
 
 /**
@@ -266,54 +319,99 @@ export function SignalTrack({
     <div className={cn('flex items-center gap-3 py-2', className)}>
       <span className="w-[62px] flex-none text-[12px] tracking-[-0.2px] text-ink-sub">{label}</span>
 
+      {/*
+        트랙 칸 — 이 안의 모든 요소는 `TRACK.center` 하나에서 `top`을 받는다(`trackTop`).
+        가로만 데이터(`pos`)로 정하고, 세로는 어떤 경우에도 흔들리지 않는다.
+        점은 `-translate-x-1/2`로 자기 크기의 절반만큼 당긴다 — 크기를 바꿔도
+        따라오는 구조이고, `-ml-[3.5px]` 같은 하드코딩된 반값을 쓰지 않는다.
+      */}
       {comparable ? (
-        <span className="relative h-[13px] min-w-0 flex-1" aria-hidden>
-          {/* 트랙 — 1~5의 전체 범위. 아주 옅게 남겨 '어디까지 갈 수 있는 축인지'만 알린다 */}
-          <span className="absolute inset-x-0 top-[6px] h-px bg-rule-hair" />
+        <span
+          className="relative min-w-0 flex-1"
+          style={{ height: TRACK.height }}
+          aria-hidden
+        >
+          {/* 바탕선 — 1~5의 전체 범위. '어디까지 갈 수 있는 축인지'만 알린다 */}
+          <span
+            className="absolute inset-x-0 bg-rule-hair"
+            style={{ top: trackTop(TRACK.rail), height: TRACK.rail }}
+          />
           {/* 두 점 사이 — 이 선의 길이가 거리다 */}
           <span
-            className={cn('absolute top-[5.5px] h-[2px] rounded-full', linkTone)}
-            style={{ left: pos(from), right: `calc(100% - ${pos(to)})` } as CSSProperties}
+            className={cn('absolute rounded-full', linkTone)}
+            style={
+              {
+                top: trackTop(TRACK.link),
+                height: TRACK.link,
+                left: pos(from),
+                right: `calc(100% - ${pos(to)})`,
+              } as CSSProperties
+            }
           />
           {/*
             ⚠️ 두 값이 **같을 때**는 점이 정확히 겹친다. 그대로 두면 동그라미 하나만 보여
             '한 사람만 답했다'로 읽힌다 — 같은 자리에 둘 다 있다는 것이 이 행의 결론이므로
             바깥 링을 씌워 겹침 자체를 보이게 한다. 새 판정이 아니라 같은 값의 다른 그림이다.
+            ⚠️ 링 지름은 점과 **같은 홀수 계열**이다. 짝수로 두면 링만 반픽셀에 놓여
+            점에서 빗나가 보인다(v1.48.1에서 실제로 그랬다).
           */}
           {mine === theirs ? (
             <span
               className={cn(
-                'absolute top-[0.5px] -ml-[6px] h-[12px] w-[12px] rounded-full border-[1.5px]',
+                'absolute box-border -translate-x-1/2 rounded-full border',
                 tone === 'good'
                   ? 'border-brand-soft'
                   : tone === 'friction'
                     ? 'border-friction'
                     : 'border-rule-mid',
               )}
-              style={{ left: pos(mine) }}
+              style={{
+                top: trackTop(TRACK.ring),
+                height: TRACK.ring,
+                width: TRACK.ring,
+                left: pos(mine),
+              }}
             />
           ) : null}
           <span
-            className={cn('absolute top-[3px] -ml-[3.5px] h-[7px] w-[7px] rounded-full', dotTone)}
-            style={{ left: pos(mine) }}
+            className={cn('absolute -translate-x-1/2 rounded-full', dotTone)}
+            style={{
+              top: trackTop(TRACK.dot),
+              height: TRACK.dot,
+              width: TRACK.dot,
+              left: pos(mine),
+            }}
           />
+          {/*
+            ⚠️ 빈 점(상대)은 채운 점(나)과 **바깥 크기가 같아야** 한다.
+            `box-border`라 테두리가 바깥으로 자라지 않으므로 두 점의 중심이 어긋나지 않는다.
+            테두리는 1px 정수다 — 1.5px는 브라우저가 1px로 내림해 의도와 렌더가 갈렸다.
+          */}
           {mine !== theirs ? (
             <span
               className={cn(
-                'absolute top-[3px] -ml-[3.5px] h-[7px] w-[7px] rounded-full border-[1.5px] bg-canvas',
+                'absolute box-border -translate-x-1/2 rounded-full border bg-canvas',
                 tone === 'good'
                   ? 'border-brand'
                   : tone === 'friction'
                     ? 'border-friction'
                     : 'border-ink-faint',
               )}
-              style={{ left: pos(theirs) }}
+              style={{
+                top: trackTop(TRACK.dot),
+                height: TRACK.dot,
+                width: TRACK.dot,
+                left: pos(theirs),
+              }}
             />
           ) : null}
         </span>
       ) : (
-        <span className="relative h-[13px] min-w-0 flex-1" aria-hidden>
-          <span className="absolute inset-x-0 top-[6px] h-px border-t border-dashed border-rule-hair" />
+        <span className="relative min-w-0 flex-1" style={{ height: TRACK.height }} aria-hidden>
+          <span
+            className="absolute inset-x-0 border-t border-dashed border-rule-hair"
+            style={{ top: trackTop(TRACK.rail) }}
+          />
         </span>
       )}
 
@@ -324,23 +422,37 @@ export function SignalTrack({
   );
 }
 
-/** `SignalTrack` 묶음의 범례 — 채운 점이 나, 빈 점이 상대 */
+/**
+ * `SignalTrack` 묶음의 범례 — 채운 점이 나, 빈 점이 상대.
+ *
+ * ⚠️ v1.48.2 — 표본의 크기·테두리를 **트랙과 같은 값**(`TRACK`)에서 가져온다.
+ * 예전에는 범례만 `border-[1.5px]`였고 트랙의 빈 점은 1px이라, 범례가 실제
+ * 마커보다 두껍게 보였다 — 범례는 화면의 기호를 설명하는 자리이므로 같은
+ * 기호여야 한다. 값을 두 곳에 적어두면 한쪽만 고쳐질 때 조용히 갈린다.
+ */
 export function SignalTrackLegend({ className }: { className?: string }) {
+  const dot = { height: TRACK.dot, width: TRACK.dot };
+
   return (
     <div className={cn('flex items-center gap-3.5', className)}>
       <span className="flex items-center gap-1.5">
-        <span className="h-[7px] w-[7px] flex-none rounded-full bg-ink-faint" aria-hidden />
+        <span className="flex-none rounded-full bg-ink-faint" style={dot} aria-hidden />
         <span className="text-[10.5px] text-ink-muted">나</span>
       </span>
       <span className="flex items-center gap-1.5">
         <span
-          className="h-[7px] w-[7px] flex-none rounded-full border-[1.5px] border-ink-faint bg-canvas"
+          className="box-border flex-none rounded-full border border-ink-faint bg-canvas"
+          style={dot}
           aria-hidden
         />
         <span className="text-[10.5px] text-ink-muted">상대</span>
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="h-px w-4 flex-none bg-rule-mid" aria-hidden />
+        <span
+          className="w-4 flex-none bg-rule-mid"
+          style={{ height: TRACK.rail }}
+          aria-hidden
+        />
         <span className="text-[10.5px] text-ink-muted">둘 사이 거리</span>
       </span>
     </div>

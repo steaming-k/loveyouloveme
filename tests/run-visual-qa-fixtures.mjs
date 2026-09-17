@@ -8,6 +8,12 @@
  * VISUAL-QA-04  Mirror가 Declared + Relationship 근거를 여전히 그린다
  * VISUAL-QA-05  GAP/MATCH/CHANGE 판정이 가짜 정밀도 없이 계속 보인다
  * VISUAL-QA-06  회수한 문항은 운영자 화면(/ut)에 같은 이벤트 이름으로 남아 있다
+ *
+ * HISTORY-VIS-01  채운 점 / 빈 점이 같은 트랙 primitive에서 top·크기를 받는다
+ * HISTORY-VIS-02  트랙 한 칸이 공통 중심선 하나를 갖고, 모든 지름이 홀수다
+ * HISTORY-VIS-03  timeline의 세로선과 관찰 점이 레일 칸 하나에서 중심을 공유한다
+ * HISTORY-VIS-04  Premium 합류 기하도 중심 하나에서 나온다 (top:50% 0)
+ * HISTORY-VIS-05  선·점 primitive에 반픽셀 땜질이 없다
  * ```
  *
  * ══ 왜 이 파일이 생겼나 ═══════════════════════════════════════════════════════
@@ -211,6 +217,101 @@ check(
 check(
   'Deep Report 완독 신호는 제품 지표라 남아 있다',
   /deep_report_complete/.test(await code('src/components/premium/RelationshipDeepReportView.tsx')),
+);
+
+
+/* ══════════════════════════════════ 선·점 정렬 (v1.48.2) */
+
+console.log('\nHISTORY-VIS — 선과 점의 공통 중심축');
+
+const fieldNotes = await code('src/components/common/fieldNotes.tsx');
+const historyRow = await code('src/components/history/HistoryChangeRow.tsx');
+const historyPage = await code('src/app/history/page.tsx');
+const trail = await code('src/components/premium/EvidenceConnectionTrail.tsx');
+
+/**
+ * 트랙 기하의 지름은 **전부 홀수**여야 한다.
+ *
+ * 1px 선은 정수 top에서만 device pixel 한 줄을 채우므로 공통 중심이 반정수가 되고,
+ * 그 중심에서 `top = center - 지름/2`가 정수가 되려면 지름이 홀수여야 한다.
+ * v1.48.1에서 12px(짝수) 링 하나가 이 규칙을 깨서 점과 0.5px 어긋나 보였다.
+ */
+const trackBlock = /export const TRACK = \{([\s\S]*?)\} as const;/.exec(fieldNotes)?.[1] ?? '';
+const trackSizes = [...trackBlock.matchAll(/^\s*(rail|link|dot|ring):\s*(\d+),/gm)].map((m) => [
+  m[1],
+  Number(m[2]),
+]);
+const trackCenter = Number(/center:\s*([\d.]+),/.exec(trackBlock)?.[1] ?? NaN);
+const evenSizes = trackSizes.filter(([, size]) => size % 2 === 0);
+
+check(
+  'HISTORY-VIS-02 트랙이 공통 중심값 하나를 갖는다 (TRACK.center · trackTop)',
+  Number.isFinite(trackCenter) &&
+    /export function trackTop\(size: number\): number \{\s*return TRACK\.center - size \/ 2;/.test(
+      fieldNotes,
+    ),
+);
+check(
+  'HISTORY-VIS-02 모든 트랙 지름이 홀수다 → 공통 중심에서 top이 정수가 된다',
+  trackSizes.length >= 4 && evenSizes.length === 0,
+  evenSizes,
+);
+check(
+  'HISTORY-VIS-02 트랙 지름이 실제로 정수 top을 만든다',
+  trackSizes.every(([, size]) => Number.isInteger(trackCenter - size / 2)),
+  trackSizes.map(([name, size]) => `${name}:${trackCenter - size / 2}`),
+);
+
+check(
+  'HISTORY-VIS-01 채운 점과 빈 점이 같은 공통 primitive에서 top·크기를 받는다',
+  (fieldNotes.match(/trackTop\(TRACK\.dot\)/g) ?? []).length >= 2 &&
+    /box-border/.test(fieldNotes),
+);
+check(
+  'HISTORY-VIS-01 History PAST/NOW 트랙도 같은 primitive를 쓴다',
+  /import \{ TRACK, trackTop \} from '@\/components\/common\/fieldNotes';/.test(historyRow) &&
+    /trackTop\(HISTORY_RAIL\)/.test(historyRow) &&
+    /trackTop\(HISTORY_DOT\)/.test(historyRow),
+);
+check(
+  'HISTORY-VIS-01 History 트랙의 rail·점 지름도 홀수다',
+  /const HISTORY_RAIL = 3;/.test(historyRow) && /const HISTORY_DOT = 9;/.test(historyRow),
+);
+
+check(
+  'HISTORY-VIS-03 timeline의 세로선과 관찰 점이 레일 칸 하나의 폭에서 중심을 얻는다',
+  /const TIMELINE_DOT = 9;/.test(historyPage) &&
+    /style=\{\{ width: TIMELINE_DOT \}\}/.test(historyPage) &&
+    /left-1\/2 w-px -translate-x-1\/2/.test(historyPage) &&
+    /width: TIMELINE_DOT, height: TIMELINE_DOT/.test(historyPage),
+);
+check(
+  'HISTORY-VIS-03 timeline 점이 더 이상 좌표를 직접 적지 않는다 (-left-[22px] 0)',
+  !/-left-\[22px\]/.test(historyPage) && !/left-\[5px\]/.test(historyPage),
+);
+
+check(
+  'HISTORY-VIS-04 Premium 합류 기하도 중심 하나에서 나온다 (top:50% 0)',
+  /const TICK_CENTER = 13\.5;/.test(trail) &&
+    /const nodeCenter =/.test(trail) &&
+    !/top: '50%'/.test(trail),
+);
+
+/**
+ * 눈으로 맞춘 보정값 금지(§15). 반픽셀 top·margin·1.5px 테두리는 전부
+ * '값을 조금씩 밀어 맞춘' 흔적이라, 부모가 소수 좌표에 놓이면 바로 어긋난다.
+ */
+const HALF_PIXEL = /top-\[\d+\.5px\]|-ml-\[\d+\.5px\]|-mt-\[\d+\.5px\]|border-\[1\.5px\]|translateY\(-0?\.5px\)/;
+const smudged = [
+  ['fieldNotes', fieldNotes],
+  ['HistoryChangeRow', historyRow],
+  ['history/page', historyPage],
+  ['EvidenceConnectionTrail', trail],
+].filter(([, source]) => HALF_PIXEL.test(source));
+check(
+  'HISTORY-VIS-05 선·점 primitive에 반픽셀 땜질(top-[N.5px] · border-[1.5px] 등) 0',
+  smudged.length === 0,
+  smudged.map(([name]) => name),
 );
 
 console.log(`\n${passed} passed · ${failures.length} failed`);
