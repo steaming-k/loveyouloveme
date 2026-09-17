@@ -256,14 +256,15 @@ export function relationshipEventEvidenceText(event: RelationshipEvent): string 
  * 하는 일은 사용자가 그 장면을 *중요하게 기억한다*는 사실을 말하는 것뿐이다.
  */
 const INTERPRETATION: Record<RelationshipEventType, string> = {
-  affection_felt: '너는 이 장면을 호감의 신호로 기억하고 있어.',
-  conflict: '너는 이 장면에서 서운함이 남았다고 기억하고 있어.',
+  /* 260914 P2-7 — 입력 화면('기억나는 사건')과 같은 개념이라 '장면'을 '일'로 맞췄다. 주어는 그대로 사용자다 */
+  affection_felt: '너는 이 일을 호감의 신호로 기억하고 있어.',
+  conflict: '너는 이 일에서 서운함이 남았다고 기억하고 있어.',
   contact_change: '너는 연락의 변화를 관계의 중요한 신호로 기억하고 있어.',
-  closer: '너는 이 장면에서 거리가 좁혀졌다고 기억하고 있어.',
-  distance: '너는 이 장면에서 거리가 느껴졌다고 기억하고 있어.',
-  care_received: '너는 이 장면을 배려받은 순간으로 기억하고 있어.',
-  meeting: '너는 약속과 만남에 관한 이 장면을 중요하게 기억하고 있어.',
-  other: '너는 이 장면을 관계에서 기억할 만한 일로 남겨줬어.',
+  closer: '너는 이 일에서 거리가 좁혀졌다고 기억하고 있어.',
+  distance: '너는 이 일에서 거리가 느껴졌다고 기억하고 있어.',
+  care_received: '너는 이 일을 배려받은 순간으로 기억하고 있어.',
+  meeting: '너는 약속과 만남에 관한 이 일을 중요하게 기억하고 있어.',
+  other: '너는 이 일을 관계에서 기억할 만한 일로 남겨줬어.',
 };
 
 /**
@@ -274,8 +275,8 @@ const INTERPRETATION: Record<RelationshipEventType, string> = {
  */
 function limitationFor(tense: RelationshipTense): string {
   return tense === 'former'
-    ? '이건 네가 기억하는 장면이야. 그때 상대가 무슨 마음이었는지는 여기서 알 수 없어.'
-    : '이건 네가 기억하는 장면이야. 상대가 무슨 마음이었는지는 여기서 알 수 없어.';
+    ? '이건 네가 기억하는 사건이야. 그때 상대가 무슨 마음이었는지는 여기서 알 수 없어.'
+    : '이건 네가 기억하는 사건이야. 상대가 무슨 마음이었는지는 여기서 알 수 없어.';
 }
 
 /**
@@ -288,8 +289,8 @@ function limitationFor(tense: RelationshipTense): string {
 function lovyNoteFor(count: number, tense: RelationshipTense): string {
   const when = tense === 'former' ? '그 관계에서' : '이 관계에서';
   return count === 1
-    ? `${when} 기억나는 장면 하나를 받았어. 네가 무엇을 크게 기억하는지 같이 봤어.`
-    : `${when} 기억나는 장면 ${count}개를 받았어. 네가 무엇을 크게 기억하는지 같이 봤어.`;
+    ? `${when} 기억나는 사건 하나를 받았어. 네가 무엇을 크게 기억하는지 같이 봤어.`
+    : `${when} 기억나는 사건 ${count}개를 받았어. 네가 무엇을 크게 기억하는지 같이 봤어.`;
 }
 
 /**
@@ -335,7 +336,7 @@ export function buildReportedScenes(
   if (scenes.length === 0) return null;
 
   return {
-    title: '네가 알려준 장면',
+    title: '네가 알려준 사건',
     lovyNote: lovyNoteFor(scenes.length, tense),
     limitation: limitationFor(tense),
     scenes,

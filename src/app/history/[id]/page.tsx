@@ -319,7 +319,14 @@ function declaredChips(entry: RelationshipHistoryEntry): string[] {
 
 function evidenceChips(entry: RelationshipHistoryEntry): string[] {
   const evidence = entry.relationshipEvidence;
-  const items = evidence.important.map((factor) => PAST_FACTOR_LABEL[factor]);
+  /*
+    260915 UT P1-2 — 기록 스냅샷에는 '기타'의 **내용이 없다**(`relationshipEvidence`는
+    선택지만 얼려둔다). 그래서 여기서는 `기타` 세 글자를 칩으로 세우지 않고 뺀다.
+    내용을 스냅샷에 넣지 않은 것은 의도다 — 기록은 자유서술을 보관하는 곳이 아니다.
+  */
+  const items = evidence.important
+    .filter((factor) => factor !== 'other')
+    .map((factor) => PAST_FACTOR_LABEL[factor]);
   if (evidence.hardest) items.push(HARDEST_LABEL[evidence.hardest]);
   return items;
 }

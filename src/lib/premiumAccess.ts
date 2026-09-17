@@ -35,6 +35,61 @@ import type { PremiumFeatureId } from '@/types';
  */
 export type PremiumAccessMode = 'payment' | 'demo_unlock' | 'preview' | 'beta_ut';
 
+export interface PremiumAccessInput {
+  /** `lib/utMode.ts` — env · `?mode=ut` · 탭 기억 */
+  utMode: boolean;
+  /** `NEXT_PUBLIC_PREMIUM_FAKE_DOOR` — Premium 진입 표면(진입 행 · Home Bundle · Paywall) */
+  fakeDoorEnabled: boolean;
+  /** `NEXT_PUBLIC_PREMIUM_PREVIEW` — `/premium-preview/*` 통로 */
+  previewEnabled: boolean;
+  /** 실제 PG 결제 확정. **지금은 항상 false** */
+  paymentConfirmed: boolean;
+}
+
+export interface PremiumAccess {
+  utMode: boolean;
+  /** Premium 진입 행 · Home Bundle · Paywall을 렌더하는가 */
+  surfaceEnabled: boolean;
+  /** `/premium-preview/*` 화면이 열리는가 */
+  previewRouteOpen: boolean;
+  /** 리포트를 연 자격 — 화면 문구와 analytics `access_mode` */
+  mode: PremiumAccessMode;
+  /** 실제 결제가 일어났는가. UT는 **절대 true가 아니다** */
+  paymentExecuted: boolean;
+}
+
+/**
+ * Premium 노출 계약 (v1.47 Premium UT Visibility)
+ *
+ * ```
+ * UT          표면 · preview 통로 · 리포트 전부 열림   mode beta_ut   결제 없음
+ * Production  env flag 그대로 · 결제 정책 그대로       mode demo_unlock(PG 없음) / preview / payment
+ * ```
+ *
+ * ⚠️ **UT 보장을 env flag 누락·오설정에 맡기지 않는다.** UT에서는 flag가 꺼져 있어도 열린다(UT-PREM-09).
+ * ⚠️ **결제를 위조하지 않는다.** UT가 `payment` mode나 `paymentExecuted: true`를 만드는 경로는 없다(UT-PREM-11).
+ * ⚠️ 콘텐츠 **근거**(`hasPremiumEvidence`)는 여기서 판정하지 않는다 — 근거가 없으면 리포트가 비므로
+ * `premiumFeatureState`가 unavailable + 채우러 갈 길을 보여준다. 그건 fake door가 아니라 데이터 조건이다.
+ */
+export function resolvePremiumAccess(input: PremiumAccessInput): PremiumAccess {
+  if (input.utMode) {
+    return {
+      utMode: true,
+      surfaceEnabled: true,
+      previewRouteOpen: true,
+      mode: 'beta_ut',
+      paymentExecuted: false,
+    };
+  }
+  return {
+    utMode: false,
+    surfaceEnabled: input.fakeDoorEnabled,
+    previewRouteOpen: input.previewEnabled,
+    mode: input.paymentConfirmed ? 'payment' : input.previewEnabled ? 'preview' : 'demo_unlock',
+    paymentExecuted: input.paymentConfirmed,
+  };
+}
+
 /**
  * Preview Unlock 상태.
  *

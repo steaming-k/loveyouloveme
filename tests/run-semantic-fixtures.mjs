@@ -29,6 +29,7 @@
  * 실행: 터미널 A `npm run dev` → 터미널 B `npm run test:semantic`
  */
 
+import './_aiTestGuard.mjs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -404,7 +405,8 @@ console.log('\nSEM-07 · 첫 화면에 분석 메타 언어가 0개다');
   const USER_SOURCE_LABELS = new Set([
     '네가 말한 기준', '사진에서 보인 것', '예전 관계 경험', '지금 관계에서의 답변', '그때 관계에서의 답변',
     '상대에 대해 적은 내용', '상대와 비교한 답', '예전 기록', '성향 렌즈', '추가 질문에 답한 것',
-    '기억나는 장면', '심화 질문에 답한 것',
+    /* 260914 P2-7 — 입력 화면 용어('사건')와 맞췄다 */
+    '기억나는 사건', '심화 질문에 답한 것',
   ]);
   const alwaysVisible = (result) => [
     result.headerLine ?? '',
@@ -462,7 +464,7 @@ console.log('\nSEM-07 · 첫 화면에 분석 메타 언어가 0개다');
     const header = result.headerLine ?? '';
     const falseMention = [
       header.includes('예전 기록') && !groups.has('history'),
-      header.includes('기억나는 장면') && !(result.report.reportedScenes?.scenes?.length > 0),
+      header.includes('기억나는 사건') && !(result.report.reportedScenes?.scenes?.length > 0),
       header.includes('상대에 대해 적은 내용') && !groups.has('target') && !groups.has('compatibility'),
     ].some(Boolean);
     check(`META-05 · ${name} 헤더가 없는 source를 부르지 않는다`, !falseMention, { header, groups: [...groups] });
@@ -1378,14 +1380,24 @@ console.log('\nSEM-ROUTE · Deep Report만 모델을 따로 고르고, 캐시가
       /isDev && devCapture === true/.test(routeSrc),
   );
   check(
-    "SEM-ROUTE · 제품 라우팅이 아직 'inherit'이다 (승인 전 기본 모델 불변)",
-    /export const DEEP_REPORT_MODEL_ROUTE: 'inherit' \| string = 'inherit';/.test(routingSrc),
+    'SEM-ROUTE · 제품 라우팅이 코드에 모델을 박지 않는다 (v1.47 Integration — env AI_MODEL_DEEP_REPORT)',
+    !/DEEP_REPORT_MODEL_ROUTE/.test(routingSrc) && !/['"`]gpt-[0-9]/.test(routingSrc),
   );
   check(
-    'SEM-ROUTE · deepReportFingerprint가 모델 id를 digest에 넣는다',
-    /`model:\$\{semanticModelId\}`/.test(fingerprintSrc) && /input\.semanticModelId \?\? DEEP_REPORT_MODEL_ROUTE/.test(fingerprintSrc),
+    'SEM-ROUTE · 모델은 지문이 아니라 캐시 키에 들어간다 (v1.47 Model-Aware Cache)',
+    !/semanticModelId|DEEP_REPORT_MODEL_ROUTE/.test(fingerprintSrc) && /::model=\$\{model\}::/.test(stripComments(await readFile(join(ROOT, 'src/services/ai/aiCacheKey.ts'), 'utf8'))),
   );
-  check('SEM-ROUTE · 라우트가 카드 허용집합을 최대 3장으로 자른다', /\.slice\(0, 3\)/.test(routeSrc) && /candidates: allowancesOf\(candidates\)/.test(routeSrc));
+  /*
+    v1.46.4 Action Layer — 라우트가 카드 허용집합을 한 번 만들어 Action 허용집합에서도 재사용한다
+    (`const cardAllowances = allowancesOf(candidates)` → `candidates: cardAllowances`). 검사 의도는 같다:
+    3장으로 자른 그 값이 핸들러의 candidates로 간다.
+  */
+  check(
+    'SEM-ROUTE · 라우트가 카드 허용집합을 최대 3장으로 자른다',
+    /\.slice\(0, 3\)/.test(routeSrc) &&
+      (/candidates: allowancesOf\(candidates\)/.test(routeSrc) ||
+        (/const cardAllowances = allowancesOf\(candidates\)/.test(routeSrc) && /candidates: cardAllowances/.test(routeSrc))),
+  );
 }
 
 console.log('\nSEM-BUDGET · Provider 호출 수와 토큰 예산');

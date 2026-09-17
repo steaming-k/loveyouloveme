@@ -3,11 +3,11 @@ import type { ObservedTrait } from '@/types';
 /**
  * Observed Me — **샘플 세션 전용** 고정 관찰 데이터 (S09)
  *
- * ⚠️ v1.22 — 사용자에게 보이는 경로에서 이 배열을 쓰는 곳은 `buildSampleObservedResult()`
- * **한 곳**이다. 그 함수를 타는 경로는 `createSampleAnswers()` 뿐이고, 진입점은 dev 전용
- * `PrototypePanel`과 **S06 `/profile/intro`의 '샘플 답변으로 결과부터 볼게'** 두 곳이다.
- * 후자는 Production에서도 보이므로, 아래 문장은 **사용자가 샘플을 직접 선택하면 보인다**
- * (그때는 `DEMO AI` 배지 + '화면 확인용 샘플 세션' 안내가 함께 붙는다).
+ * ⚠️ v1.47 UT-2 — 이 배열을 쓰는 곳은 `buildSampleObservedResult()` **한 곳**이고, 그 함수를
+ * 타는 경로는 `createSampleAnswers()` 뿐이다. 진입점은 이제 **dev 전용 두 곳뿐이다** —
+ * `PrototypePanel`과 `/dev/latency-session`(production 404).
+ * 예전에는 S06 `/profile/intro`의 '샘플 답변으로 결과부터 볼게'가 세 번째 진입점이라
+ * 아래 문장이 Production 사용자에게도 보일 수 있었다. 그 버튼을 빼서 지금은 도달하지 않는다.
  *
  * ⚠️ v1.39 — import는 두 곳이다. 위 함수 외에 `/api/dev/history-test`(Production **404**)가
  * fixture 조립용으로 읽는다. 그 Route는 배포에 노출되지 않으므로 **사용자에게 보이는 경로는

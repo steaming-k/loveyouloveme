@@ -126,9 +126,23 @@ function CandidateCard({
     .filter((scene): scene is DeepReportedScene => Boolean(scene));
 
   return (
-    <li className="flex flex-col gap-2.5 rounded-card border border-line bg-surface px-4 py-4">
-      <div className="flex items-baseline gap-2">
-        <span className="flex-none text-[11px] font-semibold tnum text-ink-faint">
+    /*
+      ══ v1.48 — Premium 본문은 **카드 묶음이 아니라 보고서의 장(chapter)** ═════
+
+      예전에는 후보마다 `rounded-card border bg-surface`였고, 높이 400~500px짜리 흰
+      카드가 세 개 쌓였다. 무료 화면과 유료 화면의 차이가 '카드가 더 많다'로 읽힌
+      원인이 바로 여기다 — §14가 FAIL 조건으로 못 박은 그 모양이다.
+
+      지금은 담는 면이 없다. 장을 여는 rule 하나 + 왼쪽에 세운 큰 번호. 무료 결과의
+      `ReportSection`과 **같은 문법**이라, 유료는 '다른 화면'이 아니라 **같은 보고서가
+      더 깊어진 것**으로 읽힌다. 그리고 그 안의 Evidence Connection 밴드가 무료에는
+      없던 유일한 형태로 남는다.
+
+      ⚠️ 번호 · 순서 · 내용 · 토글 기본값은 그대로다. 표면만 바뀐다.
+    */
+    <li className="flex flex-col gap-2.5 border-t border-[color:var(--color-rule-mid)] px-1 pt-4">
+      <div className="flex items-baseline gap-2.5">
+        <span className="flex-none text-[19px] leading-none font-semibold tnum text-ink-faint">
           {String(index + 1).padStart(2, '0')}
         </span>
         <p className="min-w-0 text-[10.5px] font-semibold tracking-[0.04em] text-mint-ink">
@@ -232,7 +246,8 @@ function CandidateCard({
         그래서 렌즈 문장을 근거처럼 나열하지 않고 한 줄로만 잇는다.
       */}
       {lens && lens.mode !== 'unavailable' ? (
-        <p className="rounded-row bg-sunken px-3 py-2.5 text-[11.5px] keep-all leading-relaxed text-ink-sub">
+        /* 렌즈는 결론이 아니라 프레임이므로 Evidence Surface(좌측 rule)로 둔다 */
+        <p className="surf-evidence text-[11.5px] keep-all leading-relaxed text-ink-sub">
           <span className="font-semibold">이 결과를 다른 관점에서 보면 · {lens.label}</span>
           <br />
           {lens.soWhat ?? lens.overview}
@@ -300,7 +315,7 @@ function CandidateCard({
                 {linkedScenes.map((scene) => (
                   <li key={scene.id} className="flex flex-col gap-0.5">
                     <span className="text-[10.5px] font-semibold tracking-[0.04em] text-mint-ink">
-                      네가 알려준 장면 · {scene.typeLabel}
+                      네가 알려준 사건 · {scene.typeLabel}
                     </span>
                     <span className="text-[11.5px] keep-all leading-relaxed text-ink-sub">
                       {scene.fact}

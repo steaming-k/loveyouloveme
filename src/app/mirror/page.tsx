@@ -1,25 +1,26 @@
 'use client';
 
-import Link from 'next/link';
+import { useUtMode } from '@/hooks/useUtMode';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AiNarrativeNotice, useNarrativeViewEvent } from '@/components/ai/AiModeNotice';
 import { CoreInsightNarrativeView, MirrorAxisNarrative } from '@/components/ai/NarrativeViews';
 import { BottomNavigation } from '@/components/common/BottomNavigation';
+import { ResultEditSheet } from '@/components/result/ResultEditSheet';
 import { BottomSheet } from '@/components/common/BottomSheet';
 import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { EmptyStateView, FillDataRow } from '@/components/common/StateScreens';
-import { EvidenceList, PageHeading, Tag } from '@/components/common/primitives';
-import { ResultSectionNav } from '@/components/common/ResultSectionNav';
+import { EvidenceList, PageHeading, SectionLabel } from '@/components/common/primitives';
+import { Lovy } from '@/components/lovy/Lovy';
 import { useToast } from '@/components/common/ToastProvider';
 import { RepeatedSignalNotice } from '@/components/history/PastObservationNote';
-import { MirrorComparisonRow, MirrorLegend } from '@/components/mirror/MirrorComparisonRow';
+import { MirrorComparisonRow } from '@/components/mirror/MirrorComparisonRow';
 import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
-import { UtRatingCard } from '@/components/ut/UtRatingCard';
+import { CurrentRelationshipInline } from '@/components/profile/CurrentRelationshipInline';
 import { LOVY_LINES } from '@/data/copy';
 import { PREMIUM_HOOK_COPY } from '@/data/premium';
 import { useAnchorScroll } from '@/hooks/useAnchorScroll';
@@ -92,6 +93,8 @@ function MirrorView() {
   const profile = useRelationshipProfile();
   const { saveEntry, entries } = useHistory();
   const [variant] = useState(() => resolvePriceVariant());
+  /** v1.47 — UT에서는 Premium 표면이 flag와 무관하게 열린다(`resolvePremiumAccess`) */
+  const utMode = useUtMode();
 
   const revisit = isRevisit(searchParams);
   const source = revisitSource(searchParams);
@@ -150,6 +153,11 @@ function MirrorView() {
   );
 
   const [editOpen, setEditOpen] = useState(false);
+  /*
+    260915 UT P0-2 §11 — `editOpen`은 **핵심 관찰 문장 고치기**이고, 이건 **분석 입력
+    고치기**다. 둘을 한 시트에 합치지 않는다 — 고치는 대상이 다르다.
+  */
+  const [hubOpen, setHubOpen] = useState(false);
   const [draft, setDraft] = useState(answers.coreCorrection);
 
   // 한 번만 호출한다 — 구 S27/S28 두 곳에서 각각 부르던 것을 합쳤다(§32 AI 재호출 최소화).
@@ -402,18 +410,49 @@ function MirrorView() {
             backHref={revisit ? ROUTES.home : ROUTES.mirrorTeaser}
             centerLabel={revisit ? '최근 RELATIONSHIP MIRROR' : 'RELATIONSHIP MIRROR'}
             action={
-              <button
-                type="button"
-                onClick={() => router.push(ROUTES.shareMirror)}
-                className="flex h-11 items-center px-1 text-caption text-ink-sub"
-              >
-                공유
-              </button>
+              /* 260915 UT P0-2 §11 · P2-1 — 수정과 공유를 결과 화면 같은 자리에 둔다 */
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setHubOpen(true)}
+                  className="flex h-11 items-center px-1 text-caption text-ink-sub"
+                >
+                  수정
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push(ROUTES.shareMirror)}
+                  className="flex h-11 items-center px-1 text-caption text-ink-sub"
+                >
+                  공유
+                </button>
+              </div>
             }
           />
         }
         footer={<Button onClick={handleSave}>내 관찰 기록에 저장</Button>}
-        nav={revisit ? <BottomNavigation /> : undefined}
+        /*
+          260915 UT P0-2 — **결과 화면에서는 하단 Nav를 항상 보여준다.**
+
+          예전에는 `revisit`(Home·History에서 다시 열었을 때)일 때만 붙였다. 의도는
+          '첫 퍼널 진행 중에는 빠져나갈 길을 만들지 않는다'였는데, UT에서 그 의도가
+          정반대로 읽혔다:
+
+          ```
+          "분석에 네비게이션 바 보이게"
+          "뒤로가기가 헷갈림. 뒤에 페이지가 더 있을 것 같은 느낌임"
+          "이전 화면으로 가고 싶었던 거였는데 뭔가 다른 게 나왔다"
+          ```
+
+          결과 화면은 퍼널의 **중간이 아니라 끝**이다. 끝에 도착했는데 이동 수단이
+          상단 Back 하나뿐이면, 사용자는 그 Back을 '다음으로 가는 길'로 착각하거나
+          아직 남은 단계가 있다고 읽는다. 어떻게 도착했는지(퍼널/다시보기)는
+          **사용자의 문제가 아니라 우리 내부 구분**이다.
+
+          ⚠️ 입력 화면(프로필 질문 · 관계 경험 · Target)에는 여전히 붙이지 않는다 —
+          거기는 실제로 퍼널 중간이고, 중간 이탈이 곧 데이터 손실이다.
+        */
+        nav={<BottomNavigation />}
         bodyClassName="pt-1.5 pb-4"
       >
         <div className="flex flex-col gap-[18px]">
@@ -429,22 +468,85 @@ function MirrorView() {
              * 먼저 말한다** — 카드를 더하지 않고 캡션 한 조각으로만.
              */
             caption={`비교 가능한 ${mirror.insights.length}개 기준에서 · ${scopeCaption}`}
+            /*
+              v1.48 — 알약 두 개에서 **관찰 집계 한 줄**로.
+
+              `[차이 2개][일치 2개]`는 정확한 값이었지만 형태가 태그였다. 태그는
+              '분류'를 뜻하는데 이 둘은 분류가 아니라 **개수**다. 점 마커 + 숫자
+              한 줄이면 같은 사실을 pill 없이 말하고, 화면의 알약 개수가 둘 줄어든다.
+              ⚠️ 숫자·조건·문구는 그대로다.
+            */
             eyebrow={
               gapInsights.length > 0 ? (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <Tag tone="brand">차이 {gapInsights.length}개</Tag>
-                  <Tag tone="mint">일치 {mirror.insights.length - gapInsights.length}개</Tag>
+                <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[11px] text-ink-muted">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-[5px] w-[5px] flex-none rounded-full bg-brand" aria-hidden />
+                    차이 <span className="font-semibold text-ink tnum">{gapInsights.length}</span>개
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-[5px] w-[5px] flex-none rounded-full bg-mint" aria-hidden />
+                    일치{' '}
+                    <span className="font-semibold text-ink tnum">
+                      {mirror.insights.length - gapInsights.length}
+                    </span>
+                    개
+                  </span>
                 </div>
               ) : (
-                <Tag tone="mint">비교한 항목이 모두 비슷했어</Tag>
+                <p className="flex items-center gap-1.5 text-[11px] text-ink-muted">
+                  <span className="h-[5px] w-[5px] flex-none rounded-full bg-mint" aria-hidden />
+                  비교한 항목이 모두 비슷했어
+                </p>
               )
             }
           />
 
-          <ResultSectionNav
-            event="result_anchor_navigation"
-            items={[{ id: RESULT_ANCHORS.mirrorCoreInsight, label: '가장 중요한 관찰' }]}
-          />
+          {/*
+            260914 P2-2 — **takeaway-first.** '러비가 가장 눈여겨본 부분'이 비교 행 5개 아래에 있어서,
+            핵심 한 문장을 보려면 입력 비교를 다 지나야 했다(그래서 이 자리에 '가장 중요한 관찰'로
+            점프하는 칩이 있었다). 핵심 문장을 제목 바로 아래로 올리고 점프 칩은 뺐다 — anchor id는 그대로다.
+            근거 목록 · AI 설명은 비교 행 뒤 원래 자리에 남는다(결론 → 비교 → 이유).
+          */}
+          {/*
+            ══ v1.48 Insight Surface — 카드가 아니라 **편집면** ═══════════════
+
+            예전에는 `rounded-card bg-brand-tint` 였다. 보라 배경이 눈에 띄긴 했지만
+            그건 여전히 '여러 카드 중 색이 다른 카드'였고, 이 화면에서 가장 중요한
+            발견이 나머지 흰 카드들과 **같은 규격**을 공유했다.
+
+            지금은 굵은 ink rule로 열리고, 배경이 없고, 활자가 화면에서 두 번째로 크다.
+            이 페이지에 이런 면은 **하나뿐**이라 카드 개수와 무관하게 먼저 읽힌다.
+
+            ⚠️ `id` · `{headline}` · 러비 + 라벨 조합은 그대로다(결과 순서를 고정한
+            fixture들이 이 조합을 찾는다). 바뀐 것은 표면뿐이다.
+          */}
+          <section
+            id={RESULT_ANCHORS.mirrorCoreInsight}
+            className="surf-insight flex flex-col gap-3 px-1"
+          >
+            <p className="flex items-center gap-2 text-[10.5px] font-semibold tracking-[0.1em] text-brand-pressed">
+              <Lovy pose="note" size={28} decorative />
+              러비가 가장 눈여겨본 부분
+            </p>
+            <h2 className="text-[23px] font-semibold leading-[1.46] tracking-[-0.65px] keep-all text-brand-ink">
+              {headline}
+            </h2>
+            {edited ? (
+              <p className="text-[11.5px] text-brand-pressed">
+                네가 고친 문장이야. 러비의 원래 관찰도 기록에 함께 저장할게 — 아래 근거는
+                그대로야.
+              </p>
+            ) : (
+              /*
+                260915 UT P1-3 — 핵심 관찰 직후 러비 한 줄 (§28 checkpoint).
+                사용자가 이미 문장을 고친 상태면 붙이지 않는다 — 그때 이 자리가 할 말은
+                '네가 고친 문장이야'이고, 두 줄을 겹치면 어느 쪽이 지금 상태인지 흐려진다.
+              */
+              <p className="text-[11.5px] leading-relaxed keep-all text-brand-pressed">
+                {LOVY_LINES.mirrorCoreNote}
+              </p>
+            )}
+          </section>
 
           {/*
             v1.41 §39.6 — **근거가 아직 과거뿐인 `dating`·`long_term`에게만** 보인다.
@@ -454,20 +556,11 @@ function MirrorView() {
             ⚠️ 카드가 아니라 한 줄이다(§39.10). 그리고 `from=mirror`를 붙여 돌아올
             곳을 이 화면으로 고정한다.
           */}
-          {invitesCurrent && scope.currentCount === 0 ? (
-            <div className="flex flex-col gap-2 rounded-card border border-dashed border-line-strong bg-canvas-warm p-4">
-              <p className="text-caption keep-all leading-relaxed text-ink-sub">
-                지금 이 비교의 오른쪽 칸은 전부 이전 관계에서 답한 내용이야. 지금 관계에서는
-                어떤지 알려주면 그 항목부터 지금 기준으로 다시 볼게.
-              </p>
-              <Link
-                href={ROUTES.currentRelationship('mirror')}
-                className="inline-flex min-h-11 items-center self-start text-[12.5px] font-medium text-brand-pressed"
-              >
-                지금 관계에서의 나 알려주기 →
-              </Link>
-            </div>
-          ) : null}
+          {/*
+            260914 UT 후속 P1 STEP 6 — 별도 화면 링크 대신 **결과 안 accordion**(기본 접힘).
+            답하면 사라지던 권유 줄과 달리, 답한 뒤에도 같은 자리에서 고칠 수 있게 남긴다(개수 표시).
+          */}
+          {invitesCurrent ? <CurrentRelationshipInline /> : null}
 
           {/*
             v1.46.4 §18 — **결론이 비교보다 먼저다.**
@@ -484,9 +577,21 @@ function MirrorView() {
             openQuestion={openQuestionFor(freeCandidates[0])}
           />
 
+          {/*
+            v1.48.1 — **그래프 사용 설명 범례를 걷어냈다.**
+
+            예전 `MirrorLegend`에는 섹션 제목(`항목별 대조`)과 함께
+            `○ 말한 나(정확한 위치)` · `⌃ 관찰 경험 신호(방향)`라는 범례가 있었다.
+            그 범례는 pseudo-chart를 읽는 방법을 설명하는 줄이었고, 차트가 사라진
+            지금은 설명할 것도 없다 — 시각화에 사용법이 필요하면 그 시각화가 실패한
+            것이라는 판단이 이번 QA의 결론이다.
+
+            ⚠️ 제목은 남긴다. v1.36에서 이 섹션에 heading이 없어 `/mirror`의 순서가
+            H1 → H3 → H2로 역전됐던 문제를 되살리지 않는다.
+          */}
           <section className="flex flex-col gap-2.5">
-            <MirrorLegend />
-            <ul className="flex flex-col gap-2.5">
+            <SectionLabel>항목별 대조</SectionLabel>
+            <ul className="flex flex-col">
               {/*
                 §14 — **판정이 아니라 순서만** 바꾼다(`lib/resultPriority.ts`).
                 GAP → CHANGE → MATCH. 같은 등급 안에서는 엔진이 준 순서 그대로다.
@@ -522,36 +627,10 @@ function MirrorView() {
 
           {repeated.length > 0 ? <RepeatedSignalNotice signals={repeated} /> : null}
 
-          <section
-            id={RESULT_ANCHORS.mirrorCoreInsight}
-            className="flex flex-col gap-3 rounded-card bg-brand-tint px-[18px] py-5"
-          >
-            <p className="text-[10.5px] font-semibold tracking-[0.1em] text-brand-pressed">
-              러비가 가장 눈여겨본 부분
-            </p>
-            <h2 className="text-[21px] font-semibold leading-[1.5] tracking-[-0.5px] keep-all text-brand-ink">
-              {headline}
-            </h2>
-            {/*
-              v1.43 §48.6 — **카피를 화면 사실에 맞췄다.**
-
-              이전 문구는 `러비의 원래 관찰은 아래 근거와 함께 남겨뒀어`였다. §48의
-              게이트가 Core AI 서술을 렌더에서 빼면 **아래에 남는 것은 결정론 근거
-              목록뿐**이고, 러비의 원래 관찰 문장은 화면에 없다. 원래 관찰이 실제로
-              남는 곳은 **저장을 눌렀을 때의 관찰 기록**이다
-              (`coreInsight.original` — `buildHistoryEntry`).
-
-              ⚠️ 문구를 그대로 두는 것이 더 작은 변경이지만, 그러면 화면이 없는 것을
-              있다고 말한다. v1.43이 닫는 것이 정확히 그 종류의 거짓이다.
-            */}
-            {edited ? (
-              <p className="text-[11.5px] text-brand-pressed">
-                네가 고친 문장이야. 러비의 원래 관찰도 기록에 함께 저장할게 — 아래 근거는
-                그대로야.
-              </p>
-            ) : null}
-          </section>
-
+          {/*
+            v1.43 §48.6 — 고친 문장 안내 카피('아래 근거는 그대로야')는 화면 사실에 맞춘 것이다.
+            260914 P2-2에서 핵심 문장 블록은 위로 올라갔고, 근거 · AI 설명은 여기 그대로 남는다.
+          */}
           <CoreInsightNarrativeView
             core={canUseAiAxisNarrative(focusInsight) ? narrative.data?.core : undefined}
             status={narrative.status}
@@ -565,9 +644,14 @@ function MirrorView() {
             차이(GAP)가 하나도 없으면 이 질문 자체가 성립하지 않으므로 만들지 않는다.
             무료 Mirror 본문(근거·검증 버튼·저장)은 이 아래로 그대로 이어진다 — 끝까지 읽을 수 있다.
           */}
-          {gapInsights.length > 0 ? (
+          {/*
+            v1.47 UT-2 — UT 참가자에게는 GAP이 없어도 Premium 진입을 둔다(참가자가 Premium을 못 보는 화면을 남기지 않는다).
+            '다르게 행동했을까' 문구는 차이가 있을 때만 붙인다 — GAP이 없으면 기본 진입 문구다. 일반 사용자는 기존 규칙 그대로.
+          */}
+          {gapInsights.length > 0 || utMode ? (
             <PremiumEntryRow
               feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
+                utMode,
                 mirrorAvailable: mirror.available,
                 /**
                  * §2-1-A — **Experience/Target 유무로 Premium 자격을 막지 않는다.**
@@ -592,13 +676,17 @@ function MirrorView() {
                 allowsOutwardAction: showOutwardAction,
               })}
               source="mirror"
-              hook={{
-                variant: 'mirror_why',
-                title: PREMIUM_HOOK_COPY.mirror_why.title,
-                description:
-                  '네가 중요하다고 말한 기준, 실제 연애에서의 경험, 이번 상대와의 차이를 함께 연결해봤어.',
-                cta: PREMIUM_HOOK_COPY.mirror_why.cta,
-              }}
+              hook={
+                gapInsights.length > 0
+                  ? {
+                      variant: 'mirror_why',
+                      title: PREMIUM_HOOK_COPY.mirror_why.title,
+                      description:
+                        '네가 중요하다고 말한 기준, 실제 연애에서의 경험, 이번 상대와의 차이를 함께 연결해봤어.',
+                      cta: PREMIUM_HOOK_COPY.mirror_why.cta,
+                    }
+                  : undefined
+              }
             />
           ) : null}
 
@@ -635,16 +723,21 @@ function MirrorView() {
             reason={narrative.reason}
           />
 
-          {/* §45 — UT Mode에서만. 근거 이해도는 이 화면에서 묻는 게 맞다 */}
-          <UtRatingCard
-            question="왜 이런 결과가 나왔는지 근거가 이해됐어?"
-            event="ut_evidence_clarity_rate"
-            properties={{ task: 'relationship', mode: narrative.mode ?? 'none' }}
-            lowLabel="전혀 모르겠어"
-            highLabel="충분히 이해됐어"
-          />
+          {/*
+            v1.48.1 — **UT 근거 이해도 평가 카드를 참가자 화면에서 뺐다.**
+
+            `UT` 배지 + 1~5 척도는 제품 기능이 아니라 연구 계측이다. 실제 화면에
+            남아 있으면 제품이 프로토타입으로 읽히고, 무엇보다 결과를 읽던 사용자가
+            갑자기 설문 응답자가 된다.
+
+            ⚠️ 문항과 이벤트(`ut_evidence_clarity_rate`)는 **사라지지 않았다.**
+            260914 P1 Final이 S09 유사도 문항에 쓴 방법과 같이 운영자 화면(`/ut`)의
+            '진행자 기록 · 인터뷰 문항'으로 옮겼다 — 진행자가 구두로 묻고 기록한다.
+          */}
         </div>
       </ScreenLayout>
+
+      <ResultEditSheet open={hubOpen} onClose={() => setHubOpen(false)} origin="mirror" />
 
       <BottomSheet
         open={editOpen}

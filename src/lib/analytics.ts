@@ -247,6 +247,12 @@ export const ANALYTICS_EVENTS = [
   'result_anchor_navigation',
   /** Profile Revisit에서 '수정' 진입점을 눌렀을 때. properties: section */
   'result_edit_entry',
+  /* 260915 UT P1-1 — 선택형 심화 입력 */
+  'deep_input_open',
+  'deep_input_answer',
+  'deep_input_skip',
+  /* 260915 UT P2-1 — 결과 끝의 공유 진입 */
+  'share_entry_click',
   /**
    * @deprecated v1.11 — 이번 버전에서는 발생시키지 않는다. Compatibility/Mirror 결과는
    * 세션에서 매번 다시 계산되는 순수 함수라 '재분석'이 버튼→로딩을 거치는 별도 프로세스가
@@ -426,6 +432,14 @@ const EXTERNAL_FORBIDDEN_KEYS = new Set([
   'birth_date',
   'birth_time',
   'birth_location',
+  /**
+   * v1.47 §30 — 상대 별칭 · 계정 이메일. 계정 저장이 생기면서 코드에 이름으로 존재하게 됐다.
+   * 사건 본문 · 반응 필드명은 여기에도 적지 않는다 — 이 파일에 그 이름이 **아예 없는 것**이
+   * 더 강한 보장이다(semantic fixture SEM-06).
+   */
+  'target_label',
+  'targetLabel',
+  'email',
 ]);
 
 /**

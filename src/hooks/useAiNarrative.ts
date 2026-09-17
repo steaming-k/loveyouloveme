@@ -14,6 +14,7 @@ import type { EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
  * 그 분기를 호출할 수 없어 `@/lib/aiMeta`로 옮겼다(이유는 그 파일 주석에 있다).
  */
 import { aiModeOf } from '@/lib/aiMeta';
+import { deepReportRuns } from '@/lib/logicalRun';
 import { buildCrossSourceInsights } from '@/lib/logic/crossSourceInsights';
 import {
   allocateCandidateScenes,
@@ -30,6 +31,7 @@ import {
   buildSemanticCandidateBundles,
   semanticBundleSignature,
 } from '@/services/ai/contextBuilders';
+import { actionSelectionOf } from '@/lib/logic/actionPriority';
 import {
   requestCompatibilityNarrative,
   requestDeepReportNarrative,
@@ -561,6 +563,22 @@ export function useDeepReportNarrative(
     (id)와 카드마다 어떤 장면이 실렸는지가 둘 다 들어간다. 사건 추가로 Top 3가 바뀌거나
     장면 배분이 바뀌면 지문이 갈린다.
   */
+  /**
+   * v1.46.4 Action Layer — **결정론 Action 선택은 훅에서 끝낸다.** 게이트 술어는 결정론 질문과
+   * 같은 것이고(§41.10), 그 boolean은 context로 가지 않고 서버 허용집합에만 실린다(§41.7).
+   */
+  const deepAllowsOutwardQuestions = jobAllowsOutwardQuestions(resolveRelationshipContext(answers).job);
+  const actionSelection = useMemo(
+    () =>
+      actionSelectionOf(topCandidates, {
+        tense: deepTense,
+        allowsOutwardQuestions: deepAllowsOutwardQuestions,
+        events,
+        target: answers.target,
+      }),
+    [topCandidates, deepTense, deepAllowsOutwardQuestions, events, answers.target],
+  );
+
   const selectionSignature = useMemo(
     () => [
       ...topCandidates.map((candidate) => `top:${candidate.id}`),
@@ -577,8 +595,10 @@ export function useDeepReportNarrative(
           tense: deepTense,
         }),
       ),
+      /* Action Layer — Action 대상 · 상대에게 물을 수 있는지가 바뀌면 지문이 갈린다 */
+      `action:${actionSelection?.candidateId ?? 'none'}:${deepAllowsOutwardQuestions ? 1 : 0}`,
     ],
-    [topCandidates, events, insights, resolverContext, deepTense],
+    [topCandidates, events, insights, resolverContext, deepTense, actionSelection, deepAllowsOutwardQuestions],
   );
 
   const fingerprint = useMemo(
@@ -605,8 +625,28 @@ export function useDeepReportNarrative(
     ],
   );
 
-  const run = () =>
-    requestDeepReportNarrative(insights, resolverContext, fingerprint, deepTense, events, topCandidates);
+  const run = async () => {
+    /*
+      v1.47 Integration — 한 번의 분석 행위 = 한 generationRequestId. 실패 뒤 retry는 같은 id를 다시 쓰고,
+      결과가 확정되면 닫는다(다음 분석은 새 id). 서버 requestId는 쓰지 않는다(`lib/logicalRun.ts`).
+    */
+    const generationRequestId = deepReportRuns.begin(fingerprint);
+    const result = await requestDeepReportNarrative(
+      insights,
+      resolverContext,
+      fingerprint,
+      deepTense,
+      events,
+      topCandidates,
+      {
+        selection: actionSelection,
+        canAskPartner: deepTense === 'current' && deepAllowsOutwardQuestions,
+      },
+      generationRequestId,
+    );
+    if (result.ok) deepReportRuns.close(fingerprint);
+    return result;
+  };
 
   return useNarrativeTask<DeepNarrativeBundle>({
     task: 'deep-report-narrative',

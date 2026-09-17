@@ -3,7 +3,7 @@
 import { useState } from 'react';
 
 import { ChoiceChip } from '@/components/common/ChoiceChip';
-import { Tag } from '@/components/common/primitives';
+import { OptionalDisclosureButton } from '@/components/common/OptionalDisclosureButton';
 import { Lovy } from '@/components/lovy/Lovy';
 import {
   RELATIONSHIP_EVENT_LABEL,
@@ -111,33 +111,26 @@ export function RelationshipEventSection() {
 
   return (
     <div className="flex flex-col gap-2.5 rounded-[16px] border border-line bg-surface p-4">
-      <button
-        type="button"
-        onClick={() => setOpen((prev) => !prev)}
-        aria-expanded={open}
-        className="flex min-h-11 items-center justify-between gap-3 text-left"
-      >
-        <span className="flex min-w-0 flex-col gap-1">
-          <span className="text-[10.5px] font-semibold tracking-[0.05em] text-ink-muted">
-            기억나는 장면 · 선택
-          </span>
-          <span className="text-caption font-medium">기억나는 장면이 있었어?</span>
-          {/*
-            v1.46.4 §5 — **개수를 미리 말하지 않는다.** 예전 카피는 상한(3개)을
-            암시했고, 그래서 두 번째 장면을 적을 때부터 '이제 하나 남았네'가 됐다.
-            지금은 반대로 말한다 — 여러 개여도 된다는 사실이 먼저다.
-          */}
-          <span className="text-[11.5px] keep-all text-ink-faint">
-            갈등이나 호감 신호처럼 기억에 남은 일이 있다면 알려줘. 여러 개 적어도 돼.
-          </span>
-        </span>
-        <Tag tone={events.length > 0 ? 'brand' : 'neutral'}>
-          {events.length > 0 ? `${events.length}개` : open ? '접기' : '펼치기'}
-        </Tag>
-      </button>
+      {/*
+        260914 UT 후속 P1 — STEP 4 가시성(열면 무엇이 달라지는지) · STEP 5 '장면' → '사건'.
+        호감 · 갈등처럼 **일 단위**로 떠올리는 게 쉽다는 UT 반응을 따랐다. 내부 타입 · 저장 구조는 그대로다.
+
+        v1.46.4 §5 — **개수를 미리 말하지 않는다.** 예전 카피는 상한(3개)을 암시했고,
+        그래서 두 번째 사건을 적을 때부터 '이제 하나 남았네'가 됐다. 여러 개여도 된다는 사실이 먼저다.
+      */}
+      <OptionalDisclosureButton
+        panelId="target-event-panel"
+        open={open}
+        onToggle={() => setOpen((prev) => !prev)}
+        eyebrow="기억나는 사건"
+        title="기억나는 사건이 있었어?"
+        hint="갈등이나 호감 신호처럼 기억에 남은 일이 있다면 알려줘. 여러 개 적어도 돼."
+        benefit="알려주면 리포트가 네가 기억하는 일과 이어져서 더 구체적이 돼"
+        filledLabel={events.length > 0 ? `${events.length}개` : undefined}
+      />
 
       {open ? (
-        <div className="flex flex-col gap-3 pt-1">
+        <div id="target-event-panel" className="flex flex-col gap-3 pt-1">
           {/*
             ══ 입력 폼이 목록보다 **위에** 있다 (v1.46.4 HARDENING PHASE 2) ═══════
 
@@ -152,11 +145,11 @@ export function RelationshipEventSection() {
           {draftType === null ? (
             /* 종류 먼저 고른다 — 무엇을 적어야 하는지가 라벨에서 드러나게 한다(§7) */
             <div className="flex flex-col gap-2">
-              <p className="text-[11.5px] font-semibold text-[#555]">어떤 장면이었어?</p>
+              <p className="text-[11.5px] font-semibold text-[#555]">어떤 일이었어?</p>
               <div
                 className="flex flex-wrap gap-2"
                 role="group"
-                aria-label="기억나는 장면의 종류"
+                aria-label="기억나는 사건의 종류"
               >
                 {RELATIONSHIP_EVENT_OPTIONS.map((option) => (
                   <ChoiceChip
@@ -265,7 +258,7 @@ export function RelationshipEventSection() {
                     : 'border-line bg-surface text-ink-faint',
                 )}
               >
-                {editingId === null ? '이 장면 추가하기' : '이 장면 고치기'}
+                {editingId === null ? '이 사건 추가하기' : '이 사건 고치기'}
               </button>
             </div>
           )}
@@ -335,7 +328,7 @@ export function RelationshipEventSection() {
               onClick={() => setShowAll(true)}
               className="flex min-h-11 items-center text-[11.5px] text-ink-muted press-scale"
             >
-              이전에 적은 장면 {hiddenCount}개 더 보기 ↓
+              이전에 적은 사건 {hiddenCount}개 더 보기 ↓
             </button>
           ) : null}
           {showAll && ordered.length > RELATIONSHIP_EVENT_VISIBLE_DEFAULT ? (
@@ -356,7 +349,7 @@ export function RelationshipEventSection() {
             <div className="flex items-center gap-2 rounded-row bg-brand-tint px-3 py-2.5">
               <Lovy pose="note" size={32} decorative />
               <p className="text-[11.5px] keep-all leading-relaxed text-brand-pressed">
-                기억해뒀어. 이건 네가 알려준 장면으로만 쓸게 — 상대 마음을 내가 정하진
+                기억해뒀어. 이건 네가 알려준 사건으로만 쓸게 — 상대 마음을 내가 정하진
                 않아.
               </p>
             </div>
@@ -374,24 +367,24 @@ export function RelationshipEventSection() {
           */}
           {droppedEventCount > 0 ? (
             <p className="rounded-row bg-[#FDECEC] px-3 py-2.5 text-[11.5px] keep-all leading-relaxed text-[#9B2C2C]">
-              저장돼 있던 장면 {droppedEventCount}개를 불러오지 못했어. 내용이 손상돼서
-              그대로 보여줄 수 없었어 — 기억나는 장면이면 다시 적어줘.
+              저장돼 있던 사건 {droppedEventCount}개를 불러오지 못했어. 내용이 손상돼서
+              그대로 보여줄 수 없었어 — 기억나는 사건이면 다시 적어줘.
             </p>
           ) : null}
 
           {storageStatus === 'full' ? (
             <p className="rounded-row bg-[#FDECEC] px-3 py-2.5 text-[11.5px] keep-all leading-relaxed text-[#9B2C2C]">
               이 브라우저에 더 저장하지 못했어. 방금 적은 내용이 새로고침 뒤에는 없을 수
-              있어 — 오래된 장면을 몇 개 지우면 다시 저장돼.
+              있어 — 오래된 사건을 몇 개 지우면 다시 저장돼.
             </p>
           ) : storageStatus === 'near' ? (
             <p className="rounded-row bg-sunken px-3 py-2.5 text-[11.5px] keep-all leading-relaxed text-ink-sub">
-              저장해둔 게 꽤 쌓였어. 지금은 문제없지만, 더 이상 안 보는 장면은 지워도 돼.
+              저장해둔 게 꽤 쌓였어. 지금은 문제없지만, 더 이상 안 보는 사건은 지워도 돼.
             </p>
           ) : null}
 
           <p className="text-[11px] keep-all leading-relaxed text-ink-faint">
-            안 적어도 괜찮아. 적어준 장면은 동기화율 점수에는 들어가지 않고, 리포트에서
+            안 적어도 괜찮아. 적어준 사건은 동기화율 점수에는 들어가지 않고, 리포트에서
             네가 무엇을 기억하는지 보는 데만 써.
           </p>
         </div>

@@ -470,6 +470,11 @@ export interface DeclaredPreference {
 /* -------------------------------------------------- Relationship Me (S15~S17) */
 
 export type PastFactor =
+  /**
+   * 260915 UT P1-2 — `other`는 **자유 입력을 여는 스위치**다. 라벨 자체는 분석 근거가
+   * 되지 않고(무엇이 중요했는지 모르므로), 실제 내용은 `importantOther`가 들고 있다.
+   */
+  | 'other'
   | 'talk'
   | 'contact'
   | 'conflict'
@@ -487,6 +492,23 @@ export type HardestMoment = 'contact_drop' | 'fight_silence' | 'no_time' | 'valu
 
 export type SelfGapAnswer = 'yes' | 'some' | 'no';
 
+/**
+ * Optional Deep Input — 사용자가 **직접 열어서** 답한 심화 질문 (260915 UT P1-1)
+ *
+ * ⚠️ `AdaptiveAnswer`와 다르다. 저쪽은 시스템이 모순 후보 축에서 먼저 묻는 1개이고,
+ * 이쪽은 '더 자세히 알려주기'를 누른 사용자만 답하는 최대 2개다.
+ *
+ * ⚠️ **점수에 들어가지 않는다.** 동기화율·Mirror 판정 공식은 이 값을 읽지 않는다.
+ * 바뀌는 것은 해석의 구체성뿐이다(조건 좁히기 · 확인할 지점 · 행동 제안).
+ */
+export interface DeepInputAnswer {
+  axis: MirrorAxisKey;
+  /** `DEEP_QUESTIONS`의 질문 id */
+  questionId: string;
+  /** 고른 보기 id. `unsure`도 저장한다 — '물어봤고 모른다고 답했다'는 사실이다 */
+  optionId: string;
+}
+
 /** Adaptive Follow-up (Progressive Profiling) — Declared와 Relationship 사이 모순 후보가
  * 발견된 축에 대해서만 1개 추가 질문을 던진다. 모든 사용자에게 묻지 않는다. */
 export interface AdaptiveAnswer {
@@ -498,6 +520,18 @@ export interface AdaptiveAnswer {
 export interface RelationshipExperience {
   /** 생각보다 중요했던 요소 (최대 `MAX_PAST_FACTORS`개) */
   important: PastFactor[];
+  /**
+   * '기타'를 고른 사용자가 직접 적은 것 — 최대 `MAX_PAST_OTHER_LENGTH`자 (260915 UT P1-2)
+   *
+   * 보기 12개로는 담기지 않는 것이 있다는 UT 요청에서 나왔다. **보기를 늘리는 대신**
+   * 한 칸을 열었다 — 보기를 늘리면 모든 사용자가 더 긴 목록을 읽어야 하지만, 이건
+   * 필요한 사람만 쓴다.
+   *
+   * ⚠️ 비어 있는 것이 정상이다. `important`에 `other`가 없으면 이 값도 쓰지 않는다.
+   * ⚠️ 자유서술 취급은 `note`와 **완전히 같다**(`sanitizeFreeText` · 지문은 길이만 ·
+   * 근거 라벨은 내용이 아니라 '적어준 것이 있다'는 사실만). 새 privacy 표면을 만들지 않는다.
+   */
+  importantOther: string;
   hardest: HardestMoment | null;
   /** 연애 전 생각한 나 vs 실제 연애 속 나 */
   selfGap: SelfGapAnswer | null;
@@ -631,7 +665,21 @@ export interface CurrentRelationshipEvidence {
  * ⚠️ 그래도 **동기화율·Mirror·History 판정에는 여전히 들어가지 않는다.** `ex`가 바꾸는
  * 것은 JOB(문장과 제안의 종류)뿐이고, 그건 `status: 'ended'`를 고른 사용자와 같은 경로다.
  */
-export type TargetRelation = 'crush' | 'talking' | 'friend' | 'work' | 'intro' | 'ex' | 'unsure';
+/*
+ * 260914 UT 후속 P1 STEP 3 — `partner`(연인 · 배우자)를 추가했다. 실제 배우자 · 연인을 떠올린
+ * 참가자가 고를 보기가 없었다. 기존 값 중 이 뜻을 가진 canonical이 없어서(`crush`는 '알아가는 중')
+ * 표시만 바꾸는 매핑으로는 거짓이 된다 — 값 하나만 늘리고 두 표시(연인 · 배우자)는 한 칩으로 묶었다.
+ * ⚠️ `ex`와 달리 STAGE를 바꾸지 않는다 — 연애 · 기혼 단계는 S05 `status`(dating · married)가 이미 말한다.
+ */
+export type TargetRelation =
+  | 'crush'
+  | 'talking'
+  | 'partner'
+  | 'friend'
+  | 'work'
+  | 'intro'
+  | 'ex'
+  | 'unsure';
 
 /** l / m / h, x = 잘 모르겠어요 (점수에 반영하지 않음) */
 export type TargetLevel = 'l' | 'm' | 'h' | 'x';
@@ -1277,6 +1325,16 @@ export type EvidenceRef =
    */
   | { source: 'current_relationship'; field: string }
   | { source: 'adaptive'; field: string }
+  /**
+   * 260915 UT P1-1 — 사용자가 **직접 열어서** 답한 심화 질문(`deepInputs`). `field`는 축이다.
+   *
+   * ⚠️ `adaptive`와 같은 ref로 쓰지 않는다. 저쪽은 시스템이 먼저 물은 것이고 이쪽은
+   * 사용자가 더 말하겠다고 연 것이다 — 근거 목록에서 둘이 한 출처로 보이면 '자료 N종'이
+   * 거짓이 된다(v1.41 §39.9가 `relationship`과 `current_relationship`을 가른 것과 같은 이유).
+   *
+   * ⚠️ resolver가 돌려주는 것은 **사용자가 고른 조건 그대로**다. 원인·성향으로 번역하지 않는다.
+   */
+  | { source: 'deep'; field: string }
   | { source: 'observed'; traitId: string }
   | { source: 'history'; entryId: string; axis: string }
   /** v1.9 — 상대에 대해 사용자가 입력한 값(Target Person) */
@@ -1453,7 +1511,22 @@ export interface ObservedProfileResult {
  */
 export interface ValidatedObservation {
   original: AiObservedTrait;
-  status: 'unverified' | 'confirmed' | 'corrected' | 'excluded';
+  /**
+   * 260915 UT P0-1 — `rejected`를 추가했다.
+   *
+   * 예전에는 사용자가 '조금 달라'만 누르고 고쳐 쓰지 않으면 `unverified`가 됐다.
+   * `unverified`는 **아직 안 물어봤다**는 뜻이라 분석에 그대로 들어갔고, 그래서
+   * 사용자가 아니라고 말한 관찰이 Compatibility · Mirror · Premium 근거로 쓰였다.
+   *
+   * ```
+   * unverified  아직 확인 안 함        → 분석에 쓴다 (약한 근거로)
+   * confirmed   맞다고 확인함          → 분석에 쓴다
+   * corrected   고쳐 씀                → 고친 문장으로 분석에 쓴다
+   * rejected    아니라고 함            → 분석에 쓰지 않는다
+   * excluded    분석에서 빼달라고 함    → 분석에 쓰지 않는다
+   * ```
+   */
+  status: 'unverified' | 'confirmed' | 'corrected' | 'rejected' | 'excluded';
   userCorrection?: string;
 }
 
@@ -1740,6 +1813,26 @@ export interface CandidateSemanticAllowance {
   eligibleOperators: InsightOperator[];
   /** Operator Pass §20 — '한 단계 더 좁혀졌는가' 검사의 기준 */
   knownSelfStatement: string | null;
+  /** Core Value Closure §11 — conditionContext 근거 확인용. 이 카드에 실어 보낸 근거 문장 그대로 */
+  evidenceTexts?: string[];
+  /** Core Value Closure §11 — uncertainty 근거 확인용. 이 카드 번들의 unresolvedPoints 그대로 */
+  unresolvedPoints?: string[];
+}
+
+/**
+ * v1.46.4 Core Value Closure §5 — **관계 조건의 구조적 source.** narrowedCondition은 이것의 요약이다.
+ *
+ * ```
+ * trigger      무엇이 있은 뒤 · 어떤 순간에
+ * state        그때 실제로 어떤 상태가 됐는지(관찰 가능한 상태만)
+ * uncertainty  사용자가 아직 알 수 없는 것
+ * ```
+ * 근거가 없는 칸은 null이다(§23 — 억지 context 금지). 게이트가 근거 없는 칸을 지운다.
+ */
+export interface ConditionContext {
+  trigger: string | null;
+  state: string | null;
+  uncertainty: string | null;
 }
 
 /** A5 — Top 3 카드 하나에 대한 모델 출력. **candidateId 없는 문장은 없다** */
@@ -1747,6 +1840,8 @@ export interface CandidateSemanticNarrative {
   candidateId: string;
   /** Operator Pass §8 — eligibleOperators 중 정확히 하나 */
   operator: InsightOperator;
+  /** Core Value Closure — 게이트가 근거로 확인한 칸만 남는다. 없거나 전부 지워지면 생략 */
+  conditionContext?: ConditionContext;
   /** §16 — 어떤 두 근거를 이었는지. **내부 검증용 · 화면에 노출하지 않는다** */
   connection: string;
   /** §17 — 큰 기준 → 더 좁은 조건. 좁힐 수 없으면 null */
@@ -1761,13 +1856,113 @@ export interface CandidateSemanticNarrative {
   usedEventIds: string[];
 }
 
+/* ═════════════════════════════ v1.46.4 Premium Action Layer (Decision Support) */
+
+/**
+ * Action Layer §10 — 관찰 결과 하나와, 그때 **더 볼 수 있는 가설** 하나.
+ *
+ * ⚠️ 결정이 아니다. `interpretation`은 '헤어져 / 계속 만나'가 아니라 '~라는 가설을 더 볼 수
+ * 있어'까지다(§2-1 Decision Support). 게이트가 그 형태를 검사한다.
+ */
+export interface ActionDecisionSignal {
+  ifObserved: string;
+  interpretation: string;
+}
+
+/**
+ * Action Layer §15 — 모델에게 보내는 **이미 고른 카드 하나.** 모델은 무엇을 먼저 볼지 고르지 않는다.
+ *
+ * ⚠️ 근거·장면은 여기 다시 싣지 않는다 — 같은 candidateId의 `context.candidates[]` 카드가 이미
+ * 들고 있다(토큰 중복 없음). 여기 있는 것은 그 카드를 **행동으로 옮길 때만** 필요한 값이다.
+ */
+export interface ActionTargetBundle {
+  candidateId: string;
+  rank: 1 | 2 | 3;
+  topic: string | null;
+  lifecycle: 'current' | 'former';
+  /*
+    ⚠️ '상대에게 물을 수 있는가'(Job 게이트)는 여기 없다 — AI에게 Job을 주지 않는다(v1.42 §41.7).
+    그 값은 서버 허용집합(`ActionPlanAllowance.canAskPartner`)에만 있고, 게이트가 결과로 막는다.
+  */
+  /** 결정론이 이 카드를 먼저 고른 이유(사용자 언어). 화면에 그대로 나간다 */
+  priorityReason: string;
+  unresolvedPoints: string[];
+}
+
+/** Action Layer — 핸들러가 검증에 쓰는 허용집합. 프롬프트에는 들어가지 않는다 */
+export interface ActionPlanAllowance {
+  candidateId: string;
+  evidenceRefs: EvidenceRef[];
+  eventIds: string[];
+  sceneTexts: string[];
+  canAskPartner: boolean;
+  /** Action Alignment — narrowedCondition이 없을 때의 두 번째 기준(카드 번들이 보낸 그대로) */
+  unresolvedPoints: string[];
+}
+
+/** Action Layer §14 — 같은 Deep Report 응답의 `actionPlan`. 게이트를 통과한 것만 온다 */
+export interface ActionPlanNarrative {
+  sourceCandidateId: string;
+  nextMove: string | null;
+  verificationQuestion: string | null;
+  observeSignal: string | null;
+  /** §11 — 최대 2개 */
+  decisionSignals: ActionDecisionSignal[];
+  unresolved: string | null;
+  usedEvidenceRefs: EvidenceRef[];
+  usedEventIds: string[];
+}
+
+/**
+ * Action Layer §4 · §18 — **화면에 그리는 단일 블록.** Top 3 아래 하나뿐이다(§19).
+ *
+ * ```
+ * plan         nextMove + observe + decisionSignals가 연결됨 (Actionability 2)
+ * verify_only  AI가 없거나 거부됨 — 카드의 확인 질문만 (억지 행동을 만들지 않는다)
+ * unresolved   근거가 모자라 행동을 고를 수 없음 — 무엇이 아직 구분되지 않았는지 + 질문
+ * ```
+ */
+export interface PremiumActionPlan {
+  sourceCandidateId: string;
+  title: string;
+  topic: string | null;
+  mode: 'plan' | 'verify_only' | 'unresolved';
+  source: 'semantic_ai' | 'deterministic';
+  lifecycle: 'current' | 'former';
+  priorityReason: string | null;
+  /** Top 3 안에서 이 카드의 순위(1~3). 화면이 '위 01 카드'를 가리킬 때 쓴다 */
+  sourceRank: number;
+  nextMove: string | null;
+  verificationQuestion: string | null;
+  /**
+   * §8 · §31 — 질문이 어디서 왔는가. `card`면 같은 문장이 이미 위 카드 VERIFY에 그려져 있으므로
+   * 화면은 원문을 반복하지 않고 카드를 가리킨다(393px 실측에서 같은 질문이 두 번 보였다).
+   */
+  verificationFrom: 'card' | 'action' | null;
+  observeSignal: string | null;
+  decisionSignals: ActionDecisionSignal[];
+  unresolved: string | null;
+  usedEvidenceRefs: EvidenceRef[];
+  usedEventIds: string[];
+}
+
 export interface DeepNarrativeBundle {
   narratives: DeepNarrative[];
+  /**
+   * Action Layer §14 — Top 3 아래 단일 Action 블록의 AI 문장. 없거나 null이면 결정론
+   * `verify_only`/`unresolved`로 남는다. ⚠️ 별도 호출이 아니라 같은 응답의 필드다.
+   */
+  actionPlan?: ActionPlanNarrative | null;
   /**
    * A5 — Top 3 카드별 semantic. 없거나 비면 Candidate는 결정론 조립문을 쓴다(§18).
    * ⚠️ optional — 캐시에 남은 v6 응답에는 이 필드가 없다(버전이 올라가 재호출된다).
    */
   candidateSemantics?: CandidateSemanticNarrative[];
+  /**
+   * v1.47 Integration — 클라이언트가 만든 **logical generationRequestId**를 서버가 그대로 돌려준 값.
+   * 저장 멱등 키의 재료다. 요청에 없었으면 없다.
+   */
+  generationRequestId?: string;
   meta: AiNarrativeMeta;
 }
 
@@ -2314,6 +2509,11 @@ export interface RelationshipDeepReport {
    * ⚠️ `available: false`면 빈 배열이다 — 팔지 않는 리포트에 주인공이 있으면 안 된다.
    */
   candidates: InsightCandidate[];
+  /**
+   * Action Layer §3 · §19 — Top 3 중 **가장 먼저 확인할 하나**의 행동 블록. 카드마다 붙이지 않는다.
+   * `available: false`이거나 카드가 없으면 null.
+   */
+  actionPlan: PremiumActionPlan | null;
   /**
    * §21 — Paywall이 실제로 tease할 수 있는 문장. **재료가 없으면 null**이고,
    * 그때 Paywall은 "하나 더 있어"라고 말하지 않는다(VALUE-15).
@@ -3084,6 +3284,14 @@ export interface SessionAnswers {
    * 기존 답변을 덮어쓰지 않는 별도 Evidence Source다(§11). insightId 기준으로 누적된다.
    */
   deepAnswers: DeepAnalysisAnswer[];
+  /**
+   * 260915 UT P1-1 — 선택형 심화 질문 응답. 비어 있는 것이 기본 상태다.
+   *
+   * 최상위에 둔 이유: 이 답은 '관계 경험'만의 것이 아니라 축(연락·갈등·개인 시간·
+   * 애정 표현·취미) 전체에 걸린다. `experience` 안에 넣으면 관계 경험을 건너뛴
+   * 사용자(E4)가 심화 입력을 할 수 없게 된다.
+   */
+  deepInputs: DeepInputAnswer[];
   /** v1.9 — Deep Insight 카드별 사용자 확인(§33). insight.id → feedback */
   deepInsightFeedback: Record<string, DeepInsightFeedback>;
   /**

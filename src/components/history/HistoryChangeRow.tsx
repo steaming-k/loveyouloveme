@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 
+import { ScaleHearts } from '@/components/common/ScaleHearts';
 import { HISTORY_COPY, HISTORY_STATE_LABEL } from '@/data/copy';
 import { cn } from '@/lib/cn';
 import { valueToPercent } from '@/lib/logic/mirror';
@@ -34,9 +35,7 @@ function ScaleTrack({ label, value }: { label: string; value: number }) {
           aria-hidden
         />
       </div>
-      <span className="w-[26px] flex-none text-right text-[11px] font-semibold tnum text-ink">
-        {value}/5
-      </span>
+      <ScaleHearts value={value} className="flex-none text-[11px] font-semibold text-ink" />
     </div>
   );
 }

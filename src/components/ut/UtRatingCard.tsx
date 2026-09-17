@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-import { UT_MODE } from '@/lib/env';
+import { useUtMode } from '@/hooks/useUtMode';
 import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
 import type { AnalyticsEvent, AnalyticsProperties } from '@/lib/analytics';
@@ -10,7 +10,7 @@ import type { AnalyticsEvent, AnalyticsProperties } from '@/lib/analytics';
 /**
  * UT 평가 카드 (v1.7 · §43~§48)
  *
- * ⚠️ **연구용 UI다.** `NEXT_PUBLIC_UT_MODE=true`가 아니면 아무것도 렌더하지 않는다.
+ * ⚠️ **연구용 UI다.** UT Mode(`useUtMode` — env · `?mode=ut` · 탭 기억)가 아니면 아무것도 렌더하지 않는다.
  * 일반 사용자 Production에서는 존재 자체가 보이지 않는다.
  *
  * ⚠️ 이 점수는 **분석 로직에 절대 쓰지 않는다.** 동기화율·Mirror·History·Core Insight
@@ -37,9 +37,10 @@ export function UtRatingCard({
   highLabel?: string;
 }) {
   const [score, setScore] = useState<number | null>(null);
+  const utMode = useUtMode();
 
   // 플래그가 꺼져 있으면 DOM에 흔적도 남기지 않는다.
-  if (!UT_MODE) return null;
+  if (!utMode) return null;
 
   return (
     <section

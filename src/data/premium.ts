@@ -219,7 +219,14 @@ export const DEEP_REPORT_COPY = {
   dismissCta: '지금은 괜찮아',
   priceNote: '정밀 관찰 리포트 1회 · 구독 아님',
 
-  previewLabel: '미리 보기 — 3가지만 살짝',
+  /**
+   * ⚠️ v1.47 UT-2 RC Final — `미리 보기 — 3가지만 살짝`에서 바꿨다.
+   *
+   * 상품 설명(유료 리포트 중 3개를 먼저 보여준다)으로 쓴 말이었지만, UT-2 참가자에게는
+   * **제품 자체가 미리보기 빌드**로 읽힐 위험이 있다. 이번 UT의 기준은 '한 글자라도'라서
+   * 예외를 두지 않는다. 보여주는 것(먼저 볼 3가지)은 그대로다.
+   */
+  previewLabel: '먼저 볼 3가지',
   previewLocked: '나머지는 정밀 관찰 리포트에서 이어서 볼 수 있어',
 
   /**
@@ -270,7 +277,7 @@ export const DEEP_REPORT_COPY = {
   fakeDoorDismiss: '괜찮아',
 
   unavailableTitle: '아직 연결할 수 있는 신호가 부족해',
-  demoNotice: '이 리포트도 규칙 기반 데모 응답이야. 실제 AI 개인화 결과가 아니야.',
+  demoNotice: '이 리포트는 규칙 기반 응답이야. 실제 AI 개인화 결과가 아니야.',
 } as const;
 
 /**
@@ -284,6 +291,9 @@ export const DEEP_REPORT_COPY = {
  * 톤: '결제 성공!' · '축하합니다!' · 'Premium unlocked!' 같은 일반 SaaS/쇼핑몰 문구를 쓰지
  * 않는다. 이 제품의 유료 경험은 luxury unlock이 아니라 **더 깊은 관찰 자료에 접근**이다.
  */
+/** v1.47 UT-2 — Deep Report AI 문장을 기다리는 동안(15~25초) 앱 오류로 읽히지 않게 한 줄 */
+export const DEEP_REPORT_NARRATIVE_LOADING = '답변과 기록을 연결해서 보고 있어. 조금만 기다려줘.';
+
 export const UNLOCK_COPY = {
   payment: {
     status: '결제가 완료됐어',
@@ -302,12 +312,16 @@ export const UNLOCK_COPY = {
     noteSuffix: '아직 결제는 연결 전이야 · 이번 열람은 무료야',
   },
   preview: {
-    status: '미리보기로 리포트를 열었어',
+    status: '정밀 관찰 리포트를 열었어',
     noteSuffix: '실제 결제는 아니야 · 정밀 관찰 리포트',
   },
+  /**
+   * v1.47 UT-2 — UT 참가자에게는 실제 Premium처럼 보인다. '결제 없음'을 여기서 다시 강조하지 않는다 —
+   * 그 사실은 결제 의향 질문 바로 앞(`PremiumWtpQuestion`)에서 한 번 말한다.
+   */
   betaUt: {
-    status: '테스트용으로 리포트를 열었어',
-    noteSuffix: '실제 결제는 아니야 · 정밀 관찰 리포트',
+    status: '정밀 관찰 리포트를 열었어',
+    noteSuffix: '모아둔 신호를 연결해서 보여줄게',
   },
 
   /** 러비 한 줄. 관찰자 화법 그대로 — 축하하지 않고, 다음에 할 일을 말한다. */
@@ -401,7 +415,8 @@ export const PREMIUM_HOOK_COPY = {
  */
 export const PREMIUM_FIX_CTA = {
   target: '상대에 대해 아는 것 채우기',
-  experience: '이전 관계 경험 알려주기',
+  /* 260914 Relationship Language — 기능 이름은 '관계 경험'(docs/RELATIONSHIP_LANGUAGE.md) */
+  experience: '관계 경험 알려주기',
   mbti: 'MBTI 입력하기',
   birth: '생년월일 입력하기',
   photos: '사진 관찰 확인하기',

@@ -1,5 +1,6 @@
 'use client';
 
+import { useUtMode } from '@/hooks/useUtMode';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
@@ -77,6 +78,8 @@ function HistoryReportView() {
    */
   const mirrorForPremium = useMirror();
   const [variant] = useState(() => resolvePriceVariant());
+  /** v1.47 — UT에서는 Premium 표면이 flag와 무관하게 열린다(`resolvePremiumAccess`) */
+  const utMode = useUtMode();
 
   /**
    * v1.7 §26 — History Narrative는 **lazy**다. 이 화면에 들어올 때 호출한다.
@@ -263,6 +266,7 @@ function HistoryReportView() {
         */}
         <PremiumEntryRow
           feature={premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
+            utMode,
             historyComparable: report.comparable,
             /**
              * §2-1-A — **Experience/Target 유무로 Premium 자격을 막지 않는다.**
@@ -288,7 +292,8 @@ function HistoryReportView() {
           hook={{
             variant: 'history_change',
             title: PREMIUM_HOOK_COPY.history_change.title,
-            description: '이전 관계와 비교하면 계속 유지된 기준과 달라진 기준을 나눠볼 수 있어.',
+            /* 260914 Relationship Language — History가 비교하는 건 '이전 관계'가 아니라 이전 관찰 기록이다(뜻 오류 수정) */
+            description: '이전 관찰 기록과 비교하면 계속 유지된 기준과 달라진 기준을 나눠볼 수 있어.',
             cta: PREMIUM_HOOK_COPY.history_change.cta,
           }}
         />

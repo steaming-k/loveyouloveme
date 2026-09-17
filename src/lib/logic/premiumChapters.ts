@@ -609,8 +609,19 @@ export function hasPremiumEvidence(input: {
   );
   if (hasUsableConnection) return true;
 
-  /** Self-only 경로 — cross-axis synthesis */
-  return mirror.insights.length === 0 && answeredDeclaredAxisCount(declared) >= PREMIUM_MIN_SELF_AXES;
+  /**
+   * Self-only 경로 — cross-axis synthesis.
+   *
+   * ⚠️ **`canBuildSelfOnly`와 글자 그대로 같은 판정을 쓴다**(같은 `selfOnlyAxes`).
+   * 두 곳에 따로 적으면 한쪽만 바뀌는 순간 '결제는 되는데 리포트는 비어 있는' 상태가
+   * 다시 생긴다 — 이 파일이 원래 막으려던 결함이 그것이다.
+   *
+   * UT-2 RC: 예전에는 `mirror.insights.length === 0`(세션 단위 제외)이었다. 그 조건이
+   * cross-source의 `isFreeDuplicate`와 겹치면서 Mirror insight 하나로 두 경로가 동시에
+   * 닫혔고, 빠져나갈 길이 사진(`observed`)뿐이라 optional이어야 할 사진이 사실상
+   * 진입 조건이 됐다. 이제 **무료가 보여준 축만** 빼고 남은 축의 충분성을 본다.
+   */
+  return selfOnlyAxes(declared, mirror).length >= PREMIUM_MIN_SELF_AXES;
 }
 
 const MAX_CHAPTERS_PER_AXIS = 2;
@@ -690,6 +701,44 @@ function answeredSelfAxes(declared: DeclaredPreference): {
     rows.push({ axis: axis.key, label: axis.label, phrase });
   }
   return rows;
+}
+
+/**
+ * Self-only 근거에서 **무료 Mirror가 이미 보여준 축을 뺀 나머지** (UT-2 RC).
+ *
+ * ══ 왜 축 단위로 바뀌었나 — 사진이 사실상 필수가 됐던 자리 ═══════════════════
+ *
+ * 예전 조건은 `mirror.insights.length === 0`, 즉 **Mirror가 한 축이라도 나오면 세션
+ * 전체를 Self-only 대상에서 제외**하는 것이었다. 재판매 방지라는 의도는 옳았지만,
+ * 단위가 세션이라 다음 구멍이 생겼다:
+ *
+ * ```
+ * Mirror insight 1개 있음        → Self-only 경로 차단 (세션 단위 제외)
+ * 그 Insight에서 파생된 cross-source → isFreeDuplicate가 제거 → cross 경로도 차단
+ * ⇒ Chapter 0개 ⇒ hasPremiumEvidence=false
+ * ```
+ *
+ * 두 경로가 **같은 Mirror insight 하나** 때문에 동시에 닫힌다. 여기서 빠져나가는
+ * 현실적인 방법이 `observed`(사진) source를 더해 Mirror에서 파생되지 않은 연결을
+ * 만드는 것뿐이라, 계약상 optional이던 사진이 **사실상 Premium 진입 조건**이 됐다.
+ * 실측: 사진 없이 declared 5 · 관계경험 3 · 상대 4/4 · 심화입력 2 · 사건 1 ·
+ * MBTI 양쪽 · 생년월일 양쪽을 다 채워도 Chapter 0개였다(렌즈는 3/3 열려 있었는데도).
+ *
+ * ⚠️ **재판매 방지 원칙은 약해지지 않는다 — 오히려 더 정확해진다.** 무료가 보여준
+ * 것은 '세션'이 아니라 **그 축**이다. 그래서 그 축만 빼고, 남은 축이 그대로
+ * `SELF_ONLY_MIN_AXES` 이상일 때만 만든다. 위 실측 세션이면 Mirror가 연락 하나를
+ * 보여줬으므로 갈등 · 개인시간 · 애정표현 · 취미 4개가 남는다 — 무료에서 한 번도
+ * 보여준 적 없는 축들이다.
+ *
+ * ⚠️ 충분성 가드는 그대로다. 축이 모자라면(무료가 대부분을 이미 보여줬으면) 여전히
+ * 만들지 않는다 — 게이트를 무력화하는 변경이 아니다.
+ */
+function selfOnlyAxes(
+  declared: DeclaredPreference,
+  mirror: MirrorReport,
+): ReturnType<typeof answeredSelfAxes> {
+  const shownFree = new Set(mirror.insights.map((insight) => insight.key));
+  return answeredSelfAxes(declared).filter((row) => !shownFree.has(row.axis));
 }
 
 /**
@@ -983,9 +1032,14 @@ export function buildPremiumChapters(input: PremiumChapterInput): PremiumChapter
      `mirror.insights`가 비어 있지 않으면 무료 화면이 이미 `말한 나`를 축별로 보여줬고,
      여기서 declared를 다시 모으는 것은 무료 문장의 재판매다(v1.26이 두 섹션을 삭제한
      기준 그대로). 그래서 이 자리는 **Mirror가 만들어지지 않은 세션**의 자리다. */
-  const selfAxes = answeredSelfAxes(declared);
-  const canBuildSelfOnly =
-    drafts.length === 0 && mirror.insights.length === 0 && selfAxes.length >= SELF_ONLY_MIN_AXES;
+  /*
+    UT-2 RC — **축 단위 제외로 바뀌었다**(`selfOnlyAxes` 참고). 무료가 보여준 것은
+    세션이 아니라 그 축이므로, 그 축만 빼고 남은 축으로 만든다. 세션 전체를 제외하면
+    Mirror insight 하나 때문에 Self-only와 cross-source가 동시에 닫혀서 Chapter가
+    0개가 됐다 — 사진이 사실상 필수가 됐던 원인이다.
+  */
+  const selfAxes = selfOnlyAxes(declared, mirror);
+  const canBuildSelfOnly = drafts.length === 0 && selfAxes.length >= SELF_ONLY_MIN_AXES;
 
   if (canBuildSelfOnly) {
     /* CH — 내가 관계에서 중요하다고 말한 것 */

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/common/Button';
@@ -10,7 +10,7 @@ import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { NoticeBox, PageHeading } from '@/components/common/primitives';
 import { Lovy } from '@/components/lovy/Lovy';
 import { selectDeepQuestions, type DeepQuestionTemplate } from '@/data/deepQuestions';
-import { PREMIUM_PREVIEW } from '@/lib/env';
+import { usePremiumAccess } from '@/hooks/useUtMode';
 import { cn } from '@/lib/cn';
 import { trackEvent } from '@/lib/analytics';
 import {
@@ -43,11 +43,10 @@ export default function DeepQuestionsPage() {
 function DeepQuestionsView() {
   const router = useRouter();
   const navReplace = useNavReplace();
-  const searchParams = useSearchParams();
-  const isBetaUt = searchParams.get('mode') === 'ut';
-  const reportHref = isBetaUt
-    ? `${ROUTES.premiumPreview('relationship_deep_report')}?mode=ut`
-    : ROUTES.premiumPreview('relationship_deep_report');
+  /* v1.47 — UT는 `lib/utMode.ts` 하나가 정한다. 쿼리를 이어 붙이지 않아도 탭에서 유지된다 */
+  const access = usePremiumAccess();
+  const isBetaUt = access.utMode;
+  const reportHref = ROUTES.premiumPreview('relationship_deep_report');
   const { answers, addDeepAnswer } = useSession();
   /** Release Gate §1 — 외부 Analytics용 opaque 식별자 */
   const funnelAnalysisId = answers.currentAnalysisMeta?.funnelAnalysisId ?? null;
@@ -86,7 +85,7 @@ function DeepQuestionsView() {
     });
   }, [questions.length, isBetaUt, funnelAnalysisId]);
 
-  if (!PREMIUM_PREVIEW) {
+  if (!access.previewRouteOpen) {
     return (
       <ScreenLayout
         header={<ScreenHeader backHref={ROUTES.home} title="추가 질문" />}
@@ -95,7 +94,7 @@ function DeepQuestionsView() {
         <div className="flex h-full flex-col items-center justify-center gap-4 text-center">
           <Lovy pose="laptop" size={110} decorative />
           <p className="text-sub keep-all text-ink-sub">
-            이 화면은 개발용이라 지금은 열려 있지 않아.
+            이 화면은 지금 열려 있지 않아.
           </p>
         </div>
       </ScreenLayout>

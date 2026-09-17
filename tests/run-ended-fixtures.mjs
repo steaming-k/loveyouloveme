@@ -31,6 +31,7 @@
  * 실행: 터미널 A `npm run dev` → 터미널 B `npm run test:ended`
  */
 
+import './_aiTestGuard.mjs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -351,7 +352,8 @@ console.log('\nENDED-04 · Generation · Sanitization · Fixture 3단');
       그 뜻은 버전이 **v5 이상**이면 성립한다. 다만 느슨하게 쓰지 않고 현재 값으로
       다시 고정한다 — 이 파일이 이 목록을 손으로 관리하는 이유가 그것이다.
     */
-    ['relationship-v8', 'compatibility-v6', 'deep-report-v9', 'premium-mbti-v4',
+    /* v1.46.4 Core Value Final Fix — deep-report v12 → v13(uncertainty move). 현재 값으로 다시 고정한다 */
+    ['relationship-v8', 'compatibility-v6', 'deep-report-v13', 'premium-mbti-v4',
       'premium-saju-v4', 'premium-zodiac-v4', 'premium-cross-lens-v4']
       .every((version) => versions.includes(version)),
   );

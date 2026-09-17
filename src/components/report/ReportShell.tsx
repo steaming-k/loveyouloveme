@@ -28,14 +28,29 @@ export function ReportHeader({
   meta: readonly string[];
   /**
    * 보고서 종류 라벨. 기본은 무료 관찰 보고서(`LOVY OBSERVATION REPORT`)다.
-   * Premium Deep Report는 `PRECISION REPORT`를 넘겨서, Paywall 헤더 Tag → Unlock Success →
-   * 이 헤더까지 **같은 문자열이 같은 자리에** 남게 한다(layout continuity).
+   *
+   * ⚠️ v1.48.1 — `null`이면 **그리지 않는다.** Premium Deep Report처럼 화면 헤더
+   * (`ScreenHeader`의 `ScreenMarker`)가 이미 같은 라벨을 들고 있는 자리에서는 이 줄이
+   * 같은 문자열을 한 번 더 찍어 첫 viewport에 marker가 두 번 보였다(실측). 라벨의
+   * 자리 연속성(Paywall → Unlock → Report)은 헤더 쪽 marker가 이미 맡고 있다.
    */
-  eyebrow?: string;
+  eyebrow?: string | null;
 }) {
   return (
     <header className="flex flex-col gap-2 px-1 pt-2">
-      <p className="text-[10px] font-semibold tracking-[0.18em] text-ink-faint">{eyebrow}</p>
+      {/*
+        v1.48 — 보고서 종류 라벨을 **편집 marker**로. Splash의 `LOVE RESEARCH : EARTH`,
+        History의 `RELATIONSHIP HISTORY`와 같은 형태(rule + 넓은 자간)를 쓴다 —
+        화면마다 다른 모양의 라벨이 있으면 그건 시스템이 아니다.
+      */}
+      {eyebrow ? (
+        <p className="flex items-center gap-2.5">
+          <span className="h-px w-4 flex-none bg-rule-ink" aria-hidden />
+          <span className="text-[10px] font-semibold tracking-[0.18em] text-ink-muted">
+            {eyebrow}
+          </span>
+        </p>
+      ) : null}
       <h1 className="text-[24px] font-semibold leading-[1.34] tracking-[-0.7px] keep-all">
         {title}
       </h1>
@@ -108,22 +123,54 @@ export function ReportSection({
       ⚠️ **번호가 붙은 섹션에만 건다.** 보고서 안의 카드 하나하나까지 걸면 스크롤할
       때마다 화면이 계속 무언가를 재생하고, 그건 §24가 말한 '모든 것을 움직이는 것'이다.
     */
-    <section id={id} className={cn('reveal-once flex flex-col scroll-mt-3', className)}>
-      <div className="mt-6 mb-4 h-px bg-line-soft" aria-hidden />
+    /*
+      ══ v1.48 — 섹션 머리를 **한 덩어리 composition**으로 ═════════════════════
 
-      <div className="flex items-center gap-2 px-1">
+      예전 순서는 모든 섹션에서 똑같았다:
+
+      ```
+      ──────────────  divider
+      01 · SUMMARY    tiny uppercase
+      잘 맞는 신호      19px semibold
+      캡션            13px
+      ```
+
+      섹션이 다섯 개면 이 4단 구조가 다섯 번 반복되고, 보고서가 아니라 **양식**처럼
+      읽힌다. §4-C가 지적한 'tiny uppercase eyebrow 남발'의 진짜 원인이 이 반복이다.
+
+      지금은 번호를 **큰 활자로 왼쪽에 세우고**, 제목과 technical code를 그 오른쪽에
+      묶는다. 번호가 커진 만큼 code는 작아져서, 같은 정보가 tiny uppercase 한 줄을
+      또 만들지 않는다.
+
+      ⚠️ `index` · `code` · `title` · anchor id는 그대로다. 정보를 빼지 않았다 —
+      같은 정보를 다른 배치로 놓았을 뿐이다.
+    */
+    <section id={id} className={cn('reveal-once flex flex-col scroll-mt-3', className)}>
+      <div className="field-rule mt-7 mb-4" />
+
+      <div className="flex items-start gap-3 px-1">
+        {/* 관찰 번호 — 보고서의 순서. tabular라 두 자리로 늘어도 제목이 밀리지 않는다 */}
+        <span
+          className="flex-none pt-[3px] text-[21px] leading-none font-semibold text-ink-faint tnum"
+          aria-hidden
+        >
+          {index}
+        </span>
+
         <div className="min-w-0 flex-1">
-          <ReportSectionEyebrow index={index} code={code} />
+          <h2 className="text-[19px] font-semibold leading-[1.34] tracking-[-0.45px] keep-all">
+            {title}
+          </h2>
+          <p className="mt-1 text-[9.5px] font-semibold tracking-[0.2em] text-ink-faint">
+            {code}
+          </p>
         </div>
+
         {action ? <div className="flex-none">{action}</div> : null}
       </div>
 
-      <h2 className="mt-1 px-1 text-[19px] font-semibold leading-[1.42] tracking-[-0.4px] keep-all">
-        {title}
-      </h2>
-
       {caption ? (
-        <p className="mt-1.5 px-1 text-caption keep-all leading-relaxed text-ink-sub">{caption}</p>
+        <p className="mt-2 px-1 text-caption keep-all leading-relaxed text-ink-sub">{caption}</p>
       ) : null}
 
       <div className="mt-3.5 flex flex-col gap-2.5">{children}</div>
@@ -137,7 +184,8 @@ export function ReportSection({
  */
 export function ReportEvidenceBlock({ children }: { children: ReactNode }) {
   return (
-    <div className="border-l-2 border-line-strong pl-3.5">
+    /* v1.48 — 같은 역할의 Evidence Surface 유틸리티로 통일한다(globals.css) */
+    <div className="surf-evidence">
       <p className="text-caption keep-all leading-relaxed text-ink-sub">{children}</p>
     </div>
   );

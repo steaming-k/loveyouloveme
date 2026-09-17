@@ -8,9 +8,10 @@ import { ChoiceChip } from '@/components/common/ChoiceChip';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { SegmentedField } from '@/components/common/SegmentedField';
-import { InlineError, NoticeBox, PageHeading, Tag } from '@/components/common/primitives';
+import { InlineError, NoticeBox, PageHeading } from '@/components/common/primitives';
 import { RelationshipEventSection } from '@/components/profile/RelationshipEventSection';
 import { PRIVACY } from '@/data/copy';
+import { OptionalDisclosureButton } from '@/components/common/OptionalDisclosureButton';
 import { MBTI_TYPES } from '@/data/mbti';
 import { TARGET_FIELDS, TARGET_MIN_KNOWN, TARGET_RELATION_OPTIONS } from '@/data/targetFields';
 import {
@@ -73,7 +74,8 @@ export default function TargetPage() {
 
   return (
     <ScreenLayout
-      header={<ScreenHeader backHref={ROUTES.profileResult} progress={88} />}
+      /* 260914 UT 후속 P0 — 입력 흐름에서 S18을 건너뛰므로 직접 진입 fallback도 입력 단계로 둔다 */
+      header={<ScreenHeader backHref={ROUTES.past(1)} progress={88} />}
       footer={
         <div className="flex flex-col gap-2">
           {error ? <InlineError message={error} /> : null}
@@ -148,28 +150,25 @@ export default function TargetPage() {
         </div>
 
         <div className="flex flex-col gap-2.5 rounded-[16px] border border-line bg-surface p-4">
-          <button
-            type="button"
-            onClick={() => setMbtiOpen((prev) => !prev)}
-            aria-expanded={mbtiOpen}
-            className="flex min-h-11 items-center justify-between gap-3 text-left"
-          >
-            <span className="flex min-w-0 flex-col gap-1">
-              <span className="text-[10.5px] font-semibold tracking-[0.05em] text-ink-muted">
-                PERSONALITY LENS · 선택
-              </span>
-              <span className="text-caption font-medium">상대 MBTI를 알고 있어?</span>
-              <span className="text-[11.5px] keep-all text-ink-faint">
-                점수에는 넣지 않지만, 둘 사이의 성향 차이를 보는 참고 렌즈로 사용할게.
-              </span>
-            </span>
-            <Tag tone={answers.target.mbti ? 'brand' : 'neutral'}>
-              {answers.target.mbti ?? (mbtiOpen ? '접기' : '펼치기')}
-            </Tag>
-          </button>
+          {/* 260914 UT 후속 P1 STEP 4 — 닫힌 상태에서 '열면 무엇이 달라지는지'가 보인다 */}
+          <OptionalDisclosureButton
+            panelId="target-mbti-panel"
+            open={mbtiOpen}
+            onToggle={() => setMbtiOpen((prev) => !prev)}
+            eyebrow="PERSONALITY LENS"
+            title="상대 MBTI를 알고 있어?"
+            hint="점수에는 넣지 않지만, 둘 사이의 성향 차이를 보는 참고 렌즈로 사용할게."
+            benefit="알려주면 성향 차이를 참고 렌즈로 더 구체적으로 볼 수 있어"
+            filledLabel={answers.target.mbti ?? undefined}
+          />
 
           {mbtiOpen ? (
-            <div className="flex flex-wrap gap-2 pt-1" role="radiogroup" aria-label="상대 MBTI (선택)">
+            <div
+              id="target-mbti-panel"
+              className="flex flex-wrap gap-2 pt-1"
+              role="radiogroup"
+              aria-label="상대 MBTI (선택)"
+            >
               {MBTI_TYPES.map((type) => (
                 <ChoiceChip
                   key={type}
@@ -190,28 +189,19 @@ export default function TargetPage() {
         {/* v1.13 §8 — '다가가는 힌트'의 재료. MBTI Optional Section과 같은 Progressive
             Disclosure 패턴을 재사용한다. 새 장문 Survey를 만들지 않는다. */}
         <div className="flex flex-col gap-2.5 rounded-[16px] border border-line bg-surface p-4">
-          <button
-            type="button"
-            onClick={() => setInterestOpen((prev) => !prev)}
-            aria-expanded={interestOpen}
-            className="flex min-h-11 items-center justify-between gap-3 text-left"
-          >
-            <span className="flex min-w-0 flex-col gap-1">
-              <span className="text-[10.5px] font-semibold tracking-[0.05em] text-ink-muted">
-                다가가는 힌트 · 선택
-              </span>
-              <span className="text-caption font-medium">이 사람이 좋아하는 것도 알고 있어?</span>
-              <span className="text-[11.5px] keep-all text-ink-faint">
-                잘 모르겠어도 괜찮아. 네가 알고 있는 것만 볼게.
-              </span>
-            </span>
-            <Tag tone={interests.length > 0 ? 'brand' : 'neutral'}>
-              {interests.length > 0 ? `${interests.length}개` : interestOpen ? '접기' : '펼치기'}
-            </Tag>
-          </button>
+          <OptionalDisclosureButton
+            panelId="target-interest-panel"
+            open={interestOpen}
+            onToggle={() => setInterestOpen((prev) => !prev)}
+            eyebrow="다가가는 힌트"
+            title="이 사람이 좋아하는 것도 알고 있어?"
+            hint="잘 모르겠어도 괜찮아. 네가 알고 있는 것만 볼게."
+            benefit="알려주면 다가가는 힌트가 더 구체적이 돼"
+            filledLabel={interests.length > 0 ? `${interests.length}개` : undefined}
+          />
 
           {interestOpen ? (
-            <div className="flex flex-col gap-3 pt-1">
+            <div id="target-interest-panel" className="flex flex-col gap-3 pt-1">
               <div
                 className="flex flex-wrap gap-2"
                 role="group"
@@ -289,7 +279,7 @@ export default function TargetPage() {
         </div>
 
         {/*
-          v1.46 §6 — 관계 사건('기억나는 장면'). **MBTI·좋아하는 것 다음**에 둔다.
+          v1.46 §6 — 관계 사건('기억나는 사건' · 260914 P1에서 '장면'→'사건'). **MBTI·좋아하는 것 다음**에 둔다.
 
           ⚠️ 4축 입력 카드보다 위로 올리지 않는다. 위로 올리면 화면이 처음부터
           자유서술을 요구하는 것처럼 보이고, `known/4`(비교 가능한 항목)가 이 화면의

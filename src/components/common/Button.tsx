@@ -22,9 +22,18 @@ const VARIANT_CLASS: Record<Variant, string> = {
     'h-[50px] rounded-btn bg-surface border border-line text-[15px] font-medium text-ink ' +
     'active:bg-sunken active:border-line-strong disabled:opacity-40',
   text: 'h-11 text-sub text-ink-sub active:text-ink disabled:opacity-40',
-  ghost:
-    'h-[46px] rounded-row border border-line bg-surface text-caption text-ink ' +
-    'active:bg-sunken disabled:opacity-40',
+  /*
+    v1.48 §17 — `ghost`가 `secondary`와 거의 같아 보였다(둘 다 흰 배경 + 테두리,
+    높이만 50 vs 46px). 위계가 넷이면 형태도 넷이어야 한다:
+
+      primary    채운 면        54px · 16px semibold   — 이 화면의 행동
+      secondary  테두리만       50px · 15px medium     — 다른 선택지
+      ghost      옅은 면        46px · 13px            — 부가 동작
+      text       면 없음        44px                   — 인라인 이동
+
+    `ghost`는 테두리를 버리고 옅은 면만 갖는다 — 화면의 테두리 개수도 함께 줄어든다.
+  */
+  ghost: 'h-[46px] rounded-row bg-sunken text-caption text-ink active:bg-chip disabled:opacity-40',
 };
 
 export function Button({

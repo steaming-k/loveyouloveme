@@ -155,10 +155,13 @@ const SOURCE_PHRASE: Record<EvidenceRef['source'], string> = {
   relationship: '예전 관계 경험',
   current_relationship: '지금 관계에서의 답변',
   adaptive: '추가 질문에 답한 것',
+  /* 260915 UT P1-1 — 사용자가 직접 열어서 더 답한 것 */
+  deep: '더 자세히 답한 것',
   observed: '사진에서 보인 것',
   history: '예전 기록',
   target: '상대에 대해 적은 내용',
-  user_reported_event: '기억나는 장면',
+  /* 260914 P2-7 — 입력 화면 · 리포트 헤더와 같은 이름. 이 표는 화면 evidenceNote(`A · B · C`)에만 쓰인다 */
+  user_reported_event: '기억나는 사건',
   deep_followup: '심화 질문에 답한 것',
   /* `premiumMetaCopy`와 같은 이유로 target과 같은 이름이다 — 같은 입력을 두 번 부르지 않는다 */
   compatibility: '상대에 대해 적은 내용',

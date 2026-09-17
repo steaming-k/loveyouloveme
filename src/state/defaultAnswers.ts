@@ -33,6 +33,7 @@ export function createEmptyAnswers(): SessionAnswers {
     declared: { contact: null, conflict: null, alone: null, affection: null, hobby: null },
     experience: {
       important: [],
+      importantOther: '',
       hardest: null,
       selfGap: null,
       note: '',
@@ -51,6 +52,8 @@ export function createEmptyAnswers(): SessionAnswers {
     legacyZodiac: null,
     share: { includeTargetInfo: false, includeDimensionScores: true },
     deepAnswers: [],
+    /* 260915 UT P1-1 — 선택형 심화 입력. 비어 있는 것이 기본 상태다 */
+    deepInputs: [],
     deepInsightFeedback: {},
     completed: {
       onboarding: false,
@@ -97,6 +100,7 @@ export function createSampleAnswers(): SessionAnswers {
     declared: { contact: 2, conflict: 'now', alone: 5, affection: 'a2', hobby: 'h3' },
     experience: {
       important: ['talk', 'contact', 'conflict', 'alone'],
+      importantOther: '',
       hardest: 'contact_drop',
       selfGap: 'yes',
       note: '',

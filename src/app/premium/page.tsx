@@ -1,6 +1,7 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
+import { ScreenMarker } from '@/components/common/fieldNotes';
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BottomSheet } from '@/components/common/BottomSheet';
@@ -8,18 +9,24 @@ import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
-import { NoticeBox, PageHeading, SectionLabel, Tag } from '@/components/common/primitives';
+import { NoticeBox, PageHeading, SectionLabel } from '@/components/common/primitives';
 import { useToast } from '@/components/common/ToastProvider';
 import { Lovy } from '@/components/lovy/Lovy';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { PremiumPreparingReport } from '@/components/premium/PremiumPreparingReport';
 import { PremiumUnlockSuccess } from '@/components/premium/PremiumUnlockSuccess';
+import {
+  PREMIUM_EVIDENCE_SHELL_COPY,
+  PremiumEvidenceShell,
+  usePremiumEvidenceFill,
+} from '@/components/premium/PremiumEvidenceShell';
+import { resolvePremiumEvidenceState } from '@/lib/logic/premiumEvidenceState';
 import { RelationshipDeepReportView } from '@/components/premium/RelationshipDeepReportView';
+import { DeepReportSnapshotSaver } from '@/components/account/DeepReportSnapshotSaver';
 import { ReportHeader } from '@/components/report/ReportShell';
 import { DEEP_REPORT_COPY, PREMIUM_COPY, PREMIUM_FEATURES } from '@/data/premium';
 import { LENS_PAYWALL_COPY } from '@/data/premiumLens';
-import { PREMIUM_FAKE_DOOR, PREMIUM_PREVIEW, UT_MODE } from '@/lib/env';
-import { UtRatingCard } from '@/components/ut/UtRatingCard';
+import { usePremiumAccess } from '@/hooks/useUtMode';
 import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
 import { formatEntryDate } from '@/lib/historyFormat';
@@ -225,7 +232,6 @@ function PremiumView() {
   // v1.15 §8 — 어느 Contextual Hook에서 들어왔는지. 순수 Analytics 구분용이라 없어도
   // Paywall이 보여줄 Feature 자체(FEATURE_BY_SOURCE)에는 영향을 주지 않는다.
   const hookVariant = params.get('hook') ?? undefined;
-  const [wtpChoice, setWtpChoice] = useState<'yes' | 'maybe' | 'no' | null>(null);
   /**
    * v1.19 §3 — Hook Attribution 키. `PremiumEntryRow`와 **같은 세션 값**을 직접 읽는다
    * (URL로 넘기지 않는다) — entry_view → entry_click → paywall_view → purchase_intent가
@@ -245,9 +251,11 @@ function PremiumView() {
   const copy = isDeepReport ? DEEP_REPORT_COPY : PREMIUM_COPY;
 
   /* ── vNext Unlock stage ──────────────────────────────────────────────────
-     `?mode=ut`이면 UT 참여자 체험이다 — `/premium-preview/[feature]?mode=ut`와 같은 규칙을
-     쓴다. 새 Flag/Route 트리를 만들지 않고 기존 PREMIUM_PREVIEW 게이트에 쿼리만 얹는다. */
-  const isBetaUt = params.get('mode') === 'ut';
+     v1.47 — UT · flag · 결제 상태를 이 화면에서 따로 읽지 않는다. `usePremiumAccess()` 하나가 정한다
+     (`lib/premiumAccess.ts`). UT 탭이면 `NEXT_PUBLIC_PREMIUM_FAKE_DOOR`가 꺼져 있어도 Paywall · CTA · 리포트가 열리고,
+     쿼리 없이 들어와도(진입 행 · 새로고침 · 뒤로가기) UT가 유지된다(`lib/utMode.ts`). */
+  const access = usePremiumAccess();
+  const fillEvidence = usePremiumEvidenceFill();
   const [stage, setStage] = useState<UnlockStage>('paywall');
   const [unlockMode, setUnlockMode] = useState<PremiumAccessMode | null>(null);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -274,6 +282,7 @@ function PremiumView() {
   const feature = useMemo(
     () =>
       premiumFeatureState(featureId, price, {
+        utMode: access.utMode,
         mirrorAvailable: mirror.available,
         historyComparable: historyReport.comparable,
         mbtiAvailable: Boolean(mbtiLens),
@@ -313,6 +322,7 @@ function PremiumView() {
       mbtiLens,
       birth.couple,
       crossSourceInsights,
+      access.utMode,
     ],
   );
 
@@ -351,11 +361,7 @@ function PremiumView() {
    * 거짓 표시다. `demo_unlock`은 '결제 없이 열었다'를 화면에 명시한다
    * (`lib/premiumAccess.ts` · `UNLOCK_COPY.demoUnlock`).
    */
-  const unlockModeForCta: PremiumAccessMode = isBetaUt
-    ? 'beta_ut'
-    : PREMIUM_PREVIEW
-      ? 'preview'
-      : 'demo_unlock';
+  const unlockModeForCta: PremiumAccessMode = access.mode;
 
   const definition = PREMIUM_FEATURES[featureId];
   /**
@@ -384,8 +390,8 @@ function PremiumView() {
 
   // Flag OFF — Paywall에 머무르지 않는다.
   useEffect(() => {
-    if (!PREMIUM_FAKE_DOOR) navReplace(backHref);
-  }, [navReplace, backHref]);
+    if (!access.surfaceEnabled) navReplace(backHref);
+  }, [access.surfaceEnabled, navReplace, backHref]);
 
   useEffect(() => {
     setNotified(hasNotifyIntent(featureId));
@@ -399,7 +405,7 @@ function PremiumView() {
   const paywallViewSent = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!PREMIUM_FAKE_DOOR || feature.status !== 'fake-door') return;
+    if (!access.surfaceEnabled || feature.status !== 'fake-door') return;
     if (paywallViewSent.current === featureId) return;
     paywallViewSent.current = featureId;
     trackEvent('premium_paywall_view', {
@@ -410,7 +416,7 @@ function PremiumView() {
       ...(hookVariant ? { hook_variant: hookVariant } : {}),
       ...(funnelAnalysisId ? { funnel_analysis_id: funnelAnalysisId } : {}),
     });
-  }, [featureId, source, price, variant, feature.status, hookVariant, funnelAnalysisId]);
+  }, [access.surfaceEnabled, featureId, source, price, variant, feature.status, hookVariant, funnelAnalysisId]);
 
   /**
    * Preview Unlock이 열려 있는 분석이면(같은 탭에서 새로고침·뒤로가기) Paywall을 다시
@@ -504,9 +510,45 @@ function PremiumView() {
     stage === 'report',
   );
 
-  if (!PREMIUM_FAKE_DOOR) return null;
+  if (!access.surfaceEnabled) return null;
 
   /* 상세를 만들 근거가 없으면 Paywall을 띄우지 않는다 — 가격도 CTA도 보여주지 않는다(§40) */
+  /*
+    v1.47 UT-2 — **UT 참가자에게는 Premium을 숨기지 않는다.** 근거가 부족하면 막다른 안내 대신 입력 보완 화면을 연다.
+    리포트 · 가격 · unlock은 만들지 않는다(빈 분석을 결과로 보여주지 않는다). 채우고 돌아오면 `PremiumReturnWatcher`가 이 주소로 복귀시킨다.
+    일반 사용자는 아래 기존 unavailable 화면 그대로다.
+  */
+  if (feature.status === 'unavailable' && access.utMode && isDeepReport) {
+    const gap = resolvePremiumEvidenceState({
+      insights: crossSourceInsights,
+      declared: answers.declared,
+      mirror,
+      target: answers.target,
+      experience: answers.experience,
+      solo: soloModeOf(answers) === 'no_target',
+    });
+    return (
+      <ScreenLayout
+        header={
+          <ScreenHeader backHref={backHref} action={<ScreenMarker>{copy.entryLabel}</ScreenMarker>} />
+        }
+        footer={
+          <div className="flex flex-col gap-2">
+            <Button className="press-scale" onClick={() => fillEvidence(gap.fills[0]?.href ?? ROUTES.target)}>
+              {PREMIUM_EVIDENCE_SHELL_COPY.fillCta}
+            </Button>
+            <Button variant="text" onClick={goBack}>
+              돌아가기
+            </Button>
+          </div>
+        }
+        bodyClassName="pt-1.5 pb-4"
+      >
+        <PremiumEvidenceShell gap={gap} onFill={fillEvidence} />
+      </ScreenLayout>
+    );
+  }
+
   if (feature.status === 'unavailable') {
     return (
       <ScreenLayout
@@ -525,6 +567,8 @@ function PremiumView() {
   }
 
   const handlePurchaseIntent = () => {
+    /* v1.47 UT-2 — 연타 · 전환 중 재클릭은 무시한다. 의향 기록 · unlock · 리포트 요청이 두 번 나가지 않는다 */
+    if (stage !== 'paywall') return;
     // ① 의향 기록 (연락처는 받지 않는다)
     trackEvent('premium_purchase_intent', {
       feature: featureId,
@@ -601,7 +645,7 @@ function PremiumView() {
         header={
           <ScreenHeader
             backHref={backHref}
-            action={<Tag tone="brand">{isDeepReport ? copy.entryLabel : PREMIUM_COPY.badge}</Tag>}
+            action={<ScreenMarker>{isDeepReport ? copy.entryLabel : PREMIUM_COPY.badge}</ScreenMarker>}
           />
         }
         footer={
@@ -661,6 +705,7 @@ function PremiumView() {
           연속성이 생긴다.
         */}
         {showReport ? (
+          <>
           <RelationshipDeepReportView
             report={deep.report}
             analysisId={deep.analysisId}
@@ -669,7 +714,12 @@ function PremiumView() {
             reveal={!reducedMotion}
             header={
               <ReportHeader
-                eyebrow={DEEP_REPORT_COPY.entryLabel}
+                /*
+                  v1.48.1 — 화면 헤더의 `ScreenMarker`가 이미 `PRECISION REPORT`를
+                  들고 있다. 같은 라벨을 본문 첫 줄에 한 번 더 찍으면 첫 viewport에
+                  같은 marker가 두 번 보인다(실측) — 그래서 여기서는 그리지 않는다.
+                */
+                eyebrow={null}
                 title={`이야기 ${chapterCount}개를 연결한 관찰 기록`}
                 /**
                  * ⚠️ v1.45 — meta에서 Chapter 수를 **다시 말하지 않는다.** 실측에서 헤더
@@ -693,6 +743,9 @@ function PremiumView() {
              */
             lensAi={deep.lensAi}
           />
+          {/* v1.47 Integration — 렌더된 뒤 저장한 관계에만 snapshot(조건은 lib/persistence/deepReportSnapshot) */}
+          <DeepReportSnapshotSaver report={deep.report} narrative={deep.narrative} />
+          </>
         ) : showPreparing ? (
           /*
             PostReview §4-1 — Unlock 확인 → **관찰을 연결하는 장면** → 리포트.
@@ -998,26 +1051,16 @@ function PremiumView() {
           )}
 
           {/*
-            v1.15 §10 — Premium 가격/가치 검증 UT. 질문을 많이 추가하지 않는다(2개 이내).
-            이미 있던 DeepReportUtFlow의 WTP 질문(step 4)과는 대상이 다르다 — 그건 전체
-            리포트를 다 본 사람에게 "다시 볼 의향"을 묻고, 이건 무료 결과 + 이 Preview만 본
-            사람에게 "지금 결제할 의향"을 묻는다. 실제 결제 전까지는 '의향'으로만 기록한다.
+            v1.48.1 — **Paywall의 UT 가치/가격 문항을 참가자 화면에서 뺐다.**
+
+            `UT` 배지 + 1~5 척도(`ut_premium_value_diff_rate`)와 3지선다 결제 의향
+            (`ut_premium_price_wtp`)은 제품 기능이 아니라 연구 계측이다. Paywall은
+            사용자가 결정을 내리는 자리인데, 그 자리에서 설문을 받으면 제품이
+            '테스트 중'으로 읽힌다.
+
+            ⚠️ 두 문항과 이벤트 이름은 **운영자 화면(`/ut`)으로 옮겼다** — 지표가
+            끊기지 않는다. 진행자가 참가자에게 구두로 묻고 기록한다.
           */}
-          <UtRatingCard
-            question="이 리포트에서 무료 결과와 다른 가치를 느꼈어?"
-            event="ut_premium_value_diff_rate"
-            properties={{ feature: featureId, source, price, ...attribution }}
-            lowLabel="전혀 못 느꼈어"
-            highLabel="확실히 다르게 느꼈어"
-          />
-          <PremiumWtpQuestion
-            featureId={featureId}
-            source={source}
-            price={price}
-            attribution={attribution}
-            choice={wtpChoice}
-            onSelect={setWtpChoice}
-          />
         </div>
         )}
       </ScreenLayout>
@@ -1087,78 +1130,3 @@ function PremiumView() {
   );
 }
 
-/**
- * v1.15 §10 Q2 — "1,900원을 내고 전체 리포트를 볼 의향이 있어?" 3지선다.
- * `UtRatingCard`와 같은 lock-after-answer 패턴을 쓰지만 척도가 아니라 선택지라 별도로 둔다.
- * `UT_MODE`가 꺼져 있으면 아무것도 렌더하지 않는다(다른 UT 컴포넌트와 동일한 가드).
- */
-function PremiumWtpQuestion({
-  featureId,
-  source,
-  price,
-  attribution,
-  choice,
-  onSelect,
-}: {
-  featureId: PremiumFeatureId;
-  source: PremiumSource;
-  price: number;
-  /** v1.19 §3 — `funnel_analysis_id`. 없으면 빈 객체라 property가 붙지 않는다 */
-  attribution: Record<string, string>;
-  choice: 'yes' | 'maybe' | 'no' | null;
-  onSelect: (value: 'yes' | 'maybe' | 'no') => void;
-}) {
-  if (!UT_MODE) return null;
-
-  const options: { value: 'yes' | 'maybe' | 'no'; label: string }[] = [
-    { value: 'yes', label: '실제로 결제할 의향이 있다' },
-    { value: 'maybe', label: '결과를 더 봐야 판단할 수 있다' },
-    { value: 'no', label: '무료 결과로 충분하다' },
-  ];
-
-  return (
-    <section className="flex flex-col gap-2.5 rounded-card border border-dashed border-line-strong bg-canvas-warm p-4">
-      <span className="w-fit rounded-tag bg-chip px-2 py-0.5 text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
-        UT
-      </span>
-      <p className="text-caption keep-all leading-relaxed">
-        {formatPrice(price)}을 내고 전체 리포트를 볼 의향이 있어?
-      </p>
-      <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="결제 의향">
-        {options.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={choice === option.value}
-            disabled={choice !== null}
-            onClick={() => {
-              trackEvent('ut_premium_price_wtp', {
-                feature: featureId,
-                source,
-                price,
-                choice: option.value,
-                ...attribution,
-              });
-              onSelect(option.value);
-            }}
-            className={cn(
-              'min-h-11 rounded-[10px] border px-3.5 py-2.5 text-left text-caption disabled:opacity-60',
-              choice === option.value
-                ? 'border-brand bg-brand-tint font-semibold text-ink'
-                : 'border-line bg-surface active:bg-sunken',
-            )}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-      {choice ? (
-        <p className="text-[11px] keep-all text-ink-faint">
-          기록했어. 실제 결제 전까지는 의향으로만 남겨둘게.
-        </p>
-      ) : (
-        <p className="text-[10.5px] keep-all text-ink-faint">실제 결제가 아니라 의향을 묻는 질문이야.</p>
-      )}
-    </section>
-  );
-}

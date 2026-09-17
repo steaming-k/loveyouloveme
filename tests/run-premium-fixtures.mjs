@@ -25,6 +25,7 @@
  * 실행: 터미널 A `npm run dev` → 터미널 B `npm run test:premium`
  */
 
+import './_aiTestGuard.mjs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -780,9 +781,18 @@ console.log('\nPREM-V2-15 — Production Guard (정적 guard)');
   check('Provider를 부르지 않는다', !route.includes('resolveProvider') && !route.includes('generateStructured'));
 
   const preview = await readFile(join(ROOT, 'src/app/premium-preview/[feature]/page.tsx'), 'utf8');
+  /*
+    v1.47 Premium UT Visibility — 게이트가 `resolvePremiumAccess` 계약으로 옮겨졌다. **일반 사용자에게는 여전히
+    PREMIUM_PREVIEW 게이트다**(UT 탭만 예외): 화면은 previewRouteOpen으로 막고, 훅이 env를 넘기고,
+    UT가 아니면 previewRouteOpen = previewEnabled다.
+  */
+  const accessHook = await readFile(join(ROOT, 'src/hooks/useUtMode.ts'), 'utf8');
+  const accessLib = await readFile(join(ROOT, 'src/lib/premiumAccess.ts'), 'utf8');
   check(
-    'Premium Preview는 여전히 PREMIUM_PREVIEW 게이트 뒤에 있다',
-    preview.includes('if (!PREMIUM_PREVIEW || !featureId || !report)'),
+    'Premium Preview는 여전히 PREMIUM_PREVIEW 게이트 뒤에 있다 (일반 사용자 · resolvePremiumAccess)',
+    preview.includes('if (!access.previewRouteOpen || !featureId || !report)') &&
+      accessHook.includes('previewEnabled: PREMIUM_PREVIEW') &&
+      /utMode: false,\s*surfaceEnabled: input\.fakeDoorEnabled,\s*previewRouteOpen: input\.previewEnabled,/.test(accessLib),
   );
   const env = await readFile(join(ROOT, 'src/lib/env.ts'), 'utf8');
   check(
@@ -1109,7 +1119,7 @@ console.log('\nLOVY-01~12 — 캐릭터 통합 · 러비 한마디 · 중간 메
   */
   check(
     'LOVY-11 · deepReport promptVersion이 고정돼 있다',
-    promptVersions.includes("deepReport: 'deep-report-v9-role-recitation'"),
+    promptVersions.includes("deepReport: 'deep-report-v13-uncertainty-move'"),
   );
   const promptTemplates = await readFile(join(ROOT, 'src/services/ai/promptTemplates.ts'), 'utf8');
   const contextBuilders = await readFile(join(ROOT, 'src/services/ai/contextBuilders.ts'), 'utf8');
@@ -1530,7 +1540,7 @@ console.log('\nPOSTREV-01~18 — Eligibility 불변 · 체크포인트 · Self-o
   */
   check(
     'POSTREV-17 · deepReport promptVersion 불변',
-    promptVersions.includes("deepReport: 'deep-report-v9-role-recitation'"),
+    promptVersions.includes("deepReport: 'deep-report-v13-uncertainty-move'"),
   );
   const envSource = await readFile(join(ROOT, 'src/lib/env.ts'), 'utf8');
   check(
@@ -1822,8 +1832,14 @@ console.log('\nPROD-UNLOCK-01~10 — Production Deep Report Unlock · payment �
   /* ── PROD-UNLOCK-05 · Production mock unlock에 payment-success 카피 0 ───── */
   check(
     'PROD-UNLOCK-05 · Production CTA는 payment mode를 쓰지 않는다',
+    // v1.47 — mode는 `usePremiumAccess()`가 정한다. PG가 없으므로 훅은 paymentConfirmed: false만 넘기고,
+    // UT가 아닌 사용자는 preview flag가 없으면 demo_unlock이다(`resolvePremiumAccess`).
     !/setUnlockMode\([^)]*'payment'[^)]*\)/.test(paywallSrc) &&
-      /unlockModeForCta[\s\S]{0,200}'demo_unlock'/.test(paywallSrc),
+      /const unlockModeForCta: PremiumAccessMode = access\.mode;/.test(paywallSrc) &&
+      (await readFile(join(ROOT, 'src/hooks/useUtMode.ts'), 'utf8')).includes('paymentConfirmed: false') &&
+      /mode: input\.paymentConfirmed \? 'payment' : input\.previewEnabled \? 'preview' : 'demo_unlock'/.test(
+        await readFile(join(ROOT, 'src/lib/premiumAccess.ts'), 'utf8'),
+      ),
     paywallSrc.match(/const unlockModeForCta[^;]*;/s)?.[0],
   );
   check(
@@ -1898,7 +1914,7 @@ console.log('\nPROD-UNLOCK-01~10 — Production Deep Report Unlock · payment �
   */
   check(
     'PROD-UNLOCK-09 · deepReport promptVersion이 고정돼 있다',
-    promptVersions.includes("deepReport: 'deep-report-v9-role-recitation'"),
+    promptVersions.includes("deepReport: 'deep-report-v13-uncertainty-move'"),
   );
 
   /* ── PROD-UNLOCK-10 · Premium eligibility invariant 유지 ───────────────── */
@@ -2721,6 +2737,86 @@ console.log('\nEVT-01 ~ EVT-14 — 관계 사건 (User-reported Relationship Eve
     'UT1-P0A-09 · 호출부 8곳이 전부 같은 술어(soloModeOf)로 판정한다',
     missing.length === 0,
     missing,
+  );
+}
+
+/* ═══ UT2-PREMIUM — 사진은 optional이다 ════════════════════════════════════
+
+   Browser QA에서 발견: 사진 없이 declared 5 · 관계경험 3 · 상대 4/4 · 사건 1 ·
+   MBTI 양쪽 · 생년월일 양쪽을 다 채워도 Premium이 열리지 않았다(렌즈는 3/3 열려
+   있었는데도). 원인은 `mirror.insights.length === 0`이라는 **세션 단위** 제외 조건이
+   cross-source의 `isFreeDuplicate`와 겹쳐, Mirror insight 하나로 두 경로가 동시에
+   닫힌 것이다. 빠져나갈 길이 `observed`(사진)뿐이라 사진이 사실상 진입 조건이 됐다.
+
+   ⚠️ 이 검사들이 지키는 것은 '사진 없이도 열린다'만이 아니다 — **열렸으면 실제로
+   내용이 있어야 한다**(chapters ≥ 1). 자격만 통과시키는 수정은 '결제는 되는데
+   리포트는 비어 있는' 상태를 되살린다. */
+{
+  const NO_PHOTO_RICH = {
+    ...FULL,
+    observedAnalysis: null,
+    observations: {},
+  };
+  const EMPTY_EXPERIENCE = { important: [], hardest: null, selfGap: null, skipped: true };
+  const EMPTY_CURRENT = { signals: {}, askedAt: null };
+
+  const A = await run(NO_PHOTO_RICH);
+  check(
+    'UT2-PREMIUM-01 · 사진 없이도 Premium 자격이 난다 (사진은 필수조건이 아니다)',
+    A.gate.eligible === true,
+    { eligible: A.gate.eligible, mirrorInsightCount: A.gate.mirrorInsightCount },
+  );
+  check(
+    'UT2-PREMIUM-02 · 사진 없는 자격은 **빈 리포트가 아니다** (Chapter ≥ 1)',
+    (A.chapters ?? []).length >= 1,
+    (A.chapters ?? []).map((chapter) => chapter.id),
+  );
+
+  const B = await run(FULL);
+  check(
+    'UT2-PREMIUM-04 · 사진은 분석을 **보강**한다 — 자격을 혼자 정의하지 않는다',
+    B.gate.eligible === true && (B.chapters ?? []).length >= (A.chapters ?? []).length,
+    { withPhoto: (B.chapters ?? []).length, withoutPhoto: (A.chapters ?? []).length },
+  );
+
+  /* 근거가 실제로 부족하면 기존 guard는 그대로다 — 게이트를 무력화한 게 아니다 */
+  const C = await run({
+    ...FULL,
+    declared: { contact: 3, conflict: null, alone: null, affection: null, hobby: null },
+    experience: EMPTY_EXPERIENCE,
+    currentRelationship: EMPTY_CURRENT,
+    target: NO_TARGET,
+    entries: [],
+    mbti: null,
+    observedAnalysis: null,
+    observations: {},
+  });
+  check(
+    'UT2-PREMIUM-03 · 근거가 부족하면 여전히 막는다 (충분성 guard 유지)',
+    C.gate.eligible === false && (C.chapters ?? []).length === 0,
+    { eligible: C.gate.eligible, chapters: (C.chapters ?? []).length },
+  );
+
+  /* Lens 입력 부족은 **그 Lens만** 막는다. Premium 전체를 막지 않는다 */
+  const D = await run({
+    ...NO_PHOTO_RICH,
+    mbti: null,
+    birthProfile: { calendarType: 'solar', date: null, time: null, location: null, timeUnknown: false },
+    target: {
+      ...FULL.target,
+      mbti: null,
+      birthProfile: { calendarType: 'solar', date: null, time: null, location: null, timeUnknown: false },
+    },
+  });
+  check(
+    'UT2-PREMIUM-05 · Lens 입력이 하나도 없어도 Premium 리포트는 열린다',
+    D.gate.eligible === true && (D.chapters ?? []).length >= 1,
+    { eligible: D.gate.eligible, chapters: (D.chapters ?? []).length },
+  );
+  check(
+    'UT2-PREMIUM-05 · 그리고 그때 Lens는 availability로만 꺼진다 (eligibility와 분리)',
+    (D.report?.lensBundle?.availableCount ?? 0) === 0,
+    D.report?.lensBundle?.lenses?.map((lens) => [lens.kind, lens.mode]),
   );
 }
 

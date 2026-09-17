@@ -1,7 +1,15 @@
 import 'server-only';
 
-import { readAiConfig } from '@/services/ai/serverEnv';
+import { aiRequestPolicyFromHeaders, readAiConfig, runWithAiRequestPolicy } from '@/services/ai/serverEnv';
 import type { AiFailureReason, AiTask } from '@/types';
+
+/**
+ * P0 Real AI Guard — 요청 전체를 정책 안에서 실행한다. 헤더 규칙은 `serverEnv.ts`에 있다.
+ * 실제 Provider를 부를 수 있는 모든 `/api/ai/*` 라우트가 이 함수로 POST를 감싼다.
+ */
+export function withAiRequestPolicy(request: Request, run: () => Promise<Response>): Promise<Response> {
+  return runWithAiRequestPolicy(aiRequestPolicyFromHeaders(request.headers), run);
+}
 
 /**
  * AI Route 공통 처리 (§34 · §68 · §70 · §71)
@@ -163,11 +171,13 @@ export function logAi(entry: {
   status: 'ok' | 'fail';
   durationMs: number;
   reason?: AiFailureReason;
+  /** v1.47 Integration — 한 번의 분석 행위 id. requestId(HTTP 요청)와 나란히 남긴다 */
+  generationRequestId?: string | null;
 }): void {
   if (entry.status === 'ok' && process.env.NODE_ENV === 'production') return;
   const line = `[ai] ${entry.task} ${entry.status} ${entry.durationMs}ms req=${entry.requestId}${
-    entry.reason ? ` reason=${entry.reason}` : ''
-  }`;
+    entry.generationRequestId ? ` gen=${entry.generationRequestId}` : ''
+  }${entry.reason ? ` reason=${entry.reason}` : ''}`;
   if (entry.status === 'fail') console.warn(line);
   else console.info(line);
 }

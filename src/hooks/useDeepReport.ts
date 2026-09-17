@@ -92,7 +92,7 @@ export function useDeepReport(enabled: boolean) {
     [insights, resolverContext, compatibility, historyReport, repeated, answers.target, mirror, lifecycle],
   );
   const baseReport = useMemo(
-    () => buildRelationshipDeepReport({ ...baseInput, narratives: [], candidateSemantics: [] }),
+    () => buildRelationshipDeepReport({ ...baseInput, narratives: [], candidateSemantics: [], actionPlan: null }),
     [baseInput],
   );
   const topCandidates = useMemo(
@@ -114,6 +114,7 @@ export function useDeepReport(enabled: boolean) {
             ...baseInput,
             narratives: narrative.data.narratives,
             candidateSemantics: narrative.data.candidateSemantics ?? [],
+            actionPlan: narrative.data.actionPlan ?? null,
           })
         : baseReport,
     [baseInput, baseReport, narrative.data],

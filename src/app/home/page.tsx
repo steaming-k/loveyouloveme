@@ -1,20 +1,21 @@
 'use client';
 
+import { useUtMode } from '@/hooks/useUtMode';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
+import { SavedRelationshipsSection } from '@/components/account/SavedRelationshipsSection';
 import { BottomNavigation } from '@/components/common/BottomNavigation';
 import { Button } from '@/components/common/Button';
 import { ConfirmModal } from '@/components/common/ConfirmModal';
 import { SectionLabel } from '@/components/common/primitives';
 import { useToast } from '@/components/common/ToastProvider';
-import { HomePremiumBundle } from '@/components/premium/HomePremiumBundle';
+import { PremiumBundleCard } from '@/components/premium/PremiumBundleCard';
 import { Lovy } from '@/components/lovy/Lovy';
 import { BRAND, HOME_COPY, LENS_COPY } from '@/data/copy';
 import { clearAiCache } from '@/services/ai/aiClient';
 import { trackEvent } from '@/lib/analytics';
 import { clearDeepReportUt } from '@/lib/deepReportUtStore';
-import { UT_MODE } from '@/lib/env';
 import { clearPreviewUnlocks, hasPreviewUnlock } from '@/lib/premiumAccess';
 import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import { hasPremiumEvidence } from '@/lib/logic/premiumChapters';
@@ -31,7 +32,6 @@ import {
 } from '@/lib/logic/relationshipStage';
 import { soloModeOf } from '@/lib/logic/soloMode';
 import { ROUTES } from '@/lib/routes';
-import { downloadUtExport } from '@/lib/utExport';
 import {
   useCompatibility,
   useHistoryReport,
@@ -49,7 +49,7 @@ import { useSession } from '@/state/SessionProvider';
  */
 export default function HomePage() {
   const router = useRouter();
-  const { answers, deleteAllData, resetTargetContext, reset } = useSession();
+  const { answers, deleteAllData, resetTargetContext } = useSession();
   const { showToast } = useToast();
   const mirror = useMirror();
   const compatibility = useCompatibility();
@@ -100,10 +100,13 @@ export default function HomePage() {
    */
   const crossSourceInsights = useCrossSourceInsights();
   const [priceVariant] = useState(() => resolvePriceVariant());
+  /** v1.47 — UT에서는 Premium 표면이 flag와 무관하게 열린다(`resolvePremiumAccess`) */
+  const utMode = useUtMode();
   const premiumBundleFeature = premiumFeatureState(
     'relationship_deep_report',
     resolvePrice(priceVariant),
     {
+      utMode,
       deepReportAvailable: hasPremiumEvidence({
         insights: crossSourceInsights,
         declared: answers.declared,
@@ -120,7 +123,6 @@ export default function HomePage() {
   );
 
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [utResetOpen, setUtResetOpen] = useState(false);
   /**
    * §30은 '전체 데이터 삭제 = Session + History'를 요구한다. 다만 축적된 관찰 기록을
    * 되돌릴 수 없게 지우는 건 무게가 다르므로, 기본값을 켠 상태로 두고 선택만 남겨뒀다.
@@ -271,69 +273,95 @@ export default function HomePage() {
     <div className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-gutter pt-2 pb-6">
         <div className="flex flex-col gap-4">
+          {/*
+            ══ 260915 UT P2-2 — 헤더 아바타(`나`)를 **뺐다** ═══════════════════
+
+            UT-1(P1-A §2)에서 같은 목적지로 가는 진입점 3개 중 본문 행을 지웠고,
+            상시 chrome 2개(헤더 아바타 · 하단 `나` 탭)를 남겼다. 260915 UT에서
+            참가자가 그 2개를 다시 지목했다:
+
+            ```
+            "'나' 프로필 제거"
+            (진행자) "프로필 사진 저게 아래쪽 내비게이션 바에 있는 나랑 같은 거거든요"
+            ```
+
+            같은 화면(`/home`)에 하단 Navigation이 항상 떠 있고 그 안에 `나` 탭이 있다.
+            아바타는 그 탭과 **목적지도 인자도 문자 그대로 같았다.**
+
+            ⚠️ 지우기 전에 접근 경로를 확인했다(§36) — 아래 넷 모두 dead-end 0:
+            ```
+            내 관계 프로필      하단 `나` 탭 (Home · 결과 화면 전부에서 상시 노출)
+            프로필 수정        결과 수정 허브 (프로필 · Compatibility · Mirror 세 곳)
+            관계 경험 수정      같은 수정 허브
+            지금 관계 속의 나   Compatibility 결과 안 accordion
+            ```
+          */}
           <header className="flex items-center justify-between px-0.5">
             <h1 className="text-[19px] font-bold tracking-[-0.5px]">{BRAND.name}</h1>
-            <button
-              type="button"
-              onClick={() => {
-                if (!answers.completed.profile) {
-                  showToast('관찰 기록을 먼저 만들어야 볼 수 있어.', 'warning');
-                  return;
-                }
-                router.push(revisitHref(ROUTES.profileResult, 'home'));
-              }}
-              aria-label="내 프로필 보기"
-              /*
-                v1.36 A11y — 히트 영역만 44px로 올린다(§12.1 시각 높이와 터치 영역의 분리).
-                아바타 원은 안쪽 span이 그리므로 **시각 크기는 32px 그대로**다 — 실측 32px이었다.
-              */
-              className="-m-1.5 flex h-11 w-11 items-center justify-center rounded-full"
-            >
-              <span
-                aria-hidden
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-chip text-[11px] font-semibold text-ink-muted"
-              >
-                나
-              </span>
-            </button>
           </header>
 
-          <section className="flex flex-col gap-3 rounded-card border border-line bg-surface px-4 py-[18px]">
+          {/*
+            ══ v1.48 — Home Hero도 **Insight Surface**다 ═════════════════════════
+
+            '지금 러비가 알고 있는 나'는 Mirror의 핵심 관찰 · History의 최근 관찰과
+            **같은 성격의 정보**(이 사용자에 대한 지금 가장 중요한 한 문장)다. 그런데
+            화면마다 다른 모양이었다: 여기선 테두리 있는 흰 카드, Mirror에선 보라 카드.
+            같은 것을 같은 형태로 말하지 않으면 그건 디자인 시스템이 아니다.
+
+            그리고 아래 집계 알약 3개는 **알약일 이유가 없다** — 분류가 아니라
+            '무엇을 몇 개 모았는지'라는 수치다. 점 마커 + 숫자 한 줄로 내린다.
+            ⚠️ 숫자·라벨·계산은 그대로다.
+          */}
+          <section className="surf-insight flex flex-col gap-3 px-1">
             <div className="flex items-start justify-between gap-3">
               <div className="flex min-w-0 flex-col gap-2.5">
                 <p className="text-[11px] font-semibold tracking-[0.06em] text-ink-muted">
                   {HOME_COPY.heroLabel}
                 </p>
-                <p className="text-[18px] font-semibold leading-[1.5] tracking-[-0.4px] keep-all">
+                <p className="text-[19px] font-semibold leading-[1.48] tracking-[-0.45px] keep-all">
                   {summary}
                 </p>
               </div>
               <Lovy pose="heart" size={56} decorative />
             </div>
 
-            <ul className="flex flex-wrap gap-1.5 border-t border-line-soft pt-3">
-              <li className="rounded-[6px] bg-mint-tint px-2.5 py-1.5 text-[11px] font-semibold text-mint-text">
-                사진 {answers.photos.length}장
+            <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[color:var(--color-rule-hair)] pt-3 text-[11px] text-ink-muted">
+              <li className="flex items-center gap-1.5">
+                <span className="h-[5px] w-[5px] flex-none rounded-full bg-mint" aria-hidden />
+                사진 <span className="font-semibold text-ink tnum">{answers.photos.length}</span>장
               </li>
-              <li className="rounded-[6px] bg-brand-tint px-2.5 py-1.5 text-[11px] font-semibold text-brand-pressed">
-                질문 {answeredDeclared}개
+              <li className="flex items-center gap-1.5">
+                <span className="h-[5px] w-[5px] flex-none rounded-full bg-brand" aria-hidden />
+                질문 <span className="font-semibold text-ink tnum">{answeredDeclared}</span>개
               </li>
-              <li className="rounded-[6px] bg-brand-tint px-2.5 py-1.5 text-[11px] font-semibold text-brand-pressed">
-                관계 경험 {experienceCount}
+              <li className="flex items-center gap-1.5">
+                <span className="h-[5px] w-[5px] flex-none rounded-full bg-brand" aria-hidden />
+                관계 경험 <span className="font-semibold text-ink tnum">{experienceCount}</span>
               </li>
             </ul>
           </section>
 
           <section className="flex flex-col gap-2.5">
             <SectionLabel>{HOME_COPY.recentLabel}</SectionLabel>
-            <ul className="flex flex-col gap-2.5">
+            {/*
+              v1.48 — 똑같은 흰 카드 3개에서 **관찰 대장**으로. 축 이름과 지금 신호가
+              좌우로 갈리고 사이를 rule이 나눈다. History의 반복 신호 목록과 같은
+              형태다 — 같은 종류의 '목록'이 화면마다 다른 모양이면 안 된다.
+            */}
+            <ul className="flex flex-col px-1">
               {highlights.map((item) => (
                 <li
                   key={item.key}
-                  className="flex items-center justify-between gap-3 rounded-chip border border-line bg-surface px-[15px] py-3.5"
+                  className="flex items-baseline justify-between gap-3 border-t border-[color:var(--color-rule-hair)] py-3"
                 >
                   <span className="flex-none text-sub font-medium">{item.key}</span>
-                  <span className="text-right text-caption keep-all text-ink-sub">{item.value}</span>
+                  <span
+                    aria-hidden
+                    className="min-w-4 flex-1 translate-y-[-3px] border-b border-dotted border-rule-mid"
+                  />
+                  <span className="flex-none text-right text-caption keep-all text-ink-sub">
+                    {item.value}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -425,6 +453,12 @@ export default function HomePage() {
             </section>
           ) : null}
 
+          {/*
+            v1.47 — 저장한 관계. '최근 분석'(지금 기기의 결과) 바로 아래 — 같은 '다시 보기' 맥락이다.
+            로그인한 사용자에게만 그린다(Guest · Supabase 미설정이면 아무것도 없다). 열면 궁합 결과로 간다.
+          */}
+          <SavedRelationshipsSection onOpened={() => router.push(revisitHref(ROUTES.compatibility, 'home'))} />
+
           {/* §27 — History 상태를 실제로 보여준다. COMING SOON은 제거됐다. */}
           <button
             type="button"
@@ -498,7 +532,11 @@ export default function HomePage() {
 
             ⚠️ Button이 아니라 카드다 — Home의 primary를 이기지 않는다(§33 Guardrail).
           */}
-          <HomePremiumBundle feature={premiumBundleFeature} unlocked={bundleUnlocked} />
+          <PremiumBundleCard
+            feature={premiumBundleFeature}
+            unlocked={bundleUnlocked}
+            returnTo="home"
+          />
 
           {/*
             새 분석 시작 — Revisit 기능이 생겼다고 이 CTA를 없애지 않는다(§46).
@@ -566,32 +604,7 @@ export default function HomePage() {
             </button>
           </div>
 
-          {/* v1.12 §38~§39 — UT_MODE에서만. 개발자 콘솔 없이 참가자 URL 하나로 결과를
-              회수하고, 다음 참가자를 위해 데이터를 비울 수 있어야 한다 */}
-          {UT_MODE ? (
-            <div className="flex items-center justify-center gap-3 rounded-row border border-dashed border-line-strong bg-canvas-warm px-3 py-2.5">
-              <button
-                type="button"
-                onClick={() => {
-                  downloadUtExport();
-                  showToast('UT 결과를 내려받았어');
-                }}
-                className="flex min-h-11 items-center justify-center text-meta text-ink-muted"
-              >
-                UT 결과 내보내기
-              </button>
-              <span className="text-ink-faint" aria-hidden>
-                ·
-              </span>
-              <button
-                type="button"
-                onClick={() => setUtResetOpen(true)}
-                className="flex min-h-11 items-center justify-center text-meta text-ink-muted"
-              >
-                다음 참가자를 위해 초기화
-              </button>
-            </div>
-          ) : null}
+          {/* v1.47 UT-2 — UT 결과 내보내기 · 다음 참가자 초기화는 참가자 화면이 아니라 운영자 화면(/ut)에 있다 */}
         </div>
       </div>
 
@@ -640,24 +653,6 @@ export default function HomePage() {
         ) : null}
       </ConfirmModal>
 
-      <ConfirmModal
-        open={utResetOpen}
-        title="다음 참가자를 위해 초기화할까?"
-        description="이 참가자의 세션·UT 응답·History를 모두 지워. 먼저 'UT 결과 내보내기'로 내려받아 뒀는지 확인해."
-        confirmLabel="초기화"
-        onCancel={() => setUtResetOpen(false)}
-        onConfirm={() => {
-          reset();
-          clearHistory();
-          clearDeepReportUt();
-          clearPremiumIntents();
-          clearPreviewUnlocks();
-          clearAiCache();
-          setUtResetOpen(false);
-          showToast('다음 참가자를 위해 초기화했어');
-          router.push(ROUTES.splash);
-        }}
-      />
     </div>
   );
 }

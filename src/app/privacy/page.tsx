@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 
+import { AccountSection } from '@/components/account/AccountSection';
 import { Button } from '@/components/common/Button';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
@@ -9,6 +10,7 @@ import { PageHeading, SectionLabel } from '@/components/common/primitives';
 import { useAnalyticsConsent } from '@/hooks/useAnalyticsConsent';
 import { GA_MEASUREMENT_ID } from '@/lib/env';
 import { ROUTES } from '@/lib/routes';
+import { isSupabaseConfigured } from '@/lib/supabase/config';
 
 /**
  * Privacy (v1.12 §28)
@@ -20,6 +22,8 @@ import { ROUTES } from '@/lib/routes';
 export default function PrivacyPage() {
   const router = useRouter();
   const [consent, setConsent] = useAnalyticsConsent();
+  /* v1.47 — 계정 저장이 실제로 연결된 빌드에서만 클라우드 문장을 쓴다. 연결 전에는 기존 문장 그대로 */
+  const cloud = isSupabaseConfigured();
 
   const consentLabel =
     consent === 'granted' ? '동의함' : consent === 'denied' ? '필수 기능만 사용 중' : '아직 선택 안 함';
@@ -36,11 +40,20 @@ export default function PrivacyPage() {
           caption="확인하지 않은 사실은 보장하지 않아. 우리가 실제로 하는 일만 정확히 말할게."
         />
 
-        <Section title="브라우저에만 저장되는 것">
-          진행 중인 분석(사진 선택 기록·관계 답변·상대 정보)은 이 기기의 브라우저에만
-          저장돼. 계정도 서버 DB도 없어서 다른 기기에서는 볼 수 없어. 홈의 &apos;내 관찰
-          데이터 삭제&apos;로 즉시 지울 수 있어.
-        </Section>
+        {cloud ? (
+          <Section title="기기와 계정에 저장되는 것">
+            진행 중인 분석(사진 선택 기록·관계 답변·상대 정보)은 기본적으로 이 기기의 브라우저에만
+            저장돼. 로그인하지 않아도 모든 기능을 쓸 수 있어. 아래에서 계정에 저장하기를 고르면 그때부터
+            내 답변·상대 정보·적어둔 사건·저장한 관찰 기록이 클라우드(계정 저장소)에도 저장돼. 사진은
+            올리지 않아.
+          </Section>
+        ) : (
+          <Section title="브라우저에만 저장되는 것">
+            진행 중인 분석(사진 선택 기록·관계 답변·상대 정보)은 이 기기의 브라우저에만
+            저장돼. 계정도 서버 DB도 없어서 다른 기기에서는 볼 수 없어. 홈의 &apos;내 관찰
+            데이터 삭제&apos;로 즉시 지울 수 있어.
+          </Section>
+        )}
 
         <Section title="Relationship History">
           Mirror 결과를 저장하면 그 시점 요약이 별도로 쌓여. 지금 세션을 지워도 History는
@@ -55,6 +68,19 @@ export default function PrivacyPage() {
           완전히 삭제된다&apos;고 말하지 않아. Demo 모드에서는 이 전송 자체가 없어.
         </Section>
 
+        {cloud ? (
+          <Section title="계정 저장과 AI 분석은 별개야">
+            계정에 저장하는 것은 클라우드 저장이고, AI 분석은 결과를 만들기 위해 Provider로 보내는
+            처리야. 계정에 저장한다고 Provider로 더 보내지 않고, AI 분석을 한다고 계정에 저장되지도 않아.
+          </Section>
+        ) : null}
+
+        <Section title="상대 정보">
+          {cloud
+            ? '상대에 대해 적은 내용은 네가 알고 있는 만큼 입력한 정보야. 상대가 직접 확인한 정보가 아니고, 계정에 저장해도 그 성격은 같아.'
+            : '상대에 대해 적은 내용은 네가 알고 있는 만큼 입력한 정보야. 상대가 직접 확인한 정보가 아니야.'}
+        </Section>
+
         <Section title="다가가는 힌트">
           상대가 좋아하는 것으로 네가 알려준 내용은 이 기기 안에서만 계산에 쓰여 — 외부로
           전송하지 않아. 동기화율이나 Relationship Mirror에도 들어가지 않고, History에
@@ -67,9 +93,12 @@ export default function PrivacyPage() {
         </Section>
 
         <Section title="삭제에 대해">
-          &apos;내 관찰 데이터 삭제&apos;는 이 기기에 저장된 것만 지워. 이미 외부로 전송된
-          Analytics 이벤트나 AI Provider 로그까지 지우는 건 아니야.
+          {cloud
+            ? "'내 관찰 데이터 삭제'는 이 기기에 저장된 것만 지워. 계정에 저장한 정보는 아래 '계정 저장분 삭제'로 따로 지워야 해. 이미 외부로 전송된 Analytics 이벤트나 AI Provider 로그까지 지우는 건 아니야."
+            : "'내 관찰 데이터 삭제'는 이 기기에 저장된 것만 지워. 이미 외부로 전송된 Analytics 이벤트나 AI Provider 로그까지 지우는 건 아니야."}
         </Section>
+
+        <AccountSection />
 
         <section className="flex flex-col gap-2.5 rounded-[16px] border border-line bg-surface p-4">
           <SectionLabel>분석 데이터 사용 동의</SectionLabel>

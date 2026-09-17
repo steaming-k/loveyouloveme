@@ -91,7 +91,15 @@ export function buildConversationQuestions(
 
     return {
       id: key,
-      tag: `${label} · ${fromFriction ? '차이가 보이는 항목' : '확인해보면 좋은 항목'}`,
+      /*
+        Concept Polish 260915 — `항목`을 뺐다.
+
+        1차 UT에서 추천 질문이 '조별과제' · '갑자기 교수님이 나타난 느낌'으로 읽혔다.
+        질문 문장 자체는 이미 한 차례 부드럽게 고쳤고, 남은 것은 **질문이 놓이는
+        맥락**이었다 — `확인해보면 좋은 항목`은 해내야 할 목록의 한 줄처럼 읽힌다.
+        여기서 바꾸는 건 라벨뿐이고, 어떤 질문이 뽑히는지는 그대로다.
+      */
+      tag: `${label} · ${fromFriction ? '차이가 보이는 자리' : '가볍게 물어볼 수 있어'}`,
       text: variant.text,
       fromFriction,
     };

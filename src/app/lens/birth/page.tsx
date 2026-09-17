@@ -1,6 +1,7 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
+import { ScreenMarker } from '@/components/common/fieldNotes';
 import { Suspense, useState } from 'react';
 
 import { Button } from '@/components/common/Button';
@@ -8,7 +9,7 @@ import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { useToast } from '@/components/common/ToastProvider';
-import { NoticeBox, PageHeading, SectionLabel, Tag } from '@/components/common/primitives';
+import { NoticeBox, PageHeading, SectionLabel } from '@/components/common/primitives';
 import { BirthProfileForm } from '@/components/lens/BirthProfileForm';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { BIRTH_COPY } from '@/data/copy';
@@ -69,7 +70,7 @@ function BirthProfileView() {
   return (
     <ScreenLayout
       header={
-        <ScreenHeader backHref={backHref} action={<Tag tone="neutral">{BIRTH_COPY.badge}</Tag>} />
+        <ScreenHeader backHref={backHref} action={<ScreenMarker>{BIRTH_COPY.badge}</ScreenMarker>} />
       }
       footer={<Button onClick={handleDone}>{selfReady || targetReady ? '이 정보로 볼게' : '돌아가기'}</Button>}
       bodyClassName="pt-1.5 pb-4"

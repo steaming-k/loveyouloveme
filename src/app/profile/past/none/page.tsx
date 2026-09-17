@@ -63,12 +63,15 @@ export default function NoExperiencePage() {
              * First Contact Report는 퍼널에서 도달 불가였다(실측).
              *
              * 이제 다른 경로(과거 질문 3단)와 **같은 목적지**로 보낸다.
-             * 상대 입력을 없애는 게 아니라, 분기 화면이 고르게 한다.
+             *
+             * 260914 UT 후속 P0 — 그 목적지가 S18이 아니라 **다음 입력/첫 결과**가 됐다.
+             * S18의 Solo 분기를 여기서 그대로 쓴다(`answers.status`).
              */
-            router.push(ROUTES.profileResult);
+            const soloStatus = answers.status === 'solo_none' || answers.status === 'solo_exp';
+            router.push(soloStatus ? ROUTES.firstContact : ROUTES.target);
           }}
         >
-          내 관찰 기록 보기
+          다음으로
         </Button>
       }
       centered

@@ -25,6 +25,7 @@
  * 실행: 터미널 A `npm run dev` → 터미널 B `npm run test:lens`
  */
 
+import './_aiTestGuard.mjs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -228,7 +229,7 @@ console.log('\nLENS-01~02 · Premium Bundle 단일 상품');
     ),
   );
 
-  const bundle = await src('src/components/premium/HomePremiumBundle.tsx');
+  const bundle = await src('src/components/premium/PremiumBundleCard.tsx');
   /**
    * LENS-02 — 가격 렌더는 `formatPrice(price)` 한 번뿐이어야 한다.
    * 렌즈 버튼 3개에 가격이 들어가면 여기 개수가 늘어난다.
@@ -1025,6 +1026,8 @@ console.log('\nAI-LENS-01 ~ AI-LENS-20 — 렌즈별 AI 해석 (v1.46 AI Lens)')
   const versions = await readFile(join(ROOT, 'src/services/ai/promptVersions.ts'), 'utf8');
   const contract = await readFile(join(ROOT, 'src/services/ai/taskContract.ts'), 'utf8');
   const client = await readFile(join(ROOT, 'src/services/ai/aiClient.ts'), 'utf8');
+  /** v1.47 — 캐시 키 모양의 source of truth. aiClient는 이 함수만 부른다(9578926) */
+  const cacheKeySrc = await readFile(join(ROOT, 'src/services/ai/aiCacheKey.ts'), 'utf8');
 
   /* ── AI-LENS-01 ~ 06 · 렌즈 × mode 조합 6개가 전부 정의돼 있다 ────────── */
   const MODE_UNITS = {
@@ -1227,9 +1230,18 @@ console.log('\nAI-LENS-01 ~ AI-LENS-20 — 렌즈별 AI 해석 (v1.46 AI Lens)')
       (version) => versions.includes(`'${version}'`),
     ),
   );
+  /**
+   * ⚠️ 260914 P1 STEP 0 — 키 조립이 `aiCacheKey.ts`로 옮겨졌는데(v1.47 model-aware cache)
+   * 이 검사만 옛 위치(`aiClient.ts`의 인라인 템플릿)를 보고 있었다. 검사 대상은 그대로다 —
+   * task와 promptVersion이 키에 함께 들어가는가. 옮겨진 곳을 보고, 기본 promptVersion이
+   * 계약(TASK_CONTRACT)에서 오는지 · aiClient가 조회와 저장 모두 이 함수를 쓰는지까지 함께 본다.
+   */
   check(
     'AI-LENS-18 캐시 키가 task와 promptVersion을 함께 쓴다',
-    client.includes('${task}::${promptVersionOf(task)}::${fingerprint}'),
+    cacheKeySrc.includes('`${task}::${promptVersion}::model=${model}::${fingerprint}`') &&
+      /promptVersion: string = TASK_CONTRACT\[task\]\.promptVersion/.test(cacheKeySrc) &&
+      client.includes('return aiCacheKey(task, models.expected(task), fingerprint);') &&
+      client.includes('cache.set(aiCacheKey(task, model, fingerprint), data);'),
   );
 
   /* ── AI-LENS-19 · deep-report promptVersion 고정 ──────────────────────── */
@@ -1259,7 +1271,7 @@ console.log('\nAI-LENS-01 ~ AI-LENS-20 — 렌즈별 AI 해석 (v1.46 AI Lens)')
   */
   check(
     'AI-LENS-19 deep-report promptVersion이 고정돼 있다',
-    versions.includes("deepReport: 'deep-report-v9-role-recitation'"),
+    versions.includes("deepReport: 'deep-report-v13-uncertainty-move'"),
   );
   check(
     'AI-LENS-19 기존 네 Task의 promptVersion이 전부 그대로다',
@@ -1423,11 +1435,19 @@ console.log('\nFIX-05 ~ FIX-09 — 볼 수 없는 렌즈에서 채우러 가는 
     cardBlock.includes('ROUTES.lensBirth') && cardBlock.includes('ROUTES.declared(4)'),
   );
 
+  /*
+    260915 UT P0-2 §11 — 수정 허브가 `components/result/ResultEditSheet`로 옮겨갔다.
+    Compatibility · Mirror 결과 화면에서도 같은 것을 열기 때문이다. 검사 대상은 옮겼지만
+    **불변식은 그대로**다: 생년월일 행이 있고, 현재 값을 함께 보여주고, 입력 화면으로 간다.
+    옮긴 덕분에 검사가 더 강해졌다 — 이제 세 화면 모두가 이 행을 갖는다.
+  */
+  const editSheet = await src('src/components/result/ResultEditSheet.tsx');
   const profileResult = await src('src/app/profile/result/page.tsx');
   check(
     'FIX-08 프로필 수정에 생년월일 행이 있고 현재 값을 함께 보여준다',
-    profileResult.includes('formatBirthSummary(answers.birthProfile)') &&
-      profileResult.includes('ROUTES.lensBirth'),
+    editSheet.includes('formatBirthSummary(answers.birthProfile)') &&
+      editSheet.includes('ROUTES.lensBirth') &&
+      profileResult.includes('<ResultEditSheet'),
   );
 
   const birth = await src('src/app/lens/birth/page.tsx');

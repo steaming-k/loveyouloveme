@@ -3,6 +3,7 @@ import { operatorSatisfied, usedFamiliesOf } from '@/lib/logic/insightOperators'
 import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import { detectVerificationRole, isSendableQuestion } from '@/lib/logic/userFitQuestions';
 import type { CandidateSemanticAllowance, CandidateSemanticNarrative } from '@/types';
+import { validateConditionContext } from './conditionContextGate';
 import {
   dropTemplateRepeats,
   echoesReferenceSentence,
@@ -120,9 +121,27 @@ export function gateCandidateSemantics(
     }
     grounded += 1;
 
+    /*
+      Core Value Closure §13 — conditionContext는 **칸 단위로** 근거를 확인한다. 카드 문장은 이 검사로
+      버려지지 않는다(context는 Action을 위한 구조다). 위반 라벨만 남긴다.
+    */
+    const contextCheck = validateConditionContext({
+      context: item.conditionContext ?? null,
+      sources: [
+        ...allowance.sceneTexts,
+        ...(allowance.evidenceTexts ?? []),
+        ...(allowance.knownSelfStatement ? [allowance.knownSelfStatement] : []),
+      ],
+      unresolvedPoints: allowance.unresolvedPoints ?? [],
+      narrowedCondition: item.narrowedCondition,
+      tense,
+    });
+    violations.push(...contextCheck.violations);
+
     const narrative: CandidateSemanticNarrative = {
       candidateId: item.candidateId,
       operator: item.operator,
+      ...(contextCheck.context ? { conditionContext: contextCheck.context } : {}),
       connection: item.connection,
       narrowedCondition: item.narrowedCondition,
       soWhat: item.soWhat,
@@ -164,6 +183,7 @@ export function gateCandidateSemantics(
       candidate = {
         candidateId: narrative.candidateId,
         operator: narrative.operator,
+        ...(narrative.conditionContext ? { conditionContext: narrative.conditionContext } : {}),
         connection: narrative.connection,
         narrowedCondition: narrative.narrowedCondition,
         soWhat: narrative.soWhat,

@@ -6,6 +6,7 @@ import {
   rateLimitKey,
   readJsonBody,
   successResponse,
+  withAiRequestPolicy,
 } from '../_shared';
 import { runPremiumLensTask } from '@/services/ai/handlers';
 
@@ -19,6 +20,11 @@ import { runPremiumLensTask } from '@/services/ai/handlers';
 export const runtime = 'nodejs';
 
 export async function POST(request: Request): Promise<Response> {
+  /* P0 Real AI Guard — 테스트 실행 요청은 opt-in 없이 실제 Provider로 가지 않는다 */
+  return withAiRequestPolicy(request, () => handlePost(request));
+}
+
+async function handlePost(request: Request): Promise<Response> {
   const requestId = createRequestId();
   const startedAt = Date.now();
 

@@ -3,6 +3,7 @@ import { withObjectParticle } from '@/lib/korean';
 import { PREMIUM_FEATURES, PREMIUM_FIX_CTA } from '@/data/premium';
 import { HISTORY_STATE_LABEL } from '@/data/copy';
 import { PREMIUM_FAKE_DOOR, SAJU_ENGINE_READY } from '@/lib/env';
+import { resolvePremiumAccess } from '@/lib/premiumAccess';
 import { buildPremiumLensBundle } from '@/lib/logic/premiumLens';
 import { buildSelfLevels } from '@/lib/logic/firstContact';
 /**
@@ -14,7 +15,9 @@ import {
   buildInsightCandidates,
   paywallTeaseText,
   selectPaywallTease,
+  semanticTopCandidates,
 } from '@/lib/logic/insightCandidates';
+import { buildPremiumActionPlan } from '@/lib/logic/actionPriority';
 import { orderMirrorInsightsForDisplay } from '@/lib/resultPriority';
 import { buildExecutiveSoWhat } from '@/lib/premiumSoWhat';
 import { soloModeOfTarget } from '@/lib/logic/soloMode';
@@ -40,6 +43,7 @@ import {
   selectDeepObservation,
 } from '@/services/premiumConnections';
 import type {
+  ActionPlanNarrative,
   AstrologyCompatibilityResult,
   CompatibilityResult,
   ConversationQuestion,
@@ -155,6 +159,12 @@ export function premiumFeatureState(
      * 조용히 생략할 수 있게 두지 않는다.**
      */
     allowsOutwardAction: boolean;
+    /**
+     * v1.47 Premium UT Visibility — **필수.** UT 탭이면 `NEXT_PUBLIC_PREMIUM_FAKE_DOOR`가 꺼져 있어도
+     * Premium 표면이 열린다(`resolvePremiumAccess`). 화면은 `useUtMode()`, 서버 fixture는 `false`를 넘긴다.
+     * 콘텐츠 근거(`deepReportAvailable` 등) 판정은 바꾸지 않는다.
+     */
+    utMode: boolean;
   },
 ): PremiumFeature {
   const def = PREMIUM_FEATURES[id];
@@ -171,7 +181,14 @@ export function premiumFeatureState(
     description: def.description,
     additions,
     price,
-    status: PREMIUM_FAKE_DOOR ? 'fake-door' : 'unavailable',
+    status: resolvePremiumAccess({
+      utMode: context.utMode,
+      fakeDoorEnabled: PREMIUM_FAKE_DOOR,
+      previewEnabled: false,
+      paymentConfirmed: false,
+    }).surfaceEnabled
+      ? 'fake-door'
+      : 'unavailable',
   };
 
   /**
@@ -682,6 +699,11 @@ export function buildRelationshipDeepReport(input: {
    * 그 화면만 조용히 결정론 문장으로 남는다(v1.40.1 §38.2와 같은 판단).
    */
   candidateSemantics: readonly CandidateSemanticNarrative[];
+  /**
+   * v1.46.4 Action Layer — 같은 Deep Report 응답의 `actionPlan`. **필수다**(candidateSemantics와 같은
+   * 이유). AI를 부르지 않는 호출부는 `null`을 명시한다.
+   */
+  actionPlan: ActionPlanNarrative | null;
   resolverContext: EvidenceResolverContext;
   compatibility: CompatibilityResult;
   historyReport: HistoryReport;
@@ -732,6 +754,7 @@ export function buildRelationshipDeepReport(input: {
     insights,
     narratives,
     candidateSemantics,
+    actionPlan,
     resolverContext,
     compatibility,
     historyReport,
@@ -930,6 +953,20 @@ export function buildRelationshipDeepReport(input: {
         })
       : null,
     candidates,
+    /**
+     * v1.46.4 Action Layer §3 · §19 — Top 3 아래 단일 블록. 대상 선택은 AI 요청을 만들 때와
+     * **같은 함수**(`selectActionCandidate`)다. `available: false`면 없다.
+     */
+    actionPlan: available
+      ? buildPremiumActionPlan({
+          top: semanticTopCandidates(candidates),
+          semantic: actionPlan,
+          tense: lifecycle.tense,
+          allowsOutwardQuestions,
+          events: target.events ?? [],
+          target,
+        })
+      : null,
     /**
      * §21 — 가짜 mystery 금지. `selectPaywallTease`는 **무료 화면 밖 근거를 실제로 가진**
      * Candidate만 돌려주고, 없으면 null이다. 그때 Paywall은 가치 카피만 쓴다.

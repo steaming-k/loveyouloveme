@@ -667,7 +667,7 @@ src/lib/logic/sajuPillars.ts                  227  일주 계산 (이번 사이�
 src/data/premiumLens.ts                       294  렌즈 문구 · 테마 라벨 · 번들 카피
 src/lib/logic/premiumLens.ts                  962  렌즈 엔진 + Cross-Lens
 src/components/premium/PremiumLensSection.tsx 379  렌즈 아코디언 + Cross-Lens 카드
-src/components/premium/HomePremiumBundle.tsx  182  Home 하단 번들 영역
+src/components/premium/PremiumBundleCard.tsx  182  Home 하단 번들 영역
 tests/run-lens-fixtures.mjs                   765  LENS/VALUE/SAJU-CALC fixture
 ```
 

@@ -8,6 +8,7 @@ import { buildMbtiLens, buildMbtiSelfLens, buildMbtiQuestions } from '@/lib/logi
 import { buildFirstContactReport } from '@/lib/logic/firstContact';
 import { buildMbtiPattern } from '@/lib/logic/mbtiPattern';
 import { buildMirrorReport } from '@/lib/logic/mirror';
+import { isUserRefusedObservation } from '@/lib/logic/observationStatus';
 /**
  * v1.43 §46 — 축/dimension별 허용 근거. **결정론 엔진에서 파생된 표**이고 여기서 새
  * 판정을 만들지 않는다.
@@ -25,6 +26,7 @@ import {
   buildCompatibilityContext,
   buildCrossLensContext,
   buildDeepReportContext,
+  deepReportActionAllowanceOf,
   deepReportAllowancesOf,
   buildHistoryContext,
   buildPremiumLensContext,
@@ -158,7 +160,8 @@ export async function analyzeObservedProfile(photos: PhotoAsset[]): Promise<
 /**
  * 저장된 분석 결과에서 화면용 관찰 목록을 만든다.
  *
- * 사용자 검증 우선순위(§14): USER CORRECTION > CONFIRMED > UNVERIFIED, excluded는 제외.
+ * 사용자 검증 우선순위(§14): USER CORRECTION > CONFIRMED > UNVERIFIED.
+ * `rejected` · `excluded`는 분석에서 제외한다(`analysisReadyObservations`).
  * **AI Original을 덮어쓰지 않는다** — 원본은 `original`에 그대로 남는다(§13).
  */
 export function toValidatedObservations(
@@ -171,23 +174,31 @@ export function toValidatedObservations(
     const entry = feedback[trait.id];
     const correction = entry?.correctedText?.trim();
 
+    /*
+      260915 UT P0-1 — 순서가 의미를 가진다.
+      고쳐 쓴 문장이 있으면 `verdict`가 'no'여도 `corrected`다(사용자가 대신할 말을 줬다).
+      고쳐 쓰지 않고 'no'만 누른 것은 `rejected` — 예전에는 이게 `unverified`로 떨어져
+      '아직 안 물어봤다'와 구분되지 않았고, 그래서 분석 근거로 그대로 쓰였다.
+    */
     const status: ValidatedObservation['status'] = entry?.excluded
       ? 'excluded'
       : correction
         ? 'corrected'
         : entry?.verdict === 'ok'
           ? 'confirmed'
-          : 'unverified';
+          : entry?.verdict === 'no'
+            ? 'rejected'
+            : 'unverified';
 
     return { original: trait, status, userCorrection: correction || undefined };
   });
 }
 
-/** 후속 분석(S18·Mirror)에 넘길 관찰만 — excluded 제거 */
+/** 후속 분석(S18·Mirror)에 넘길 관찰만 — 사용자가 거절·제외한 것 제거 */
 export function analysisReadyObservations(
   validated: readonly ValidatedObservation[],
 ): ValidatedObservation[] {
-  return validated.filter((item) => item.status !== 'excluded');
+  return validated.filter((item) => !isUserRefusedObservation(item.status));
 }
 
 /* ==================== AI Narrative (v1.7) ==================== */
@@ -318,6 +329,8 @@ export function requestRelationshipNarrative(input: {
     allowedEvidenceRefs: allowedRelationshipRefsByAxis({
       insights: mirror.insights,
       experience: answers.experience,
+      /* 260915 UT P1-1 — 사용자가 더 자세히 답한 축은 그 조건도 인용할 수 있다 */
+      deepInputs: answers.deepInputs,
       validated: analysisReadyObservations(validated),
       pastObservations,
     }),
@@ -396,8 +409,22 @@ export function requestDeepReportNarrative(
    * 요청하지 않는다(아래쪽 연결 문장만 만든다).
    */
   topCandidates: readonly InsightCandidate[] = [],
+  /**
+   * v1.46.4 Action Layer — 요청 쪽(훅)이 결정론으로 고른 Action 카드와, 서버 게이트가 쓸
+   * '상대에게 물을 수 있는가'. ⚠️ 기본값은 **요청하지 않음 · 물을 수 없음**이다(안전한 쪽).
+   * `canAskPartner`는 허용집합에만 실리고 프롬프트에는 들어가지 않는다(§41.7).
+   */
+  action: { selection: { candidateId: string; priorityReason: string } | null; canAskPartner: boolean } = {
+    selection: null,
+    canAskPartner: false,
+  },
+  /**
+   * v1.47 Integration — **한 번의 분석 행위** id(`lib/logicalRun.ts`). 실패 뒤 retry는 같은 값이다.
+   * 서버가 결과에 그대로 돌려주고 저장 멱등 키의 재료가 된다. 생략하면 보내지 않는다.
+   */
+  generationRequestId?: string,
 ): Promise<{ ok: true; data: DeepNarrativeBundle } | { ok: false; reason: AiFailureReason }> {
-  const context = buildDeepReportContext(insights, resolverContext, tense, events, topCandidates);
+  const context = buildDeepReportContext(insights, resolverContext, tense, events, topCandidates, action.selection);
 
   if (context.insights.length === 0) {
     return Promise.resolve({
@@ -431,6 +458,9 @@ export function requestDeepReportNarrative(
      * 들어가지 않는다(모델은 이미 context에서 같은 문장을 받았다).
      */
     candidates: deepReportAllowancesOf(context),
+    /** v1.46.4 Action Layer — 결정론이 고른 Action 카드의 허용집합. 같은 요청이다(호출 수 불변) */
+    actionAllowance: deepReportActionAllowanceOf(context, action.canAskPartner),
+    ...(generationRequestId ? { generationRequestId } : {}),
   });
 }
 

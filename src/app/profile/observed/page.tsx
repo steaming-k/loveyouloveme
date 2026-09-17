@@ -13,7 +13,6 @@ import { useToast } from '@/components/common/ToastProvider';
 import { Lovy } from '@/components/lovy/Lovy';
 import { LovyMessage } from '@/components/lovy/LovyMessage';
 import { ObservationCard } from '@/components/profile/ObservationCard';
-import { UtRatingCard } from '@/components/ut/UtRatingCard';
 import { LOVY_LINES, PRIVACY } from '@/data/copy';
 import { trackEvent } from '@/lib/analytics';
 import { observedEvidenceLabel } from '@/lib/logic/observed';
@@ -22,19 +21,21 @@ import { photoFingerprint } from '@/services/ai/imagePrep';
 import { ROUTES } from '@/lib/routes';
 import { isObservedReviewComplete } from '@/lib/validation';
 import { useSession } from '@/state/SessionProvider';
-import type { AiMode, ObservedAnalysisState } from '@/types';
+import type { ObservedAnalysisState } from '@/types';
 
 /**
  * 관찰이 0개일 때의 문구 (v1.10 · §7 · §8).
  *
  * ⚠️ **네 가지를 절대 같은 말로 처리하지 않는다:**
  *   A. 분석은 됐는데 쓸 만한 장면이 없음  B. Provider 실패
- *   C. Demo/Mock 모드                    D. 사진이 부족함
- * 예전에는 A와 C가 같은 화면 문구를 썼고, 그래서 실제 분석이 붙어도 '데모야'라고 말했다.
+ *   C. 사진 내용을 읽지 않는 상태        D. 사진이 부족함
+ * 예전에는 A와 C가 같은 화면 문구를 썼고, 그래서 실제 분석이 붙어도 다른 상태라고 말했다.
+ *
+ * v1.47 UT-2 — C의 문구에서 내부 모드 이름을 뺐다. 상태(demo/mock)는 그대로 구분하되
+ * 참가자에게는 '무슨 모드인지'가 아니라 '무슨 일이 일어났는지'만 말한다.
  */
 function emptyStateCopy(
   state: ObservedAnalysisState | null,
-  mode: AiMode,
   photosGone: boolean,
   photosChanged: boolean,
 ): { title: string; body: string } {
@@ -84,7 +85,7 @@ function emptyStateCopy(
     case 'demo':
     case 'mock':
       return {
-        title: mode === 'mock' ? '지금은 개발용 MOCK 분석이야.' : '지금은 데모 분석을 사용 중이야.',
+        title: '지금은 사진 내용을 읽지 않는 상태야.',
         body: '실제 사진 내용을 분석하지 않았어. 그래서 관찰 결과도 만들지 않았어.',
       };
     default:
@@ -130,10 +131,6 @@ function ObservedResultView() {
    * 이 값이 없으므로(optional) null로 두고, 없으면 예전처럼 mode만 보고 말한다.
    */
   const observedState = analysis?.observedState ?? null;
-  const repeatedCount = useMemo(
-    () => traits.filter((trait) => trait.signal && trait.signal.strength !== 'single').length,
-    [traits],
-  );
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -208,12 +205,7 @@ function ObservedResultView() {
    * 사진 분석이 약하다고 Core Funnel을 막지 않는다(§63) — 질문으로 계속할 길을 함께 준다.
    */
   if (traits.length === 0 || photosGone || photosChanged) {
-    const empty = emptyStateCopy(
-      analysis === null ? null : observedState,
-      mode,
-      photosGone,
-      photosChanged,
-    );
+    const empty = emptyStateCopy(analysis === null ? null : observedState, photosGone, photosChanged);
 
     return (
       <ScreenLayout
@@ -221,15 +213,19 @@ function ObservedResultView() {
           <ScreenHeader backHref={withReturnTo(ROUTES.photos, searchParams)} title="관찰 기록" />
         }
         footer={
+          /*
+            260914 UT 후속 P1 STEP 2 — 사진은 **입력 보강 신호**지 최종 결과가 아니다. 관찰할 게
+            없을 때 primary가 뒤로(사진 고르기) 가면 입력 흐름이 여기서 멈춘 것처럼 보인다.
+            앞으로 가는 길을 primary로 두고, 사진 다시 고르기는 보조로 남긴다.
+          */
           <div className="flex flex-col gap-0.5">
-            <Button onClick={() => router.push(withReturnTo(ROUTES.photos, searchParams))}>
-              사진 더 고르기
-            </Button>
             <Button
-              variant="text"
               onClick={() => router.push(resolveReturnDestination(searchParams, ROUTES.declared(1)))}
             >
               질문으로 계속하기
+            </Button>
+            <Button variant="text" onClick={() => router.push(withReturnTo(ROUTES.photos, searchParams))}>
+              사진 더 고르기
             </Button>
           </div>
         }
@@ -266,7 +262,7 @@ function ObservedResultView() {
         footer={
           <div className="flex flex-col gap-2">
             {error ? <InlineError message={error} /> : null}
-            <Button onClick={handleNext}>다음</Button>
+            <Button onClick={handleNext}>확인했어 · 질문으로 계속</Button>
           </div>
         }
         bodyClassName="pt-1.5 pb-3"
@@ -281,6 +277,11 @@ function ObservedResultView() {
                   ? '사진에서 이런 장면이 보였어.'
                   : '사진에서 이런 모습이 보였어.',
             ]}
+            /*
+              260914 UT 후속 P1 STEP 2 — 이 화면은 결과가 아니라 **입력 단계**다(counter 2/3).
+              무엇을 하면 다음으로 넘어가는지 먼저 말한다 — '결과가 끝났다'로 읽히지 않게.
+            */
+            caption="맞는지 하나만 알려주면 바로 다음 질문으로 넘어가. 틀린 건 고치거나 빼도 돼."
             eyebrow={
               <div className="flex flex-wrap items-center gap-1.5">
                 <Tag tone="brand">OBSERVED ME</Tag>
@@ -297,10 +298,13 @@ function ObservedResultView() {
                 )}
                 {/* 실제 분석이면 DEMO 배지를 붙이지 않는다. fallback은 사실대로 알린다(§39) */}
                 {mode === 'real' ? <Tag tone="neutral">AI OBSERVATION</Tag> : null}
-                {/* 개발 전용 mock을 실제 AI로 표시하지 않는다 (v1.7 §5) */}
-                {mode === 'mock' ? <Tag tone="friction">MOCK AI</Tag> : null}
-                {mode === 'demo' || mode === 'legacy-demo' ? (
-                  <Tag tone="neutral">DEMO AI</Tag>
+                {/*
+                  v1.47 UT-2 — mock/demo를 실제 AI로 표시하지 않는다(v1.7 §5). 다만 참가자
+                  화면에 내부 모드 이름(MOCK · DEMO)을 쓰지 않는다 — 제품을 임시 버전으로
+                  읽히게 하는 메타 문구다. 사실(규칙 기반)만 남긴다.
+                */}
+                {mode === 'mock' || mode === 'demo' || mode === 'legacy-demo' ? (
+                  <Tag tone="neutral">규칙 기반</Tag>
                 ) : null}
                 {mode === 'fallback' ? <Tag tone="friction">규칙 기반 대체</Tag> : null}
               </div>
@@ -369,20 +373,12 @@ function ObservedResultView() {
             </ul>
           ) : null}
 
-          {/* §44 — UT Mode에서만. '나 같다' 유사도는 관찰 결과를 본 직후에 묻는 게 맞다 */}
-          <UtRatingCard
-            question="이 관찰 결과가 평소의 나와 얼마나 비슷해?"
-            event="ut_analysis_similarity_rate"
-            properties={{
-              task: 'observed',
-              mode,
-              trait_count: traits.length,
-              repeated_signal_count: repeatedCount,
-              usable_evidence_count: coverage?.usableImageCount ?? 0,
-            }}
-            lowLabel="전혀 다름"
-            highLabel="매우 비슷함"
-          />
+          {/*
+            260914 UT 후속 P1 Final — S09의 UT 유사도 평가 카드를 **참가자 화면에서 뺐다.**
+            입력 단계 한가운데 1~5 척도가 끼면 '확인 → 바로 다음 질문' 흐름이 멈춘다(P1 보고 잔여 리스크).
+            같은 문항 · 같은 이벤트(`ut_analysis_similarity_rate`)는 `/ut` 운영자 콘솔로 옮겼다 —
+            진행자가 참가자에게 구두로 묻고 기록한다.
+          */}
 
           <NoticeBox>{PRIVACY.aiResult}</NoticeBox>
           {/*
@@ -390,13 +386,7 @@ function ObservedResultView() {
             실제로 일어난 일(서버 전송·관찰·미저장)만 말한다.
           */}
           {mode === 'real' ? <NoticeBox>{PRIVACY.photoTransfer}</NoticeBox> : null}
-          {mode === 'mock' ? (
-            <NoticeBox>
-              개발용 MOCK 모드야. 실제 AI Provider를 호출하지 않았고, 사진 내용을 읽은 결과가
-              아니야.
-            </NoticeBox>
-          ) : null}
-          {mode === 'demo' || mode === 'legacy-demo' ? (
+          {mode === 'mock' || mode === 'demo' || mode === 'legacy-demo' ? (
             <NoticeBox>{PRIVACY.demoAi}</NoticeBox>
           ) : null}
           {mode === 'fallback' ? (

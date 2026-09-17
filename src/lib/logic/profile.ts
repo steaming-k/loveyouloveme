@@ -7,6 +7,7 @@ import {
   HOBBY_LABEL,
   NO_EXPERIENCE_LABEL,
   PAST_FACTOR_LABEL,
+  pastFactorLabels,
 } from '@/data/labels';
 import type {
   AiObservedTrait,
@@ -21,6 +22,7 @@ import type {
   RelationshipProfile,
 } from '@/types';
 import { buildMirrorReport } from './mirror';
+import { isAcceptedObservation } from './observationStatus';
 import { hasTemporalComparison, type RelationshipTense } from './relationshipEvidence';
 
 /**
@@ -56,13 +58,7 @@ export function observedItems(
   traits: readonly AiObservedTrait[],
   observations: Record<string, ObservationFeedback>,
 ): { id: string; label: string; corrected: boolean }[] {
-  return traits.filter((trait) => {
-    const feedback = observations[trait.id];
-    if (feedback?.excluded) return false;
-    // '조금 달라요'만 누른 항목은 빼고, 사용자가 직접 고쳐 쓴 항목은 고친 문장으로 남긴다.
-    if (feedback?.verdict === 'no') return Boolean(feedback.correctedText?.trim());
-    return true;
-  }).map((trait) => {
+  return traits.filter((trait) => isAcceptedObservation(observations[trait.id])).map((trait) => {
     const corrected = observations[trait.id]?.correctedText?.trim();
     return {
       id: trait.id,
@@ -87,7 +83,8 @@ export function declaredItems(declared: DeclaredPreference): string[] {
 export function relationshipItems(experience: RelationshipExperience): string[] {
   if (experience.skipped) return [NO_EXPERIENCE_LABEL];
 
-  const items = experience.important.map((factor) => PAST_FACTOR_LABEL[factor]);
+  /* 260915 UT P1-2 — '기타'는 세 글자가 아니라 사용자가 적은 문장으로 보여준다 */
+  const items = pastFactorLabels(experience);
   if (experience.hardest) items.push(HARDEST_LABEL[experience.hardest]);
   return items;
 }
@@ -160,8 +157,14 @@ const HARDEST_HIGHLIGHT: Record<HardestMoment, string> = {
 function relationshipHighlight(experience: RelationshipExperience): string | null {
   if (experience.skipped) return null;
   if (experience.hardest) return HARDEST_HIGHLIGHT[experience.hardest];
-  if (experience.important.length > 0) {
-    return `관계에서는 ${PAST_FACTOR_LABEL[experience.important[0]!]}에 특히 신경 쓰는 모습을 보였어.`;
+  /*
+    260915 UT P1-2 — '기타'는 이 문장에 넣지 않는다. 사용자가 적은 문장은 길이도 형태도
+    자유라서 `${x}에 특히 신경 쓰는`이라는 틀에 넣으면 문장이 깨진다. 요약 한 줄은
+    정형 보기만 쓰고, 적어준 내용은 근거 목록(`relationshipItems`)에서 그대로 보인다.
+  */
+  const namedFactor = experience.important.find((factor) => factor !== 'other');
+  if (namedFactor) {
+    return `관계에서는 ${PAST_FACTOR_LABEL[namedFactor]}에 특히 신경 쓰는 모습을 보였어.`;
   }
   return null;
 }
@@ -259,7 +262,7 @@ export function buildRelationshipProfile(
     {
       id: 'relationship',
       title: 'RELATIONSHIP ME',
-      caption: '이전 관계',
+      caption: '관계 경험',
       items: relationshipItems(experience),
     },
   ];

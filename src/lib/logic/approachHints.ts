@@ -24,10 +24,28 @@ export function describeTargetEvidence(ref: TargetEvidenceRef, target: TargetPro
 
 /** 카드 상단 카테고리 라벨(§20/§27) */
 export const APPROACH_HINT_KIND_LABEL: Record<ApproachHintKind, string> = {
-  activity: '같이 해볼 것',
+  /*
+    260914 P2-6 — '같이 해볼 것'이 UT에서 교과서적이라는 반응이 나왔다. 관심사 하나에 기대는
+    누구에게나 가능한 제안이라 **가벼운 아이디어**로 위계를 낮춘다(궁합 화면에서 첫 카드가 되지 않는다).
+  */
+  activity: '가벼운 아이디어 · 같이 해볼 것',
   communication: '대화할 때 참고할 것',
   pace: '관계 속도를 맞출 때 참고할 것',
-  affection: '관계 속도를 맞출 때 참고할 것',
+  /*
+    Concept Polish 260915 — `pace`와 같은 문자열이었다.
+
+    두 힌트가 함께 뜨는 세션에서 같은 제목이 연속으로 두 번 보였다(실측):
+
+    ```
+    관계 속도를 맞출 때 참고할 것   연락은 편하게 이어가도 괜찮아
+    관계 속도를 맞출 때 참고할 것   표현 방식을 조금씩 맞춰봐
+    ```
+
+    카드 내용은 다른데 라벨이 같으니 '같은 말이 또 나온다'로 읽힌다. 라벨은 그 카드가
+    무엇에 대한 힌트인지 구분하라고 있는 자리이므로, 실제로 구분되는 이름을 준다.
+    ⚠️ `kind`도 판정도 건드리지 않았다 — 라벨 문자열 하나만 바꿨다.
+  */
+  affection: '표현 방식을 맞출 때 참고할 것',
   conversation: '먼저 물어볼 것',
 };
 

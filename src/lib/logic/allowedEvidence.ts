@@ -1,5 +1,8 @@
 import { evidenceRefKey } from '@/lib/aiEvidenceResolver';
+import { isUserRefusedObservation } from './observationStatus';
+import { deepConditionForAxis } from '@/data/relationshipDeepInput';
 import type {
+  DeepInputAnswer,
   EvidenceRef,
   MirrorAxisKey,
   MirrorInsight,
@@ -108,10 +111,12 @@ export function relationshipRefFor(insight: MirrorInsight): EvidenceRef | null {
 export function allowedRelationshipRefs(input: {
   insight: MirrorInsight;
   experience: RelationshipExperience;
+  /** 260915 UT P1-1 — 선택형 심화 입력. 없으면 이 축의 `deep` ref도 생기지 않는다 */
+  deepInputs?: readonly DeepInputAnswer[];
   validated: readonly ValidatedObservation[];
   pastObservations: readonly { axis: string; entryId: string }[];
 }): EvidenceRef[] {
-  const { insight, experience, validated, pastObservations } = input;
+  const { insight, experience, deepInputs = [], validated, pastObservations } = input;
   const refs: EvidenceRef[] = [{ source: 'declared', field: insight.key }];
 
   const relationshipRef = relationshipRefFor(insight);
@@ -121,8 +126,25 @@ export function allowedRelationshipRefs(input: {
     refs.push({ source: 'adaptive', field: insight.key });
   }
 
+  /*
+    260915 UT P1-1 — 사용자가 이 축에 대해 **더 자세히 답했으면** 그 조건도 인용할 수 있다.
+
+    ⚠️ 축이 일치할 때만이다. 연락에 대해 좁혀준 조건을 갈등 카드의 근거로 쓰면
+    '사용자가 말한 것'이 아니라 '우리가 옮겨 붙인 것'이 된다.
+    ⚠️ `잘 모르겠어`로 답한 축은 `deepConditionForAxis`가 null을 주므로 resolver 단계에서
+    빠진다 — 여기서 다시 거르지 않는다(판정을 두 곳에 두지 않는다).
+  */
+  if (deepConditionForAxis(deepInputs, insight.key)) {
+    refs.push({ source: 'deep', field: insight.key });
+  }
+
+  /*
+    260915 UT P0-1 — 사용자가 '아니야'라고 한 관찰(`rejected`)도 여기서 뺀다.
+    이 목록이 AI가 인용해도 되는 근거의 전부라서, 여기 남으면 거절한 관찰이
+    Compatibility · Mirror · Premium 문장에 그대로 등장한다.
+  */
   for (const item of validated) {
-    if (item.status === 'excluded') continue;
+    if (isUserRefusedObservation(item.status)) continue;
     refs.push({ source: 'observed', traitId: item.original.id });
   }
 
@@ -138,16 +160,18 @@ export function allowedRelationshipRefs(input: {
 export function allowedRelationshipRefsByAxis(input: {
   insights: readonly MirrorInsight[];
   experience: RelationshipExperience;
+  deepInputs?: readonly DeepInputAnswer[];
   validated: readonly ValidatedObservation[];
   pastObservations?: readonly { axis: string; entryId: string }[];
 }): Record<string, EvidenceRef[]> {
-  const { insights, experience, validated, pastObservations = [] } = input;
+  const { insights, experience, deepInputs = [], validated, pastObservations = [] } = input;
   const table: Record<string, EvidenceRef[]> = {};
 
   for (const insight of insights) {
     table[insight.key] = allowedRelationshipRefs({
       insight,
       experience,
+      deepInputs,
       validated,
       pastObservations,
     });

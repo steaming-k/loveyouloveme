@@ -42,6 +42,18 @@ export const BRAND = {
  * ④ History    기록이 쌓이면 내 기준이 어떻게 움직였는지도  (Retention)
  * ```
  *
+ * ══ v1.47 — 현재 제품 흐름에 맞춰 카피만 갱신 (배치 · 그림 · 캐릭터 · 전환 그대로) ══
+ *
+ * ```
+ * ① Hook             이 사람과 나, 얼마나 잘 맞을까?   궁합 = 익숙한 진입점. 캡션이 '시작해도 괜찮아'로 최종 가치가 아님을 말한다
+ * ② Differentiation  점수만 보고 끝나지 않아          답 · 겪은 일 · 장면을 연결해 **왜** 차이가 생기는지
+ * ③ Core Value       의외로 네가 더 잘 보여           반복되는 내 반응 · 기준(Insight) → 다음에 확인할 것(Next Move)
+ * ④ Retention        기록이 쌓이면 …                  저장은 **수단** — 다시 보기 · 새 기록과 비교
+ * ```
+ *
+ * ⚠️ 아래 v1.46 주석의 '`잘 맞을까?`를 뺐다'는 판단을 v1.47에서 되돌렸다. 질문을 제목에 두되
+ * 캡션이 곧바로 '궁금해서 시작해도 괜찮아'로 받아서, 답(점수)을 약속하는 문장으로 읽히지 않게 한다.
+ *
  * ⚠️ **기능 나열이 아니라 Why다**(§21). 어느 장에도 '동기화율 4축'·'Premium'·
  * 'AI 분석' 같은 기능 이름이 없다. 사용자가 알아야 하는 것은 이 서비스가 무엇을
  * 보고 무엇을 돌려주는지이지, 화면 목록이 아니다.
@@ -56,10 +68,11 @@ export const BRAND = {
 export const ONBOARDING_SLIDES = [
   {
     id: 1,
-    title: ['이 사람이 궁금해서', '왔어도 괜찮아.'],
+    title: ['이 사람과 나,', '얼마나 잘 맞을까?'],
     caption: [
-      '연락 · 대화 · 갈등 해결 · 개인 시간처럼',
-      '실제 관계에서 부딪히는 항목부터 같이 볼게.',
+      '궁금해서 시작해도 괜찮아.',
+      '연락 · 갈등 해결 · 개인 시간처럼',
+      '실제로 부딪히는 항목부터 같이 볼게.',
     ],
     visual: 'signal' as const,
     /** 관찰의 시작 — 돋보기를 든 러비 */
@@ -67,10 +80,10 @@ export const ONBOARDING_SLIDES = [
   },
   {
     id: 2,
-    title: ['러비는 네 답이랑', '실제로 있었던 일을', '같이 봐.'],
+    title: ['점수만 보고', '끝나지 않아.'],
     caption: [
-      '네가 고른 기준, 관계에서 겪은 일,',
-      '기억나는 장면까지 — 네가 알려준 것만 근거로 써.',
+      '네 답, 관계에서 겪은 일, 기억나는 사건을 연결해서',
+      '왜 이런 차이가 생기는지 같이 봐.',
     ],
     visual: 'evidence' as const,
     /** 흩어진 자료를 모아 정리하는 러비 — 이 장이 말하는 행동 그 자체 */
@@ -79,7 +92,7 @@ export const ONBOARDING_SLIDES = [
   {
     id: 3,
     title: ['상대를 보다 보면', '의외로 네가', '더 잘 보여.'],
-    caption: ['말한 나와 관계에서 나타난 나가', '어긋나는 지점이 이 서비스의 본론이야.'],
+    caption: ['관계 속에서 반복되는 네 반응과 기준을 찾고,', '다음에 무엇을 확인해볼지도 같이 정리해줄게.'],
     visual: 'gap' as const,
     gap: {
       declaredLabel: 'DECLARED ME · 네가 말한 너',
@@ -93,7 +106,7 @@ export const ONBOARDING_SLIDES = [
   {
     id: 4,
     title: ['기록이 쌓이면', '내 기준이 어떻게', '움직였는지도 보여.'],
-    caption: ['관찰을 저장해두면 다음에 다시 봤을 때', '무엇이 달라졌는지 러비가 짚어줄게.'],
+    caption: ['관계를 저장해두면 나중에 다시 보고,', '새 기록과 비교해서 달라진 지점을 짚어줄게.'],
     visual: 'history' as const,
     /** 기록 노트를 펼쳐 든 러비 */
     pose: 'book' as const,
@@ -186,7 +199,7 @@ export const PRIVACY = {
    */
   photoFooter: '선택한 사진은 AI 분석을 위해 전송돼. 앱의 기록에는 사진을 저장하지 않아',
   /** Demo 모드 footer — 전송 자체가 없으므로 전송된다고 말하지 않는다 */
-  photoFooterDemo: '지금은 데모 모드라 사진을 전송하지 않아',
+  photoFooterDemo: '지금은 사진을 전송하지 않아',
   /**
    * v1.10 §14 — 실제 Vision이 붙었으므로 '무엇을 위해' 사진을 쓰는지 동작 그대로 적는다.
    * 성격을 맞히는 게 아니라 장면·활동을 관찰해 초안을 만드는 것이다(§1).
@@ -201,7 +214,7 @@ export const PRIVACY = {
   photoAiNotice:
     '선택한 사진은 AI 분석을 위해 서버로 전송될 수 있어. 분석이 끝나면 앱에는 관찰 결과와 근거만 남고 사진 자체는 저장하지 않아. AI 제공사의 데이터 보관 정책은 우리가 통제하지 않아.',
   /** Demo 모드에서는 전송 자체가 없다 — 그 사실을 그대로 말한다 */
-  photoDemoNotice: '지금은 데모 모드라 사진을 전송하지 않아. 사진 내용도 분석하지 않아.',
+  photoDemoNotice: '지금은 사진을 전송하지 않아. 사진 내용도 분석하지 않아.',
   past: '관계 경험은 분석에만 사용해. 언제든 삭제할 수 있어.',
   target: '네가 알고 있는 상대의 정보를 기준으로 비교해. 상대의 실제 마음이나 성격을 판정하지 않아.',
   aiResult: 'AI 분석은 지금 입력된 정보를 기준으로 한 해석이야. 항목별로 수정·삭제할 수 있어.',
@@ -209,7 +222,7 @@ export const PRIVACY = {
   unknownExcluded: "'모름'으로 남긴 항목은 점수에 반영하지 않았어.",
   share: '개인정보는 카드에 포함되지 않아.',
   shareMirror: '상대 정보와 개인 답변은 카드에 포함되지 않아.',
-  demoAi: 'AI 분석은 데모용 규칙 기반 응답이야. 실제 사진 내용을 분석하지 않아.',
+  demoAi: '지금은 규칙 기반 응답이야. 실제 사진 내용을 분석하지 않아.',
 } as const;
 
 /** Loading / Empty / Error / Low confidence — 모두 러비 화법으로 */
@@ -232,8 +245,9 @@ export const STATE_COPY = {
   },
   noExperience: {
     pose: 'mug' as LovyPose,
-    title: ['아직 관계 기록은 없네.', '지금의 너부터 관찰해둘게.'],
-    body: '과거 관계 질문은 건너뛸게. 대신 지금 생각하는 기준을 기록해두고, 나중에 실제 경험과 비교해보자.',
+    /* 260914 Relationship Language — '아직 관계 기록은 없네'(결핍 프레이밍)를 뺐다 */
+    title: ['지금의 너부터', '관찰해둘게.'],
+    body: '이전 연애 질문은 건너뛸게. 지금 생각하는 기준을 기록해두고, 관계 경험이 생기면 그때 비교해보자.',
   },
   /** S26 Mirror Teaser에서 experience.skipped인 사용자에게 보여주는 문구. Mirror CTA를 억지로 주지 않는다. */
   mirrorUnavailable: {
@@ -258,6 +272,16 @@ export const LOVY_LINES = {
   teaserTwo: ['지금까지는 너와 그 사람을 비교했잖아.', '이번엔 너 안에서 조금 다른 신호가 보여.'],
   teaserThree: '이 둘이 왜 다른지 조금 더 볼까?',
   adaptiveIntro: '여기서 하나만 더 물어볼게.',
+  /**
+   * 260915 UT P1-3 — Mirror 핵심 관찰 **직후** 한 줄 (§28 checkpoint)
+   *
+   * UT 신호: "질문 단계는 러비랑 대화하는 느낌인데 분석은 논문 같다."
+   * 실제로 질문 화면에는 러비 말풍선이 계속 있고, 분석 화면에는 보고서 문장만 있었다.
+   *
+   * ⚠️ **분석 본문이 아니라 러비의 혼잣말이다.** 판정을 더하지 않고, 방금 보여준 관찰에
+   * 대한 관찰자의 태도만 말한다. 카드마다 붙이지 않고 §28이 정한 checkpoint에만 둔다.
+   */
+  mirrorCoreNote: '이건 내가 네 답 두 개를 나란히 놓고 본 거야. 맞는지는 네가 제일 잘 알아.',
   coreInsightAsk: '내 관찰이 맞아?',
   coreInsightFooter: '네 확인이 다음 관찰의 기준이 돼. 러비는 계속 배우는 중이야.',
   lens: '이 렌즈들은 내 관찰 기록을 대신하지 않아. 그냥 다른 각도로 보는 거야.',
@@ -272,14 +296,31 @@ export const LOVY_LINES = {
 export const DATA_LAYERS = [
   { n: 1, title: 'Observed Me', caption: '사진에서 관찰되는 취향과 생활 방식' },
   { n: 2, title: 'Declared Me', caption: '네가 직접 답한 관계 성향과 기준' },
-  { n: 3, title: 'Relationship Me', caption: '이전 관계에서 실제로 나타난 너' },
+  /* 260914 Relationship Language — 이 레이어는 이전 관계 답 + 지금 관계 속의 나(S30)를 함께 담는다 */
+  { n: 3, title: 'Relationship Me', caption: '관계 경험에서 실제로 나타난 너' },
 ] as const;
 
-/** 동기화율 화면 문구 */
+/**
+ * 동기화율 화면 문구
+ *
+ * ══ `notice` — 260915 UT P0-3 ════════════════════════════════════════════
+ *
+ * 예전 문구는 `연애 성공확률이 아니야`였다. 아직 사귀기 전인 사용자에게 '이 숫자가
+ * 연애로 이어질 확률은 아니다'를 말하려던 고지인데, **이미 연인·배우자인 사용자에게는
+ * 문장 자체가 성립하지 않는다.** UT에서 실제로 "그럼 연애가 아니라는 뜻인가?"라는
+ * 되물음이 나왔다 — 면책 문장이 오히려 관계 상태를 의심하게 만든 것이다.
+ *
+ * 그래서 **관계 상태를 언급하지 않는 문장**으로 바꿨다. 관심 있는 사람 · 알아가는 중 ·
+ * 연인 · 배우자 · 이전 관계 · 잘 모름 어디에 놓아도 같은 뜻이다.
+ *
+ * ⚠️ 이 자리는 점수 바로 아래의 **작은 pill 한 줄**이다(`SyncScore`). 문장을 늘리면
+ * score-first 첫 viewport가 다시 면책 문구로 밀린다(§11에서 고친 구조). 자세한 설명은
+ * `supporting`과 '이 점수는 어떻게 나왔어?' 아코디언이 맡는다.
+ */
 export const COMPATIBILITY_COPY = {
   scoreLabel: 'SYNC RATE · 동기화율',
-  supporting: ['현재 입력된 두 사람의 정보를 기준으로', '공통점과 차이를 비교한 결과야.'],
-  notice: '연애 성공확률이 아니야',
+  supporting: ['지금 알려준 답변에서', '비슷한 점과 다른 점을 비교한 결과야.'],
+  notice: '관계의 결과를 예측하는 점수는 아니야',
   goodCountLabel: '잘 맞는 신호',
   watchCountLabel: '관찰 필요한 신호',
 } as const;
@@ -515,34 +556,55 @@ export const BIRTH_COPY = {
 } as const;
 
 /** X1-c 사주 Lens */
+/**
+ * 세 렌즈(MBTI · 사주 · 별자리) 공통 머리말 — LENS INFORMATION HIERARCHY 260916 §9
+ *
+ * 렌즈 화면의 **1차 정체성은 렌즈 이름이 아니라 '러비가 이어서 하고 있는 관찰'** 이다.
+ * MBTI 렌즈는 이미 이 줄을 갖고 있었고, 사주 · 별자리만 렌즈 이름부터 시작해서 각각
+ * 다른 서비스처럼 읽혔다. 문자열을 세 곳에 복사하지 않고 한 곳에서 읽는다.
+ */
+export const LENS_REPORT_EYEBROW = '러비 관찰 기록 · 렌즈';
+
 export const SAJU_COPY = {
   badge: 'ENTERTAINMENT',
+  /** 상대 정보가 없어 두 사람을 겹쳐볼 수 없을 때 — 이때만 렌즈 이름이 제목이 된다 */
   title: ['사주 렌즈'],
-  caption: '전통 해석 체계로 우리 둘을 한번 겹쳐보는 참고 렌즈야.',
+  /**
+   * LENS HIERARCHY 260916 §9 — **주어는 렌즈가 아니라 두 사람이다.**
+   * MBTI 렌즈의 `성향 렌즈로 본 두 사람`과 같은 문법을 쓴다(새 문법을 만들지 않는다).
+   */
+  coupleTitle: ['사주 렌즈로 본 두 사람'],
+  caption: '전통 해석 체계로 한번 겹쳐보는 참고 렌즈야.',
   notPrediction:
     '사주는 전통적인 해석 체계야. 실제 관계가 잘될 확률을 예측하는 결과로는 사용하지 않을게.',
-  selfCta: '내 사주 보기',
-  coupleCta: '우리 사주 궁합 보기',
-  engineOffTitle: '아직 계산 엔진이 연결되지 않았어',
-  /** SELF만 준비됐을 때(§13) */
-  engineOffBodySelf:
-    '네 정보는 준비됐어. 사주 계산 엔진이 연결되면 먼저 네 사주 렌즈부터 볼 수 있어.',
-  /** SELF + TARGET 모두 준비됐을 때(§13) */
-  engineOffBodyCouple:
-    '두 사람의 정보는 준비됐어. 엔진이 연결되면 각각의 결과와 둘의 비교까지 볼 수 있어.',
+  /**
+   * 260914 UT 후속 P0 — 'engineOff*' 문구를 뺐다. 이 화면은 이제 Premium 렌즈와 같은
+   * 일주 엔진(`logic/sajuPillars.ts`)으로 실제 값을 보여준다.
+   */
+  selfLabel: '나의 일주',
+  coupleLabel: '우리 둘',
+  /** LENS HIERARCHY 260916 §13 — 일주 값은 주인공이 아니라 이 렌즈가 딛고 선 기준이다 */
+  basisLabel: '이 렌즈의 기준',
+  readingLabel: '두 일간을 같이 놓으면',
 } as const;
 
 /** X1-b Astrology Lens */
 export const ASTROLOGY_COPY = {
   badge: 'ENTERTAINMENT',
+  /** 상대 정보가 없어 두 사람을 겹쳐볼 수 없을 때 — 이때만 렌즈 이름이 제목이 된다 */
   title: ['별자리 렌즈'],
-  caption: '생년월일로 태양궁을 보고, 관계에서 이야기해볼 주제를 찾아볼게.',
+  /** LENS HIERARCHY 260916 §9 — 사주 렌즈 · MBTI 렌즈와 같은 문법 */
+  coupleTitle: ['별자리 렌즈로 본 두 사람'],
+  caption: '태양궁으로 한번 겹쳐보고, 관계에서 떠올려볼 질문을 하나 건넬게.',
   selfLabel: '나의 태양궁',
   targetLabel: '상대의 태양궁',
+  /** LENS HIERARCHY 260916 §13 — 태양궁은 주인공이 아니라 이 렌즈가 딛고 선 기준이다 */
+  basisLabel: '이 렌즈의 기준',
   coupleCta: '우리 별자리 함께 보기',
   similarLabel: '비슷하게 읽힐 수 있는 부분',
   differentLabel: '다르게 나타날 수 있는 부분',
-  promptLabel: '이야기해볼 주제',
+  /* 260914 P2-5 — '이야기해볼 주제'가 토론 · 조별과제처럼 느껴졌다(UT). 러비가 건네는 질문 하나로 */
+  promptLabel: '러비의 한 가지 질문',
   disclaimer: '점성술에서는 이렇게 이야기되기도 해. 실제 너희가 그런지는 둘이 이야기해봐.',
 } as const;
 
@@ -578,7 +640,7 @@ export const LENS_HUB_COPY = {
 export const MBTI_LENS_COPY = {
   badge: 'SUPPORTING LENS',
   /** 관찰 문서 헤더 — 영어를 남발하지 않고 한국어로 읽히게 둔다 */
-  reportEyebrow: '러비 관찰 기록 · 렌즈',
+  reportEyebrow: LENS_REPORT_EYEBROW,
   reportTitle: '성향 렌즈로 본 두 사람',
   reportMetaLens: '렌즈 · MBTI',
   reportMetaScore: '동기화율에는 반영하지 않음',

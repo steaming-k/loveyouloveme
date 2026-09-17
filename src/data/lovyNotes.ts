@@ -250,14 +250,53 @@ function signalLineOf(dimension: CompatibilityDimension | undefined): string | n
   return `${dimension.label}은 아주 다르지도, 아주 비슷하지도 않게 나왔어.`;
 }
 
+/**
+ * 핵심 한 문장(`selectResultHeadline`)이 **이미 이름을 부른 축**.
+ *
+ * ⚠️ 위 함수와 같은 분기를 따른다. 여기만 바꾸면 YOUR SIGNAL이 중복을 피한다고 믿으면서
+ * 실제로는 같은 축을 다시 부른다.
+ */
+function headlineLabelsOf(result: CompatibilityResult): Set<string> {
+  const friction = result.frictionSignals[0];
+  const good = result.goodSignals[0];
+  if (friction && good) return new Set([good.label, friction.label]);
+  if (friction) return new Set([friction.label]);
+  if (good) return new Set(result.goodSignals.slice(0, 2).map((signal) => signal.label));
+  return new Set();
+}
+
 export function selectFirstSurprise(result: CompatibilityResult): LovySurprise | null {
   if (result.score === null) return null;
 
-  /** 근거로 쓸 축 — 화면에서 이미 첫 신호로 보여주는 축과 같은 우선순위다 */
-  const sourceAxis =
-    result.frictionSignals[0] ??
-    result.goodSignals[0] ??
-    result.dimensions.find((dimension) => dimension.alignment !== null);
+  /*
+    ══ Concept Polish 260915 — YOUR SIGNAL은 **새 축**을 말한다 ═══════════════
+
+    예전 우선순위는 `frictionSignals[0] ?? goodSignals[0]`이라, 바로 위 핵심 한 문장이
+    방금 부른 축을 그대로 다시 불렀다. 실측(잘 맞는 축만 있는 세션):
+
+    ```
+    애정 표현 · 연락 방식에 대한 기대가 비슷해 보여.   ← 핵심 한 문장
+    애정 표현에 대해서는 둘이 비슷하게 답했어.          ← YOUR SIGNAL (같은 축, 같은 뜻)
+    ```
+
+    두 줄을 읽고 새로 알게 되는 것이 없다 — 1차 UT의 '같은 말이 반복된다'가 바로 이
+    자리다. 이 블록의 목적은 원래 '내 답을 실제로 읽고 말하는구나'를 확인시키는 것이니
+    (아래 `signal` 주석), **아직 부르지 않은 축**을 부를 때 그 목적이 산다.
+
+    ⚠️ 블록을 없애지 않는다. 남은 축이 없으면 `signalLineOf`가 null을 받아 한 줄이
+    사라질 뿐이고, 그건 '없는 근거를 만들지 않는다'는 기존 규칙과 같은 동작이다.
+  */
+  const named = headlineLabelsOf(result);
+  /*
+    ⚠️ **fallback으로 이미 부른 축을 다시 집지 않는다.** 남은 축이 없으면 `undefined`가
+    그대로 `signalLineOf`에 가고, 그 함수는 null을 돌려준다 — 한 줄이 사라질 뿐이다.
+    여기서 `?? frictionSignals[0]`를 붙이면 중복을 피하려던 코드가 중복을 되살린다.
+  */
+  const sourceAxis = [
+    ...result.frictionSignals,
+    ...result.goodSignals,
+    ...result.dimensions.filter((dimension) => dimension.alignment !== null),
+  ].find((dimension) => !named.has(dimension.label));
 
   if (result.frictionSignals.length > 0) {
     return {

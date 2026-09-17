@@ -7,9 +7,12 @@ import {
   CONFLICT_LABEL,
   HARDEST_LABEL,
   HOBBY_LABEL,
-  PAST_FACTOR_LABEL,
+  MAX_PAST_OTHER_LENGTH,
+  pastFactorLabels,
 } from '@/data/labels';
 import { resolveEvidenceRef, type EvidenceResolverContext } from '@/lib/aiEvidenceResolver';
+import { isUserRefusedObservation } from '@/lib/logic/observationStatus';
+import { deepConditionsOf } from '@/data/relationshipDeepInput';
 import { selectRelevantEvents } from '@/lib/logic/eventRelevance';
 import {
   eligibleOperatorsFor,
@@ -22,6 +25,8 @@ import { limitationFor } from '@/services/premiumConnections';
 import type { RelationshipTense } from '@/lib/logic/relationshipEvidence';
 import { sanitizeFreeText } from './safety';
 import type {
+  ActionPlanAllowance,
+  ActionTargetBundle,
   CandidateSemanticAllowance,
   CompatibilityResult,
   CrossSourceInsight,
@@ -124,8 +129,24 @@ export interface RelationshipContext {
     selfGap: string | null;
     /** 사용자 자유서술 — 데이터 영역으로 감싸서 보낸다 */
     note: string | null;
+    /**
+     * 260915 UT P1-2 — '기타'를 고른 사용자가 직접 적은 것.
+     *
+     * ⚠️ `note`와 **같은 등급의 자유서술**이다. 적어준 범위 밖으로 나가지 않는다 —
+     * '답장이 늦으면 서운했다'는 '답장이 늦을 때 서운함이 커지는 편'까지고,
+     * '버림받을까 두려워한다' · '애착불안' 같은 진단은 만들지 않는다.
+     */
+    importantOther: string | null;
   };
   adaptive: { axis: string; reason: string } | null;
+  /**
+   * 260915 UT P1-1 — 사용자가 '더 자세히 알려주기'로 좁혀준 **조건**.
+   *
+   * ⚠️ 이건 원인도 성향도 아니다. '언제 그런가'일 뿐이다. 이 값을 근거로
+   * 심리 상태·애착·자존감을 만들지 않는다(SHARED_RULES 9번).
+   * ⚠️ 점수에 들어가지 않는다 — 해석을 좁히는 데만 쓴다.
+   */
+  deepConditions: { axis: string; condition: string }[];
   /** 사용자가 확인·수정한 관찰만. 제외한 항목은 보내지 않는다(§14) */
   observedValidated: Array<{ traitId: string; text: string; source: 'user' | 'ai' }>;
   /** 규칙이 이미 판정한 결과 — AI는 이걸 설명만 한다 */
@@ -157,14 +178,15 @@ function declaredForContext(declared: DeclaredPreference): Record<string, string
 }
 
 /**
- * 사용자 검증 우선순위(§14): USER CORRECTION > CONFIRMED AI > UNVERIFIED AI, excluded는 제거.
+ * 사용자 검증 우선순위(§14): USER CORRECTION > CONFIRMED AI > UNVERIFIED AI.
+ * 사용자가 거절(`rejected`)하거나 제외(`excluded`)한 관찰은 AI에게 아예 넘기지 않는다.
  * AI에게도 '무엇이 사용자 말이고 무엇이 AI 추측인지' 구분해 알려준다.
  */
 export function validatedObservationsForContext(
   observations: readonly ValidatedObservation[],
 ): RelationshipContext['observedValidated'] {
   const ranked = observations
-    .filter((item) => item.status !== 'excluded')
+    .filter((item) => !isUserRefusedObservation(item.status))
     .sort((a, b) => rankStatus(b.status) - rankStatus(a.status));
 
   return ranked.map((item) => {
@@ -210,10 +232,13 @@ export function buildRelationshipContext(input: {
     tense,
     declared: declaredForContext(answers.declared),
     relationship: {
-      importantFactors: experience.important.map((factor) => PAST_FACTOR_LABEL[factor]),
+      /* 260915 UT P1-2 — AI에게도 '기타'가 아니라 적어준 문장을 그대로 준다 */
+      importantFactors: pastFactorLabels(experience, MAX_PAST_OTHER_LENGTH),
       hardestMoment: experience.hardest ? HARDEST_LABEL[experience.hardest] : null,
       selfGap: experience.selfGap ? (SELF_GAP_LABEL[experience.selfGap] ?? null) : null,
       note: sanitizeFreeText(experience.note, 300),
+      /* 260915 UT P1-2 — '기타' 자유 입력. `note`와 같은 sanitize·상한을 쓴다 */
+      importantOther: sanitizeFreeText(experience.importantOther, 300),
     },
     adaptive: experience.adaptive
       ? {
@@ -221,6 +246,8 @@ export function buildRelationshipContext(input: {
           reason: adaptiveOptionLabel(experience.adaptive.axis, experience.adaptive.optionId),
         }
       : null,
+    /* 260915 UT P1-1 — '잘 모르겠어'는 여기 들어오지 않는다(`deepConditionsOf`가 거른다) */
+    deepConditions: deepConditionsOf(answers.deepInputs),
     observedValidated: validatedObservationsForContext(validated),
     ruleJudgements: mirror.insights.map((insight) => ({
       axis: insight.key,
@@ -474,6 +501,11 @@ export interface DeepReportContext {
    * ⚠️ 카드가 없으면 필드 자체가 없다(빈 배열을 보내지 않는다 — 모델은 빈 칸을 설명하려 든다).
    */
   candidates?: SemanticCandidateBundle[];
+  /**
+   * v1.46.4 Action Layer §15 — **결정론이 고른 Action 카드 하나.** 모델은 대상을 고르지 않는다.
+   * 행동을 만들 재료가 있는 카드가 없으면 필드가 없다(ACT-04 — 억지 plan 금지).
+   */
+  actionTarget?: ActionTargetBundle;
 }
 
 /**
@@ -501,6 +533,11 @@ export function buildDeepReportContext(
    * 고른 목록을 그대로 받는다. 생략하면 카드 해석을 요청하지 않는다.
    */
   topCandidates: readonly InsightCandidate[] = [],
+  /**
+   * v1.46.4 Action Layer — 요청 쪽이 **결정론으로 이미 고른** Action 카드(`actionSelectionOf`).
+   * 생략하면 actionPlan을 요청하지 않는다. ⚠️ Job 게이트 값은 받지 않는다(§41.7).
+   */
+  actionSelection: { candidateId: string; priorityReason: string } | null = null,
 ): DeepReportContext {
   const built: DeepReportContext['insights'] = [];
 
@@ -536,7 +573,33 @@ export function buildDeepReportContext(
     tense,
   });
 
-  return { tense, insights: built, ...(bundles.length > 0 ? { candidates: bundles } : {}) };
+  const actionTarget = buildActionTarget({ bundles, selection: actionSelection, tense });
+
+  return { tense, insights: built, ...(bundles.length > 0 ? { candidates: bundles } : {}), ...(actionTarget ? { actionTarget } : {}) };
+}
+
+/**
+ * v1.46.4 Action Layer §15 — 이미 고른 카드를 **모델이 읽는 모양**으로 옮긴다. 새로 고르지 않는다.
+ *
+ * ⚠️ 선택은 요청 쪽에서 끝났다(`actionSelectionOf`) — 화면 블록을 조립하는 `premiumService`와 같은
+ * 함수다. 여기서는 그 id가 실제로 보낸 카드 번들 안에 있을 때만 싣는다.
+ */
+export function buildActionTarget(input: {
+  bundles: readonly SemanticCandidateBundle[];
+  selection: { candidateId: string; priorityReason: string } | null;
+  tense: RelationshipTense;
+}): ActionTargetBundle | null {
+  if (!input.selection) return null;
+  const bundle = input.bundles.find((item) => item.candidateId === input.selection?.candidateId);
+  if (!bundle) return null;
+  return {
+    candidateId: bundle.candidateId,
+    rank: bundle.rank,
+    topic: bundle.topic,
+    lifecycle: input.tense === 'former' ? 'former' : 'current',
+    priorityReason: input.selection.priorityReason,
+    unresolvedPoints: bundle.unresolvedPoints,
+  };
 }
 
 /**
@@ -694,7 +757,33 @@ export function deepReportAllowancesOf(context: DeepReportContext): CandidateSem
     ),
     eligibleOperators: [...bundle.eligibleOperators],
     knownSelfStatement: bundle.knownSelfStatement,
+    /* Core Value Closure §11 — conditionContext 근거 확인용(이미 context에 실린 문장 그대로) */
+    evidenceTexts: bundle.evidence.map((item) => item.value),
+    unresolvedPoints: [...bundle.unresolvedPoints],
   }));
+}
+
+/**
+ * v1.46.4 Action Layer — actionPlan 게이트의 허용집합. **Action 카드에 실어 보낸 근거·장면 그대로**다
+ * (카드 semantic 허용집합과 같은 값 — 새 근거가 생기지 않는다).
+ */
+export function deepReportActionAllowanceOf(
+  context: DeepReportContext,
+  /** 서버 게이트 전용 값. 프롬프트에는 들어가지 않는다(요청 쪽이 Job 술어로 계산해 넘긴다) */
+  canAskPartner: boolean,
+): ActionPlanAllowance | null {
+  const target = context.actionTarget;
+  if (!target) return null;
+  const card = deepReportAllowancesOf(context).find((item) => item.candidateId === target.candidateId);
+  if (!card) return null;
+  return {
+    candidateId: target.candidateId,
+    evidenceRefs: card.evidenceRefs,
+    eventIds: card.eventIds,
+    sceneTexts: card.sceneTexts,
+    canAskPartner: context.tense === 'current' && canAskPartner,
+    unresolvedPoints: [...target.unresolvedPoints],
+  };
 }
 
 /**

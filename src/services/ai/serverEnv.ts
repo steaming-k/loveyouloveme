@@ -1,5 +1,46 @@
 import 'server-only';
 
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+/**
+ * P0 Real AI Guard — **요청 단위 정책**
+ *
+ * `.env.local`이 `AI_MODE=real`이면 dev 서버로 오는 모든 요청이 실제 Provider를 부른다. 테스트
+ * 스크립트도 같은 서버를 부르므로, 직전 회귀에서 `test:observed`가 실제 호출을 1회 만들었다.
+ *
+ * ```
+ * x-lym-test-run: 1 (테스트 스크립트가 붙인다)
+ *   + x-lym-allow-real-ai: 1 없음   → real을 mock(production이면 demo)으로 내린다 · Provider 0회
+ *   + x-lym-allow-real-ai: 1        → 기존과 같다 (ALLOW_REAL_AI_TESTS=1로 실행한 QA만 붙인다)
+ * 헤더 없음 (브라우저 · 실제 사용자) → 기존과 같다
+ * ```
+ *
+ * ⚠️ 이 정책은 호출을 **줄이기만** 한다. 헤더로 real을 켤 수는 없다 — mode는 여전히 env가 정한다.
+ * ⚠️ 라우트는 `withAiRequestPolicy`(`api/ai/_shared.ts`)로 요청을 감싸고, Provider는
+ *    `isRealProviderBlocked()`를 한 번 더 확인한다(두 곳 중 한 곳만 보면 새 경로가 빠진다).
+ */
+export interface AiRequestPolicy {
+  blockRealProvider: boolean;
+}
+
+export const AI_TEST_RUN_HEADER = 'x-lym-test-run';
+export const AI_ALLOW_REAL_HEADER = 'x-lym-allow-real-ai';
+
+const aiRequestPolicy = new AsyncLocalStorage<AiRequestPolicy>();
+
+export function aiRequestPolicyFromHeaders(headers: Headers): AiRequestPolicy {
+  const testRun = headers.get(AI_TEST_RUN_HEADER) === '1';
+  return { blockRealProvider: testRun && headers.get(AI_ALLOW_REAL_HEADER) !== '1' };
+}
+
+export function runWithAiRequestPolicy<T>(policy: AiRequestPolicy, run: () => T): T {
+  return aiRequestPolicy.run(policy, run);
+}
+
+export function isRealProviderBlocked(): boolean {
+  return aiRequestPolicy.getStore()?.blockRealProvider === true;
+}
+
 /**
  * AI Provider 설정 — **서버 전용**
  *
@@ -50,7 +91,11 @@ function intFrom(raw: string | undefined, fallback: number): number {
  */
 function resolveMode(): ServerAiMode {
   const requested = process.env.AI_MODE?.trim();
-  if (requested === 'real') return 'real';
+  if (requested === 'real') {
+    /* P0 — opt-in 없는 테스트 실행 요청은 실제 Provider로 보내지 않는다(위 정책) */
+    if (isRealProviderBlocked()) return process.env.NODE_ENV !== 'production' ? 'mock' : 'demo';
+    return 'real';
+  }
   // mock은 개발 환경에서만 허용한다. Production에서 실수로 켜지면 조용히 demo로 내려간다.
   if (requested === 'mock' && process.env.NODE_ENV !== 'production') return 'mock';
   return 'demo';

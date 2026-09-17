@@ -1,9 +1,10 @@
 'use client';
 
-import Link from 'next/link';
+import { usePremiumAccess, useUtMode } from '@/hooks/useUtMode';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useRef, useState } from 'react';
 
+import { SaveRelationshipCard } from '@/components/account/SaveRelationshipCard';
 import {
   AiNarrativeNotice,
   AiSourceLabel,
@@ -11,6 +12,8 @@ import {
 } from '@/components/ai/AiModeNotice';
 import { CompatibilityAxisNarrative } from '@/components/ai/NarrativeViews';
 import { BottomNavigation } from '@/components/common/BottomNavigation';
+import { deepConditionForAxis } from '@/data/relationshipDeepInput';
+import { ResultEditSheet } from '@/components/result/ResultEditSheet';
 import { Button } from '@/components/common/Button';
 import { HydrationGate } from '@/components/common/HydrationGate';
 import { NoticeBox, SectionLabel } from '@/components/common/primitives';
@@ -28,9 +31,11 @@ import {
 import { FirstSurprise } from '@/components/compatibility/FirstSurprise';
 import { ApproachHintCard } from '@/components/compatibility/ApproachHintCard';
 import { SignalCard } from '@/components/compatibility/SignalCard';
+import { SignalStructure } from '@/components/compatibility/SignalStructure';
 import { ConversationCard } from '@/components/compatibility/ConversationCard';
 import { SyncScore } from '@/components/compatibility/SyncScore';
 import { PastObservationNote } from '@/components/history/PastObservationNote';
+import { CurrentRelationshipInline } from '@/components/profile/CurrentRelationshipInline';
 import { PremiumEntryRow } from '@/components/premium/PremiumEntryRow';
 import { useToast } from '@/components/common/ToastProvider';
 import {
@@ -66,7 +71,6 @@ import {
   jobInvitesCurrentEvidence,
   resolveRelationshipContext,
 } from '@/lib/logic/relationshipStage';
-import { answeredAxisCount } from '@/lib/logic/relationshipEvidence';
 import { premiumFeatureState } from '@/services/premiumService';
 import { hasPremiumEvidence } from '@/lib/logic/premiumChapters';
 import { soloModeOf } from '@/lib/logic/soloMode';
@@ -84,6 +88,7 @@ import {
   usePastObservation,
 } from '@/hooks/useAnalysis';
 import { useShare } from '@/hooks/useShare';
+import type { ApproachHint, MirrorAxisKey } from '@/types';
 import { useSession } from '@/state/SessionProvider';
 
 /**
@@ -102,6 +107,9 @@ import { useSession } from '@/state/SessionProvider';
  * Report Header → 01 SUMMARY → FIRST SURPRISE → 02 METHOD → 03/04 신호 → ....
  * Compatibility Score·4축·tone 판정·Premium·Analytics 정의는 한 줄도 건드리지 않았다.
  */
+/** 260914 P2-6 — 특정 근거 없이도 누구에게나 할 수 있는 힌트 종류 */
+const GENERIC_HINT_KINDS: ReadonlySet<ApproachHint['kind']> = new Set(['activity', 'conversation']);
+
 export default function CompatibilityPage() {
   // v1.11 — CompatibilityView가 Revisit 판정(§11)을 위해 useSearchParams()를 쓴다.
   return (
@@ -149,6 +157,14 @@ function CompatibilityView() {
   const restFriction = result.frictionSignals.slice(1);
   const pastObservation = usePastObservation(topFriction?.key ?? null);
   const approachHints = useApproachHints();
+  /**
+   * 260914 P2-6 — 누구에게나 할 수 있는 제안(관심사 하나 · 근거 없는 질문)은 첫 카드가 되지 않는다.
+   * 상대 4축 근거에 기대는 힌트가 먼저 오고, generic 힌트는 compact 행으로만 남는다.
+   * ⚠️ 힌트 생성(`buildApproachHints`) · 개수는 그대로 — 순서와 위계만 바꾼다.
+   */
+  const orderedHints = [...approachHints].sort(
+    (a, b) => Number(GENERIC_HINT_KINDS.has(a.kind)) - Number(GENERIC_HINT_KINDS.has(b.kind)),
+  );
 
   /*
     v1.40 §37 — 관계 단계에 따라 **같은 사실을 무엇에 쓰는지**가 달라진다.
@@ -169,7 +185,6 @@ function CompatibilityView() {
   const showOutwardQuestions = jobAllowsOutwardQuestions(job);
   /** v1.41 §39.6 — S30 권유 대상인가. **판정에는 들어가지 않는다**(화면 분기 전용) */
   const invitesCurrent = jobInvitesCurrentEvidence(job);
-  const currentAnsweredCount = answeredAxisCount(answers.currentRelationship);
   /**
    * v1.41 §39.21 — Analytics로 나가는 저카디널리티 시점 값.
    *
@@ -183,8 +198,21 @@ function CompatibilityView() {
     job === 'ended' ? REFLECTION_QUESTIONS.ended : REFLECTION_QUESTIONS.none;
 
   const [showAllGood, setShowAllGood] = useState(false);
+  /* 260915 UT P0-2 §11 — 결과 화면의 수정 허브 */
+  const [editOpen, setEditOpen] = useState(false);
+
+  /*
+    260915 UT P1-1 §21 — 사용자가 심화 입력에서 좁혀준 조건을 축별로 꺼낸다.
+
+    ⚠️ 여기서 아무것도 계산하지 않는다. 점수·차이·축 판정은 그대로이고, 이 값은
+    카드에 한 줄을 **더 붙일지**만 정한다. 답하지 않은 축은 null이라 아무 변화가 없다.
+  */
+  const conditionFor = (axis: MirrorAxisKey) =>
+    deepConditionForAxis(answers.deepInputs, axis);
   const [showAllFriction, setShowAllFriction] = useState(false);
   const [showMoreQuestions, setShowMoreQuestions] = useState(false);
+  /** 260914 UT 후속 P0 — 점수 근거(입력 재진술)는 첫 viewport에서 접어둔다 */
+  const [showScoreBasis, setShowScoreBasis] = useState(false);
   const [questionTab, setQuestionTab] = useState<'recommended' | 'saved'>('recommended');
 
   const evidenceContext = useEvidenceContext();
@@ -229,8 +257,12 @@ function CompatibilityView() {
   );
 
   const [variant] = useState(() => resolvePriceVariant());
+  /** v1.47 — UT에서는 Premium 표면이 flag와 무관하게 열린다(`resolvePremiumAccess`) */
+  const utMode = useUtMode();
+  const premiumAccess = usePremiumAccess();
   const crossSourceInsights = useCrossSourceInsights();
   const premiumFeature = premiumFeatureState('relationship_deep_report', resolvePrice(variant), {
+    utMode,
     /**
      * §2-1-A — **Experience/Target 유무로 Premium 자격을 막지 않는다.**
      * `hasDeepConnection`만 보면 관계 경험이 없는 사용자는 통과할 방법이
@@ -388,11 +420,11 @@ function CompatibilityView() {
     ? RESULT_ANCHORS.compatibilityGood
     : RESULT_ANCHORS.compatibilityFriction;
   /** ⚠️ 사용자에게 의미 없는 내부 식별자(analysisId·fingerprint)는 넣지 않는다 */
-  const reportMeta = [
-    `관찰한 신호 ${result.totalCount}개`,
-    `비교한 신호 ${result.comparedCount}개`,
-    `${formatEntryDate(today.toISOString())} 작성`,
-  ];
+  /*
+    260914 P2-1 — `관찰한 신호 N개 · 비교한 신호 N개`를 뺐다. 입력 개수의 재진술이고, 같은 사실이
+    접힌 점수 근거(`이 점수는 어떻게 나왔어?`)에 이미 있다. 제목 바로 아래가 숫자 설명으로 차지 않게 한다.
+  */
+  const reportMeta = [`${formatEntryDate(today.toISOString())} 작성`];
 /**
    * 조건부로 빠지는 섹션이 있어도 번호가 건너뛰지 않도록 렌더되는 것만 센다.
    *
@@ -420,19 +452,35 @@ function CompatibilityView() {
   })();
 
   return (
+    <>
     <ScreenLayout
       header={
         <ScreenHeader
           backHref={revisit ? ROUTES.home : ROUTES.target}
           title={revisit ? '최근 궁합 결과' : undefined}
           action={
-            <button
-              type="button"
-              onClick={() => router.push(ROUTES.shareCompatibility)}
-              className="flex h-11 items-center px-1 text-caption text-ink-sub"
-            >
-              공유
-            </button>
+            /*
+              260915 UT P0-2 §11 — 결과 화면에서 '수정'이 **1회 탐색으로** 보여야 한다.
+              참가자의 첫 질문이 "분석 수정은 어떻게 하는 건지?"였다. 같은 자리에
+              '공유'도 함께 둔다 — 그것도 UT에서 "친구랑도 써보고 싶다"고 말한 뒤
+              끝까지 스스로 찾지 못한 기능이다(P2-1).
+            */
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setEditOpen(true)}
+                className="flex h-11 items-center px-1 text-caption text-ink-sub"
+              >
+                수정
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push(ROUTES.shareCompatibility)}
+                className="flex h-11 items-center px-1 text-caption text-ink-sub"
+              >
+                공유
+              </button>
+            </div>
           }
         />
       }
@@ -454,7 +502,28 @@ function CompatibilityView() {
           )}
         </div>
       }
-      nav={revisit ? <BottomNavigation /> : undefined}
+      /*
+        260915 UT P0-2 — **결과 화면에서는 하단 Nav를 항상 보여준다.**
+
+        예전에는 `revisit`(Home·History에서 다시 열었을 때)일 때만 붙였다. 의도는
+        '첫 퍼널 진행 중에는 빠져나갈 길을 만들지 않는다'였는데, UT에서 그 의도가
+        정반대로 읽혔다:
+
+        ```
+        "분석에 네비게이션 바 보이게"
+        "뒤로가기가 헷갈림. 뒤에 페이지가 더 있을 것 같은 느낌임"
+        "이전 화면으로 가고 싶었던 거였는데 뭔가 다른 게 나왔다"
+        ```
+
+        결과 화면은 퍼널의 **중간이 아니라 끝**이다. 끝에 도착했는데 이동 수단이
+        상단 Back 하나뿐이면, 사용자는 그 Back을 '다음으로 가는 길'로 착각하거나
+        아직 남은 단계가 있다고 읽는다. 어떻게 도착했는지(퍼널/다시보기)는
+        **사용자의 문제가 아니라 우리 내부 구분**이다.
+
+        ⚠️ 입력 화면(프로필 질문 · 관계 경험 · Target)에는 여전히 붙이지 않는다 —
+        거기는 실제로 퍼널 중간이고, 중간 이탈이 곧 데이터 손실이다.
+      */
+      nav={<BottomNavigation />}
       bodyClassName="pt-1.5 pb-4"
     >
       <ReportHeader title={REPORT_COPY.compatibilityTitle} meta={reportMeta} />
@@ -476,6 +545,14 @@ function CompatibilityView() {
 
         <SyncScore score={result.score} />
 
+        {/*
+          v1.48 — 점수 바로 아래에서 **그 숫자가 무엇으로 만들어졌는지**를 그린다.
+          `result.dimensions`(이미 계산된 값)만 읽고, 새 계산·새 판정은 없다.
+          ⚠️ `<SyncScore score={result.score} />` 호출은 그대로 둔다 — 결과 순서를
+          고정한 UT fixture들이 이 한 줄을 문자열로 찾는다.
+        */}
+        <SignalStructure dimensions={result.dimensions} />
+
         {/* §4 — 결과 요약 한 문장. 이미 계산된 tone 판정에서 결정론적으로 파생된다 */}
         {resultHeadline ? (
           <p className="px-1 text-[17px] font-semibold leading-[1.5] tracking-[-0.3px] keep-all">
@@ -491,14 +568,35 @@ function CompatibilityView() {
           ⚠️ `#why` anchor는 여기 유지한다 — Legacy Redirect(`/compatibility/why`)와
           `ResultSectionNav` 칩이 이 id로 이동한다.
         */}
+        {/*
+          260914 UT 후속 P0 — **기본 접힘.** 이 블록은 새 결론이 아니라 입력의 재진술(몇 개를
+          비교했는지)이다. UT에서 '결과가 보고서 같다 · 핵심이 묻힌다'는 반응이 나왔고, 점수 →
+          결과 한 문장 사이에 근거 문단이 끼면 첫 viewport가 설명으로 찬다. 정보는 지우지 않는다.
+        */}
         <div id={RESULT_ANCHORS.compatibilityWhy} className="scroll-mt-3">
-          <ReportEvidenceBlock>
-            비교 가능한 {result.comparedCount}개 관계 신호로 계산했어.
-            {result.unknownLabels.length > 0
-              ? ` 모름으로 남긴 ${result.unknownLabels.length}개(${result.unknownLabels.join(' · ')})는 계산에서 빼뒀어.`
-              : ''}{' '}
-            항목별 근거는 아래 신호에서 볼 수 있어.
-          </ReportEvidenceBlock>
+          <button
+            type="button"
+            aria-expanded={showScoreBasis}
+            onClick={() => {
+              const next = !showScoreBasis;
+              setShowScoreBasis(next);
+              if (next) trackEvent('result_section_expand', { section: 'why' });
+            }}
+            className="flex min-h-11 items-center gap-1 px-1 text-meta font-medium text-ink-sub"
+          >
+            {showScoreBasis ? '점수 근거 접기' : '이 점수는 어떻게 나왔어?'}
+            <span aria-hidden>{showScoreBasis ? '−' : '+'}</span>
+          </button>
+          {showScoreBasis ? (
+            <ReportEvidenceBlock>
+              비교 가능한 {result.comparedCount}개 관계 신호로 계산했어.
+              {result.unknownLabels.length > 0
+                ? ` 모름으로 남긴 ${result.unknownLabels.length}개(${result.unknownLabels.join(' · ')})는 계산에서 빼뒀어.`
+                : ''}{' '}
+              항목별 근거는 아래 신호에서 볼 수 있어.
+              {job !== 'ended' ? ` ${jobCopy.scoreUse}` : ''}
+            </ReportEvidenceBlock>
+          ) : null}
         </div>
 
         {/*
@@ -506,9 +604,16 @@ function CompatibilityView() {
           이 문장만 단계에 따라 달라진다. Hook(숫자)을 약화하지 않기 위해 점수와 결과
           한 문장 **뒤**에 둔다 — 기대한 것을 먼저 주고 그 다음에 다르게 해석한다.
         */}
-        <p className="px-1 text-caption keep-all leading-relaxed text-ink-sub">
-          {jobCopy.scoreUse}
-        </p>
+        {/*
+          260914 P2-1 — 점수 사용법 한 줄은 `연애 성공확률이 아니야`(SyncScore)와 같은 일을 해서 첫 viewport에서
+          면책이 두 번 겹쳤다. 접힌 점수 근거 안으로 옮기되, **ended는 그대로 보인다** — '끝난 이유를 설명하지
+          않는다'는 안전 framing이라 접으면 안 된다(Ended Safety).
+        */}
+        {job === 'ended' ? (
+          <p className="px-1 text-caption keep-all leading-relaxed text-ink-sub">
+            {jobCopy.scoreUse}
+          </p>
+        ) : null}
       </div>
 
       <div className="flex flex-col pt-1">
@@ -528,6 +633,15 @@ function CompatibilityView() {
             />
           </div>
         ) : null}
+
+        {/*
+          260914 UT 후속 P1 STEP 6 — '지금 관계 속의 나'를 **결과 안에서 펼쳐보는 형태**로 옮겼다.
+          예전에는 04 NOW WHAT 끝의 한 줄 링크 → 별도 화면(`/profile/current`)이었고, UT에서 화면 전체를
+          차지하는 구조가 흐름을 끊었다. 점수 · 결과 한 문장 · FIRST SURPRISE 다음, 신호 상세 앞에 **접힌 채** 둔다.
+          ⚠️ `dating`·`long_term`에만 보인다(`jobInvitesCurrentEvidence` · v1.41 §39.6 그대로).
+          ⚠️ `/profile/current` Route는 남아 있다 — 예전 링크 · 뒤로가기 호환.
+        */}
+        {invitesCurrent ? <CurrentRelationshipInline className="mt-4" /> : null}
 
         {/*
           §18 — Section Navigator를 FIRST SURPRISE **뒤로** 내렸다. 점수 바로 아래에 두면
@@ -567,6 +681,7 @@ function CompatibilityView() {
               <SignalCard
                 dimension={topGood}
                 variant="good"
+                userCondition={conditionFor(topGood.key)}
                 footer={
                   <CompatibilityAxisNarrative
                     axis={topGood.key}
@@ -588,6 +703,7 @@ function CompatibilityView() {
                       dimension={dimension}
                       variant="good"
                       density="compact"
+                      userCondition={conditionFor(dimension.key)}
                       footer={
                         <CompatibilityAxisNarrative
                           axis={dimension.key}
@@ -629,6 +745,7 @@ function CompatibilityView() {
                 <SignalCard
                   dimension={topFriction}
                   variant="friction"
+                  userCondition={conditionFor(topFriction.key)}
                   footer={
                     <CompatibilityAxisNarrative
                       axis={topFriction.key}
@@ -686,24 +803,57 @@ function CompatibilityView() {
         </ReportSection>
 
         {/*
+          v1.47 Integration — '이 관계 저장하기'. 점수 · 결과 한 문장 · 잘 맞는/확인할 신호를 **본 뒤**에만 둔다
+          (첫 가치 전에 로그인시키지 않는다). Supabase 설정이 없으면 아무것도 그리지 않는다.
+          Premium 진입보다 앞 — 저장은 무료 가치의 연장이고, 결제 흐름과 섞지 않는다.
+        */}
+        <SaveRelationshipCard hasValue className="mt-6" />
+
+        {/*
           v1.15 §4 Hook A — Friction 신호를 본 직후, '이 차이가 실제로는 어떻게 나타날까'라는
           궁금증이 생기는 지점에만 둔다. Friction이 없으면 이 궁금증 자체가 없으므로 만들지
           않는다(기존처럼 화면 맨 아래에 일반 Entry를 두지 않는다 — §4 "모든 섹션마다
           Paywall을 만들지 않는다"). Score Hero 바로 아래가 아니라 Friction을 다 본 다음이다.
         */}
         {hasFriction && topFriction ? (
-          <div className="mt-6">
+          <div className="mt-6 flex flex-col gap-3">
+          {/*
+            260914 P2-4 — FREE → Premium 전환 지점의 러비 한마디. 무료 본문과 Premium 진입 사이에
+            '여기까지가 무엇이었는지'를 캐릭터 목소리로 끊어준다. 진입 행이 안 보이는 상태면 그리지 않는다.
+          */}
+          {premiumAccess.surfaceEnabled ? (
+            <LovyMessage pose="note" size={36}>
+              여기까지는 답변끼리 나란히 놓고 본 차이야. 더 이어볼지는 네가 정하면 돼.
+            </LovyMessage>
+          ) : null}
           <PremiumEntryRow
             feature={premiumFeature}
             source="compatibility"
             hook={{
               variant: 'friction_why',
-              title: PREMIUM_HOOK_COPY.friction_why.title,
-              // v1.26 — 이 축이 다른 관찰과 이어지는지를 약속한다(제거된 상황 섹션 대신).
-              description: `${topFriction.label}에서 보이는 이 차이가, 네가 따로 답했던 관계 경험·예전 기록과 어떻게 이어지는지 볼 수 있어.`,
+              /*
+                260914 UT 후속 P0 — FREE 첫 가치 → **아직 풀리지 않은 질문** → Premium이 연결해주는
+                가치 한 줄 순서. 예전 제목은 어느 결과에나 같은 문장이라 '또 긴 글'처럼 읽혔다.
+                질문은 방금 본 Friction 축에서 만든다. hook key(`friction_why`)는 그대로다(§19 Attribution).
+                ⚠️ ended에는 앞으로 확인할 행동을 약속하지 않는다(Action Layer가 만들지 않는다).
+              */
+              title: `${topFriction.label}, 실제로는 어떤 순간에 어긋날까?`,
+              description:
+                job === 'ended'
+                  ? `지금은 답변끼리 나란히 놓기만 했어. 네가 답한 관계 경험·기록과 이어서, 이 차이가 어떤 조건에서 생겼는지 볼 수 있어.`
+                  : `지금은 답변끼리 나란히 놓기만 했어. 네가 답한 관계 경험·기록과 이어서, 이 차이가 생기는 조건과 먼저 확인할 것 하나를 짚어줄게.`,
               cta: PREMIUM_HOOK_COPY.friction_why.cta,
             }}
           />
+          </div>
+        ) : utMode ? (
+          /*
+            v1.47 UT-2 — **UT 참가자에게는 Friction이 없어도 Premium 진입을 둔다.** 실제 참가자 입력(Friction 0)에서
+            이 화면에 Premium 진입이 하나도 없었다(브라우저 리허설). 일반 사용자는 위 §4 규칙 그대로다.
+            Hook 문구 없이 기본 진입 — 없는 차이를 약속하지 않는다.
+          */
+          <div className="mt-6">
+            <PremiumEntryRow feature={premiumFeature} source="compatibility" />
           </div>
         ) : null}
 
@@ -764,13 +914,14 @@ function CompatibilityView() {
               </div>
             ) : approachHints.length > 0 ? (
               <ul className="flex flex-col gap-2.5">
-                {approachHints.map((hint, index) => (
+                {orderedHints.map((hint, index) => (
                   <ApproachHintCard
                     key={hint.id}
                     hint={hint}
                     target={answers.target}
-                    /* §9 — 첫 힌트만 카드. 나머지는 divider 행으로 위계를 낮춘다 */
-                    density={index === 0 ? 'primary' : 'compact'}
+                    /* §9 — 첫 힌트만 카드. 나머지는 divider 행으로 위계를 낮춘다.
+                       260914 P2-6 — generic 힌트는 첫 자리여도 카드가 되지 않는다 */
+                    density={index === 0 && !GENERIC_HINT_KINDS.has(hint.kind) ? 'primary' : 'compact'}
                     onExpand={() => trackEvent('approach_hint_expand', { kind: hint.kind })}
                   />
                 ))}
@@ -994,39 +1145,17 @@ function CompatibilityView() {
             )}
           </div>
 
-          {/*
-            04-c — 지금 관계 근거 보강 (v1.41 §39.6)
-
-            ⚠️ **이 화면의 유일한 진입점이고, 카드가 아니라 한 줄이다.**
-            §39.10이 정한 규칙 그대로다 — 새 카드를 만들지 않고 annotation·링크로만
-            얹는다. 결과 화면의 주인공은 여전히 판정이고, 이건 그 판정을 더 정확하게
-            만들 수 있다는 안내다.
-
-            ⚠️ `dating`·`long_term`에만 보인다(`jobInvitesCurrentEvidence`). `talking`
-            에게 '지금 관계'라고 부르는 것은 관계를 확정하는 셈이고, `ended`에게는
-            끝난 관계를 다시 관찰하게 만드는 것이다.
-
-            ⚠️ 이미 다 답한 사용자에게는 **권유가 아니라 수정 링크**로 바뀐다. 같은
-            줄이 계속 '알려줄래?'라고 물으면 답한 것이 반영되지 않은 것처럼 읽힌다.
-          */}
-          {invitesCurrent ? (
-            <div className="mt-7 flex flex-col gap-2 rounded-card border border-dashed border-line-strong bg-canvas-warm p-4">
-              <p className="text-caption keep-all leading-relaxed text-ink-sub">
-                {currentAnsweredCount === 0
-                  ? '위 해석은 네가 이전 관계에서 답한 내용을 근거로 했어. 지금 관계에서는 어떤지 알려주면 그 항목은 지금 기준으로 다시 볼게.'
-                  : `지금 관계 기준으로 답한 항목이 ${currentAnsweredCount}개 있어. 언제든 고치거나 더 답할 수 있어.`}
-              </p>
-              <Link
-                href={ROUTES.currentRelationship()}
-                className="inline-flex min-h-11 items-center self-start text-[12.5px] font-medium text-brand-pressed"
-              >
-                {currentAnsweredCount === 0
-                  ? '지금 관계에서의 나 알려주기 →'
-                  : '지금 관계 답변 고치기 →'}
-              </Link>
-            </div>
-          ) : null}
         </ReportSection>
+
+        {/*
+          260914 P2-4 — 마지막 Next Move 뒤 러비 한마디. 질문 목록을 다 읽고 끝나는 대신, 하나만 골라 가져가라는
+          리듬을 준다. 상대를 향한 질문이 허용되는 단계에서만(`ended`·`none`은 이미 회고 안내가 있다).
+        */}
+        {showOutwardQuestions ? (
+          <LovyMessage pose="note" size={36} className="mt-5">
+            다 해볼 필요 없어. 위에서 하나만 골라 다음 대화에 가져가봐.
+          </LovyMessage>
+        ) : null}
 
         <ReportSection
           id={RESULT_ANCHORS.compatibilityLenses}
@@ -1098,6 +1227,41 @@ function CompatibilityView() {
           </ul>
         </ReportSection>
 
+        {/*
+          ══ 260915 UT P2-1 — 공유를 **읽기를 마친 자리**에 둔다 ═══════════════
+
+          공유 기능은 v1.x부터 헤더 오른쪽에 있었다. 그런데 UT 참가자는 "친구랑도
+          써보고 싶다"고 말해놓고 끝까지 스스로 찾지 못했다. 헤더 텍스트 버튼은
+          **결과를 읽는 동안 쳐다보지 않는 자리**다.
+
+          그래서 헤더는 그대로 두고(이미 아는 사람의 경로), 결과를 다 읽은 지점에
+          한 줄을 더 놓는다. 이 자리는 §12('끝' 인식)도 함께 해결한다 — 본문이
+          끝났고 다음에 할 수 있는 일이 무엇인지 보인다.
+
+          ⚠️ **새 기능을 만들지 않았다.** 목적지는 기존 `/share/compatibility`이고,
+          거기서 하는 일도 그대로다(결과 카드 이미지 저장 · 요약 문구 공유).
+          ⚠️ 그래서 문구도 '친구에게 보내기'다. `상대의 답도 받아보기`처럼 쓰지 않는다 —
+          **상대 답을 받아 합치는 기능은 없다.** 없는 기능을 라벨로 약속하지 않는다.
+        */}
+        <button
+          type="button"
+          onClick={() => {
+            trackEvent('share_entry_click', { from: 'compatibility_result_end' });
+            router.push(ROUTES.shareCompatibility);
+          }}
+          className="mt-6 flex min-h-11 w-full items-center justify-between rounded-card border border-line bg-surface px-4 py-3.5 text-left active:bg-sunken"
+        >
+          <span className="flex flex-col gap-0.5">
+            <span className="text-[13.5px] font-medium keep-all">이 결과를 친구에게 보내기</span>
+            <span className="text-meta keep-all text-ink-muted">
+              결과 카드 이미지나 요약 문구로 보낼 수 있어
+            </span>
+          </span>
+          <span className="flex-none text-ink-faint" aria-hidden>
+            →
+          </span>
+        </button>
+
         <div className="mt-6 flex flex-col gap-2.5">
           <AiNarrativeNotice
             task="compatibility-narrative"
@@ -1108,6 +1272,8 @@ function CompatibilityView() {
         </div>
       </div>
     </ScreenLayout>
+    <ResultEditSheet open={editOpen} onClose={() => setEditOpen(false)} origin="compatibility" />
+    </>
   );
 }
 
@@ -1128,6 +1294,39 @@ function LowConfidenceView() {
   */
   const { job: lowDataJob } = resolveRelationshipContext(answers);
   const showLowDataAction = jobAllowsOutwardAction(lowDataJob);
+
+  /*
+    ══ 1차 UT 전체 Backlog P0-1 — **E3에서 Premium이 통째로 사라지던 문제** ═══════
+
+    0911 UT에서 "프리미엄이 보여야 하는데 안 보임"이 나왔고, v1.46~v1.47에서
+    본문(`CompatibilityResultView`) 쪽만 막았다. 그런데 이 화면(E3 · 확신 낮음)에는
+    `PremiumEntryRow`가 **처음부터 한 번도 없었다** — 상대 정보를 3개 미만으로 답한
+    사용자는 결과 화면까지 왔는데도 Premium을 볼 방법이 없다. UT 참가자가 '모름'을
+    여러 개 고르는 것은 드문 경로가 아니라 실제로 관찰된 경로다(0915 UT-1).
+
+    ⚠️ **없는 것을 팔지 않는다는 규칙은 그대로다.** 여기서 하는 일은 판정을 우회하는
+    게 아니라 본문과 **같은 `premiumFeatureState`를 태우는 것**뿐이다. 근거가 없으면
+    `PremiumEntryRow`가 알아서 `unavailable` 카드(+ 보완 경로 버튼)로 바뀐다 —
+    동기화율을 못 낸 사실과 Premium 자격은 원래 다른 판정이다(§2-1-A).
+  */
+  const [lowDataVariant] = useState(() => resolvePriceVariant());
+  const lowDataUtMode = useUtMode();
+  const lowDataCrossSourceInsights = useCrossSourceInsights();
+  const lowDataMirror = useMirror();
+  const lowDataPremiumFeature = premiumFeatureState(
+    'relationship_deep_report',
+    resolvePrice(lowDataVariant),
+    {
+      utMode: lowDataUtMode,
+      deepReportAvailable: hasPremiumEvidence({
+        insights: lowDataCrossSourceInsights,
+        declared: answers.declared,
+        mirror: lowDataMirror,
+      }),
+      solo: soloModeOf(answers) === 'no_target',
+      allowsOutwardAction: showLowDataAction,
+    },
+  );
 
   useEffect(() => {
     // v1.11.1 §17~§20 — E3(확신 낮음)는 '0점'이 아니라 '계산 자체가 불가능한 상태'다.
@@ -1222,6 +1421,15 @@ function LowConfidenceView() {
             </p>
           </section>
         ) : null}
+
+        {/*
+          1차 UT 전체 Backlog P0-1 — 본문과 **같은 진입 행**이다. 새 컴포넌트를 만들지
+          않는다. Hook 문구도 붙이지 않는다: 여기서는 아직 Friction을 계산하지 못했으므로
+          (`score === null`) 약속할 차이가 없다 — 본문의 `utMode` 분기와 같은 이유다.
+        */}
+        <div className="mt-2">
+          <PremiumEntryRow feature={lowDataPremiumFeature} source="compatibility" />
+        </div>
       </div>
     </ScreenLayout>
   );

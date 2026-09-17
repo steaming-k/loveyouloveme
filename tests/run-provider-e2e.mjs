@@ -15,6 +15,10 @@
  *   2) node tests/run-provider-e2e.mjs
  */
 
+import { assertRealAiTestAllowed } from './_aiTestGuard.mjs';
+
+/* P0 — 실제 유료 Provider 호출 스크립트다. ALLOW_REAL_AI_TESTS=1 없이는 요청 전에 멈춘다 */
+assertRealAiTestAllowed('Real Provider E2E');
 const BASE_URL = process.env.LYM_BASE_URL ?? 'http://localhost:3000';
 
 /** 1x1 PNG(비민감·synthetic) — 실제 사진을 쓰지 않는다(§8) */

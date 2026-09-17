@@ -27,16 +27,27 @@
  *       LYM_QA_ONLY=R2:1,R5 · LYM_QA_SUFFIX=rerun
  */
 
+import { assertRealAiTestAllowed } from './_aiTestGuard.mjs';
 import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 
 import { SEMANTIC_QA_SCENARIOS } from './fixtures-v1464.mjs';
+
+/* P0 — 실제 유료 Provider 호출 스크립트다. ALLOW_REAL_AI_TESTS=1 없이는 요청 전에 멈춘다 */
+assertRealAiTestAllowed('Semantic Provider QA');
 
 const BASE_URL = process.env.LYM_BASE_URL ?? 'http://localhost:3000';
 const MODEL = process.env.LYM_QA_MODEL ?? 'gpt-5.4';
 const OUT_DIR = process.env.LYM_QA_DIR ?? '/tmp/qa';
 const PACE_MS = Number(process.env.LYM_QA_PACE_MS ?? 6000);
 const SUFFIX = process.env.LYM_QA_SUFFIX ? `-${process.env.LYM_QA_SUFFIX}` : '';
+/** v1.46.4 Action Layer — 기록 파일 이름 앞부분. 직전 Pass 기록을 덮지 않게 기본값을 바꿨다 */
+const PREFIX = process.env.LYM_QA_PREFIX ?? 'action-layer';
+
+/* Action Layer — 제품 게이트와 **독립인** 사람 기준 검사(같은 함수를 쓰면 같은 구멍을 못 본다) */
+const ACTION_MANIPULATIVE = /일부러|답장.{0,4}늦|질투|떠보|떠봐|시험|밀당|모른\s*척|거리를\s*둬/;
+const ACTION_DECISION = /헤어지|헤어져|계속\s*만나|안\s*맞는|위험\s*신호|회피형|불안형|결론은|확실히|분명히/;
+const ACTION_INNER = /진심|노력하는지|좋아하는지|사랑하는지|속마음/;
 
 /** A14 — R2 · R3 · R5 중점. 모델 A/B와 같은 반복 수(비교 가능하게) */
 const REPEAT = { R1: 1, R2: 3, R3a: 3, R3b: 3, R4: 1, R5: 2, R6: 1 };
@@ -121,9 +132,11 @@ const stats = {
   orderChanged: 0,
   modes: {},
   modelsSeen: new Set(),
+  action: { attempted: 0, parsed: 0, grounded: 0, safetyPassed: 0, aligned: 0, accepted: 0, renderedPlan: 0, manipulative: 0, decisionReplacement: 0, innerState: 0, endedOutward: 0, modes: {}, alignments: {} },
 };
 const perScenario = {};
 const accepted = [];
+const actions = [];
 
 for (const scenario of SEMANTIC_QA_SCENARIOS) {
   const repeat = ONLY ? (ONLY[scenario.id] ?? 0) : (REPEAT[scenario.id] ?? 1);
@@ -204,10 +217,17 @@ for (const scenario of SEMANTIC_QA_SCENARIOS) {
     }
 
     const semantics = call.json.data.candidateSemantics ?? [];
+    const actionPlan = call.json.data.actionPlan ?? null;
+    if (dev.action) {
+      for (const [key, value] of Object.entries(dev.action)) if (typeof value === 'number') stats.action[key] += value;
+      const reason = dev.action.alignment ?? 'none';
+      stats.action.alignments[reason] = (stats.action.alignments[reason] ?? 0) + 1;
+    }
     const rendered = await post('/api/dev/premium-test', {
       ...scenario.body,
       narratives: call.json.data.narratives,
       candidateSemantics: semantics,
+      actionPlan,
     });
     const top = rendered.json.report.candidates.slice(0, 3);
     const aiCount = top.filter((card) => card.soWhatSource === 'semantic_ai').length;
@@ -300,6 +320,75 @@ for (const scenario of SEMANTIC_QA_SCENARIOS) {
         stats.verifyNotQuestion += 1;
       }
     }
+    /* ══ Action Layer §28 — 반드시 출력: Selected · Next Move · Verification · Observe · Signal 1/2 · Used Evidence ══ */
+    const plan = rendered.json.report.actionPlan;
+    const planTexts = plan
+      ? [plan.nextMove, plan.verificationQuestion, plan.observeSignal, ...plan.decisionSignals.flatMap((s) => [s.ifObserved, s.interpretation]), plan.unresolved].filter(Boolean)
+      : [];
+    const actionFlags = [];
+    if (planTexts.some((text) => ACTION_MANIPULATIVE.test(text))) { stats.action.manipulative += 1; actionFlags.push('manipulative'); }
+    if (planTexts.some((text) => ACTION_DECISION.test(text))) { stats.action.decisionReplacement += 1; actionFlags.push('decision'); }
+    if (planTexts.some((text) => ACTION_INNER.test(text))) { stats.action.innerState += 1; actionFlags.push('inner'); }
+    if (tense === 'former' && planTexts.some((text) => OUTWARD.some((word) => text.includes(word)))) { stats.action.endedOutward += 1; actionFlags.push('endedOutward'); }
+    if (plan?.mode === 'plan') stats.action.renderedPlan += 1;
+    if (plan) stats.action.modes[plan.mode] = (stats.action.modes[plan.mode] ?? 0) + 1;
+    const selectedRank = plan ? top.findIndex((card) => card.id === plan.sourceCandidateId) + 1 : 0;
+    md.push(
+      '#### ACTION LAYER',
+      `- AI 전 Action 대상: ${first.json.actionTargetId ?? '(없음)'} · priorities: ${JSON.stringify((first.json.actionPriorities ?? []).map((p) => [p.rank, p.score, p.signals.join('+')]))}`,
+      `- dev.action: ${JSON.stringify(dev.action ?? null)} · action violations: ${JSON.stringify(dev.violations.filter((label) => label.startsWith('action_')))}`,
+      `- Top 3: ${top.map((card, index) => `${index + 1}.${card.headline}`).join(' / ')}`,
+      `- Selected Action Candidate: #${selectedRank} ${plan?.sourceCandidateId ?? '-'} ${plan?.title ?? '(없음)'} · mode=${plan?.mode ?? '-'} · source=${plan?.source ?? '-'}`,
+      `- raw Event: ${JSON.stringify((scenario.body.target?.events ?? []).filter((event) => (request.context.candidates.find((card) => card.candidateId === first.json.actionTargetId)?.selectedEvents ?? []).some((selected) => selected.eventId === event.id)).map((event) => `${event.type} | ${event.description} | ${event.myReaction ?? ''}`))}`,
+      `- conditionContext.trigger: ${semantics.find((item) => item.candidateId === first.json.actionTargetId)?.conditionContext?.trigger ?? '(null)'}`,
+      `- conditionContext.state: ${semantics.find((item) => item.candidateId === first.json.actionTargetId)?.conditionContext?.state ?? '(null)'}`,
+      `- conditionContext.uncertainty: ${semantics.find((item) => item.candidateId === first.json.actionTargetId)?.conditionContext?.uncertainty ?? '(null)'}`,
+      `- context violations: ${JSON.stringify(dev.violations.filter((label) => label.startsWith('context_')))}`,
+      `- narrowedCondition(선택 카드): ${semantics.find((item) => item.candidateId === first.json.actionTargetId)?.narrowedCondition ?? '(없음 — 카드 semantic 없음/거부)'}`,
+      `- selectedEvents: ${JSON.stringify((request.context.candidates.find((card) => card.candidateId === first.json.actionTargetId)?.selectedEvents ?? []).map((event) => `${event.eventId}: ${event.situation}`))}`,
+      `- alignment: ${dev.action?.alignment ?? '(없음)'} · condition=${JSON.stringify(dev.action?.conditionSignature ?? [])} · action=${JSON.stringify(dev.action?.actionSignature ?? [])}`,
+      /* 게이트가 버린 plan은 화면에 없으므로 원문을 따로 남긴다(dev 전용 기록 · fixture 데이터) */
+      ...(plan?.source !== 'semantic_ai' && dev.raw?.actionPlan
+        ? [`- 거부된 원문 actionPlan: ${JSON.stringify(dev.raw.actionPlan)}`]
+        : []),
+      `- 왜 먼저: ${plan?.priorityReason ?? '(없음)'}`,
+      `- Next Move: ${plan?.nextMove ?? '(없음)'}`,
+      `- Verification: ${plan?.verificationQuestion ?? '(없음)'}`,
+      `- Observe: ${plan?.observeSignal ?? '(없음)'}`,
+      `- Decision Signal 1: ${plan?.decisionSignals[0] ? `IF ${plan.decisionSignals[0].ifObserved} → ${plan.decisionSignals[0].interpretation}` : '(없음)'}`,
+      `- Decision Signal 2: ${plan?.decisionSignals[1] ? `IF ${plan.decisionSignals[1].ifObserved} → ${plan.decisionSignals[1].interpretation}` : '(없음)'}`,
+      `- Unresolved: ${plan?.unresolved ?? '(없음)'}`,
+      `- Used Evidence: ${JSON.stringify((plan?.usedEvidenceRefs ?? []).map((ref) => `${ref.source}:${ref.field ?? ref.entryId ?? ''}`))} · usedEventIds: ${JSON.stringify(plan?.usedEventIds ?? [])}`,
+      `- 독립 안전 검사: ${actionFlags.length === 0 ? 'OK' : `✗ ${actionFlags.join(', ')}`}`,
+      '',
+    );
+    if (plan) {
+      actions.push({
+        scenario: scenario.id,
+        attempt,
+        tense,
+        selectedRank,
+        title: plan.title,
+        mode: plan.mode,
+        source: plan.source,
+        priorityReason: plan.priorityReason,
+        nextMove: plan.nextMove,
+        verificationQuestion: plan.verificationQuestion,
+        observeSignal: plan.observeSignal,
+        decisionSignals: plan.decisionSignals,
+        unresolved: plan.unresolved,
+        narrowedCondition: semantics.find((item) => item.candidateId === first.json.actionTargetId)?.narrowedCondition ?? null,
+        conditionContext: semantics.find((item) => item.candidateId === first.json.actionTargetId)?.conditionContext ?? null,
+        alignment: dev.action?.alignment ?? null,
+        conditionSignature: dev.action?.conditionSignature ?? [],
+        actionSignature: dev.action?.actionSignature ?? [],
+        usedEvidence: (plan.usedEvidenceRefs ?? []).map((ref) => ref.source),
+        usedEventIds: plan.usedEventIds,
+        flags: actionFlags,
+      });
+    }
+    perScenario[scenario.id].actionModes = [...(perScenario[scenario.id].actionModes ?? []), plan ? `${plan.mode}/${plan.source}` : 'none'];
+
     perScenario[scenario.id].usableVerify = [...(perScenario[scenario.id].usableVerify ?? []), callUsable];
     perScenario[scenario.id].selfLeak = [...(perScenario[scenario.id].selfLeak ?? []), callSelfLeak];
     perScenario[scenario.id].whyReport = [...(perScenario[scenario.id].whyReport ?? []), callWhyReport];
@@ -337,14 +426,16 @@ const summary = {
   },
   orderChanged: stats.orderChanged,
   modes: stats.modes,
+  action: stats.action,
   perScenario,
 };
 
 md.push('## 요약', '', '```json', JSON.stringify(summary, null, 2), '```', '');
-await writeFile(`${OUT_DIR}/semantic-decomposition-${MODEL}${SUFFIX}.md`, md.join('\n'));
-await writeFile(`${OUT_DIR}/semantic-decomposition-${MODEL}${SUFFIX}-accepted.json`, JSON.stringify(accepted, null, 2));
-await writeFile(`${OUT_DIR}/semantic-decomposition-${MODEL}${SUFFIX}-summary.json`, JSON.stringify(summary, null, 2));
+await writeFile(`${OUT_DIR}/${PREFIX}-${MODEL}${SUFFIX}.md`, md.join('\n'));
+await writeFile(`${OUT_DIR}/${PREFIX}-${MODEL}${SUFFIX}-accepted.json`, JSON.stringify(accepted, null, 2));
+await writeFile(`${OUT_DIR}/${PREFIX}-${MODEL}${SUFFIX}-actions.json`, JSON.stringify(actions, null, 2));
+await writeFile(`${OUT_DIR}/${PREFIX}-${MODEL}${SUFFIX}-summary.json`, JSON.stringify(summary, null, 2));
 
 console.log('\n요약');
 console.log(JSON.stringify(summary, null, 2));
-console.log(`\n기록: ${OUT_DIR}/semantic-decomposition-${MODEL}${SUFFIX}.md`);
+console.log(`\n기록: ${OUT_DIR}/${PREFIX}-${MODEL}${SUFFIX}.md`);

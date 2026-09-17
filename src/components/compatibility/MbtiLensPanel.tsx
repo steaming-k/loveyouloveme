@@ -112,7 +112,7 @@ function AxisRow({
         </div>
 
         {axis.same === undefined ? null : (
-          <span className="flex-none rounded-[5px] bg-chip px-1.5 py-0.5 text-[10px] font-semibold text-ink-muted">
+          <span className="flex-none rounded-[3px] bg-chip px-1.5 py-0.5 text-[10px] font-semibold text-ink-muted">
             {axis.same ? MBTI_LENS_COPY.axesSame : MBTI_LENS_COPY.axesDifferent}
           </span>
         )}
@@ -162,7 +162,7 @@ export function MbtiAxisSummary({ report }: { report: MbtiLensReport }) {
             </span>
             <span className="text-[12px] keep-all text-ink-sub">{axis.label}</span>
           </p>
-          <span className="flex-none rounded-[5px] bg-chip px-1.5 py-0.5 text-[10px] font-semibold text-ink-muted">
+          <span className="flex-none rounded-[3px] bg-chip px-1.5 py-0.5 text-[10px] font-semibold text-ink-muted">
             {axis.same ? MBTI_LENS_COPY.axesSame : MBTI_LENS_COPY.axesDifferent}
           </span>
         </li>

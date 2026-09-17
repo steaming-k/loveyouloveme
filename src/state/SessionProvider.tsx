@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 
-import { MAX_PAST_FACTORS } from '@/data/labels';
+import { MAX_PAST_FACTORS, MAX_PAST_OTHER_LENGTH } from '@/data/labels';
 import { PHOTO_MAX_COUNT } from '@/data/samplePhotos';
 import { SESSION_STORAGE_NEAR_LIMIT_BYTES } from '@/data/relationshipEvents';
 import { TARGET_INTEREST_MAX, TARGET_CUSTOM_INTEREST_MAX_LENGTH } from '@/data/targetPreferences';
@@ -24,6 +24,7 @@ import {
   sanitizeAffection,
   sanitizeConflict,
   sanitizeCurrentSignals,
+  sanitizeDeepInputs,
   sanitizeHardest,
   sanitizeHobby,
   sanitizePastFactors,
@@ -34,6 +35,14 @@ import {
   sanitizeTargetRelation,
 } from '@/lib/sessionSanitize';
 import { clearPremiumIntents } from '@/lib/premiumIntentStore';
+import { newUuid } from '@/lib/persistence/ids';
+import {
+  clearTargetRegistry,
+  ensureTargetRegistry,
+  preserveActiveTarget,
+  writeTargetRegistry,
+  type TargetRegistryState,
+} from '@/lib/persistence/targetRegistry';
 import { buildDemoObservedResult } from '@/services/ai/fallback';
 import type {
   ObservedProfileResult,
@@ -42,6 +51,7 @@ import type {
   CurrentSignalAnswer,
   DeclaredPreference,
   DeepAnalysisAnswer,
+  DeepInputAnswer,
   HardestMoment,
   MbtiType,
   MirrorAxisKey,
@@ -123,6 +133,8 @@ interface SessionContextValue {
   setHardest: (value: HardestMoment) => void;
   setSelfGap: (value: SelfGapAnswer) => void;
   setPastNote: (value: string) => void;
+  /** 260915 UT P1-2 — '기타'를 고른 사용자의 자유 입력 */
+  setPastImportantOther: (value: string) => void;
   setAdaptiveAnswer: (axis: MirrorAxisKey, optionId: string) => void;
   /** v1.41 — 지금 관계 근거 (S30 · Optional) */
   setCurrentSignal: (axis: MirrorAxisKey, value: CurrentSignalAnswer) => void;
@@ -201,6 +213,8 @@ interface SessionContextValue {
   /** v1.9 — Premium Adaptive Deep Question 답변 추가. 같은 questionId면 교체(재답변) */
   addDeepAnswer: (answer: DeepAnalysisAnswer) => void;
   /** v1.9 — Deep Insight 카드 확인/수정(§33). '조금 달라요'는 correctedText와 함께 온다 */
+  /** 260915 UT P1-1 — 선택형 심화 질문 응답 */
+  setDeepInput: (answer: DeepInputAnswer) => void;
   setDeepInsightFeedback: (insightId: string, verdict: Verdict, correctedText?: string) => void;
 
   markComplete: (key: CompletionKey) => void;
@@ -215,6 +229,8 @@ interface SessionContextValue {
    * 이미 본 Mirror 결과는 새 상대와 무관하게 여전히 유효하다.
    */
   resetTargetContext: () => void;
+  /** v1.47 — 저장한 관계 열기. 새 세션 · 기기 목록은 `hydrateSavedRelationship`(순수)이 만든다 */
+  applySavedRelationship: (next: { answers: SessionAnswers; registry: TargetRegistryState }) => void;
   loadSampleSession: () => void;
   reset: () => void;
   /** 사용자가 명시적으로 요청한 전체 삭제. reset()과 동작은 같지만 analytics 이벤트가 다르다. */
@@ -308,6 +324,11 @@ function deserialize(raw: string): DeserializedSession | null {
         hardest: sanitizeHardest(parsed.experience?.hardest),
         selfGap: sanitizeSelfGap(parsed.experience?.selfGap),
         note: typeof parsed.experience?.note === 'string' ? parsed.experience.note : '',
+        /* 260915 UT P1-2 — 이전 버전 세션에는 없다 */
+        importantOther:
+          typeof parsed.experience?.importantOther === 'string'
+            ? parsed.experience.importantOther
+            : '',
         skipped: parsed.experience?.skipped === true,
       },
       /**
@@ -359,6 +380,8 @@ function deserialize(raw: string): DeserializedSession | null {
       savedQuestions: Array.isArray(parsed.savedQuestions) ? parsed.savedQuestions : [],
       // v1.9 이전 세션에는 없던 필드 — 빈 값으로 마이그레이션한다.
       deepAnswers: Array.isArray(parsed.deepAnswers) ? parsed.deepAnswers : [],
+      /* 260915 UT P1-1 — v1.47 이전 세션에는 없다. 형태가 깨졌으면 통째로 버린다 */
+      deepInputs: sanitizeDeepInputs(parsed.deepInputs),
       deepInsightFeedback: parsed.deepInsightFeedback ?? {},
       // v1.11 이전 세션에는 없다 — 없는 걸 있다고 만들지 않고 그대로 undefined로 둔다.
       currentAnalysisMeta: parsed.currentAnalysisMeta,
@@ -378,6 +401,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [droppedEventCount, setDroppedEventCount] = useState(0);
   /** 해제해야 할 object URL 목록 */
   const objectUrls = useRef<string[]>([]);
+  /** v1.47 — `resetTargetContext()`가 '지금 상대'를 보관할 때 읽는 최신 값 */
+  const answersRef = useRef(answers);
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
 
   useEffect(() => {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -584,7 +612,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (list.includes(factor)) {
         return {
           ...prev,
-          experience: { ...prev.experience, important: list.filter((item) => item !== factor) },
+          experience: {
+            ...prev.experience,
+            important: list.filter((item) => item !== factor),
+            /*
+              260915 UT P1-2 — '기타'를 끄면 적어둔 내용도 함께 비운다. 남겨두면 화면에
+              보이지 않는 자유서술이 저장소와 AI 입력에만 남는다 — 사용자가 지운 줄
+              아는 글이 계속 분석에 쓰이는 상태가 된다.
+            */
+            ...(factor === 'other' ? { importantOther: '' } : {}),
+          },
         };
       }
       if (list.length >= MAX_PAST_FACTORS) {
@@ -606,6 +643,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const setPastNote = useCallback((value: string) => {
     setAnswers((prev) => ({ ...prev, experience: { ...prev.experience, note: value } }));
+  }, []);
+
+  /**
+   * 260915 UT P1-2 — '기타' 자유 입력.
+   *
+   * ⚠️ 상한은 **화면이 아니라 여기서** 자른다. 화면의 `maxLength`는 붙여넣기·IME로
+   * 넘어갈 수 있고, 저장소에 들어간 뒤에는 어디서 잘렸는지 알 수 없다.
+   */
+  const setPastImportantOther = useCallback((value: string) => {
+    setAnswers((prev) => ({
+      ...prev,
+      experience: { ...prev.experience, importantOther: value.slice(0, MAX_PAST_OTHER_LENGTH) },
+    }));
   }, []);
 
   const setAdaptiveAnswer = useCallback((axis: MirrorAxisKey, optionId: string) => {
@@ -672,6 +722,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       ...prev,
       experience: {
         important: [],
+        importantOther: '',
         hardest: null,
         selfGap: null,
         note: '',
@@ -976,6 +1027,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     trackEvent('deep_question_complete', { insight: answer.insightId, axis: answer.axis ?? '' });
   }, []);
 
+  /**
+   * 260915 UT P1-1 — 선택형 심화 답변.
+   *
+   * 같은 질문에 다시 답하면 그 항목만 교체한다(`addDeepAnswer`와 같은 규칙).
+   * `unsure`도 저장한다 — '물어봤고 모른다고 답했다'는 것도 기록이다. 근거로 쓸지는
+   * `deepConditionsOf`가 판단한다(조건이 빈 답은 근거가 되지 않는다).
+   */
+  const setDeepInput = useCallback((answer: DeepInputAnswer) => {
+    setAnswers((prev) => ({
+      ...prev,
+      deepInputs: [
+        ...prev.deepInputs.filter((item) => item.questionId !== answer.questionId),
+        answer,
+      ],
+    }));
+    trackEvent('deep_input_answer', { axis: answer.axis, question: answer.questionId });
+  }, []);
+
   const setDeepInsightFeedback = useCallback(
     (insightId: string, verdict: Verdict, correctedText?: string) => {
       setAnswers((prev) => ({
@@ -1051,6 +1120,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
    * 두 경로 모두 `useHistory().clearAll()`을 화면에서 직접 부른다.
    */
   const resetTargetContext = useCallback(() => {
+    /*
+      v1.47 — **새로운 사람은 이전 사람을 지우지 않는다.**
+
+      세션을 비우기 직전에 지금 상대의 맥락(상대 정보 · 사건 · 현재 관계 근거 · 저장 질문)을
+      로컬 관계 목록(`lym.targets.v1`)에 보관하고 새 activeTargetId로 시작한다. 아래 세션
+      초기화는 **그대로**다 — 점수 · Mirror · 화면은 바뀌지 않는다. 보관이 실패해도(quota)
+      흐름은 막지 않는다.
+    */
+    writeTargetRegistry(
+      preserveActiveTarget(ensureTargetRegistry(), answersRef.current, newUuid(), new Date().toISOString()),
+    );
     clearPremiumIntents();
     // vNext — Preview Unlock도 분석 단위 상태다. 새 상대로 넘어가면 함께 비운다.
     clearPreviewUnlocks();
@@ -1092,6 +1172,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setAnswers(createSampleAnswers());
   }, []);
 
+  /**
+   * v1.47 — **저장한 관계 열기.** 새 세션 모양(이전 상대 보관 · cloud 상대 · 사건 · 현재 관계 근거)은
+   * `hydrateSavedRelationship`이 만든다. 여기서는 `resetTargetContext`와 같은 분석 단위 상태를 비우고 교체만 한다 —
+   * 이전 상대의 Premium intent · preview unlock이 새 상대에 남지 않게.
+   */
+  const applySavedRelationship = useCallback((next: { answers: SessionAnswers; registry: TargetRegistryState }) => {
+    writeTargetRegistry(next.registry);
+    clearPremiumIntents();
+    clearPreviewUnlocks();
+    setAnswers(next.answers);
+  }, []);
+
   const clearSession = useCallback(() => {
     setAnswers((prev) => {
       prev.photos.forEach((photo) => {
@@ -1101,6 +1193,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return createEmptyAnswers();
     });
     clearSessionDedup();
+    // v1.47 — 전체 삭제는 보관해 둔 이전 상대들도 지운다(이 기기 안의 관계 정보다)
+    clearTargetRegistry();
   }, []);
 
   const reset = useCallback(() => {
@@ -1134,6 +1228,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setHardest,
       setSelfGap,
       setPastNote,
+      setPastImportantOther,
       setAdaptiveAnswer,
       setCurrentSignal,
       clearCurrentSignal,
@@ -1157,10 +1252,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       clearBirthProfile,
       setShareOption,
       addDeepAnswer,
+      setDeepInput,
       setDeepInsightFeedback,
       markComplete,
       markResultViewed,
       resetTargetContext,
+      applySavedRelationship,
       loadSampleSession,
       reset,
       deleteAllData,
@@ -1183,6 +1280,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setHardest,
       setSelfGap,
       setPastNote,
+      setPastImportantOther,
       setAdaptiveAnswer,
       setCurrentSignal,
       clearCurrentSignal,
@@ -1206,10 +1304,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       clearBirthProfile,
       setShareOption,
       addDeepAnswer,
+      setDeepInput,
       setDeepInsightFeedback,
       markComplete,
       markResultViewed,
       resetTargetContext,
+      applySavedRelationship,
       loadSampleSession,
       reset,
       deleteAllData,

@@ -44,7 +44,7 @@ export const INSIGHT_OPERATORS: readonly InsightOperator[] = [
  *
  * ⚠️ `compatibility`는 TARGET이다 — 그 근거 문장은 '나 vs 상대에 대해 입력한 값'이고, 상대
  * 쪽 값이 있어야 성립한다. 상대 값은 **사용자가 입력한 관찰**이지 상대의 사실이 아니다.
- * ⚠️ `adaptive` · `deep_followup`은 사용자가 자기 기준에 대해 더 답한 것이라 DECLARED_SELF다.
+ * ⚠️ `adaptive` · `deep` · `deep_followup`은 사용자가 자기 기준에 대해 더 답한 것이라 DECLARED_SELF다.
  * ⚠️ `observed`(사진에서 반복해 보인 것)는 실제 모습의 기록이라 EXPERIENCE로 둔다.
  * ⚠️ `mbti_lens`는 LENS — 해석 보조 틀이다. 카드 핵심 문장의 근거가 될 수 없다(§4 · §13).
  */
@@ -52,6 +52,8 @@ export function evidenceFamilyOf(source: EvidenceRef['source']): EvidenceSourceF
   switch (source) {
     case 'declared':
     case 'adaptive':
+    /* 260915 UT P1-1 — 자기 기준을 더 좁혀 답한 것이라 `adaptive`와 같은 family다 */
+    case 'deep':
     case 'deep_followup':
       return 'DECLARED_SELF';
     case 'current_relationship':
