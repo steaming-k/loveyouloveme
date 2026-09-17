@@ -26,8 +26,7 @@ import { DeepReportSnapshotSaver } from '@/components/account/DeepReportSnapshot
 import { ReportHeader } from '@/components/report/ReportShell';
 import { DEEP_REPORT_COPY, PREMIUM_COPY, PREMIUM_FEATURES } from '@/data/premium';
 import { LENS_PAYWALL_COPY } from '@/data/premiumLens';
-import { usePremiumAccess, useUtMode } from '@/hooks/useUtMode';
-import { UtRatingCard } from '@/components/ut/UtRatingCard';
+import { usePremiumAccess } from '@/hooks/useUtMode';
 import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
 import { formatEntryDate } from '@/lib/historyFormat';
@@ -233,7 +232,6 @@ function PremiumView() {
   // v1.15 §8 — 어느 Contextual Hook에서 들어왔는지. 순수 Analytics 구분용이라 없어도
   // Paywall이 보여줄 Feature 자체(FEATURE_BY_SOURCE)에는 영향을 주지 않는다.
   const hookVariant = params.get('hook') ?? undefined;
-  const [wtpChoice, setWtpChoice] = useState<'yes' | 'maybe' | 'no' | null>(null);
   /**
    * v1.19 §3 — Hook Attribution 키. `PremiumEntryRow`와 **같은 세션 값**을 직접 읽는다
    * (URL로 넘기지 않는다) — entry_view → entry_click → paywall_view → purchase_intent가
@@ -716,7 +714,12 @@ function PremiumView() {
             reveal={!reducedMotion}
             header={
               <ReportHeader
-                eyebrow={DEEP_REPORT_COPY.entryLabel}
+                /*
+                  v1.48.1 — 화면 헤더의 `ScreenMarker`가 이미 `PRECISION REPORT`를
+                  들고 있다. 같은 라벨을 본문 첫 줄에 한 번 더 찍으면 첫 viewport에
+                  같은 marker가 두 번 보인다(실측) — 그래서 여기서는 그리지 않는다.
+                */
+                eyebrow={null}
                 title={`이야기 ${chapterCount}개를 연결한 관찰 기록`}
                 /**
                  * ⚠️ v1.45 — meta에서 Chapter 수를 **다시 말하지 않는다.** 실측에서 헤더
@@ -1048,26 +1051,16 @@ function PremiumView() {
           )}
 
           {/*
-            v1.15 §10 — Premium 가격/가치 검증 UT. 질문을 많이 추가하지 않는다(2개 이내).
-            이미 있던 DeepReportUtFlow의 WTP 질문(step 4)과는 대상이 다르다 — 그건 전체
-            리포트를 다 본 사람에게 "다시 볼 의향"을 묻고, 이건 무료 결과 + 이 Preview만 본
-            사람에게 "지금 결제할 의향"을 묻는다. 실제 결제 전까지는 '의향'으로만 기록한다.
+            v1.48.1 — **Paywall의 UT 가치/가격 문항을 참가자 화면에서 뺐다.**
+
+            `UT` 배지 + 1~5 척도(`ut_premium_value_diff_rate`)와 3지선다 결제 의향
+            (`ut_premium_price_wtp`)은 제품 기능이 아니라 연구 계측이다. Paywall은
+            사용자가 결정을 내리는 자리인데, 그 자리에서 설문을 받으면 제품이
+            '테스트 중'으로 읽힌다.
+
+            ⚠️ 두 문항과 이벤트 이름은 **운영자 화면(`/ut`)으로 옮겼다** — 지표가
+            끊기지 않는다. 진행자가 참가자에게 구두로 묻고 기록한다.
           */}
-          <UtRatingCard
-            question="이 리포트에서 무료 결과와 다른 가치를 느꼈어?"
-            event="ut_premium_value_diff_rate"
-            properties={{ feature: featureId, source, price, ...attribution }}
-            lowLabel="전혀 못 느꼈어"
-            highLabel="확실히 다르게 느꼈어"
-          />
-          <PremiumWtpQuestion
-            featureId={featureId}
-            source={source}
-            price={price}
-            attribution={attribution}
-            choice={wtpChoice}
-            onSelect={setWtpChoice}
-          />
         </div>
         )}
       </ScreenLayout>
@@ -1137,79 +1130,3 @@ function PremiumView() {
   );
 }
 
-/**
- * v1.15 §10 Q2 — "1,900원을 내고 전체 리포트를 볼 의향이 있어?" 3지선다.
- * `UtRatingCard`와 같은 lock-after-answer 패턴을 쓰지만 척도가 아니라 선택지라 별도로 둔다.
- * `UT_MODE`가 꺼져 있으면 아무것도 렌더하지 않는다(다른 UT 컴포넌트와 동일한 가드).
- */
-function PremiumWtpQuestion({
-  featureId,
-  source,
-  price,
-  attribution,
-  choice,
-  onSelect,
-}: {
-  featureId: PremiumFeatureId;
-  source: PremiumSource;
-  price: number;
-  /** v1.19 §3 — `funnel_analysis_id`. 없으면 빈 객체라 property가 붙지 않는다 */
-  attribution: Record<string, string>;
-  choice: 'yes' | 'maybe' | 'no' | null;
-  onSelect: (value: 'yes' | 'maybe' | 'no') => void;
-}) {
-  const utMode = useUtMode();
-  if (!utMode) return null;
-
-  const options: { value: 'yes' | 'maybe' | 'no'; label: string }[] = [
-    { value: 'yes', label: '실제로 결제할 의향이 있다' },
-    { value: 'maybe', label: '결과를 더 봐야 판단할 수 있다' },
-    { value: 'no', label: '무료 결과로 충분하다' },
-  ];
-
-  return (
-    <section className="flex flex-col gap-2.5 rounded-card border border-dashed border-line-strong bg-canvas-warm p-4">
-      <span className="w-fit rounded-tag bg-chip px-2 py-0.5 text-[10px] font-semibold tracking-[0.06em] text-ink-muted">
-        UT
-      </span>
-      <p className="text-caption keep-all leading-relaxed">
-        {formatPrice(price)}을 내고 전체 리포트를 볼 의향이 있어?
-      </p>
-      <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="결제 의향">
-        {options.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={choice === option.value}
-            disabled={choice !== null}
-            onClick={() => {
-              trackEvent('ut_premium_price_wtp', {
-                feature: featureId,
-                source,
-                price,
-                choice: option.value,
-                ...attribution,
-              });
-              onSelect(option.value);
-            }}
-            className={cn(
-              'min-h-11 rounded-[10px] border px-3.5 py-2.5 text-left text-caption disabled:opacity-60',
-              choice === option.value
-                ? 'border-brand bg-brand-tint font-semibold text-ink'
-                : 'border-line bg-surface active:bg-sunken',
-            )}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-      {choice ? (
-        <p className="text-[11px] keep-all text-ink-faint">
-          기록했어. 실제 결제 전까지는 의향으로만 남겨둘게.
-        </p>
-      ) : (
-        <p className="text-[10.5px] keep-all text-ink-faint">실제 결제가 아니라 의향을 묻는 질문이야.</p>
-      )}
-    </section>
-  );
-}

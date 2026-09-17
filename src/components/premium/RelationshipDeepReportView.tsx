@@ -5,21 +5,17 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '@/components/common/Button';
 import { NoticeBox, SectionLabel } from '@/components/common/primitives';
 import { AiNarrativeNotice, AiSourceLabel } from '@/components/ai/AiModeNotice';
-import { DeepReportValueCheck } from '@/components/premium/DeepReportValueCheck';
 import { PremiumActionPlanSection } from '@/components/premium/PremiumActionPlanSection';
 import { PremiumCandidateSection } from '@/components/premium/PremiumCandidateSection';
 import { PremiumChapterAccordion } from '@/components/premium/PremiumChapterAccordion';
 import { PremiumLensSection } from '@/components/premium/PremiumLensSection';
 import type { PremiumLensAi } from '@/hooks/usePremiumLensAi';
 import { Lovy } from '@/components/lovy/Lovy';
-import { DeepReportUtFlow } from '@/components/ut/DeepReportUtFlow';
 import { trackEvent } from '@/lib/analytics';
 import { cn } from '@/lib/cn';
 import { DEEP_REPORT_NARRATIVE_LOADING } from '@/data/premium';
-import { useUtMode } from '@/hooks/useUtMode';
 import { hasCompletedDeepReport, markDeepReportCompleted } from '@/lib/deepReportUtStore';
 import { LOVY_REPORT_POSE, LOVY_SIZE } from '@/lib/premiumLovy';
-import { resolvePrice, resolvePriceVariant } from '@/lib/premiumVariant';
 import type { AiFailureReason, AiMode, AiNarrativeStatus, RelationshipDeepReport } from '@/types';
 
 /**
@@ -151,13 +147,9 @@ export function RelationshipDeepReportView({
   );
 
   const viewSent = useRef(false);
-  const [utOpen, setUtOpen] = useState(false);
-  const utMode = useUtMode();
   const [completed, setCompleted] = useState(false);
   const scrollDepthSent = useRef<{ 50: boolean; 100: boolean }>({ 50: false, 100: false });
   const rootRef = useRef<HTMLDivElement>(null);
-  /** v1.19 §10 — 사후 평가에 보여줄 가격. Paywall과 같은 세션 고정 값을 쓴다 */
-  const [price] = useState(() => resolvePrice(resolvePriceVariant()));
   const attribution: Record<string, string> = funnelAnalysisId
     ? { funnel_analysis_id: funnelAnalysisId }
     : {};
@@ -285,7 +277,6 @@ export function RelationshipDeepReportView({
       markDeepReportCompleted(analysisId);
     }
     setCompleted(true);
-    if (utMode) setUtOpen(true);
   };
 
   return (
@@ -702,27 +693,25 @@ export function RelationshipDeepReportView({
       </Button>
 
       {/*
-        v1.19 §12 — 평가는 **리포트를 다 본 뒤에만** 나타난다. 진입하자마자 설문을 띄우지
-        않는다. 완독 CTA가 이미 이 IA의 자연스러운 완료 행동이라, 새 완료 조건(마지막 섹션
-        viewport 진입 등)을 따로 만들지 않고 그 신호를 그대로 재사용한다.
-        UT_MODE와 무관하게 보인다(§25) — Production 사용자에게도 필요한 질문이다.
-      */}
-      {completed ? (
-        <DeepReportValueCheck
-          analysisId={analysisId}
-          price={price}
-          properties={{ access_mode: accessMode, ...attribution }}
-        />
-      ) : null}
+        ══ v1.48.1 — **리포트 뒤 설문을 참가자 화면에서 걷어냈다** ═══════════════
 
-      {utMode ? (
-        <DeepReportUtFlow
-          open={utOpen}
-          onClose={() => setUtOpen(false)}
-          analysisId={analysisId}
-          properties={{ access_mode: accessMode, ...attribution }}
-        />
-      ) : null}
+        여기 두 가지가 있었다.
+
+        ```
+        DeepReportValueCheck  1~5 가치 평가 + 3지선다 지불 의향.
+                              `UT_MODE` 게이트가 **없어서 일반 사용자에게도 보였다**
+        DeepReportUtFlow      BottomSheet 5문항 설문. 완독 CTA를 누르면 자동으로 떴다
+        ```
+
+        둘 다 제품 기능이 아니라 연구 계측이다. 특히 후자는 리포트를 다 읽은 순간
+        설문지가 화면을 덮는 구조여서, 제품의 마지막 인상이 '평가해 주세요'였다.
+
+        ⚠️ **완독 자체는 그대로다.** 위 `다 봤어` CTA와 `deep_report_complete`
+        이벤트는 제품 지표라 남겼다 — 사라진 것은 그 뒤에 따라오던 설문뿐이다.
+        ⚠️ 가격/가치 문항은 운영자 화면(`/ut`)에 같은 이벤트 이름으로 있다.
+        ⚠️ 두 컴포넌트는 삭제했고, 문항은 `ut_deep_report_missing_value`(자유서술)
+        하나만 빼고 전부 운영자 화면으로 옮겨 **이벤트 이름 그대로** 남아 있다.
+      */}
     </div>
   );
 }

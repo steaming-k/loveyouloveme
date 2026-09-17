@@ -335,8 +335,16 @@ check(
     emptyFooter.indexOf('질문으로 계속하기') < emptyFooter.indexOf('사진 더 고르기'),
 );
 check(
+  /*
+    v1.48.1 — 콘솔의 인터뷰 문항이 **데이터 배열 + map**으로 바뀌었다(참가자 화면에서
+    회수한 문항이 여러 개라 JSX를 하나씩 쌓지 않는다). 그래서 `<UtRatingCard …>`와
+    이벤트 이름이 더 이상 소스에서 인접하지 않는다 — 검사를 **구조 의도**로 옮긴다:
+    콘솔이 평가 카드를 렌더하고, 인터뷰 문항 섹션을 갖고, 같은 이벤트를 쓴다.
+  */
   'P1F-04 운영자 경로에 평가 도구 유지 — /ut 콘솔에 같은 이벤트 문항',
-  /<UtRatingCard[\s\S]{0,200}event="ut_analysis_similarity_rate"/.test(utConsole),
+  /<UtRatingCard/.test(utConsole) &&
+    /진행자 기록 · 인터뷰 문항/.test(utConsole) &&
+    utConsole.includes('ut_analysis_similarity_rate'),
 );
 const participantRatingHosts = [];
 for (const file of ['src/app/profile/observed/page.tsx', 'src/app/profile/photos/page.tsx', 'src/app/profile/analyzing/page.tsx', 'src/app/profile/past/[step]/PastStepView.tsx', 'src/app/target/page.tsx', 'src/app/profile/declared/[step]/DeclaredStepView.tsx']) {
@@ -412,7 +420,8 @@ check(
     /index < filled/.test(scaleHearts) &&
     /const filled = Math\.max\(0, Math\.min\(max, value\)\);/.test(scaleHearts) &&
     /aria-hidden/.test(scaleHearts) &&
-    /<ScaleHearts value=\{insight\.declared\} \/>/.test(comparisonRow) &&
+    /* v1.48.1 — Mirror 행이 `className`을 넘기게 되어 self-closing 리터럴이 아니다 */
+    /<ScaleHearts\s+value=\{insight\.declared\}/.test(comparisonRow) &&
     /<ScaleHearts value=\{value\}/.test(historyRow),
 );
 check(

@@ -6,7 +6,6 @@ import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { PageHeading } from '@/components/common/primitives';
 import { HistoryChangeRow } from '@/components/history/HistoryChangeRow';
 import { Lovy } from '@/components/lovy/Lovy';
-import { UtSummaryCard } from '@/components/ut/UtSummaryCard';
 import { HISTORY_COPY } from '@/data/copy';
 import { ROUTES } from '@/lib/routes';
 import { useHistoryReport } from '@/hooks/useAnalysis';
@@ -102,11 +101,11 @@ function HistorySavedView() {
         ) : null}
 
         {/*
-          §46/§47/§97 — UT 종료 카드. Core Flow가 끝난 이 지점에서만 묻는다.
-          §48 한 화면 남발 금지: 유사도(S09)·근거 이해도(S28)는 이미 앞에서 물었고
-          여기서는 '자기이해 도움' + (사진을 넣은 사용자에게만) '사진 가치'만 묻는다.
+          v1.48.1 — **UT 종료 카드(`UtSummaryCard`)를 참가자 화면에서 뺐다.**
+          `UT · 연구용 문항` 라벨 + 1~5 척도 두 개는 연구 계측이다. 두 문항
+          (`ut_self_understanding_helpfulness` · `ut_photo_value_rate`)은 운영자
+          화면(`/ut`)으로 옮겼다 — 진행자가 구두로 묻고 기록한다.
         */}
-        <UtSummaryCard />
       </div>
     </ScreenLayout>
   );
