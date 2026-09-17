@@ -231,3 +231,254 @@ UNKNOWN은 점선이고 도중에 끊긴다.
 - **Lovy 개수를 늘리지 않았다.** 캐릭터는 중요한 순간에만 남고, 대신 `LovyMark`가
   관찰 시스템의 흔적으로 UI 안에 조용히 들어갔다
 - `PrototypePanel`은 `NODE_ENV === 'production'`에서 그대로 차단된다(기존 게이트)
+
+------------------------------------------------------------------------
+
+# 후속 — Visual QA Cleanup (2026-09-17, 같은 날 2차)
+
+기준 HEAD : `d3608bf` (위 Visual Polish 최종)
+성격 : 위 작업의 **후속 수정.** 새 Visual Polish를 추가하지 않는다.
+
+위 폴리시를 배포 없이 실제 화면에서 직접 확인한 결과, 방향은 유지하되 두 가지가
+명확히 실패했다. 카드/알약 감소 · Insight Surface · Field Notes 문법 · 정보 위계 ·
+Lovy observation motif는 **전부 유지**한다.
+
+## A. Mirror pseudo-chart → rejected after visual QA
+
+```
+결정 : Mirror의 좌표 기반 시각화(MirrorLink 곡선 + 1점 트랙)를 제거한다
+이유 : visual precision exceeded data precision
+       and required explanatory legend
+```
+
+v1.48이 Mirror 축 행에 그린 것:
+
+```
+말한 나   ────────○
+                  ╲
+관계에서  ──────────●        ← 곡선의 기울기로 GAP/MATCH/CHANGE를 표현
+```
+
+실제 렌더에서 네 가지가 동시에 깨졌다.
+
+1. **의미를 직관적으로 알 수 없다.** 회색 점과 보라 점이 무엇인지 화면만 보고
+   알 수 없었다.
+2. **데이터보다 정밀해 보인다.** 이 화면의 데이터는 `Declared Me vs Relationship Me`
+   비교이고 정밀 좌표가 아니다. 도착점은 **방향**이었는데 그림은 **좌표**로 읽혔다.
+3. **변화 · 이동 · 시계열 · 거리로 오해된다.** GAP을 그리려던 곡선이 시간축처럼 보였다.
+4. **사용 설명서가 필요했다.** `○ 말한 나(정확한 위치)` · `⌃ 관계 경험 신호(방향)`
+   범례를 붙여야 읽혔다 — 시각화에 사용법이 필요하면 그 시각화는 실패한 것이다.
+
+그리고 1점짜리 트랙은 애초에 차트가 아니었다. 바로 옆의 하트와 `2/5`가 같은 값을
+더 정확하게 말하고 있어서, 트랙은 정보를 더하지 않고 해석 부담만 더했다.
+
+### 제거한 것
+
+```
+MirrorLink 곡선 SVG
+pseudo-coordinate point (말한 나 트랙의 점 위치)
+곡선 기울기 기반 GAP/MATCH/CHANGE 표현
+STATE_STROKE (곡선 색 테이블)
+MirrorLegend — 그래프 사용법 범례 컴포넌트
+'말한 나(정확한 위치)' · '관계 경험 신호(방향)'
+MirrorComparisonRow의 valueToPercent 의존
+```
+
+⚠️ `valueToPercent`는 `lib/logic/mirror.ts`에 남긴다 — `HistoryChangeRow`가 계속 쓴다.
+그쪽은 PAST/NOW **둘 다 실제로 1~5로 수집한 값**이라 두 점이 모두 실측이고, 가짜
+정밀도가 아니다(이번 QA에서 확인).
+
+### 새 구조 — 차트가 아니라 editorial observation
+
+```
+연락                                        GAP
+  말한 나                          ♥♥♡♡♡ 2/5
+  연락은 별로 중요하지 않음
+  ──────── 관계에서 더 크게 ────────────────
+    관계에서 나타난 나
+    ▲ 이전 관계에서 연락 감소가 가장 힘들었음으로 선택
+       이전 관계
+중요하지 않다고 생각했지만 관계에서는 생각보다 크게 반응했어.
+```
+
+- 정확한 값은 `말한 나` 쪽에만 있다. 1~5로 직접 수집한 값이므로 하트와 숫자로 적는다
+- `관계에서 나타난 나`는 숫자가 아니라 문장이다. 그래서 문장으로만 말한다 —
+  **이 비대칭이 데이터의 비대칭 그대로다**
+- 트랙 위의 점을 `declaredPhrase`(사용자가 고른 보기의 이름)가 대신한다
+
+### 상태 표현 — 좌표가 아니라 간격과 정렬
+
+| 상태 | composition | 문구 |
+|---|---|---|
+| MATCH | 두 블록이 붙고 왼쪽 끝이 맞는다 (정렬 · 가까움) | 말한 기준과 비슷 |
+| GAP | 간격이 벌어지고 관계 쪽이 한 칸 들여쓰인다 (분리감) | 관계에서 더 크게 |
+| CHANGE | 간격은 벌어지지만 들여쓰지 않는다. 방향은 아이콘이 말한다 | 경험 후 낮아짐 / 지금은 크게 드러나지 않음 |
+| UNKNOWN | 강한 표현을 만들지 않는다 | 비교할 관계 근거 없음 / 관측 정보 부족 |
+
+⚠️ 판정 문구는 **새로 지은 카피가 아니다.** v1.41부터 있던 문구이고 예전에는
+스크린리더에만 읽혔다(`stateTextOf`). 곡선이 하던 일을 이 문구가 대신한다.
+⚠️ 판정 자체(`displayStateOf`)와 Mirror 계산은 한 줄도 바꾸지 않았다.
+
+## B. Participant UI의 UT 전용 요소 전수 제거
+
+원칙:
+
+```
+제품을 사용하기 위해 필요한 UI → 남긴다
+제품을 평가하기 위해 임시로 붙인 UI → 사용자 화면에서 제거한다
+```
+
+### 발견한 참가자 UI 전체 목록
+
+| 위치 | 요소 | 게이트 | 조치 |
+|---|---|---|---|
+| `/mirror` | `UtRatingCard` — `UT` 배지 + 1~5 `왜 이런 결과가 나왔는지 근거가 이해됐어?` | UT_MODE | 제거 → `/ut` |
+| `/premium` (Paywall) | `UtRatingCard` — 무료 대비 가치 1~5 | UT_MODE | 제거 → `/ut` |
+| `/premium` (Paywall) | `PremiumWtpQuestion` — `UT` 배지 + 3지선다 결제 의향 | UT_MODE | 제거 → `/ut` |
+| `/history/saved` | `UtSummaryCard` — `UT · 연구용 문항` + 1~5 두 개 | UT_MODE | 제거 → `/ut` |
+| Deep Report | `DeepReportValueCheck` — 1~5 가치 + 3지선다 지불 의향 | **게이트 없음** | 제거 → `/ut` |
+| Deep Report | `DeepReportUtFlow` — BottomSheet 5문항 설문(완독 CTA가 자동 실행) | UT_MODE | 제거 → `/ut` |
+
+가장 심각한 것은 `DeepReportValueCheck`였다. `UT_MODE` 게이트가 **없어서** 일반
+사용자에게도 보였고, 리포트를 다 읽은 직후 화면의 마지막 인상이 '평가해 주세요'였다.
+
+삭제한 파일 3개: `UtSummaryCard.tsx` · `DeepReportValueCheck.tsx` · `DeepReportUtFlow.tsx`
+(호출부가 사라져 dead가 된 컴포넌트. 함께 죽은 import · local state · 핸들러도 정리)
+
+### 지표는 끊지 않았다 — 문항을 운영자 화면으로 옮겼다
+
+260914 UT 후속 P1 Final이 S09 유사도 문항에 쓴 방법과 같다: 참가자 화면에서 빼고
+`/ut` 콘솔의 `진행자 기록 · 인터뷰 문항`으로 옮긴다. 진행자가 해당 화면을 지난 뒤
+구두로 묻고 기록한다. **이벤트 이름을 바꾸지 않았으므로 기존 지표와 그대로 이어진다.**
+
+회수해 `/ut`에 둔 문항 12개 — 진행자가 묻는 순서대로 5개 구간으로 묶었다:
+
+```
+S09 사진 관찰 뒤        ut_analysis_similarity_rate                (기존)
+Relationship Mirror 뒤  ut_evidence_clarity_rate
+Premium Paywall 뒤      ut_premium_value_diff_rate · ut_premium_price_wtp
+Deep Report 완독 뒤     ut_new_insight_rate · ut_genericness_rate ·
+                        ut_cross_source_value_rate · deep_report_value_rating ·
+                        deep_report_wtp_after_view · ut_deep_report_wtp
+관찰 기록 저장 뒤        ut_self_understanding_helpfulness · ut_photo_value_rate
+```
+
+`ut_photo_value_rate`의 A/B 분리 property(`photo_used` · `photo_count` ·
+`usable_evidence_count` · `mode`)는 콘솔이 세션에서 같은 값을 읽어 그대로 보낸다.
+
+**removed UT-only event (회수하지 않음)**
+
+```
+ut_deep_report_missing_value   — 자유서술 문항.
+                                  자유서술은 Analytics 경로에 관계 민감 정보를 흘릴 수
+                                  있어(§24) 화면에 두지 않고 진행자 노트로 남긴다.
+```
+
+### 제거하지 않은 것 (제품 기능)
+
+```
+Mirror 검증 버튼 (맞는 것 같아 / 조금 달라) + 관찰 문장 수정 시트
+사진 관찰 확인 · Evidence reject · 결과 수정(ResultEditSheet)
+Deep Report 완독 CTA(`다 봤어`)와 deep_report_complete   ← 제품 지표다
+AI 모드/출처 고지(AiModeNotice · AiSourceLabel)          ← 제품 투명성 문구다
+resolvePremiumAccess({ utMode })                          ← Premium 자격. 계측이 아니다
+```
+
+### 운영자 도구 격리 확인
+
+```
+/ut UtOperatorConsole   유지 — production 404. 참가자 화면에 import되지 않는다
+AiDebugPanel            유지 — NEXT_PUBLIC_AI_DEBUG && NODE_ENV !== 'production' 이중 게이트.
+                        production에서 null을 반환해 DOM에 흔적이 없다
+PrototypePanel          유지 — NODE_ENV === 'production'에서 null (기존 게이트)
+```
+
+## C. Participant meta-copy 전수 검사 (DOM 기준)
+
+실제 렌더된 DOM의 텍스트 노드를 훑어 금지 토큰을 찾았다(`sr-only` 제외).
+검사 토큰: `UT · TEST · DEMO · PREVIEW · DEBUG · MOCK · fixture · FAKE DOOR ·
+participant · research · BETA · 개발용 · 테스트용 · 실험용 · 참가자 · 연구용 ·
+평가해 · 설문 · 진행자`
+
+| route | meta 토큰 | 1~5 widget | orphan box | orphan title |
+|---|---|---|---|---|
+| `/compatibility` | 0 | 0 | 0 | 0 |
+| `/mirror` | 0 | 0 | 0 | 0 |
+| `/premium` (Deep Report unlocked) | 0 | 0 | 0 | 0 |
+| `/history` · `/history/saved` | 0 | 0 | 0 | 0 |
+| `/home` | 0 | 0 | 0 | 0 |
+| `/lens/mbti` · `/lens/saju` · `/lens/astrology` | 0 | 0 | 0 | 0 |
+| `/first-contact` · `/profile/result` | 0 | 0 | 0 | 0 |
+
+⚠️ 정상 제품 label은 함께 지우지 않았다 — `ENTERTAINMENT` · `SUPPORTING LENS` ·
+`PRECISION REPORT` · `LOVY OBSERVATION REPORT`는 의도된 정보 위계 label이다.
+⚠️ `/premium`과 `/profile/result`의 파선 박스 1개씩은 제품 콘텐츠다
+(`아직 만들지 않은 연결` · `세 관찰을 합친 결과`) — 설문 제거로 생긴 빈 컨테이너가 아니다.
+
+## D. 함께 고친 것 — `PRECISION REPORT` 중복 marker
+
+위 Visual Polish에서 Premium 헤더의 `Tag`를 공용 `ScreenMarker`로 바꿨는데,
+`ReportHeader`의 eyebrow가 **같은 문자열을 같은 형태로** 한 번 더 찍고 있었다.
+예전에는 알약 vs eyebrow로 형태가 달라 티가 나지 않았지만, 둘이 같은 marker가 되자
+첫 viewport에 같은 표식이 두 번 보였다(실측).
+
+`ReportHeader`의 `eyebrow`가 `null`을 받으면 그리지 않도록 하고, Deep Report는
+`null`을 넘긴다. 라벨의 자리 연속성(Paywall → Unlock → Report)은 화면 헤더의
+marker가 이미 맡고 있다. 무료 결과 화면의 eyebrow는 그대로다.
+
+## E. Regression
+
+기능 로직 diff 0 — Compatibility score · Mirror state · Premium eligibility ·
+가격/unlock · Photo evidence · Optional Deep Input · Lens · History · Target ·
+AI pipeline · Navigation · Persistence 파일을 하나도 건드리지 않았다.
+
+| 항목 | 결과 |
+|---|---|
+| typecheck | PASS |
+| eslint (`npx eslint src tests`) | PASS · exit 0 |
+| build | PASS |
+| **test:visual-qa (신규)** | **16 passed · 0 failed** |
+| ai 585 · history 100 · lifecycle 166 · relationship-evidence 288 | ALL PASS |
+| trust 205 · premium 285 · lens 206 · nav 55 · value 92 · event 91 | ALL PASS |
+| question 53 · ended 58 · semantic 194 · action 102 | ALL PASS |
+| ai-guard 15 · model-routing 30 · persistence 323 | ALL PASS |
+| ui-assets 8 · meta-copy 10 · ut-stability 31 · ut-followup 52 · ut15 45 · ut-phase1 84 | ALL PASS |
+| 실제 Provider 호출 | 0 증가 |
+
+**고친 기존 assertion 2건** — 둘 다 구조가 바뀌어 리터럴이 안 맞은 것이고, 검사
+**의도는 그대로 유지**했다(약화하지 않았다).
+
+```
+P1F-04  콘솔 인터뷰 문항이 데이터 배열 + map으로 바뀌어 `<UtRatingCard>`와 이벤트
+        이름이 인접하지 않는다 → 카드 렌더 · 인터뷰 섹션 존재 · 같은 이벤트 사용으로 검사
+P2-07   Mirror 행이 ScaleHearts에 className을 넘겨 self-closing 리터럴이 아니다
+        → `<ScaleHearts value={insight.declared}` 접두 매칭으로 완화
+```
+
+**기존 known baseline failure 2건 (이번 작업과 무관)**
+
+```
+test:observed    3건 — AI_MODE=demo에서 상시 실패(Provider 경로를 요구하는 E2E)
+test:ut-premium  ONB-01~04 — src/data/copy.ts의 온보딩 슬라이드를 읽는 검사.
+                 이번에도 copy.ts를 건드리지 않았고, d3608bf 시점에도 동일하게 실패한다
+```
+
+## F. 새 presentation invariant — `tests/run-visual-qa-fixtures.mjs`
+
+```
+VISUAL-QA-01  Mirror 행에 svg · path · viewBox · valueToPercent · `left: …%` 0
+              MirrorLegend · '정확한 위치' · '신호(방향)' 0
+VISUAL-QA-02  참가자 route에 1~5 척도 widget 0 · 평가 컴포넌트 참조 0 ·
+              삭제한 설문 컴포넌트 파일 부활 0
+VISUAL-QA-03  참가자 route에 `UT` 연구 배지 0 (JSX 텍스트 노드 기준)
+VISUAL-QA-04  Mirror가 declaredPhrase + relationshipSignal + 하트 + note를 계속 그린다
+VISUAL-QA-05  판정이 displayStateOf · 배지 · 문구 · 방향 아이콘으로 남아 있고,
+              퍼센트 · 막대 · 거리로 말하지 않는다
+VISUAL-QA-06  회수한 문항 12개가 /ut에 같은 이벤트 이름으로 있다 ·
+              평가 카드의 utMode 가드 유지 · /ut production 404 유지
+```
+
+참가자 route 판정은 파일 경로로 한다 — `src/app/ut` · `src/components/ut` ·
+`src/app/dev` · `src/app/api` · `AiDebugPanel` · `PrototypePanel`만 제외하고
+나머지 `src/**/*.tsx` 전부를 참가자 화면으로 본다. 그래서 **새 화면을 추가해도
+검사에서 빠지지 않는다.**
