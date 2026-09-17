@@ -31,6 +31,7 @@ import {
 import { FirstSurprise } from '@/components/compatibility/FirstSurprise';
 import { ApproachHintCard } from '@/components/compatibility/ApproachHintCard';
 import { SignalCard } from '@/components/compatibility/SignalCard';
+import { SignalStructure } from '@/components/compatibility/SignalStructure';
 import { ConversationCard } from '@/components/compatibility/ConversationCard';
 import { SyncScore } from '@/components/compatibility/SyncScore';
 import { PastObservationNote } from '@/components/history/PastObservationNote';
@@ -543,6 +544,14 @@ function CompatibilityView() {
         />
 
         <SyncScore score={result.score} />
+
+        {/*
+          v1.48 — 점수 바로 아래에서 **그 숫자가 무엇으로 만들어졌는지**를 그린다.
+          `result.dimensions`(이미 계산된 값)만 읽고, 새 계산·새 판정은 없다.
+          ⚠️ `<SyncScore score={result.score} />` 호출은 그대로 둔다 — 결과 순서를
+          고정한 UT fixture들이 이 한 줄을 문자열로 찾는다.
+        */}
+        <SignalStructure dimensions={result.dimensions} />
 
         {/* §4 — 결과 요약 한 문장. 이미 계산된 tone 판정에서 결정론적으로 파생된다 */}
         {resultHeadline ? (

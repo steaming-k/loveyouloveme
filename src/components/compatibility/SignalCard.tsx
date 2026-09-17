@@ -74,28 +74,54 @@ export function SignalCard({
   const compact = density === 'compact';
 
   return (
+    /*
+      ══ v1.48 — `primary`는 카드가 아니라 **editorial feature block**이다 ══════
+
+      §11이 요구한 것: "가장 중요한 signal 1개는 기존 generic Card보다 강한 editorial
+      feature block으로. 나머지는 compact row / divider hierarchy."
+
+      예전 `primary`는 `rounded-card border bg-surface`였고, 그 안에 또 `bg-mint-tint`
+      상자가 있었다 — 카드 안의 카드. 같은 화면에 같은 규격 카드가 둘(잘 맞는 신호 ·
+      확인할 신호) 있으면 '가장 중요한 하나'가 성립하지 않는다.
+
+      지금 `primary`는 담는 면이 없다. 축 색의 굵은 rule로 열고, 축 이름이 한 단계
+      커지고, 핵심 문장(`scene`)이 상자 없이 본문 크기로 놓인다. `compact`는 v1.47
+      그대로 divider 행이다 — 두 밀도의 **형태 차이**가 더 벌어졌다.
+    */
     <li
       className={cn(
-        'flex flex-col',
-        compact
-          ? 'gap-2.5 border-t border-line-soft px-1 pt-3.5'
-          : 'gap-3 rounded-card border border-line bg-surface p-4',
+        'flex flex-col px-1',
+        compact ? 'gap-2.5 border-t border-line-soft pt-3.5' : 'gap-3 pt-1',
       )}
     >
+      {/* feature block의 시작 선언 — 축의 성격 색으로 짧고 굵게 */}
+      {compact ? null : (
+        <span
+          className={cn(
+            'h-[3px] w-7 flex-none',
+            variant === 'good' ? 'bg-brand' : 'bg-friction',
+          )}
+          aria-hidden
+        />
+      )}
+
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <span
-            className={cn(
-              'flex-none rounded-full',
-              compact ? 'h-[5px] w-[5px]' : 'h-[7px] w-[7px]',
-              variant === 'good' ? 'bg-brand' : 'bg-friction',
-            )}
-            aria-hidden
-          />
+          {compact ? (
+            <span
+              className={cn(
+                'h-[5px] w-[5px] flex-none rounded-full',
+                variant === 'good' ? 'bg-brand' : 'bg-friction',
+              )}
+              aria-hidden
+            />
+          ) : null}
           <h3
             className={cn(
-              'font-semibold tracking-[-0.2px]',
-              compact ? 'text-caption text-ink-sub' : 'text-body',
+              'font-semibold',
+              compact
+                ? 'text-caption tracking-[-0.2px] text-ink-sub'
+                : 'text-[18px] tracking-[-0.45px]',
             )}
           >
             {dimension.label}
@@ -103,7 +129,8 @@ export function SignalCard({
         </div>
 
         {variant === 'friction' && gap !== null ? (
-          <span className="flex-none rounded-[6px] bg-friction-tint px-2 py-1 text-[10.5px] font-semibold text-friction-text">
+          /* 각진 evidence 표식 — 이 값은 분류가 아니라 계산된 거리다 */
+          <span className="flex-none rounded-[3px] bg-friction-tint px-2 py-1 text-[10.5px] font-semibold text-friction-text tnum">
             차이 {gap}
           </span>
         ) : null}
@@ -117,11 +144,12 @@ export function SignalCard({
         <p
           className={cn(
             'keep-all leading-relaxed',
-            compact
-              ? 'text-caption text-ink-sub'
-              : variant === 'good'
-                ? 'rounded-[10px] bg-mint-tint px-3 py-2.5 text-caption text-mint-ink'
-                : 'text-[13.5px] text-ink',
+            /*
+              ⚠️ `good`에 있던 `bg-mint-tint` 상자를 지웠다 — 그건 카드 안의 카드여서
+              항상 '상자 두 개'로 읽혔다. 여기가 이 분상의 핵심 문장이므로 상자 대심
+              **활자 크기**로 말한다. good/friction 구분은 위의 rule 색이 이미 한다.
+            */
+            compact ? 'text-caption text-ink-sub' : 'text-[15.5px] text-ink',
           )}
         >
           {dimension.scene}
@@ -131,7 +159,8 @@ export function SignalCard({
           '언제 그런지'는 우리가 만든 해석이 아니라 사용자가 고른 조건이라 그렇게 말한다.
         */}
         {userCondition ? (
-          <p className="rounded-[10px] bg-sunken px-3 py-2 text-[12px] keep-all leading-relaxed text-ink-sub">
+          /* 사용자가 직접 골람 조건은 근거다 — 상자가 아니라 Evidence Surface로 */
+          <p className="surf-evidence text-[12px] keep-all leading-relaxed text-ink-sub">
             <span className="font-semibold text-ink">네가 알려준 조건</span> · {userCondition}
           </p>
         ) : null}

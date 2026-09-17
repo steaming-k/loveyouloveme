@@ -14,7 +14,7 @@ import { HydrationGate } from '@/components/common/HydrationGate';
 import { ScreenHeader } from '@/components/common/ScreenHeader';
 import { ScreenLayout } from '@/components/common/ScreenLayout';
 import { EmptyStateView, FillDataRow } from '@/components/common/StateScreens';
-import { EvidenceList, PageHeading, Tag } from '@/components/common/primitives';
+import { EvidenceList, PageHeading } from '@/components/common/primitives';
 import { Lovy } from '@/components/lovy/Lovy';
 import { useToast } from '@/components/common/ToastProvider';
 import { RepeatedSignalNotice } from '@/components/history/PastObservationNote';
@@ -469,14 +469,35 @@ function MirrorView() {
              * 먼저 말한다** — 카드를 더하지 않고 캡션 한 조각으로만.
              */
             caption={`비교 가능한 ${mirror.insights.length}개 기준에서 · ${scopeCaption}`}
+            /*
+              v1.48 — 알약 두 개에서 **관찰 집계 한 줄**로.
+
+              `[차이 2개][일치 2개]`는 정확한 값이었지만 형태가 태그였다. 태그는
+              '분류'를 뜻하는데 이 둘은 분류가 아니라 **개수**다. 점 마커 + 숫자
+              한 줄이면 같은 사실을 pill 없이 말하고, 화면의 알약 개수가 둘 줄어든다.
+              ⚠️ 숫자·조건·문구는 그대로다.
+            */
             eyebrow={
               gapInsights.length > 0 ? (
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <Tag tone="brand">차이 {gapInsights.length}개</Tag>
-                  <Tag tone="mint">일치 {mirror.insights.length - gapInsights.length}개</Tag>
+                <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[11px] text-ink-muted">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-[5px] w-[5px] flex-none rounded-full bg-brand" aria-hidden />
+                    차이 <span className="font-semibold text-ink tnum">{gapInsights.length}</span>개
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-[5px] w-[5px] flex-none rounded-full bg-mint" aria-hidden />
+                    일치{' '}
+                    <span className="font-semibold text-ink tnum">
+                      {mirror.insights.length - gapInsights.length}
+                    </span>
+                    개
+                  </span>
                 </div>
               ) : (
-                <Tag tone="mint">비교한 항목이 모두 비슷했어</Tag>
+                <p className="flex items-center gap-1.5 text-[11px] text-ink-muted">
+                  <span className="h-[5px] w-[5px] flex-none rounded-full bg-mint" aria-hidden />
+                  비교한 항목이 모두 비슷했어
+                </p>
               )
             }
           />
@@ -487,15 +508,28 @@ function MirrorView() {
             점프하는 칩이 있었다). 핵심 문장을 제목 바로 아래로 올리고 점프 칩은 뺐다 — anchor id는 그대로다.
             근거 목록 · AI 설명은 비교 행 뒤 원래 자리에 남는다(결론 → 비교 → 이유).
           */}
+          {/*
+            ══ v1.48 Insight Surface — 카드가 아니라 **편집면** ═══════════════
+
+            예전에는 `rounded-card bg-brand-tint` 였다. 보라 배경이 눈에 띄긴 했지만
+            그건 여전히 '여러 카드 중 색이 다른 카드'였고, 이 화면에서 가장 중요한
+            발견이 나머지 흰 카드들과 **같은 규격**을 공유했다.
+
+            지금은 굵은 ink rule로 열리고, 배경이 없고, 활자가 화면에서 두 번째로 크다.
+            이 페이지에 이런 면은 **하나뿐**이라 카드 개수와 무관하게 먼저 읽힌다.
+
+            ⚠️ `id` · `{headline}` · 러비 + 라벨 조합은 그대로다(결과 순서를 고정한
+            fixture들이 이 조합을 찾는다). 바뀐 것은 표면뿐이다.
+          */}
           <section
             id={RESULT_ANCHORS.mirrorCoreInsight}
-            className="flex flex-col gap-3 rounded-card bg-brand-tint px-[18px] py-5"
+            className="surf-insight flex flex-col gap-3 px-1"
           >
             <p className="flex items-center gap-2 text-[10.5px] font-semibold tracking-[0.1em] text-brand-pressed">
               <Lovy pose="note" size={28} decorative />
               러비가 가장 눈여겨본 부분
             </p>
-            <h2 className="text-[21px] font-semibold leading-[1.5] tracking-[-0.5px] keep-all text-brand-ink">
+            <h2 className="text-[23px] font-semibold leading-[1.46] tracking-[-0.65px] keep-all text-brand-ink">
               {headline}
             </h2>
             {edited ? (
