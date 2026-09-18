@@ -31,7 +31,7 @@ import { useSession } from '@/state/SessionProvider';
  * ──────────── LOVE RESEARCH : EARTH        ← 상단 편집 marker + rule
  *
  *                       ╭─ 러비 ─╮          ← 오른쪽으로 비대칭
- *         ──────────────┤        │          ← 관찰 연결선 하나 + 끝점
+ *                       │        │          ← 왼쪽은 비워 둔다
  *                       ╰────────╯
  *   럽유럽미                                  ← 좌측 정렬 · 화면에서 가장 강한 타이포
  *   ───
@@ -42,10 +42,10 @@ import { useSession } from '@/state/SessionProvider';
  * 있지만 **주인공 자리가 아니라 관찰 대상 옆자리**에 있고, 화면의 focal point는
  * 서비스명이 가져간다.
  *
- * ⚠️ **새 애니메이션을 추가하지 않았다.** 움직이는 것은 `LovySequence` 하나뿐이고,
- * 관찰 marker와 연결선은 정적이다(§20 — 의미 있는 motion만).
+ * ⚠️ **움직이는 것은 `LovySequence` 하나뿐이다**(§20 — 의미 있는 motion만).
  * ⚠️ **화면 전체 tap은 그대로다.** 라우팅 조건(`completed.profile`)도 그대로다.
- * ⚠️ 우주·별·행성을 그리지 않는다. 여기 있는 선은 '관찰의 자국'이지 SF 장식이 아니다.
+ * ⚠️ 우주·별·행성을 그리지 않는다. 이 화면에 남은 선은 상단 marker rule과 하단 서명
+ * rule 둘뿐이고, 둘 다 **편집면을 여닫는 선**이지 장식이 아니다.
  */
 export default function SplashPage() {
   const router = useRouter();
@@ -76,16 +76,13 @@ export default function SplashPage() {
             상단 marker와 하단 서명 줄은 표지의 위/아래 끝에 고정된다. */}
         <span className="flex flex-1 flex-col justify-center">
           {/* ── 관찰 장면 ──────────────────────────────────────────────────
-              러비를 오른쪽으로 밀고, 왼쪽에 연결선 하나와 관찰 점 하나만 둔다.
-              선이 러비 쪽으로 향하므로 '이쪽에서 저쪽을 보고 있다'가 형태로 읽힌다. */}
-          <span className="relative flex items-center justify-end pr-1">
-            {/* 선의 오른쪽 끝(관찰 점)이 있던 자리를 그대로 유지한다 —
-                marker를 뺀 16px만큼 선을 늘려서 구도는 건드리지 않는다 */}
-            <span className="absolute left-0 flex items-center" aria-hidden>
-              <span className="h-px w-[108px] bg-rule-mid" />
-              <span className="obs-dot" />
-            </span>
+              러비를 오른쪽으로 민다. 비대칭 자체가 '표지'를 만들고, 왼쪽의 빈 자리가
+              여백이 된다 — 그 자리를 채우려고 선이나 점을 두지 않는다.
 
+              ⚠️ 예전에는 왼쪽에 `관찰 마크 + 연결선 + 점`이 있었다. 마크를 빼자
+              선과 점만 남았고, 그건 '관찰의 자국'이 아니라 **지우다 만 흔적**으로
+              읽혔다. 요소를 줄일 때는 남은 것이 혼자서도 뜻을 갖는지 본다. */}
+          <span className="flex items-center justify-end pr-1">
             <LovySequence size={178} priority />
           </span>
 
