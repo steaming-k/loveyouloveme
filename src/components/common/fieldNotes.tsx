@@ -66,46 +66,8 @@ export function ScreenMarker({ children }: { children: ReactNode }) {
   );
 }
 
-/* ------------------------------------------------------------- 관찰 마크 */
 
-/**
- * 러비의 관찰 마크 — 안테나 끝이 남긴 자국.
- *
- * ⚠️ 러비 캐릭터 이미지가 아니다. 캐릭터는 중요한 순간에만 등장하고(§2), 이 마크는
- * 러비가 '여기를 봤다'는 흔적으로 UI 안에 조용히 남는다. 그게 §13이 말한
- * '러비를 더 많이 그리지 말고, 러비의 역할을 UI 흔적으로 확장한다'이다.
- *
- * 순수 장식이므로 항상 `aria-hidden`이다 — 옆에 있는 텍스트가 내용을 말한다.
- */
-export function LovyMark({ size = 14, className }: { size?: number; className?: string }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 14 14"
-      fill="none"
-      aria-hidden
-      className={cn('flex-none', className)}
-    >
-      {/* 안테나 두 갈래 — 관찰하는 자세 */}
-      <path
-        d="M4.4 6.2 L2.9 3.2 M9.6 6.2 L11.1 3.2"
-        stroke="var(--color-marker-observe)"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-      />
-      <circle cx="2.9" cy="2.6" r="1.35" fill="var(--color-marker-observe)" />
-      <circle cx="11.1" cy="2.6" r="1.35" fill="var(--color-marker-observe)" />
-      {/* 관찰의 시선 — 아래로 향한 얕은 호 */}
-      <path
-        d="M3.2 8.1 Q7 12.4 10.8 8.1"
-        stroke="var(--color-marker-observe)"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
+
 
 /** 몇 번째 관찰인지. tabular라 세로로 쌓아도 숫자 폭이 흔들리지 않는다 */
 export function ObservationIndex({ n, className }: { n: number | string; className?: string }) {
@@ -141,7 +103,6 @@ export function ObservationNote({
     <div className={cn('surf-observation flex flex-col gap-2', className)}>
       {label ? (
         <p className="flex items-center gap-2">
-          <LovyMark size={13} />
           <span className="text-[10px] font-semibold tracking-[0.14em] text-mint-ink">{label}</span>
           {index !== undefined ? <ObservationIndex n={index} className="ml-auto" /> : null}
         </p>

@@ -1,4 +1,3 @@
-import { LovyMark } from '@/components/common/fieldNotes';
 import { chapterSourceLabels } from '@/lib/premiumMetaCopy';
 import type { PremiumSourceGroup, RelationshipTense } from '@/types';
 
@@ -113,7 +112,6 @@ export function EvidenceConnectionTrail({
       className="-mx-2 flex flex-col gap-3 border-y border-brand-edge bg-brand-tint px-4 py-4"
     >
       <p className="flex items-center gap-2">
-        <LovyMark size={13} />
         <span className="text-[10.5px] font-semibold tracking-[0.14em] text-brand-pressed">
           러비가 이어본 것
         </span>

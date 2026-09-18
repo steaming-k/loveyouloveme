@@ -2,7 +2,6 @@
 
 import { useRouter } from 'next/navigation';
 
-import { LovyMark } from '@/components/common/fieldNotes';
 import { LovySequence } from '@/components/lovy/LovySequence';
 import { BRAND } from '@/data/copy';
 import { ROUTES } from '@/lib/routes';
@@ -32,7 +31,7 @@ import { useSession } from '@/state/SessionProvider';
  * ──────────── LOVE RESEARCH : EARTH        ← 상단 편집 marker + rule
  *
  *                       ╭─ 러비 ─╮          ← 오른쪽으로 비대칭
- *         ·─────────────┤        │          ← 관찰 marker 하나 + 연결선 하나
+ *         ──────────────┤        │          ← 관찰 연결선 하나 + 끝점
  *                       ╰────────╯
  *   럽유럽미                                  ← 좌측 정렬 · 화면에서 가장 강한 타이포
  *   ───
@@ -77,12 +76,13 @@ export default function SplashPage() {
             상단 marker와 하단 서명 줄은 표지의 위/아래 끝에 고정된다. */}
         <span className="flex flex-1 flex-col justify-center">
           {/* ── 관찰 장면 ──────────────────────────────────────────────────
-              러비를 오른쪽으로 밀고, 왼쪽에 관찰 marker 하나와 연결선 하나만 둔다.
+              러비를 오른쪽으로 밀고, 왼쪽에 연결선 하나와 관찰 점 하나만 둔다.
               선이 러비 쪽으로 향하므로 '이쪽에서 저쪽을 보고 있다'가 형태로 읽힌다. */}
           <span className="relative flex items-center justify-end pr-1">
+            {/* 선의 오른쪽 끝(관찰 점)이 있던 자리를 그대로 유지한다 —
+                marker를 뺀 16px만큼 선을 늘려서 구도는 건드리지 않는다 */}
             <span className="absolute left-0 flex items-center" aria-hidden>
-              <LovyMark size={16} />
-              <span className="h-px w-[92px] bg-rule-mid" />
+              <span className="h-px w-[108px] bg-rule-mid" />
               <span className="obs-dot" />
             </span>
 
