@@ -214,7 +214,10 @@ export interface LovySequenceFrame {
 }
 
 export const LOVY_HOME_SEQUENCE: readonly LovySequenceFrame[] = [
-  { pose: 'chart', caption: '러비가 관찰 기록을 보고 있는 중' },
+  /* ⚠️ `chart`를 쓰지 않는다 — 그 에셋은 반투명 패널이 **몸통 위에 겹쳐** 그려져 있어
+     두 이미지를 포갠 것처럼 보인다. `connect`는 카드가 손과 바닥에 불투명하게 놓여
+     겹침이 없고, 뜻도 '흩어진 자료를 모아 보는 중'으로 이 자리에 맞는다. */
+  { pose: 'connect', caption: '러비가 관찰 기록을 보고 있는 중' },
   { pose: 'notice', caption: '러비가 무언가를 알아챈 순간', discovery: true },
   { pose: 'observe', caption: '러비가 돋보기로 자세히 보는 중' },
   { pose: 'record', caption: '러비가 관찰한 것을 적는 중' },
